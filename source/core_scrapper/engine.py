@@ -7,9 +7,8 @@ from source.path.path_reference import get_root_folder_path
 
 
 class CoreScrapper:
-    def __init__(self, base_url, driver=None):
+    def __init__(self, driver=None):
         self.driver = driver if driver else open_chrome()
-        self.driver.get(base_url)
         self.subfolder = 'userdata'
 
     def save_cookies(self):

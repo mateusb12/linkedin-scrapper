@@ -5,16 +5,15 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from source.core_scrapper.engine import CoreScrapper
-from source.core_scrapper.selenium_utils import open_chrome, store_data
+from source.core_scrapper.selenium_utils import open_chrome
 
 
-class FriendsScrapper(CoreScrapper):
+class ConnectionLinksScrapper(CoreScrapper):
     def __init__(self, driver=None, wait_time=10):
         self.driver = open_chrome() if not driver else driver
         super().__init__(
             "https://www.linkedin.com/mynetwork/invite-connect/connections/", self.driver
         )
-        self.current_page = 0
         self.wait = WebDriverWait(self.driver, wait_time)
         self.base_url = "https://www.linkedin.com"
 
@@ -91,7 +90,6 @@ class FriendsScrapper(CoreScrapper):
             for idx, link in enumerate(links_list, start=1):
                 print(f"{idx}. {link}")
 
-            store_data(links_list, "linkedin_friend_links.json")
             self.save_data(links_list, "linkedin_friend_links.json")
 
             return links_list
@@ -103,7 +101,7 @@ class FriendsScrapper(CoreScrapper):
         self.driver.quit()
 
 def main():
-    scrapper = FriendsScrapper()
+    scrapper = ConnectionLinksScrapper()
     try:
         connections_links = scrapper.scrape_connections()
         print(connections_links)
