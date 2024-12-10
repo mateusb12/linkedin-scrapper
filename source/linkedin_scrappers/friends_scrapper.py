@@ -1,22 +1,25 @@
-import time
-
-from selenium.common import StaleElementReferenceException, NoSuchElementException, TimeoutException, \
-    ElementClickInterceptedException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.wait import WebDriverWait
 
 from source.core_scrapper.engine import CoreScrapper
-from source.core_scrapper.selenium_utils import open_chrome, load_element_text, click_button
+from source.utils.selenium_utils import load_element_text, get_text_content_from_ul_element
 from source.path.file_content_loader import load_userdata_json
-from source.utils.experience_utils import parse_all_experiences
 
 
 class FriendsScrapper(CoreScrapper):
     def __init__(self, wait_time=10):
         super().__init__()
-        self.data = load_userdata_json("linkedin_friend_links.json")
+        self.data = self.load_data("linkedin_friend_links.json")
         self.wait = WebDriverWait(self.driver, wait_time)
+        self.scrape_all_users()
+
+    def scrape_all_users(self):
+        scrapped_data = []
+        for index, link in enumerate(self.data, start=1):
+            print(f"Scraping user {index} of {len(self.data)}...")
+            scrapped_data.append(self.scrape_single_user(link))
+        self.save_data(scrapped_data, "linkedin_friend_data.json")
 
     def scrape_single_user(self, user_link: str):
         self.driver.get(user_link)
@@ -39,29 +42,40 @@ class FriendsScrapper(CoreScrapper):
         top_skills_container_xpath = "/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/section[3]/div[4]/div/ul/li/div/div/div[2]/div/div/div[2]/div/div/span[1]"
         top_skills_container = self.driver.find_element(By.XPATH, top_skills_container_xpath)
         top_skills = top_skills_container.text
-        experiences = self.get_text_content_from_ul("/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/section[5]/div[3]/ul")
-        licenses = self.get_text_content_from_ul("/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/section[7]/div[3]/ul")
-        volunteering = self.get_text_content_from_ul("/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/section[8]/div[3]/ul")
+        experiences = self.get_text_content_from_ul_xpath("/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/section[5]/div[3]/ul")
+        licenses = self.get_text_content_from_ul_xpath("/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/section[7]/div[3]/ul")
+        volunteering = self.get_text_content_from_ul_xpath("/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/section[8]/div[3]/ul")
+        skills = self.get_all_skills(user_link)
 
         return {"title": title, "subtitle": subtitle, "company": company, "university": university, "place": place,
-                "about": about, "top_skills": top_skills, "experiences": experiences}
+                "about": about, "top_skills": top_skills, "experiences": experiences, "licenses": licenses,
+                "volunteering": volunteering, "skills": skills}
 
-    def get_text_content_from_ul(self, ul_xpath: str):
-        ul_element = self.driver.find_element(By.XPATH, ul_xpath)
-        li_elements = ul_element.find_elements(By.TAG_NAME, 'li')
-
-        seen_experiences = set()
-        experiences = []
-
+    def get_all_skills(self, user_link: str):
+        anchor_id = "navigation-index-Show-all-52-skills"
+        anchor_element = self.driver.find_element(By.ID, anchor_id)
+        anchor_element.click()
+        main_element = WebDriverWait(self.driver, 10).until(
+            expected_conditions.presence_of_element_located((By.CLASS_NAME, "scaffold-finite-scroll__content"))
+        )
+        ul = main_element.find_element(By.TAG_NAME, 'ul')
+        li_elements = ul.find_elements(By.TAG_NAME, 'li')
+        skills = []
         for index, li_element in enumerate(li_elements, start=1):
-            element_text = li_element.text
-            lines = element_text.split('\n')
-            unique_lines = tuple(sorted(set(line.strip() for line in lines if line.strip())))
-            if unique_lines and unique_lines not in seen_experiences:
-                experiences.append(unique_lines)
-                seen_experiences.add(unique_lines)
+            newline_character_count = li_element.text.count('\n')
+            if newline_character_count >= 3:
+                skill_name = li_element.text.split('\n')[0]
+                skills.append(skill_name)
 
-        return [list(item) for item in experiences if item]
+        self.driver.get(user_link)
+        return skills
+
+    def scroll_until_the_bottom(self):
+        pass
+
+    def get_text_content_from_ul_xpath(self, ul_xpath: str):
+        ul_element = self.driver.find_element(By.XPATH, ul_xpath)
+        return get_text_content_from_ul_element(ul_element)
 
 
 def main():

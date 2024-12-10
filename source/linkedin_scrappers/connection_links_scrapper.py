@@ -5,7 +5,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from source.core_scrapper.engine import CoreScrapper
-from source.core_scrapper.selenium_utils import open_chrome
+from source.utils.selenium_utils import open_chrome
 
 
 class ConnectionLinksScrapper(CoreScrapper):

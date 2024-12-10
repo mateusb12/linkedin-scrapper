@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from source.core_scrapper.selenium_utils import open_chrome, export_cookies
+from source.utils.selenium_utils import open_chrome, export_cookies
 from source.path.path_reference import get_root_folder_path
 
 
