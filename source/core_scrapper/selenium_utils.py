@@ -14,6 +14,7 @@ def open_chrome():
     return webdriver.Chrome(options=chrome_options)
 
 
+
 def export_cookies(driver: webdriver.Chrome):
     cookies = driver.get_cookies()
     cookies_path = Path(get_data_folder_path(), "cookies.json")

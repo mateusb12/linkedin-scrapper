@@ -1,3 +1,5 @@
 /source/data/cookies.json
 /.idea/
 /source/core_scrapper/*.ipynb
+/userdata/
+/project_utils/commit_changes_generator/commit_changes.diff

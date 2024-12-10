@@ -5,7 +5,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from source.core_scrapper.engine import CoreScrapper
-from source.core_scrapper.selenium_utils import open_chrome
+from source.core_scrapper.selenium_utils import open_chrome, store_data
 
 
 class FriendsScrapper(CoreScrapper):
@@ -90,6 +90,9 @@ class FriendsScrapper(CoreScrapper):
             print("\nAll connection links:")
             for idx, link in enumerate(links_list, start=1):
                 print(f"{idx}. {link}")
+
+            store_data(links_list, "linkedin_friend_links.json")
+            self.save_data(links_list, "linkedin_friend_links.json")
 
             return links_list
 
