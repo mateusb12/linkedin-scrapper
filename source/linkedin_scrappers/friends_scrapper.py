@@ -65,8 +65,7 @@ class FriendsScrapper(CoreScrapper):
         all_profile_sections_xpath = ("//section[contains(@class, 'artdeco-card') and "
                                       "contains(@class, 'pv-profile-card') and contains(@class, 'break-words')]")
         all_sections = self.driver.find_elements(By.XPATH, all_profile_sections_xpath)
-        section_texts = [item.text for item in all_sections]
-        about = next((text for text in section_texts if text.startswith("About\nAbout\n")), None)
+        about = all_sections[1].find_element(By.XPATH, "./*[3]/*/*/*/*").text
         top_skills = self.get_top_skills()
         raw_experiences = self.get_text_content_from_ul_xpath("/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/"
                                                               "section[5]/div[3]/ul")
