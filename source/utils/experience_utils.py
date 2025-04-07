@@ -166,3 +166,24 @@ def parse_all_experiences(text_list):
     print("--- END ALL PARSED EXPERIENCES ---\n")
 
     return results
+
+
+def clean_experiences(experiences):
+    """
+    Removes 'Endorse' from each sublist in the experiences list.
+    If 'Endorse' is the only item in the sublist, the sublist is removed entirely.
+
+    Args:
+    experiences (list): List of sublists containing experience items.
+
+    Returns:
+    list: Cleaned list of experiences.
+    """
+    cleaned_experiences = []
+    for experience in experiences:
+        # Remove 'Endorse' from the sublist
+        cleaned_experience = [item for item in experience if item != "Endorse"]
+        # Add the cleaned sublist to the result only if it still has elements
+        if cleaned_experience:
+            cleaned_experiences.append(cleaned_experience)
+    return cleaned_experiences

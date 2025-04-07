@@ -100,6 +100,7 @@ class ConnectionLinksScrapper(CoreScrapper):
     def close(self):
         self.driver.quit()
 
+
 def main():
     scrapper = ConnectionLinksScrapper()
     try:
