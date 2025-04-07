@@ -60,6 +60,24 @@ class CoreScrapper:
         except TimeoutException:
             return None
 
+    def get_xpath(self, element):
+        return self.driver.execute_script("""
+        function absoluteXPath(element) {
+            if (element === document.body)
+                return '/html/body';
+            let ix = 0;
+            let siblings = element.parentNode.childNodes;
+            for (let i = 0; i < siblings.length; i++) {
+                let sibling = siblings[i];
+                if (sibling === element)
+                    return absoluteXPath(element.parentNode) + '/' + element.tagName.toLowerCase() + '[' + (ix + 1) + ']';
+                if (sibling.nodeType === 1 && sibling.tagName === element.tagName)
+                    ix++;
+            }
+        }
+        return absoluteXPath(arguments[0]);
+        """, element)
+
     def __del__(self):
         try:
             self.save_cookies()

@@ -18,7 +18,7 @@ class FriendsScrapper(CoreScrapper):
         self.data = self.load_data("linkedin_friend_links.json")
         self.wait = WebDriverWait(self.driver, wait_time)
         self.current_index = 0
-        # self.scrape_all_users()
+        self.scrape_all_users()
 
     def scrape_all_users(self):
         scrapped_data = []
@@ -40,11 +40,15 @@ class FriendsScrapper(CoreScrapper):
     def scrape_single_user(self, user_link: str):
         self.driver.get(user_link)
 
-        element_to_be_rendered_xpath = ("/html/body/div[6]/div[3]/div/div/div[2]/div/div/aside/"
-                                        "section[2]/div[2]/div/div/div/h2/span[1]")
-
-        if not self.wait_for_element((By.XPATH, element_to_be_rendered_xpath)):
-            print("Element not found within the specified time.")
+        # try:
+        #     element_to_be_rendered_xpath = ("/html/body/div[6]/div[3]/div/div/div[2]/div/div/aside/"
+        #                                     "section[2]/div[2]/div/div/div/h2/span[1]")
+        #     element_to_be_rendered = self.wait.until(
+        #         expected_conditions.presence_of_element_located((By.XPATH, element_to_be_rendered_xpath))
+        #     )
+        # except TimeoutException:
+        #     print("Timed out waiting for the element to load.")
+        #     return
 
         self.scroll_until_the_bottom()
 
@@ -62,10 +66,12 @@ class FriendsScrapper(CoreScrapper):
         university = load_element_text(driver=self.driver, selector_type=By.XPATH, selector_value=university_xpath)
         place_xpath = "/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/section[1]/div[2]/div[2]/div[2]/span[1]"
         place = load_element_text(driver=self.driver, selector_type=By.XPATH, selector_value=place_xpath)
-        all_profile_sections_xpath = ("//section[contains(@class, 'artdeco-card') and "
-                                      "contains(@class, 'pv-profile-card') and contains(@class, 'break-words')]")
-        all_sections = self.driver.find_elements(By.XPATH, all_profile_sections_xpath)
-        about = all_sections[1].find_element(By.XPATH, "./*[3]/*/*/*/*").text
+        about_xpath = "/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/section[3]/div[3]/div/div/div/span[1]"
+        try:
+            about_element = self.driver.find_element(By.XPATH, about_xpath)
+            about = about_element.text
+        except NoSuchElementException:
+            about = ""
         top_skills = self.get_top_skills()
         raw_experiences = self.get_text_content_from_ul_xpath("/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/"
                                                               "section[5]/div[3]/ul")
@@ -74,9 +80,10 @@ class FriendsScrapper(CoreScrapper):
                                                        "section[7]/div[3]/ul")
         volunteering = self.get_text_content_from_ul_xpath("/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/"
                                                            "section[8]/div[3]/ul")
-        skills = self.get_all_skills(user_link)
 
         recommendations = self.get_recommendations()
+
+        skills = self.get_all_skills(user_link)
 
         return {"title": title, "subtitle": subtitle, "company": company, "university": university, "place": place,
                 "about": about, "top_skills": top_skills, "experiences": experiences, "licenses": licenses,
@@ -109,23 +116,33 @@ class FriendsScrapper(CoreScrapper):
         return skills
 
     def get_recommendations(self):
-        ul_path = "/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/section[10]/div[3]/div[2]/div/ul"
-        ul_element = self.wait_for_element((By.XPATH, ul_path))
+        self.scroll_until_the_bottom()
+        time.sleep(0.3)
+
+        self.driver.get(self.driver.current_url.rstrip('/') + '/details/recommendations/?detailScreenTabIndex=0')
+
+        ul_path = "/html/body/div[5]/div[3]/div/div/div[2]/div/div/main/section/div[2]/div[2]/div/div/div[1]/ul"
+        try:
+            ul_element = self.wait.until(expected_conditions.presence_of_element_located((By.XPATH, ul_path)))
+        except TimeoutException:
+            print("Timed out waiting for the recommendations element to load.")
+            return
 
         try:
             li_elements = ul_element.find_elements(By.TAG_NAME, "li")
             li_example = li_elements[0]
-            li_example_children = li_example.find_elements(By.XPATH, "./*/child::*[last()]/*[1]/*/*")
+            li_example_children = li_example.find_elements(By.XPATH, "./div/child::*[last()]/div[2]/div")
 
-            recommender_name = li_example_children[0].find_element(By.XPATH, "./*[1]/*/*/*").text
-            recommender_job = li_example_children[1].find_element(By.XPATH, "./*").text
-            recommender_worked_with_date = li_example_children[2].find_element(By.XPATH, "./*").text
-            recommendation_description = li_example.find_element(By.TAG_NAME, "ul").text
+            person_name = li_example_children[0].find_element(By.XPATH, "./a/div/div/div/div/span").text
+            person_titles = li_example_children[0].find_element(By.XPATH, "./a/span[1]/span").text
+            person_worked_with = li_example_children[0].find_element(By.XPATH, "./a/span[2]/span[1]").text
+            recommendation_description = li_example_children[1].find_element(By.XPATH,
+                                                                             "./ul/li/div/ul/li/div/div/div/span").text
 
             return Recommendation(
-                recommender_name=recommender_name,
-                recommender_job=recommender_job,
-                recommender_worked_with_date=recommender_worked_with_date,
+                recommender_name=person_name,
+                recommender_job=person_titles,
+                recommender_worked_with_date=person_worked_with,
                 recommendation_description=recommendation_description
             )
         except (NoSuchElementException, IndexError) as e:
