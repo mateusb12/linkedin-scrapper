@@ -1,13 +1,18 @@
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Tuple, Optional
+
+from selenium.common import TimeoutException
+from selenium.webdriver.support.wait import WebDriverWait
 
 from source.utils.selenium_utils import open_chrome, export_cookies
 from source.path.path_reference import get_root_folder_path
+from selenium.webdriver.support import expected_conditions
 
 
 class CoreScrapper:
     def __init__(self, driver=None):
+        self.default_wait_time = 10
         self.driver = driver if driver else open_chrome()
         self.subfolder = 'userdata'
 
@@ -39,6 +44,20 @@ class CoreScrapper:
             return data
         else:
             print(f"No existing data found at {file_path}")
+            return None
+        
+    def wait_for_element(self, locator: Tuple, timeout: Optional[int] = None):
+        """
+        Wait for an element to be present on the page.
+        :param locator: A tuple like (By.XPATH, xpath_value)
+        :param timeout: Optional timeout (in seconds). Defaults to self.default_wait_time.
+        :return: The WebElement if found, else None.
+        """
+        wait_time = timeout if timeout else self.default_wait_time
+        wait = WebDriverWait(self.driver, wait_time)
+        try:
+            return wait.until(expected_conditions.presence_of_element_located(locator))
+        except TimeoutException:
             return None
 
     def __del__(self):

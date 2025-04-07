@@ -42,10 +42,11 @@ class FriendsScrapper(CoreScrapper):
 
         element_to_be_rendered_xpath = ("/html/body/div[6]/div[3]/div/div/div[2]/div/div/aside/"
                                         "section[2]/div[2]/div/div/div/h2/span[1]")
-        try:
-            self.wait.until(expected_conditions.presence_of_element_located((By.XPATH, element_to_be_rendered_xpath)))
-        except TimeoutException:
-            pass
+
+        if not self.wait_for_element((By.XPATH, element_to_be_rendered_xpath)):
+            print("Element not found within the specified time.")
+
+        self.scroll_until_the_bottom()
 
         title_xpath = ("/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/"
                        "section[1]/div[2]/div[2]/div[1]/div[1]/span[1]/a/h1")
@@ -95,12 +96,7 @@ class FriendsScrapper(CoreScrapper):
 
     def get_all_skills(self, user_link: str):
         self.driver.get(f"{user_link}/details/skills/")
-        try:
-            main_element = WebDriverWait(self.driver, 10).until(
-                expected_conditions.presence_of_element_located((By.CLASS_NAME, "scaffold-finite-scroll__content"))
-            )
-        except TimeoutException:
-            return None
+        main_element = self.wait_for_element((By.CLASS_NAME, "scaffold-finite-scroll__content"))
         ul = main_element.find_element(By.TAG_NAME, 'ul')
         li_elements = ul.find_elements(By.TAG_NAME, 'li')
         skills = []
@@ -115,14 +111,7 @@ class FriendsScrapper(CoreScrapper):
 
     def get_recommendations(self):
         ul_path = "/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/section[10]/div[3]/div[2]/div/ul"
-
-        try:
-            ul_element = self.wait.until(
-                expected_conditions.presence_of_element_located((By.XPATH, ul_path))
-            )
-        except TimeoutException:
-            print("Recommendations UL not found in time.")
-            return None
+        ul_element = self.wait_for_element((By.XPATH, ul_path))
 
         try:
             li_elements = ul_element.find_elements(By.TAG_NAME, "li")
@@ -145,7 +134,7 @@ class FriendsScrapper(CoreScrapper):
             return None
 
     def scroll_until_the_bottom(self):
-        pass
+        self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
     def get_text_content_from_ul_xpath(self, ul_xpath: str):
         try:
