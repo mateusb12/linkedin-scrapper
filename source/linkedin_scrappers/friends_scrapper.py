@@ -40,16 +40,6 @@ class FriendsScrapper(CoreScrapper):
     def scrape_single_user(self, user_link: str):
         self.driver.get(user_link)
 
-        # try:
-        #     element_to_be_rendered_xpath = ("/html/body/div[6]/div[3]/div/div/div[2]/div/div/aside/"
-        #                                     "section[2]/div[2]/div/div/div/h2/span[1]")
-        #     element_to_be_rendered = self.wait.until(
-        #         expected_conditions.presence_of_element_located((By.XPATH, element_to_be_rendered_xpath))
-        #     )
-        # except TimeoutException:
-        #     print("Timed out waiting for the element to load.")
-        #     return
-
         self.scroll_until_the_bottom()
 
         title_xpath = ("/html/body/div[6]/div[3]/div/div/div[2]/div/div/main/"
@@ -116,13 +106,12 @@ class FriendsScrapper(CoreScrapper):
         return skills
 
     def get_recommendations(self):
-        self.scroll_until_the_bottom()
-        time.sleep(0.3)
-
         self.driver.get(self.driver.current_url.rstrip('/') + '/details/recommendations/?detailScreenTabIndex=0')
 
         ul_path = "/html/body/div[5]/div[3]/div/div/div[2]/div/div/main/section/div[2]/div[2]/div/div/div[1]/ul"
         try:
+            self.scroll_until_the_bottom()
+            time.sleep(1)
             ul_element = self.wait.until(expected_conditions.presence_of_element_located((By.XPATH, ul_path)))
         except TimeoutException:
             print("Timed out waiting for the recommendations element to load.")
@@ -162,7 +151,7 @@ class FriendsScrapper(CoreScrapper):
 
 def main():
     fs = FriendsScrapper()
-    res = fs.scrape_single_user('https://www.linkedin.com/in/barbara-perina/')
+    res = fs.scrape_single_user('https://www.linkedin.com/in/amanda-zanin/')
     return
 
 
