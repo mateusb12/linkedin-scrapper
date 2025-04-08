@@ -9,13 +9,11 @@ from source.utils.selenium_utils import open_chrome
 
 
 class ConnectionLinksScrapper(CoreScrapper):
-    def __init__(self, driver=None, wait_time=10):
-        self.driver = open_chrome() if not driver else driver
-        super().__init__(
-            "https://www.linkedin.com/mynetwork/invite-connect/connections/", self.driver
-        )
+    def __init__(self, wait_time=10):
+        super().__init__()
         self.wait = WebDriverWait(self.driver, wait_time)
         self.base_url = "https://www.linkedin.com"
+        self.driver.get("https://www.linkedin.com/mynetwork/invite-connect/connections/")
 
     def wait_for_page_load(self):
         try:

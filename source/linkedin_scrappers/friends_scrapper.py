@@ -112,7 +112,7 @@ class FriendsScrapper(CoreScrapper):
         try:
             self.scroll_until_the_bottom()
             time.sleep(1)
-            ul_element = self.wait.until(expected_conditions.presence_of_element_located((By.XPATH, ul_path)))
+            ul_element = self.wait.until(expected_conditions.visibility_of_element_located((By.XPATH, ul_path)))
         except TimeoutException:
             print("Timed out waiting for the recommendations element to load.")
             return
