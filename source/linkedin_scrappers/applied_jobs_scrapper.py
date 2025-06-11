@@ -5,9 +5,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from source.core_scrapper.engine import CoreScrapper
 
 
-class JobsScrapper(CoreScrapper):
+class AppliedJobsScrapper(CoreScrapper):
     def __init__(self, driver=None):
-        super().__init__("https://www.linkedin.com/my-items/saved-jobs/?cardType=APPLIED", driver)
+        super().__init__(driver)
+        url = "https://www.linkedin.com/my-items/saved-jobs/?cardType=APPLIED"
+        self.driver.get(url)
         self.current_page = 0
 
     def collect_data_from_current_page(self):
@@ -38,10 +40,12 @@ class JobsScrapper(CoreScrapper):
         self.driver.get(next_page_url)
         self.collect_data_from_current_page()
 
+
 def main():
-    linkedin_scrapper = JobsScrapper()
+    linkedin_scrapper = AppliedJobsScrapper()
     linkedin_scrapper.save_cookies()
     print("Done!")
+
 
 if __name__ == '__main__':
     main()

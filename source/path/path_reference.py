@@ -20,8 +20,10 @@ def get_gmail_folder_path() -> Path:
 def get_credentials_path() -> Path:
     return Path(get_gmail_folder_path(), 'credentials.json')
 
+
 def get_data_folder_path() -> Path:
     return Path(get_source_folder_path(), 'data')
+
 
 def get_userdata_path() -> Path:
     return Path(get_root_folder_path(), 'userdata')
