@@ -9,6 +9,7 @@ and saves all fetched job entities to a JSON file.
 
 import logging
 import math
+import re
 import time
 import json
 from typing import Optional, List, Dict
@@ -132,6 +133,43 @@ def iterate_all(session: requests.Session, base_url: str,
     return jobs
 
 
+def trim_job(job: dict) -> dict:
+    """
+    Given a full EntityResultViewModel dict, return only the key info:
+      - job_id       (int)
+      - title        (str)
+      - company      (str)
+      - location     (str)
+      - applied_on   (str)
+      - url          (str)
+    """
+    # Extract numeric ID from the URN
+    urn = job.get("entityUrn", job.get("trackingUrn", ""))
+    m = re.search(r"jobPosting:(\d+)", urn)
+    job_id = int(m.group(1)) if m else urn
+
+    # Unwrap the TextViewModel for title, company, location, applied-info
+    def text_of(field):
+        v = job.get(field) or {}
+        return v.get("text") if isinstance(v, dict) else None
+
+    applied_on = None
+    insights = job.get("insightsResolutionResults") or []
+    if insights:
+        simp = insights[0].get("simpleInsight") or {}
+        title = simp.get("title") or {}
+        applied_on = title.get("text")
+
+    return {
+        "job_id": job_id,
+        "title": text_of("title"),
+        "company": text_of("primarySubtitle"),
+        "location": text_of("secondarySubtitle"),
+        "applied_on": applied_on,
+        "url": job.get("navigationUrl"),
+    }
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # MAIN
 # ──────────────────────────────────────────────────────────────────────────────
@@ -165,8 +203,10 @@ def main():
     jobs = iterate_all(session, base_url, req.query_id, req.variables_template)
 
     # 7) Save results to JSON file
+    trimmed = [trim_job(j) for j in jobs]
+
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-        json.dump(jobs, f, ensure_ascii=False, indent=2)
+        json.dump(trimmed, f, ensure_ascii=False, indent=2)
     logging.info("Saved %d jobs to %s", len(jobs), OUTPUT_FILE)
 
 

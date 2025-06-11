@@ -137,10 +137,9 @@ class CurlRequest:
         return sess
 
 
-# Example usage
-if __name__ == "__main__":
-    CURL_FILE = "curl.txt"
-    raw_curl = load_curl_file(CURL_FILE)
+def main():
+    curl_file = "curl.txt"
+    raw_curl = load_curl_file(curl_file)
     req = CurlRequest.from_curl_text(raw_curl)
     errs = req.validate()
     if errs:
@@ -150,3 +149,8 @@ if __name__ == "__main__":
     else:
         print("Reconstructed curl command:")
         print(req.to_curl())
+
+
+# Example usage
+if __name__ == "__main__":
+    main()
