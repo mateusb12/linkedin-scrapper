@@ -7,6 +7,7 @@ then paginates through a LinkedIn GraphQL endpoint with full debug output.
 """
 
 import logging
+import math
 import time
 from typing import Optional
 from urllib.parse import quote_plus, urlparse
@@ -38,11 +39,10 @@ logging.basicConfig(
 def fetch_page(session: requests.Session, base_url: str, query_id: str,
                var_tpl: str, start: int = 0) -> Optional[dict]:
     filled = var_tpl.format(start=start)
-    params = {"queryId": query_id, "variables": filled}
-    preview = f"{base_url}?queryId={query_id}&variables={quote_plus(filled)}"
-    logging.info("→ GET %s", preview)
+    full_url = f"{base_url}?queryId={query_id}&variables={filled}"
+    logging.info("→ GET %s", full_url)
 
-    r = session.get(base_url, params=params, timeout=15)
+    r = session.get(full_url, timeout=15)
     # DEBUG: log exactly what went over the wire
     logging.debug("SENT URL:     %s", r.request.url)
     logging.debug("SENT HEADERS: %s", r.request.headers)
@@ -60,25 +60,44 @@ def fetch_page(session: requests.Session, base_url: str, query_id: str,
 
 def iterate_all(session: requests.Session, base_url: str,
                 query_id: str, var_tpl: str) -> None:
+    page_size = 10
     start = 0
+
+    # 1) Initial fetch to discover total
     data = fetch_page(session, base_url, query_id, var_tpl, start)
     if not data:
         logging.critical("Initial fetch failed—exiting")
         return
 
+    # 2) Compute total items and pages
     total = data["data"]["data"]["searchDashClustersByAll"]["paging"]["total"]
-    logging.info("Total items: %d", total)
+    total_pages = math.ceil(total / page_size)
+    logging.info("Total items: %d — %d pages", total, total_pages)
 
+    # 3) Loop through all pages
     while start < total:
+        current_page = start // page_size + 1
+        logging.info(
+            "→ Fetching page %d/%d (items %d–%d)",
+            current_page,
+            total_pages,
+            start + 1,
+            min(start + page_size, total),
+        )
+
         elems = data["data"]["data"]["searchDashClustersByAll"]["elements"]
         for cluster in elems:
             for item in cluster.get("items", []):
-                print(item["item"]["*entityResult"])
+                job = item["item"]["*entityResult"]
+                logging.info(" • %s", job)
+                print(job)
 
-        start += 10
+        # advance
+        start += page_size
         if start >= total:
             break
 
+        # retry logic for next page
         for attempt in range(1, MAX_RETRIES + 1):
             data = fetch_page(session, base_url, query_id, var_tpl, start)
             if data:
