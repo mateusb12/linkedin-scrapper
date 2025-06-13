@@ -10,8 +10,9 @@ import json
 import logging
 import re
 from dataclasses import dataclass, asdict
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Dict, List, Optional, Tuple, Any
 
 import requests
 from dateutil.relativedelta import relativedelta
@@ -29,6 +30,11 @@ logging.basicConfig(
     datefmt="%(H:%M:%S")
 
 
+class JobCollectionType(Enum):
+    APPLIED = "applied"
+    RECOMMENDED = "recommended"
+
+
 # ─── DOMAIN MODEL ─────────────────────────────────────────────────────────────
 @dataclass
 class AppliedJob:
@@ -39,7 +45,27 @@ class AppliedJob:
     applied_on: Optional[str]
 
 
+@dataclass
+class RecommendedJobCard:
+    job_id: int
+    title: str
+    company: Optional[str] = None
+    location: Optional[str] = None
+    salary_hint: Optional[str] = None
+    is_promoted: bool = False
+    easy_apply: bool = False
+    listed_at: Optional[datetime] = None
+    reposted: bool = False
+    is_remote: bool = False
+
+    def __str__(self) -> str:  # pragma: no cover
+        when = self.listed_at and self.listed_at.strftime("%Y-%m-%d")
+        return f"{self.title} @ {self.company} ({self.location}) [{when}]"
+
+
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
+
+
 _RE_APPLIED = re.compile(r"Applied\s+(\d+)([a-zA-Z]+)\s+ago")
 
 
@@ -97,7 +123,7 @@ def _fetch_json(session: requests.Session, cmd: Command) -> Optional[dict]:
 
 
 # ─── EXTRACTION LOGIC ─────────────────────────────────────────────────────────
-def _extract_jobs_from_response(data: dict) -> List[AppliedJob]:
+def _extract_applied_jobs_from_response(data: dict) -> List[AppliedJob]:
     """
     Extrai AppliedJob de um JSON de resposta.
     """
@@ -120,7 +146,93 @@ def _extract_jobs_from_response(data: dict) -> List[AppliedJob]:
     return extracted
 
 
+def _index_included_by_type(included: List[Dict[str, Any]]):
+    """Collect a few fast-lookup buckets out of the 🔀 ‘included’ array."""
+    postings, cards = {}, []
+    for item in included:
+        t = item.get("$type", "")
+        if t.endswith(".JobPosting"):
+            postings[item["entityUrn"]] = item
+        elif t.endswith(".JobPostingCard"):
+            cards.append(item)
+    return postings, cards
+
+
+def _urn_to_id(urn: Optional[str]) -> int:
+    """urn:li:fsd_jobPosting:4248427371 → 4248427371 (int)"""
+    return int(urn.rsplit(":", 1)[-1]) if urn else 0
+
+
+def _extract_recommended_jobs_from_response(payload: Dict[str, Any],
+                                            *,
+                                            debug: bool = False
+                                            ) -> List[RecommendedJobCard]:
+    """
+    Turn a *JOB_COLLECTIONS_RECOMMENDED* GraphQL response into structured rows.
+    Pass `debug=True` to get a one-line summary of kept vs. skipped cards.
+    """
+    postings, cards = _index_included_by_type(payload.get("included", []))
+
+    results: List[RecommendedJobCard] = []
+    skipped_cards = 0
+
+    for card in cards:
+        posting_urn = card.get("*jobPosting")
+        if not posting_urn:
+            skipped_cards += 1
+            continue
+
+        posting = postings.get(posting_urn, {})
+        job_id = _urn_to_id(posting_urn)
+        title = posting.get("title") or card.get("jobPostingTitle") or ""
+
+        company = (card.get("primaryDescription") or {}).get("text")
+        location = (card.get("secondaryDescription") or {}).get("text")
+
+        footer = {fi["type"]: fi for fi in card.get("footerItems", [])}
+        promoted = "PROMOTED" in footer
+        easy_apply = "EASY_APPLY_TEXT" in footer
+        ts = (footer.get("LISTED_DATE") or {}).get("timeAt")
+        listed_at = datetime.fromtimestamp(ts / 1000, tz=timezone.utc) if ts else None
+
+        m = re.search(r'\b(?:R\$|BRL|\$|USD|€|£)\s?[\d.,]+\s?(?:[kKmM])?\b', title)
+        salary = m.group(0).replace(" ", "").replace(" ", "") if m else None
+
+        results.append(
+            RecommendedJobCard(
+                job_id=job_id,
+                title=title,
+                company=company,
+                location=location,
+                salary_hint=salary,
+                is_promoted=promoted,
+                easy_apply=easy_apply,
+                listed_at=listed_at,
+                reposted=posting.get("repostedJob", False),
+                is_remote=bool(location and re.search(r'\bremote\b', location, re.I)),
+            )
+        )
+
+    if debug:
+        kept = len(results)
+        print(f"[extract] total={len(cards)}  kept={kept}  skipped={skipped_cards}")
+
+    return results
+
+
 # ─── EXECUTION ─────────────────────────────────────────────────────────────────
+def extract_jobs(
+        json_data: Dict[str, Any],
+        which: JobCollectionType
+) -> List:
+    if which is JobCollectionType.APPLIED:
+        return _extract_applied_jobs_from_response(json_data)
+    elif which is JobCollectionType.RECOMMENDED:
+        return _extract_recommended_jobs_from_response(json_data)
+    else:
+        raise ValueError(f"Unknown collection type: {which}")
+
+
 def execute_commands(
         commands: List[Command],
         date_filter: Optional[Dict[str, int]] = None
@@ -148,7 +260,7 @@ def execute_commands(
         if not data:
             continue
 
-        jobs = _extract_jobs_from_response(data)
+        jobs = extract_jobs(json_data=data, which=JobCollectionType.RECOMMENDED)
         for job in jobs:
             if threshold and job.applied_on:
                 if _applied_to_dt(job.applied_on) < threshold:
