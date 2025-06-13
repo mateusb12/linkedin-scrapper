@@ -4,4 +4,4 @@
 /userdata/
 /project_utils/commit_changes_generator/commit_changes.diff
 /source/data/curl.txt
-/source/data/results.json
+/source/data/*.json

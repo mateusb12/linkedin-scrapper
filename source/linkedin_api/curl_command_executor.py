@@ -9,6 +9,7 @@ aplica filtro de data e grava o JSON final.
 import json
 import logging
 import re
+from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -27,6 +28,16 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
 )
+
+
+# ─── DOMAIN MODEL ─────────────────────────────────────────────────────────────
+@dataclass
+class AppliedJob:
+    job_id: int
+    title: Optional[str]
+    company: Optional[str]
+    location: Optional[str]
+    applied_on: Optional[str]
 
 
 # ─── HELPERS ────────────────────────────────────────────────────────────────
@@ -51,12 +62,15 @@ def _applied_to_dt(txt: str) -> datetime:
     return datetime.now()
 
 
-def _trim(job: dict) -> dict:
+def _trim(job: dict) -> AppliedJob:
+    """
+    Extrai e converte os campos relevantes em um AppliedJob.
+    """
     urn = job.get("entityUrn", job.get("trackingUrn", ""))
     m = re.search(r"jobPosting:(\d+)", urn)
-    jid = int(m.group(1)) if m else urn
+    jid = int(m.group(1)) if m else None
 
-    def _text(field: str):
+    def _text(field: str) -> Optional[str]:
         v = job.get(field) or {}
         return v.get("text") if isinstance(v, dict) else None
 
@@ -66,14 +80,13 @@ def _trim(job: dict) -> dict:
         simp = (insights[0].get("simpleInsight") or {}).get("title", {})
         applied = simp.get("text")
 
-    return {
-        "job_id": jid,
-        "title": _text("title"),
-        "company": _text("primarySubtitle"),
-        "location": _text("secondarySubtitle"),
-        "applied_on": applied,
-        "url": job.get("navigationUrl"),
-    }
+    return AppliedJob(
+        job_id=jid,
+        title=_text("title"),
+        company=_text("primarySubtitle"),
+        location=_text("secondarySubtitle"),
+        applied_on=applied,
+    )
 
 
 def _fetch_json(session: requests.Session, cmd: Command) -> Optional[dict]:
@@ -87,19 +100,24 @@ def _fetch_json(session: requests.Session, cmd: Command) -> Optional[dict]:
         return None
 
 
-def execute_commands(commands: List[Command],
-                     date_filter: Optional[Dict[str, int]] = None) -> List[dict]:
+def execute_commands(
+        commands: List[Command],
+        date_filter: Optional[Dict[str, int]] = None
+) -> List[AppliedJob]:
+    """
+    Executa a lista de comandos, aplica filtro de data e retorna jobs como AppliedJob.
+    """
     if not commands:
         return []
 
-    # Reaproveita headers/cookies do primeiro comando para a sessão
     sess = requests.Session()
     sess.headers.update(commands[0].headers)
     for n, v in commands[0].cookies.items():
         sess.cookies.set(n, v)
 
     threshold = datetime.now() - relativedelta(**date_filter) if date_filter else None
-    jobs, stop = [], False
+    results: List[AppliedJob] = []
+    stop = False
 
     for cmd in commands:
         if stop:
@@ -118,42 +136,43 @@ def execute_commands(commands: List[Command],
         clusters = data["data"]["data"]["searchDashClustersByAll"]["elements"]
         for cl in clusters:
             for it in cl.get("items", []):
-                job = included_idx.get(
+                job_dict = included_idx.get(
                     it["item"]["*entityResult"],
                     {"entityUrn": it["item"]["*entityResult"]},
                 )
-                trimmed = _trim(job)
+                applied_job = _trim(job_dict)
 
                 # filtro de data
-                if threshold and trimmed["applied_on"]:
-                    if _applied_to_dt(trimmed["applied_on"]) < threshold:
+                if threshold and applied_job.applied_on:
+                    if _applied_to_dt(applied_job.applied_on) < threshold:
                         logging.info(
                             "Threshold atingido em '%s' – parando nas páginas restantes",
-                            trimmed["applied_on"],
+                            applied_job.applied_on,
                         )
                         stop = True
                         break
 
-                jobs.append(job)
+                results.append(applied_job)
             if stop:
                 break
 
-    return jobs
+    return results
 
 
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 def main(
-    curl_file: str = "curl.txt",
-    output: str = f"{get_data_folder_path()}/results.json",
+        curl_file: str = "curl.txt",
+        output: str = f"{get_data_folder_path()}/results.json",
 ):
     cmds = build_commands(curl_file)
     logging.info("Commands gerados: %d", len(cmds))
 
-    raw_jobs = execute_commands(cmds, DATE_FILTER)
+    jobs = execute_commands(cmds, DATE_FILTER)
 
+    # Serializa dataclasses para JSON
     with open(output, "w", encoding="utf-8") as fh:
-        json.dump([_trim(j) for j in raw_jobs], fh, ensure_ascii=False, indent=2)
-    logging.info("Gravou %d jobs em %s", len(raw_jobs), output)
+        json.dump([asdict(job) for job in jobs], fh, ensure_ascii=False, indent=2)
+    logging.info("Gravou %d jobs em %s", len(jobs), output)
 
 
 if __name__ == "__main__":
