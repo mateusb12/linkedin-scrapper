@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-# curl_command_executor.py
 """
-Lê Command objects, dispara as requisições paginadas,
-agrega os resultados e grava o JSON final.
+curl_command_executor.py
+
+Consome a lista de Command gerada pelo builder, faz as chamadas HTTP,
+aplica filtro de data e grava o JSON final.
 """
 
 import json
 import logging
-import math
 import re
-import time
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -19,14 +18,12 @@ from dateutil.relativedelta import relativedelta
 from curl_command_builder import Command, build_commands
 from source.path.path_reference import get_data_folder_path
 
-
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
-RETRY_SEC   = 3
-MAX_RETRIES = 3
 DATE_FILTER = {"years": 0, "months": 6, "days": 0}
+LOGLEVEL = logging.INFO
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=LOGLEVEL,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
 )
@@ -36,21 +33,21 @@ logging.basicConfig(
 _RE_APPLIED = re.compile(r"Applied\s+(\d+)([a-zA-Z]+)\s+ago")
 
 
-def _applied_to_datetime(txt: str) -> datetime:
+def _applied_to_dt(txt: str) -> datetime:
     m = _RE_APPLIED.match(txt or "")
     if not m:
         return datetime.now()
     val, unit = int(m.group(1)), m.group(2).lower()
-    if unit.startswith("mo"):
-        return datetime.now() - relativedelta(months=val)
-    if unit.startswith("y"):
-        return datetime.now() - relativedelta(years=val)
-    if unit.startswith("w"):
-        return datetime.now() - relativedelta(weeks=val)
-    if unit.startswith("d"):
-        return datetime.now() - relativedelta(days=val)
-    if unit.startswith("h"):
-        return datetime.now() - relativedelta(hours=val)
+    delta_map = {
+        "mo": {"months": val},
+        "y": {"years": val},
+        "w": {"weeks": val},
+        "d": {"days": val},
+        "h": {"hours": val},
+    }
+    for prefix, kwargs in delta_map.items():
+        if unit.startswith(prefix):
+            return datetime.now() - relativedelta(**kwargs)
     return datetime.now()
 
 
@@ -59,7 +56,9 @@ def _trim(job: dict) -> dict:
     m = re.search(r"jobPosting:(\d+)", urn)
     jid = int(m.group(1)) if m else urn
 
-    to_text = lambda f: (job.get(f) or {}).get("text") if isinstance(job.get(f), dict) else None
+    def _text(field: str):
+        v = job.get(field) or {}
+        return v.get("text") if isinstance(v, dict) else None
 
     applied = None
     insights = job.get("insightsResolutionResults") or []
@@ -69,102 +68,92 @@ def _trim(job: dict) -> dict:
 
     return {
         "job_id": jid,
-        "title": to_text("title"),
-        "company": to_text("primarySubtitle"),
-        "location": to_text("secondarySubtitle"),
+        "title": _text("title"),
+        "company": _text("primarySubtitle"),
+        "location": _text("secondarySubtitle"),
         "applied_on": applied,
         "url": job.get("navigationUrl"),
     }
 
 
-def _fetch(session: requests.Session, cmd: Command, start: int) -> Optional[dict]:
-    url = cmd.url_template.format(start=start)
-    logging.info("GET %s", url)
-    res = session.get(url, timeout=15)
+def _fetch_json(session: requests.Session, cmd: Command) -> Optional[dict]:
+    logging.info("GET page %d → %s", cmd.page_idx + 1, cmd.url)
     try:
-        res.raise_for_status()
-        return res.json()
+        resp = session.get(cmd.url, timeout=15)
+        resp.raise_for_status()
+        return resp.json()
     except Exception as e:
-        logging.error("Fetch error: %s", e)
+        logging.error("Erro no fetch: %s", e)
         return None
 
 
-def _run_paginated(session: requests.Session, cmd: Command,
-                   time_filter: Optional[Dict[str, int]]) -> List[dict]:
-    jobs, start, page_sz = [], 0, cmd.page_size
-    thresh = datetime.now() - relativedelta(**time_filter) if time_filter else None
-    data = _fetch(session, cmd, start)
-    if not data:
-        return jobs
+def execute_commands(commands: List[Command],
+                     date_filter: Optional[Dict[str, int]] = None) -> List[dict]:
+    if not commands:
+        return []
 
-    included = {
-        (inc.get("entityUrn") or inc.get("$id")): inc
-        for inc in data.get("included", [])
-        if isinstance(inc, dict)
-    }
-    total = data["data"]["data"]["searchDashClustersByAll"]["paging"]["total"]
-    pages = math.ceil(total / page_sz)
-    logging.info("Total items: %d (~%d pages)", total, pages)
+    # Reaproveita headers/cookies do primeiro comando para a sessão
+    sess = requests.Session()
+    sess.headers.update(commands[0].headers)
+    for n, v in commands[0].cookies.items():
+        sess.cookies.set(n, v)
 
-    stop = False
-    while start < total and not stop:
-        logging.info("→ page %d/%d", start // page_sz + 1, pages)
+    threshold = datetime.now() - relativedelta(**date_filter) if date_filter else None
+    jobs, stop = [], False
+
+    for cmd in commands:
+        if stop:
+            break
+
+        data = _fetch_json(sess, cmd)
+        if not data:
+            continue
+
+        included_idx = {
+            (inc.get("entityUrn") or inc.get("$id")): inc
+            for inc in data.get("included", [])
+            if isinstance(inc, dict)
+        }
+
         clusters = data["data"]["data"]["searchDashClustersByAll"]["elements"]
         for cl in clusters:
             for it in cl.get("items", []):
-                job = included.get(it["item"]["*entityResult"],
-                                   {"entityUrn": it["item"]["*entityResult"]})
-                if thresh:
-                    appl = _trim(job).get("applied_on")
-                    if appl and _applied_to_datetime(appl) < thresh:
-                        logging.info("Hit threshold (%s) – stopping", appl)
+                job = included_idx.get(
+                    it["item"]["*entityResult"],
+                    {"entityUrn": it["item"]["*entityResult"]},
+                )
+                trimmed = _trim(job)
+
+                # filtro de data
+                if threshold and trimmed["applied_on"]:
+                    if _applied_to_dt(trimmed["applied_on"]) < threshold:
+                        logging.info(
+                            "Threshold atingido em '%s' – parando nas páginas restantes",
+                            trimmed["applied_on"],
+                        )
                         stop = True
                         break
+
                 jobs.append(job)
             if stop:
                 break
-
-        if stop:
-            break
-        start += page_sz
-        for att in range(1, MAX_RETRIES + 1):
-            data = _fetch(session, cmd, start)
-            if data:
-                included.update({
-                    (inc.get("entityUrn") or inc.get("$id")): inc
-                    for inc in data.get("included", [])
-                    if isinstance(inc, dict)
-                })
-                break
-            logging.warning("retry %d/%d in %ds", att, MAX_RETRIES, RETRY_SEC)
-            time.sleep(RETRY_SEC)
-        else:
-            logging.critical("Exceeded retries – aborting")
-            break
 
     return jobs
 
 
 # ─── MAIN ────────────────────────────────────────────────────────────────────
-def main(curl_file: str = "curl.txt",
-         output: str = f"{get_data_folder_path()}/results.json"):
+def main(
+    curl_file: str = "curl.txt",
+    output: str = f"{get_data_folder_path()}/results.json",
+):
     cmds = build_commands(curl_file)
-    if not cmds:
-        logging.error("No commands to execute.")
-        return
+    logging.info("Commands gerados: %d", len(cmds))
 
-    all_jobs: List[dict] = []
-    for cmd in cmds:
-        sess = requests.Session()
-        sess.headers.update(cmd.headers)
-        for n, v in cmd.cookies.items():
-            sess.cookies.set(n, v)
-
-        all_jobs.extend(_run_paginated(sess, cmd, DATE_FILTER))
+    raw_jobs = execute_commands(cmds, DATE_FILTER)
 
     with open(output, "w", encoding="utf-8") as fh:
-        json.dump([_trim(j) for j in all_jobs], fh, ensure_ascii=False, indent=2)
-    logging.info("Saved %d jobs → %s", len(all_jobs), output)
+        json.dump([_trim(j) for j in raw_jobs], fh, ensure_ascii=False, indent=2)
+    logging.info("Gravou %d jobs em %s", len(raw_jobs), output)
 
 
 if __name__ == "__main__":
