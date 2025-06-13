@@ -62,14 +62,9 @@ def get_initial_ping(
     req: CurlRequest,
     override_page_size: Optional[int] = None
 ) -> Tuple[FirstPageResult, int, int]:
-    # executa ping inicial
     first_page = _first_page_json(req, override_page_size or PAGE_SIZE_DEFAULT)
 
-    # DEBUG: exibe a resposta completa para análise
-    print("DEBUG: first_page.json =", json.dumps(first_page.json, indent=2))
-
     data = first_page.json.get("data", {})
-    print("DEBUG: data keys =", list(data.keys()))
 
     paging = None
     # Strategy A: nested under data.data.<key>.paging
