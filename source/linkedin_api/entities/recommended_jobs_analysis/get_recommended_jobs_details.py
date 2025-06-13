@@ -28,9 +28,10 @@ CURL_TEMPLATE_FILE = "job_curl_example.txt"
 INPUT_FILE = "recommended_jobs.json"
 OUTPUT_SUMMARY = "job_details_summary.json"
 # Set a limit (int) to cap fetches; 0 or None means no limit
-LIMIT = int(os.getenv('JOB_LIMIT', '0')) or None
+LIMIT = 5
 
 typing_optional = Optional[Any]
+
 
 @dataclass
 class JobDetail:
@@ -47,9 +48,9 @@ def build_variables_parseq(job_urn: str) -> str:
     percent-encoding the URN value only.
     """
     return (
-        "(cardSectionTypes:List(TOP_CARD,HOW_YOU_FIT_CARD),"
+        "(cardSectionTypes:List(TOP_CARD,HOW_YOU_FIT_CARD,JOB_DESCRIPTION_CARD),"
         f"jobPostingUrn:{quote_plus(job_urn)},"
-        "includeSecondaryActionsV2:true,"  
+        "includeSecondaryActionsV2:true,"
         "jobDetailsContext:(isJobSearch:false))"
     )
 
