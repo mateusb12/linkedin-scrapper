@@ -3,8 +3,9 @@
 /source/core_scrapper/*.ipynb
 /userdata/
 /project_utils/commit_changes_generator/commit_changes.diff
-/source/data/curl.txt
+/source/data/*.txt
 /source/data/*.json
 /source/linkedin_api/potential_curls/*.txt
 /source/linkedin_api/potential_curls/*.json
 /.env
+/source/linkedin_api/entities/recommended_jobs_analysis/*.txt
