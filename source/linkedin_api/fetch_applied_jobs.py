@@ -12,10 +12,12 @@ import math
 import re
 import time
 import json
+from datetime import datetime
 from typing import Optional, List, Dict
 from urllib.parse import urlparse
 
 import requests
+from dateutil.relativedelta import relativedelta
 
 from source.linkedin_api.curl_builder import CurlRequest
 from source.path.file_content_loader import load_curl_file
@@ -29,6 +31,7 @@ OUTPUT_FILE = f"{get_data_folder_path()}/results.json"
 RETRY_SEC = 3
 MAX_RETRIES = 3
 PAGE_SIZE = 10
+DATE_FILTER = {"years": 0, "months": 6, "days": 0}
 
 # Turn on DEBUG to see headers, cookies, and request details
 logging.basicConfig(
@@ -61,63 +64,102 @@ def fetch_page(session: requests.Session, base_url: str, query_id: str,
         return None
 
 
-def iterate_all(session: requests.Session, base_url: str,
-                query_id: str, var_tpl: str) -> List[Dict]:
+def convert_timestamp_string(text: str) -> datetime:
     """
-    Fetches all pages and returns a list of full job dicts by
-    dereferencing the URNs against the 'included' section.
+    Given 'Applied 7mo ago', returns a datetime object.
+    """
+    m = re.match(r'Applied\s+(\d+)([a-zA-Z]+)\s+ago', text)
+    if not m:
+        return datetime.now()
+    num, unit = int(m.group(1)), m.group(2).lower()
+    now = datetime.now()
+    if unit.startswith('mo'):
+        return now - relativedelta(months=num)
+    if unit.startswith('y'):
+        return now - relativedelta(years=num)
+    if unit.startswith('w'):
+        return now - relativedelta(weeks=num)
+    if unit.startswith('d'):
+        return now - relativedelta(days=num)
+    if unit.startswith('h'):
+        return now - relativedelta(hours=num)
+    return now
+
+
+def iterate_all(
+        session: requests.Session,
+        base_url: str,
+        query_id: str,
+        var_tpl: str,
+        time_filter: Optional[Dict[str, int]] = None
+) -> List[Dict]:
+    """
+    Fetches all pages, but if time_filter is provided (e.g. {'months':6}),
+    stops as soon as it sees an 'applied_on' older than now - time_filter.
     """
     jobs: List[Dict] = []
     start = 0
 
-    # 1) Initial fetch to discover total
+    if time_filter:
+        threshold = datetime.now() - relativedelta(**time_filter)
+        logging.info("Will stop at jobs older than %s", threshold.isoformat())
+    else:
+        threshold = None
+
     data = fetch_page(session, base_url, query_id, var_tpl, start)
     if not data:
         logging.critical("Initial fetch failed—exiting")
         return jobs
 
-    # 2) Build an index of everything in "included" by URN or $id
     included_idx = {
         inc.get("entityUrn") or inc.get("$id"): inc
         for inc in data.get("included", [])
         if isinstance(inc, dict)
     }
 
-    # 3) Compute total items and pages
     total = data["data"]["data"]["searchDashClustersByAll"]["paging"]["total"]
     total_pages = math.ceil(total / PAGE_SIZE)
     logging.info("Total items: %d — %d pages", total, total_pages)
 
-    # 4) Loop through all pages
-    while start < total:
+    stop = False
+    while start < total and not stop:
         current_page = start // PAGE_SIZE + 1
-        logging.info(
-            "→ Fetching page %d/%d (items %d–%d)",
-            current_page,
-            total_pages,
-            start + 1,
-            min(start + PAGE_SIZE, total),
-        )
+        logging.info("→ page %d/%d (items %d–%d)",
+                     current_page, total_pages,
+                     start + 1, min(start + PAGE_SIZE, total))
 
         elems = data["data"]["data"]["searchDashClustersByAll"]["elements"]
         for cluster in elems:
             for item in cluster.get("items", []):
-                entity_urn = item["item"]["*entityResult"]
-                # look up the full object, or fall back to URN-only dict
-                job = included_idx.get(entity_urn, {"entityUrn": entity_urn})
-                logging.info(" • %s", job.get("title", entity_urn))
+                job = included_idx.get(
+                    item["item"]["*entityResult"],
+                    {"entityUrn": item["item"]["*entityResult"]}
+                )
+
+                if threshold is not None:
+                    trimmed = trim_job(job)
+                    applied_str = trimmed.get("applied_on")
+                    if applied_str:
+                        applied_dt = convert_timestamp_string(applied_str)
+                        if applied_dt < threshold:
+                            logging.info(
+                                "Encountered %s (%s) — older than threshold; stopping.",
+                                trimmed["title"], applied_str
+                            )
+                            stop = True
+                            break
+
                 jobs.append(job)
 
-        # advance to next batch
-        start += PAGE_SIZE
-        if start >= total:
+            if stop:
+                break
+        if stop:
             break
 
-        # fetch next page (with retries)
+        start += PAGE_SIZE
         for attempt in range(1, MAX_RETRIES + 1):
             data = fetch_page(session, base_url, query_id, var_tpl, start)
             if data:
-                # rebuild included_idx in case it changed
                 included_idx.update({
                     inc.get("entityUrn") or inc.get("$id"): inc
                     for inc in data.get("included", [])
@@ -143,12 +185,10 @@ def trim_job(job: dict) -> dict:
       - applied_on   (str)
       - url          (str)
     """
-    # Extract numeric ID from the URN
     urn = job.get("entityUrn", job.get("trackingUrn", ""))
     m = re.search(r"jobPosting:(\d+)", urn)
     job_id = int(m.group(1)) if m else urn
 
-    # Unwrap the TextViewModel for title, company, location, applied-info
     def text_of(field):
         v = job.get(field) or {}
         return v.get("text") if isinstance(v, dict) else None
@@ -200,7 +240,8 @@ def main():
     base_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
 
     # 6) Fetch all jobs
-    jobs = iterate_all(session, base_url, req.query_id, req.variables_template)
+    jobs = iterate_all(session=session, base_url=base_url, query_id=req.query_id, var_tpl=req.variables_template,
+                       time_filter=DATE_FILTER)
 
     # 7) Save results to JSON file
     trimmed = [trim_job(j) for j in jobs]
