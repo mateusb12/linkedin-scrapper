@@ -126,7 +126,8 @@ def extract_fields(raw: Dict[str, Any], job_id: int, job_urn: str) -> JobDetail:
 
 def main():
     load_dotenv()
-    raw_curl = load_curl_file(CURL_TEMPLATE_FILE)
+    with open(Path(CURL_TEMPLATE_FILE), 'r', encoding='utf-8') as f:
+        raw_curl = f.read().strip()
     template: CurlRequest = CurlRequest.from_curl_text(raw_curl)
 
     data_folder = get_data_folder_path()
