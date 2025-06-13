@@ -33,6 +33,84 @@ def parse_raw_cookies(raw: str) -> Dict[str, str]:
     return jar
 
 
+def clean_line_continuations(text: str) -> list[str]:
+    """
+    Remove backslash-newlines and CMD caret continuations from each line.
+    """
+    lines = text.splitlines()
+    cleaned = []
+    for line in lines:
+        line = re.sub(r"\\$", "", line)
+        line = re.sub(r"\s*\^+\s*$", "", line)
+        cleaned.append(line)
+    return cleaned
+
+
+def merge_into_one_line(lines: list[str]) -> str:
+    """
+    Join cleaned lines into a single string and strip stray carets.
+    """
+    cmd = " ".join(lines)
+    return cmd.replace("^", "")
+
+
+def tokenize(command: str) -> list[str]:
+    """
+    Split command string into tokens, respecting quotes.
+    """
+    return shlex.split(command)
+
+
+def extract_url(tokens: list[str]) -> str:
+    """
+    Find the first HTTP/HTTPS URL in tokens.
+    """
+    for t in tokens:
+        if t.startswith(("http://", "https://")):
+            return t
+    raise ValueError("❌ No valid URL found in curl.txt")
+
+
+def parse_query_variables(url: str) -> tuple[str, str]:
+    """
+    Extract 'queryId' and template-formatted 'variables' from URL query string.
+    """
+    parsed = urlparse(url)
+    qs = parse_qs(parsed.query)
+    query_id = qs.get("queryId", [""])[0]
+    raw_vars = qs.get("variables", [""])[0]
+    unquoted = unquote_plus(raw_vars)
+    template = re.sub(r"start\s*:\s*\d+", "start:{start}", unquoted)
+    return query_id, template
+
+
+def extract_headers_and_cookie(tokens: list[str]) -> tuple[dict[str, str], str]:
+    """
+    Extract header key-values and raw cookie string from tokens.
+    """
+    headers: dict[str, str] = {}
+    cookie_str = ""
+    for idx, tok in enumerate(tokens):
+        if tok in ("-H", "--header") and idx + 1 < len(tokens):
+            key, val = tokens[idx + 1].split(":", 1)
+            headers[key.strip().lower()] = val.strip()
+        if tok in ("-b", "--cookie") and idx + 1 < len(tokens):
+            cookie_str = tokens[idx + 1]
+    return headers, cookie_str
+
+
+def parse_cookies(cookie_str: str) -> dict[str, str]:
+    """
+    Split cookie string into individual cookies and return as dict.
+    """
+    cookies: dict[str, str] = {}
+    for part in cookie_str.split(";"):
+        if "=" in part:
+            k, v = part.split("=", 1)
+            cookies[k.strip().strip('"')] = v.strip().strip('"')
+    return cookies
+
+
 @dataclass
 class CurlRequest:
     url: str
@@ -43,58 +121,20 @@ class CurlRequest:
 
     @classmethod
     def from_curl_text(cls, text: str) -> "CurlRequest":
-        # 1. Remove backslash-newlines and CMD-carets for continuation
-        lines = text.splitlines()
-        cleaned_lines = []
-        for line in lines:
-            # strip trailing caret and whitespace
-            cleaned = re.sub(r'\s*\^+\s*$', '', line)
-            cleaned_lines.append(cleaned)
-        one_line = " ".join(cleaned_lines)
-
-        # 2. Remove any remaining stray carets
-        one_line = one_line.replace("^", "")
-
-        # 3. Tokenize with shlex (handles quoted segments)
-        tokens = shlex.split(one_line)
-
-        # 4. Extract first http(s) URL token
-        url = next((t for t in tokens if t.startswith(("http://", "https://"))), "")
-        if not url:
-            raise ValueError("❌ No valid URL found in curl.txt")
-
-        # 5. Parse out queryId and raw variables
-        parsed = urlparse(url)
-        qs = parse_qs(parsed.query)
-        qid = qs.get("queryId", [""])[0]
-        rawv = qs.get("variables", [""])[0]
-        unq = unquote_plus(rawv)
-        # replace start:N with start:{start}
-        var_t = re.sub(r"start\s*:\s*\d+", "start:{start}", unq)
-
-        # 6. Extract all -H headers and the -b cookie string
-        headers = {}
-        cookie_str = ""
-        for i, tok in enumerate(tokens):
-            if tok in ("-H", "--header") and i + 1 < len(tokens):
-                k, v = tokens[i + 1].split(":", 1)
-                headers[k.strip().lower()] = v.strip()
-            if tok in ("-b", "--cookie") and i + 1 < len(tokens):
-                cookie_str = tokens[i + 1]
-
-        # 7. Parse cookie string into dict
-        cookies = {}
-        for part in cookie_str.split(";"):
-            if "=" in part:
-                k, v = part.split("=", 1)
-                cookies[k.strip().strip('"')] = v.strip().strip('"')
+        cleaned: list[str] = clean_line_continuations(text)
+        one_line: str = merge_into_one_line(cleaned)
+        tokens: list[str] = tokenize(one_line)
+        url: str = extract_url(tokens)
+        query_id, variables_template = parse_query_variables(url)
+        headers, cookie_str = extract_headers_and_cookie(tokens)
+        cookies: dict = parse_cookies(cookie_str)
 
         return cls(
             url=url,
             headers=headers,
             cookies=cookies,
-            query_id=qid,
-            variables_template=var_t,
+            query_id=query_id,
+            variables_template=variables_template,
         )
 
     def validate(self) -> List[str]:
@@ -122,7 +162,6 @@ class CurlRequest:
 
     def build_session(self) -> requests.Session:
         sess = requests.Session()
-        # Percent-encode any header values that aren’t pure Latin-1
         clean_h: Dict[str, str] = {}
         for k, v in self.headers.items():
             try:
