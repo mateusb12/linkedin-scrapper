@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 @dataclass
 class RecommendedJobCard:
     job_id: int
+    job_urn: str
     title: str
     company: Optional[str] = None
     location: Optional[str] = None
@@ -42,7 +43,8 @@ def extract_recommended_jobs(
         debug: bool = False
 ) -> List[RecommendedJobCard]:
     postings, cards = _index_included(payload.get("included", []))
-    results, skipped = [], 0
+    results: List[RecommendedJobCard] = []
+    skipped = 0
 
     for card in cards:
         urn = card.get("*jobPosting")
@@ -56,21 +58,16 @@ def extract_recommended_jobs(
 
         ts = (footer.get("LISTED_DATE") or {}).get("timeAt")
         if ts:
-            listed_at_str = (
-                __import__("datetime")
-                .datetime
-                .fromtimestamp(ts / 1000, tz=__import__("datetime").timezone.utc)
-                .isoformat()
-            )
+            listed_at_str = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).isoformat()
         else:
             listed_at_str = None
 
-        # find salary hints in title
         m = re.search(r'\b(?:R\$|BRL|\$|USD|€|£)\s?[\d.,]+\s?[kKmM]?\b', title)
         salary = m.group(0).replace(" ", "") if m else None
 
         results.append(RecommendedJobCard(
             job_id=_urn_to_id(urn),
+            job_urn=urn,
             title=title,
             company=(card.get("primaryDescription") or {}).get("text"),
             location=(card.get("secondaryDescription") or {}).get("text"),
@@ -79,9 +76,11 @@ def extract_recommended_jobs(
             easy_apply="EASY_APPLY_TEXT" in footer,
             listed_at=listed_at_str,
             reposted=post.get("repostedJob", False),
-            is_remote=bool(card.get("secondaryDescription") and re.search(r'\bremote\b',
-                                                                          card["secondaryDescription"].get("text", ""),
-                                                                          re.I)),
+            is_remote=bool(card.get("secondaryDescription") and re.search(
+                r'\bremote\b',
+                card["secondaryDescription"].get("text", ""),
+                re.IGNORECASE
+            )),
         ))
 
     if debug:
