@@ -5,3 +5,6 @@
 /project_utils/commit_changes_generator/commit_changes.diff
 /source/data/curl.txt
 /source/data/*.json
+/source/linkedin_api/potential_curls/*.txt
+/source/linkedin_api/potential_curls/*.json
+/.env
