@@ -2,10 +2,9 @@
 """
 get_recommended_jobs_details.py
 
-Reads a JSON list of RecommendedJobCard entries (with `job_id` and `job_urn`),
-builds per-job GraphQL calls in LinkedIn’s ParSeq format,
-then fetches and aggregates results into a clean JSON summary via a dataclass.
-Adds detection of partial-success GraphQL responses and extracts only meaningful fields.
+Refactored to use a command-builder and executor approach.
+Reads a JSON list of RecommendedJobCard entries, builds per-job Command objects,
+then executes them in a separate loop and aggregates results into a clean JSON summary.
 """
 
 import os
@@ -13,23 +12,22 @@ import json
 import time
 import logging
 from pathlib import Path
-from urllib.parse import quote_plus
-from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, asdict
+from urllib.parse import quote_plus
 
 import requests
 from dotenv import load_dotenv
 
 from source.linkedin_api.data_fetching.curl_txt_reader import CurlRequest
-from source.path.file_content_loader import load_curl_file
 from source.path.path_reference import get_data_folder_path
 
-# Configurable paths & limits
-CURL_TEMPLATE_FILE = "job_curl_example.txt"
+CURL_TEMPLATE_FILE = "recommended_job_curl_example.txt"
 INPUT_FILE = "recommended_jobs.json"
 OUTPUT_SUMMARY = "job_details_summary.json"
-# Set a limit (int) to cap fetches; 0 or None means no limit
+
 LIMIT = 5
+SLEEP_SEC = 1
 
 
 @dataclass
@@ -52,6 +50,16 @@ class JobDetail:
     employment_type: Optional[str] = None
     workplace_types: List[str] = None
     apply_url: Optional[str] = None
+
+
+@dataclass
+class Command:
+    method: str
+    url: str
+    headers: Dict[str, str]
+    cookies: Dict[str, str]
+    job_id: int
+    job_urn: str
 
 
 def build_variables_parseq(job_urn: str) -> str:
@@ -92,11 +100,11 @@ def extract_fields(raw: Dict[str, Any], job_id: int, job_urn: str) -> JobDetail:
     else:
         comp = loc = None
 
-    # Employment type
+    # Employment type insights
     emp_list: List[str] = []
-    insights = jpc.get('jobInsightsV2ResolutionResults', []) or []
+    insights = jpc.get('jobInsightsV2ResolutionResults') or []
     if insights:
-        descs = insights[0].get('jobInsightViewModel', {}).get('description', []) or []
+        descs = insights[0].get('jobInsightViewModel', {}).get('description') or []
         for item in descs:
             txt = item.get('text', {}).get('text')
             if txt:
@@ -125,48 +133,73 @@ def extract_fields(raw: Dict[str, Any], job_id: int, job_urn: str) -> JobDetail:
     )
 
 
-def main():
-    load_dotenv()
-    with open(Path(CURL_TEMPLATE_FILE), 'r', encoding='utf-8') as f:
-        raw_curl = f.read().strip()
-    template: CurlRequest = CurlRequest.from_curl_text(raw_curl)
+def build_commands() -> List[Command]:
+    # Load CURL template
+    raw_curl = Path(CURL_TEMPLATE_FILE).read_text(encoding='utf-8').strip()
+    template = CurlRequest.from_curl_text(raw_curl)
+    errs = template.validate()
+    # Ignore missing '{start}' placeholder error for per-job detail calls
+    errs = [e for e in errs if "variables_template missing '{start}'" not in e]
+    if errs:
+        raise ValueError(f"Invalid curl template: {errs}")
 
-    data_folder = get_data_folder_path()
-    with open(Path(data_folder, INPUT_FILE), 'r', encoding='utf-8') as f:
-        jobs = json.load(f)
-    total = len(jobs)
-    limit = LIMIT or total
-
+    # Prepare a session to capture headers & cookies
     session = template.build_session()
     base_url = template.url.split('?', 1)[0]
-    summary: List[JobDetail] = []
 
+    # Load recommended jobs list
+    data_folder = get_data_folder_path()
+    jobs = json.loads(Path(data_folder, INPUT_FILE).read_text(encoding='utf-8'))
+    limit = LIMIT or len(jobs)
+
+    commands: List[Command] = []
     for idx, entry in enumerate(jobs, start=1):
         if idx > limit:
             break
         job_id = entry.get('job_id')
-        urn = entry.get('job_urn')
-        if not job_id or not urn:
+        job_urn = entry.get('job_urn')
+        if not job_id or not job_urn:
             continue
 
-        var_str = build_variables_parseq(urn)
+        var_str = build_variables_parseq(job_urn)
         url = f"{base_url}?variables={var_str}&queryId={template.query_id}"
-        print(f"[{idx}/{limit}] Fetching {job_id}...")
+        commands.append(Command(
+            method='GET',
+            url=url,
+            headers=dict(session.headers),  # type: ignore
+            cookies=session.cookies.get_dict(),
+            job_id=job_id,
+            job_urn=job_urn
+        ))
 
+    return commands
+
+
+def execute_commands(commands: List[Command]) -> List[JobDetail]:
+    summary: List[JobDetail] = []
+    for idx, cmd in enumerate(commands, start=1):
+        print(f"[{idx}/{len(commands)}] Fetching {cmd.job_id}...")
         try:
-            resp = session.get(url)
+            resp = requests.request(cmd.method, cmd.url, headers=cmd.headers, cookies=cmd.cookies, timeout=15)
             resp.raise_for_status()
-            data = resp.json()
-            if has_graphql_errors(data):
+            raw = resp.json()
+            if has_graphql_errors(raw):
                 raise ValueError("Partial GraphQL errors detected")
-            detail = extract_fields(data, job_id, urn)
+            detail = extract_fields(raw, cmd.job_id, cmd.job_urn)
         except Exception as e:
-            logging.warning("Failed fetch %s: %s", job_id, e)
-            detail = JobDetail(job_id=job_id, job_urn=urn, status='FAILED', error=str(e))
-
+            logging.warning("Failed fetch %s: %s", cmd.job_id, e)
+            detail = JobDetail(job_id=cmd.job_id, job_urn=cmd.job_urn, status='FAILED', error=str(e))
         summary.append(detail)
-        time.sleep(1)
+        time.sleep(SLEEP_SEC)
+    return summary
 
+
+def main():
+    load_dotenv()
+    commands = build_commands()
+    summary = execute_commands(commands)
+
+    data_folder = get_data_folder_path()
     out_path = Path(data_folder, OUTPUT_SUMMARY)
     with open(out_path, 'w', encoding='utf-8') as out_f:
         json.dump([asdict(d) for d in summary], out_f, ensure_ascii=False, indent=2)
