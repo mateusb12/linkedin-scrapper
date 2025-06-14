@@ -22,11 +22,11 @@ from dotenv import load_dotenv
 from source.linkedin_api.data_fetching.curl_txt_reader import CurlRequest
 from source.path.path_reference import get_data_folder_path
 
-CURL_TEMPLATE_FILE = "recommended_job_curl_example.txt"
-INPUT_FILE = "recommended_jobs.json"
+CURL_TEMPLATE_FILE = "get_single_recommended_job_curl_example.txt"
+INPUT_FILE = "all_recommended_jobs_metadata.json"
 OUTPUT_SUMMARY = "job_details_summary.json"
 
-LIMIT = 5
+LIMIT = 0
 SLEEP_SEC = 1
 
 
@@ -133,7 +133,7 @@ def extract_fields(raw: Dict[str, Any], job_id: int, job_urn: str) -> JobDetail:
     )
 
 
-def build_commands() -> List[Command]:
+def build_recommended_jobs_commands() -> List[Command]:
     # Load CURL template
     raw_curl = Path(CURL_TEMPLATE_FILE).read_text(encoding='utf-8').strip()
     template = CurlRequest.from_curl_text(raw_curl)
@@ -175,7 +175,7 @@ def build_commands() -> List[Command]:
     return commands
 
 
-def execute_commands(commands: List[Command]) -> List[JobDetail]:
+def execute_recommended_jobs_commands(commands: List[Command]) -> List[JobDetail]:
     summary: List[JobDetail] = []
     for idx, cmd in enumerate(commands, start=1):
         print(f"[{idx}/{len(commands)}] Fetching {cmd.job_id}...")
@@ -196,8 +196,8 @@ def execute_commands(commands: List[Command]) -> List[JobDetail]:
 
 def main():
     load_dotenv()
-    commands = build_commands()
-    summary = execute_commands(commands)
+    commands = build_recommended_jobs_commands()
+    summary = execute_recommended_jobs_commands(commands)
 
     data_folder = get_data_folder_path()
     out_path = Path(data_folder, OUTPUT_SUMMARY)
