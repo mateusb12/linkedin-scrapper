@@ -19,7 +19,8 @@ from typing import Any, Dict, List, Optional
 
 import requests
 from dotenv import load_dotenv
-from source.linkedin_api.curl_command_builder import CurlRequest
+
+from source.linkedin_api.data_fetching.curl_txt_reader import CurlRequest
 from source.path.file_content_loader import load_curl_file
 from source.path.path_reference import get_data_folder_path
 

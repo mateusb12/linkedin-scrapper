@@ -13,13 +13,15 @@ from source.path.path_reference import get_data_folder_path
 
 LOGLEVEL = logging.INFO
 DATE_FILTER = {"years": 0, "months": 6, "days": 0}
+DATA_FOLDER = get_data_folder_path()
 
 logging.basicConfig(level=LOGLEVEL, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
 
 
 def execute_commands(
         commands: List[Command],
-        date_filter: Optional[Dict[str, int]] = None
+        date_filter: Optional[Dict[str, int]] = None,
+        extraction_function: Optional[callable] = None
 ) -> list:
     if not commands:
         return []
@@ -43,7 +45,7 @@ def execute_commands(
 
         data = resp.json()
         # choose either applied _or_ recommended here:
-        jobs = extract_recommended_jobs(data)  # or extract_applied_jobs(data)
+        jobs = extraction_function(data)  # or extract_applied_jobs(data)
         for job in jobs:
             # if threshold and isinstance(job, AppliedJob) and job.applied_on:
             #     if _applied_to_dt(job.applied_on) < threshold:
@@ -54,18 +56,19 @@ def execute_commands(
     return results
 
 
-def main(
+def fetch_linkedin_api_data_pipeline(
         curl_file: str = "curl.txt",
-        output: str = f"{get_data_folder_path()}/recommended_jobs.json"
+        output: str = f"{DATA_FOLDER}/recommended_jobs.json",
+        extraction_function: Optional[callable] = None
 ):
     cmds = build_commands(curl_file)
     logging.info("Built %d commands", len(cmds))
 
-    jobs = execute_commands(cmds, DATE_FILTER)
+    jobs = execute_commands(commands=cmds, date_filter=None, extraction_function=extraction_function)
     with open(output, "w", encoding="utf-8") as fh:
         json.dump([job.__dict__ for job in jobs], fh, ensure_ascii=False, indent=2)
     logging.info("Wrote %d jobs to %s", len(jobs), output)
 
 
 if __name__ == "__main__":
-    main()
+    fetch_linkedin_api_data_pipeline()
