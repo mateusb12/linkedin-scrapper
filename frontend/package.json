@@ -12,6 +12,7 @@
   "dependencies": {
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "repomix": "^0.3.9",
     "tailwindcss": "^4.1.10"
   },
   "devDependencies": {
