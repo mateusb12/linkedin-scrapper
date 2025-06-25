@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import JobSwiper from "./components/swiper/JobSwiper.jsx";
+import JobCoreViewer from "./components/swiper/JobCoreViewer.jsx";
 
 function App() {
   const [count, setCount] = useState(0)
 
   return (
-    <JobSwiper/>
+    <JobCoreViewer/>
   )
 }
 

@@ -1,38 +1,24 @@
-import React, { useState, useMemo } from 'react';
+// --- FILE: SwiperView.jsx ---
+
+import {useMemo, useState} from "react";
 import { motion, AnimatePresence } from 'framer-motion';
-import { Briefcase, MapPin, X, Heart, ExternalLink, Building, Code, Users, Award, ArrowLeft, ArrowRight, Home } from 'lucide-react';
+import {ActionButton, InfoPill, SkillBadge} from "./Utils.jsx";
+import {Home, X, Heart, Briefcase, Building, MapPin, Code, Users, Award, ExternalLink, ArrowLeft, ArrowRight} from "lucide-react";
 
-// The job data is now embedded directly into the component
-import jobsData from './job_details_augmented.json'
+const HideScrollbarStyles = () => (
+    <style>{`
+    /* Chrome / Safari / Opera */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
 
-
-// --- Reusable UI Components ---
-
-const SkillBadge = ({ skill }) => (
-  <div className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-1 rounded-full dark:bg-blue-900 dark:text-blue-300 transition-transform hover:scale-105">
-    {skill}
-  </div>
+    /* Firefox */
+    .no-scrollbar {
+      scrollbar-width: none;       /* Firefox */
+      -ms-overflow-style: none;    /* IE & Edge */
+    }
+  `}</style>
 );
-
-const InfoPill = ({ icon, text, className }) => (
-    <div className={`flex items-center gap-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded-full text-sm ${className}`}>
-        {icon}
-        <span className="font-medium">{text}</span>
-    </div>
-);
-
-const ActionButton = ({ onClick, icon, colorClass, hoverColorClass }) => (
-  <motion.button
-    whileHover={{ scale: 1.1 }}
-    whileTap={{ scale: 0.9 }}
-    onClick={onClick}
-    className={`p-4 rounded-full shadow-lg transition-colors duration-300 ${colorClass} ${hoverColorClass}`}
-  >
-    {icon}
-  </motion.button>
-);
-
-// --- Job Card Component (for Swiper View) ---
 
 const JobCard = ({ job, onApply }) => {
     if (!job) return null;
@@ -59,7 +45,8 @@ const JobCard = ({ job, onApply }) => {
             transition={{ duration: 0.4, ease: "easeInOut" }}
             className="absolute w-full h-full bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col p-6 border border-gray-200 dark:border-gray-700"
         >
-            <div className="flex-grow overflow-y-auto pr-2">
+            <HideScrollbarStyles />
+            <div className="flex-grow overflow-y-auto pr-2 scrollbar-hide">
                 {/* Header */}
                 <div className="flex items-start gap-4 mb-4">
                     <div className="bg-indigo-500 text-white p-3 rounded-lg shadow-md">
@@ -124,8 +111,6 @@ const JobCard = ({ job, onApply }) => {
     );
 };
 
-// --- "No More Jobs" Card Component ---
-
 const NoMoreJobsCard = () => (
     <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
@@ -139,9 +124,7 @@ const NoMoreJobsCard = () => (
     </motion.div>
 );
 
-// --- Swiper View Component ---
-
-const SwiperView = ({ jobs, initialIndex, onBackToList }) => {
+export const SwiperView = ({ jobs, initialIndex, onBackToList }) => {
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
     const currentJob = useMemo(() => jobs[currentIndex], [jobs, currentIndex]);
 
@@ -201,114 +184,4 @@ const SwiperView = ({ jobs, initialIndex, onBackToList }) => {
     );
 };
 
-// --- Job List Item Component ---
-
-const JobListItem = ({ job, onViewDetails }) => (
-    <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
-    >
-        <div className="flex-grow">
-            <h3 className="font-bold text-lg text-indigo-600 dark:text-indigo-400">{job.title}</h3>
-            <p className="text-gray-700 dark:text-gray-300 text-sm">{job.company_name}</p>
-            <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">{job.location}</p>
-        </div>
-        <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={onViewDetails}
-            className="bg-indigo-500 text-white text-sm font-semibold px-4 py-2 rounded-md transition-colors hover:bg-indigo-600 w-full sm:w-auto"
-        >
-            View Details
-        </motion.button>
-    </motion.div>
-);
-
-// --- Job List View Component ---
-
-const JobListView = ({ jobs, onViewDetails }) => {
-    const [currentPage, setCurrentPage] = useState(1);
-    const JOBS_PER_PAGE = 8;
-
-    const totalPages = Math.ceil(jobs.length / JOBS_PER_PAGE);
-    const startIndex = (currentPage - 1) * JOBS_PER_PAGE;
-    const paginatedJobs = jobs.slice(startIndex, startIndex + JOBS_PER_PAGE);
-
-    const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages));
-    const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
-
-    return (
-        <div className="w-full max-w-3xl mx-auto p-4">
-            <h1 className="text-4xl font-bold text-center mb-8 text-gray-800 dark:text-white">Find Your Next Opportunity</h1>
-            <div className="space-y-4 mb-8">
-                {paginatedJobs.map((job, index) => (
-                    <JobListItem
-                        key={job.job_id}
-                        job={job}
-                        onViewDetails={() => onViewDetails(startIndex + index)}
-                    />
-                ))}
-            </div>
-            {/* Pagination Controls */}
-            <div className="flex justify-between items-center">
-                <button
-                    onClick={goToPrevPage}
-                    disabled={currentPage === 1}
-                    className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-md shadow disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
-                >
-                    <ArrowLeft size={16} /> Previous
-                </button>
-                <span className="text-gray-700 dark:text-gray-300 font-medium">
-                    Page {currentPage} of {totalPages}
-                </span>
-                <button
-                    onClick={goToNextPage}
-                    disabled={currentPage === totalPages}
-                    className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-md shadow disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
-                >
-                    Next <ArrowRight size={16} />
-                </button>
-            </div>
-        </div>
-    );
-};
-
-
-// --- Main App Component (Controller) ---
-
-export default function JobSwiper() {
-    const [viewMode, setViewMode] = useState('list'); // 'list' or 'swiper'
-    const [selectedJobIndex, setSelectedJobIndex] = useState(0);
-
-    const handleViewDetails = (index) => {
-        setSelectedJobIndex(index);
-        setViewMode('swiper');
-    };
-
-    const handleBackToList = () => {
-        setViewMode('list');
-    };
-
-    return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 font-sans">
-            <AnimatePresence mode="wait">
-                <motion.div
-                    key={viewMode}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.3 }}
-                    className="w-full h-full"
-                >
-                    {viewMode === 'list' ? (
-                        <JobListView jobs={jobsData} onViewDetails={handleViewDetails} />
-                    ) : (
-                        <SwiperView jobs={jobsData} initialIndex={selectedJobIndex} onBackToList={handleBackToList} />
-                    )}
-                </motion.div>
-            </AnimatePresence>
-        </div>
-    );
-}
+// --- END FILE: SwiperView.jsx ---
