@@ -1,26 +1,35 @@
 import { useState } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
-import './index.css' // Make sure Tailwind is imported here
 
 function App() {
   const [count, setCount] = useState(0)
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6 text-center">
-        <h2 className="text-2xl font-bold text-indigo-600 mb-4">
-          ✅ Tailwind Test Passed
-        </h2>
-        <p className="text-gray-700 mb-6">
-          If this card looks styled — rounded corners, shadows, colors, and spacing — then Tailwind is working!
-        </p>
-        <button className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded transition">
-          Confirm Tailwind
-        </button>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 text-gray-800 font-sans p-6">
+      <div className="flex space-x-6 mb-6">
+        <a href="https://vite.dev" target="_blank" rel="noreferrer">
+          <img src={viteLogo} className="h-16 hover:scale-110 transition-transform" alt="Vite logo" />
+        </a>
+        <a href="https://react.dev" target="_blank" rel="noreferrer">
+          <img src={reactLogo} className="h-16 hover:scale-110 transition-transform" alt="React logo" />
+        </a>
       </div>
+      <h1 className="text-4xl font-bold mb-4">Vite + React</h1>
+      <div className="bg-white rounded-xl shadow-lg p-6 mb-4 text-center space-y-4">
+        <button
+          onClick={() => setCount((c) => c + 1)}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
+        >
+          Count is {count}
+        </button>
+        <p>
+          Edit <code className="bg-gray-200 px-1 py-0.5 rounded">src/App.jsx</code> and save to test HMR
+        </p>
+      </div>
+      <p className="text-sm text-gray-500">Click on the Vite and React logos to learn more</p>
     </div>
-  );
+  )
 }
 
 export default App
