@@ -1,0 +1,205 @@
+import re
+import shlex
+import json
+import requests
+from urllib.parse import urlparse, parse_qs, urlunparse
+import os
+
+
+class CurlParser:
+    """
+    A helper class to parse a raw cURL command string and extract its components.
+    """
+
+    def __init__(self, curl_string: str):
+        self.curl_string = curl_string.replace('\\\n', ' ').replace('\n', ' ').strip()
+        if not self.curl_string.startswith('curl '):
+            raise ValueError("Invalid input: String must be a cURL command.")
+
+    def parse(self):
+        """
+        Executes the parsing logic.
+        """
+        args = shlex.split(self.curl_string)
+        full_url = next((arg for arg in args[1:] if not arg.startswith('-')), None)
+        if not full_url:
+            raise ValueError("Could not find URL in the cURL command.")
+
+        parsed_url = urlparse(full_url)
+        query_params = parse_qs(parsed_url.query)
+        base_url = urlunparse(parsed_url._replace(query=''))
+
+        headers = {}
+        i = 1
+        while i < len(args):
+            if args[i] in ['-H', '--header']:
+                i += 1
+                if i < len(args):
+                    key, value = args[i].split(':', 1)
+                    # --- THIS IS THE FIX: Forcing header key to lowercase ---
+                    headers[key.strip().lower()] = value.strip()
+            elif args[i] in ['-b', '--cookie']:
+                i += 1
+                if i < len(args):
+                    headers['cookie'] = args[i]
+            i += 1
+
+        return {
+            'base_url': base_url,
+            'headers': headers,
+            'query_params': {k: v[0] for k, v in query_params.items()}
+        }
+
+
+class LinkedInGraphQLClient:
+    """
+    A Python client to interact with LinkedIn's GraphQL API,
+    configured by parsing raw cURL commands.
+    """
+
+    def __init__(self, onsite_apply_curl: str, detail_sections_curl: str):
+        print("Initializing client by parsing cURL commands...")
+        parser1 = CurlParser(onsite_apply_curl)
+        self.onsite_apply_config = parser1.parse()
+        parser2 = CurlParser(detail_sections_curl)
+        self.detail_sections_config = parser2.parse()
+        self.session = requests.Session()
+        print("Client initialized successfully.")
+
+    def _make_request(self, config: dict, variables_str: str):
+        query_id = config['query_params'].get('queryId')
+        if not query_id:
+            raise ValueError("Could not find 'queryId' in the parsed cURL command.")
+
+        full_url = f"{config['base_url']}?variables={variables_str}&queryId={query_id}"
+
+        try:
+            # Use the session's headers and update them with request-specific ones
+            self.session.headers.update(config['headers'])
+            response = self.session.get(full_url, timeout=15)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.HTTPError as http_err:
+            print(f"  [!] HTTP error occurred: {http_err}")
+            print(f"      Request URL: {http_err.request.url}")
+            print(f"      Response Body: {http_err.response.text}")
+        except requests.exceptions.RequestException as req_err:
+            print(f"  [!] A request error occurred: {req_err}")
+        except json.JSONDecodeError:
+            print(f"  [!] Failed to decode JSON from response. Status: {response.status_code}")
+            print(f"      Response Text: {response.text}")
+        return None
+
+    def get_onsite_apply_application(self, job_id: str):
+        print(f"  -> Fetching OnsiteApplyApplication for job ID: {job_id}...")
+        urn_encoded = f"urn%3Ali%3Afsd_jobPosting%3A{job_id}"
+        variables = f"(jobPostingUrn:{urn_encoded})"
+        return self._make_request(self.onsite_apply_config, variables)
+
+    def get_detail_sections(self, job_id: str):
+        print(f"  -> Fetching DetailSections for job ID: {job_id}...")
+        urn_encoded = f"urn%3Ali%3Afsd_jobPosting%3A{job_id}"
+        variables = f"(cardSectionTypes:List(TOP_CARD,HOW_YOU_FIT_CARD),jobPostingUrn:{urn_encoded},includeSecondaryActionsV2:true,jobDetailsContext:(isJobSearch:false))"
+        return self._make_request(self.detail_sections_config, variables)
+
+
+# --- SCRIPT CONFIGURATION ---
+CURL_ONSITE_APPLY = r'''
+curl 'https://www.linkedin.com/voyager/api/graphql?variables=(jobPostingUrn:urn%3Ali%3Afsd_jobPosting%3A4242594667)&queryId=voyagerJobsDashOnsiteApplyApplication.b495f032afec05dd276f0d97d4f108c2' \
+  -H 'accept: application/vnd.linkedin.normalized+json+2.1' \
+  -H 'accept-language: en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7' \
+  -b 'bcookie="v=2&8dbfbdc7-e798-40ce-8645-afc560856845"; bscookie="v=1&2025021218502355028f04-83cc-48ed-8919-ec97e40bda49AQE-zsW9viyonHpVi4HpRFLzIsEFwyoJ"; g_state={"i_l":0}; liap=true; JSESSIONID="ajax:2584240299603910567"; dfpfpt=02f41f47dbb840f9b833d6e8dfc0b0f4; li_ep_auth_context=AM9hcHA9YWNjb3VudENlbnRlckh1YixhaWQ9Mjc4NDA2MDY2LGlpZD0zMjQzMzI2NTAscGlkPTI3NjY4NDk4NixleHA9MTc0MjUzNjIwNTc0NyxjdXI9dHJ1ZXxhcHA9c2FsZXNOYXZpZ2F0b3IsYWlkPTI3ODQwNjA2NixpaWQ9NDIwODYxNDY1LHBpZD0yNzY2ODQ5ODYsZXhwPTE3NDUwOTk5ODI2ODcsY3VyPXRydWUsc2lkPTE1Mjk0MTEwMDQsY2lkPTIwMTAwNDU2NzQBf0iA5XMh-eRvJ2QB4KS5KK8SUNQ; li_theme=dark; li_theme_set=user; timezone=America/Fortaleza; li_at=AQEFAHUBAAAAABSqG7UAAAGXXzKSSAAAAZepf-gpTQAAGHVybjpsaTptZW1iZXI6MTAyNjk0MzMwNb94qjbbfxfynvvalaOd3GDQXIhYvNZu_jcWpGq2oeeShj0_vA8sCGHB0wEbL16xwvQzkU2OFQy-9279JnPbQR0RK5i8o9JpzSM0xdyiZprFjJpao7H6etsGF0OtVSDRyT04fLhk-eik0jPNkb2bVIf_YbSyVnHrULQMBt5m68wHQ8SCrq5ZHurqapdlXMGLeDekPow; sdui_ver=sdui-flagship:0.1.6871+sdui-flagship.production; lang=v=2&lang=en-us; lidc="b=VB05:s=V:r=V:a=V:p=V:g=7864:u=298:x=1:i=1750880031:t=1750966431:v=2:sig=AQFCShb0BNb3Y71CQqFI8iHF5XbNcozZ"; UserMatchHistory=AQIIiPwdmYSNSwAAAZeolRzUBx2fTnL7oVhEqzh6wyFKeMEgJbTS6VQtTDNmPk2qpKsxRTwUUWxDQ34ZaquH70UEO9CgL55BtUAwqwU26Xw8-0DcerYA8jyWH0tNpFPWCBG3MuwIzW0--rHAmLnR-TbAbV_LRT61BymprbjT8iJjrBeGj6bVUQbmlgq_0lXxYyop6prVPPBtLAxZ45m8R5rIg6_asoTaWoE2-g49jb9WfTFmM6PtvEh4lDFaf1R782M9QOtJAkPAVXln0IA9eDxk28MfxcjzRndXWCykmUoW66D23xOiAey15J5_twHrWJkP14-Ha_N1uWky8mFk; fptctx2=taBcrIH61PuCVH7eNCyH0FWPWMZs3CpAZMKmhMiLe%252bGSJM5F%252bTt2yo01yfcQpUp%252bXn7iyTiojlnIHsNNj29I4nZhkbIIfSGaS1yuiC9b2DS691Q5rnDgBPPHGmgmOkxJhNIPRxzb69mDGCSS6KMaJq9YdpYlQV5IL%252bqYKQGI%252f1rlXAUYNH3gSr%252bWuBmNRBckywr%252fb5FfIHyoM9ctJtfbCUHE2W7wSC0evjG8Lr5I8hi2pz5D7%252bHA0o7ejqG%252fdzA1CLcpp80e73o4a5q%252fJmCiBQs9kHRIH1rszBwoEjKJLSJpA05YNVPLtTExvYhVS9dR0hyeCS5MAtuf9c7NtoFjI1%252fzv6STuAZ%252b%252bhFnryrYQ5Y%253d; __cf_bm=Ep1kwRLEcU2BMQ8q7TbV3fsws8RCT2QpFI3vqxi6V8w-1750881834-1.0.1.1-B6kJkF5sD5p_pHneC2ZSOgKdH_Wz.d_ndIK0Ms80O6U8bmeSKPWl59MuPybgxapkSNowJ2jvj2ZFihSuJ6iiN2XO7WKZvvFJ8VZIJBLsJJE' \
+  -H 'csrf-token: ajax:2584240299603910567' \
+  -H 'dnt: 1' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://www.linkedin.com/jobs/collections/recommended/?currentJobId=4242594667&discover=recommended&discoveryOrigin=JOBS_HOME_JYMBII&start=48' \
+  -H 'sec-ch-prefers-color-scheme: dark' \
+  -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0'
+'''
+
+CURL_DETAIL_SECTIONS = r'''
+curl 'https://www.linkedin.com/voyager/api/graphql?variables=(cardSectionTypes:List(TOP_CARD,HOW_YOU_FIT_CARD),jobPostingUrn:urn%3Ali%3Afsd_jobPosting%3A4242594667,includeSecondaryActionsV2:true,jobDetailsContext:(isJobSearch:false))&queryId=voyagerJobsDashJobPostingDetailSections.d5e26c6a0b129827c0cfd9d5a714c5e7' \
+  -H 'accept: application/vnd.linkedin.normalized+json+2.1' \
+  -H 'accept-language: en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7' \
+  -b 'bcookie="v=2&8dbfbdc7-e798-40ce-8645-afc560856845"; bscookie="v=1&2025021218502355028f04-83cc-48ed-8919-ec97e40bda49AQE-zsW9viyonHpVi4HpRFLzIsEFwyoJ"; g_state={"i_l":0}; liap=true; JSESSIONID="ajax:2584240299603910567"; dfpfpt=02f41f47dbb840f9b833d6e8dfc0b0f4; li_ep_auth_context=AM9hcHA9YWNjb3VudENlbnRlckh1YixhaWQ9Mjc4NDA2MDY2LGlpZD0zMjQzMzI2NTAscGlkPTI3NjY4NDk4NixleHA9MTc0MjUzNjIwNTc0NyxjdXI9dHJ1ZXxhcHA9c2FsZXNOYXZpZ2F0b3IsYWlkPTI3ODQwNjA2NixpaWQ9NDIwODYxNDY1LHBpZD0yNzY2ODQ5ODYsZXhwPTE3NDUwOTk5ODI2ODcsY3VyPXRydWUsc2lkPTE1Mjk0MTEwMDQsY2lkPTIwMTAwNDU2NzQBf0iA5XMh-eRvJ2QB4KS5KK8SUNQ; li_theme=dark; li_theme_set=user; timezone=America/Fortaleza; li_at=AQEFAHUBAAAAABSqG7UAAAGXXzKSSAAAAZepf-gpTQAAGHVybjpsaTptZW1iZXI6MTAyNjk0MzMwNb94qjbbfxfynvvalaOd3GDQXIhYvNZu_jcWpGq2oeeShj0_vA8sCGHB0wEbL16xwvQzkU2OFQy-9279JnPbQR0RK5i8o9JpzSM0xdyiZprFjJpao7H6etsGF0OtVSDRyT04fLhk-eik0jPNkb2bVIf_YbSyVnHrULQMBt5m68wHQ8SCrq5ZHurqapdlXMGLeDekPow; sdui_ver=sdui-flagship:0.1.6871+sdui-flagship.production; lang=v=2&lang=en-us; lidc="b=VB05:s=V:r=V:a=V:p=V:g=7864:u=298:x=1:i=1750880031:t=1750966431:v=2:sig=AQFCShb0BNb3Y71CQqFI8iHF5XbNcozZ"; UserMatchHistory=AQIIiPwdmYSNSwAAAZeolRzUBx2fTnL7oVhEqzh6wyFKeMEgJbTS6VQtTDNmPk2qpKsxRTwUUWxDQ34ZaquH70UEO9CgL55BtUAwqwU26Xw8-0DcerYA8jyWH0tNpFPWCBG3MuwIzW0--rHAmLnR-TbAbV_LRT61BymprbjT8iJjrBeGj6bVUQbmlgq_0lXxYyop6prVPPBtLAxZ45m8R5rIg6_asoTaWoE2-g49jb9WfTFmM6PtvEh4lDFaf1R782M9QOtJAkPAVXln0IA9eDxk28MfxcjzRndXWCykmUoW66D23xOiAey15J5_twHrWJkP14-Ha_N1uWky8mFk; fptctx2=taBcrIH61PuCVH7eNCyH0FWPWMZs3CpAZMKmhMiLe%252bGSJM5F%252bTt2yo01yfcQpUp%252bXn7iyTiojlnIHsNNj29I4nZhkbIIfSGaS1yuiC9b2DS691Q5rnDgBPPHGmgmOkxJhNIPRxzb69mDGCSS6KMaJq9YdpYlQV5IL%252bqYKQGI%252f1rlXAUYNH3gSr%252bWuBmNRBckywr%252fb5FfIHyoM9ctJtfbCUHE2W7wSC0evjG8Lr5I8hi2pz5D7%252bHA0o7ejqG%252fdzA1CLcpp80e73o4a5q%252fJmCiBQs9kHRIH1rszBwoEjKJLSJpA05YNVPLtTExvYhVS9dR0hyeCS5MAtuf9c7NtoFjI1%252fzv6STuAZ%252b%252bhFnryrYQ5Y%253d; __cf_bm=Ep1kwRLEcU2BMQ8q7TbV3fsws8RCT2QpFI3vqxi6V8w-1750881834-1.0.1.1-B6kJkF5sD5p_pHneC2ZSOgKdH_Wz.d_ndIK0Ms80O6U8bmeSKPWl59MuPybgxapkSNowJ2jvj2ZFihSuJ6iiN2XO7WKZvvFJ8VZIJBLsJJE' \
+  -H 'csrf-token: ajax:2584240299603910567' \
+  -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36 Edg/137.0.0.0'
+'''
+
+
+def has_api_errors(response_data):
+    """
+    Checks if the response dictionary from the API contains an 'errors' key.
+    Returns True if errors are present, False otherwise.
+    """
+    if not response_data:
+        return True  # Treat no response as an error
+    if 'errors' in response_data.get('data', {}):
+        return True
+    return False
+
+
+if __name__ == '__main__':
+    job_ids = ['4242594667', '3875225333', '3936990492']
+    all_valid_results = {}
+    output_filename = 'individual_jobs_data.json'
+
+    try:
+        linkedin_client = LinkedInGraphQLClient(
+            onsite_apply_curl=CURL_ONSITE_APPLY,
+            detail_sections_curl=CURL_DETAIL_SECTIONS
+        )
+
+        for job_id in job_ids:
+            print(f"Processing Job ID: {job_id}")
+            is_job_id_valid = True
+            temp_job_data = {}
+
+            # --- First Request: OnsiteApplyApplication ---
+            application_data = linkedin_client.get_onsite_apply_application(job_id)
+            if has_api_errors(application_data):
+                is_job_id_valid = False
+                print(f"  [!] Error detected in 'OnsiteApplyApplication' response for job {job_id}.")
+                if application_data and 'data' in application_data:
+                    error_msg = application_data['data']['errors'][0].get('message', 'Unknown API error')
+                    print(f"      API Reason: {error_msg}")
+            else:
+                print(f"  [✓] Successfully received OnsiteApplyApplication data.")
+                temp_job_data['onsite_apply_application'] = {'status': 'success', 'data': application_data}
+
+            # --- Second Request: DetailSections (only if first was valid) ---
+            if is_job_id_valid:
+                details_data = linkedin_client.get_detail_sections(job_id)
+                if has_api_errors(details_data):
+                    is_job_id_valid = False
+                    print(f"  [!] Error detected in 'DetailSections' response for job {job_id}.")
+                    if details_data and 'data' in details_data:
+                        error_msg = details_data['data']['errors'][0].get('message', 'Unknown API error')
+                        print(f"      API Reason: {error_msg}")
+                else:
+                    print(f"  [✓] Successfully received DetailSections data.")
+                    temp_job_data['detail_sections'] = {'status': 'success', 'data': details_data}
+
+            # --- Final Decision for this Job ID ---
+            if is_job_id_valid:
+                print(f"  ==> Job ID {job_id} is VALID. Storing for output.")
+                all_valid_results[job_id] = temp_job_data
+            else:
+                print(f"  ==> Job ID {job_id} is INVALID. Discarding results.")
+
+            print("=" * 60)
+
+        # --- Save only the valid results to the JSON file ---
+        if all_valid_results:
+            print(f"\nSaving {len(all_valid_results)} valid job(s) to {output_filename}...")
+            try:
+                with open(output_filename, 'w', encoding='utf-8') as f:
+                    json.dump(all_valid_results, f, ensure_ascii=False, indent=4)
+                print(f"Successfully saved data to {os.path.abspath(output_filename)}")
+            except IOError as e:
+                print(f"Error saving file: {e}")
+        else:
+            print(f"\nNo fully valid jobs were found. The output file '{output_filename}' will not be created.")
+
+    except (ValueError, FileNotFoundError) as e:
+        print(f"An error occurred during client setup: {e}")
