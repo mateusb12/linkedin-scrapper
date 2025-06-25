@@ -19,8 +19,8 @@ from urllib.parse import quote_plus
 import requests
 from dotenv import load_dotenv
 
-from source.linkedin_api.data_fetching.curl_txt_reader import CurlRequest
-from source.path.path_reference import get_data_folder_path
+from backend.linkedin_api.data_fetching.curl_txt_reader import CurlRequest
+from backend.path.path_reference import get_data_folder_path
 
 CURL_TEMPLATE_FILE = "get_single_recommended_job_curl_example.txt"
 INPUT_FILE = "all_recommended_jobs_metadata.json"

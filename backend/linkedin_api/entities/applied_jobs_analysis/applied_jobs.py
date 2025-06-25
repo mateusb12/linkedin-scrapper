@@ -23,10 +23,10 @@ from typing import Any, Dict, List, Optional
 from dateutil.relativedelta import relativedelta
 from dotenv import load_dotenv
 
-from source.linkedin_api.data_fetching.curl_commands import build_paged_commands, run_commands
-from source.linkedin_api.data_fetching.curl_txt_reader import CurlRequest
-from source.path.file_content_loader import load_curl_file
-from source.path.path_reference import get_data_folder_path
+from backend.linkedin_api.data_fetching.curl_commands import build_paged_commands, run_commands
+from backend.linkedin_api.data_fetching.curl_txt_reader import CurlRequest
+from backend.path.file_content_loader import load_curl_file
+from backend.path.path_reference import get_data_folder_path
 
 # ─── CONFIG ────────────────────────────────────────────────────────────────
 CURL_TEMPLATE_FILE = "applied_jobs_curl_example.txt"

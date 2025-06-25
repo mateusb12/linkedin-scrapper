@@ -19,8 +19,8 @@ from typing import Any, Callable, Dict, List, Sequence, TypeVar
 
 import requests
 
-from source.linkedin_api.data_fetching.curl_txt_reader import CurlRequest
-from source.utils.json_utils import save_json_local
+from backend.linkedin_api.data_fetching.curl_txt_reader import CurlRequest
+from backend.utils.json_utils import save_json_local
 
 T = TypeVar("T")  # generic return type from extractor
 

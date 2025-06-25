@@ -7,7 +7,7 @@ from urllib.parse import urlparse, parse_qs, unquote_plus
 
 import requests
 
-from source.path.file_content_loader import load_curl_file
+from backend.path.file_content_loader import load_curl_file
 
 
 def percent_encode_non_latin1(s: str) -> str:

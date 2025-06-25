@@ -6,7 +6,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from openai import OpenAI
-from source.path.path_reference import get_data_folder_path
+from backend.path.path_reference import get_data_folder_path
 
 # Initialize OpenAI client
 load_dotenv()

@@ -20,10 +20,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
 
-from source.linkedin_api.data_fetching.curl_commands import run_commands, build_paged_commands, RequestCommand
-from source.linkedin_api.data_fetching.curl_txt_reader import CurlRequest
-from source.path.path_reference import get_data_folder_path
-from source.utils.json_utils import save_json_local
+from backend.linkedin_api.data_fetching.curl_commands import run_commands, build_paged_commands, RequestCommand
+from backend.linkedin_api.data_fetching.curl_txt_reader import CurlRequest
+from backend.path.path_reference import get_data_folder_path
+from backend.utils.json_utils import save_json_local
 
 # ─── CONFIG ────────────────────────────────────────────────────────────────
 CURL_TEMPLATE_FILE = "list_all_recommended_jobs_curl_example.txt"

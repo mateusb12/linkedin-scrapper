@@ -5,8 +5,8 @@ from typing import Any, Tuple, Optional
 from selenium.common import TimeoutException
 from selenium.webdriver.support.wait import WebDriverWait
 
-from source.utils.selenium_utils import open_chrome, export_cookies
-from source.path.path_reference import get_root_folder_path
+from backend.utils.selenium_utils import open_chrome, export_cookies
+from backend.path.path_reference import get_root_folder_path
 from selenium.webdriver.support import expected_conditions
 
 

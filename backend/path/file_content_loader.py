@@ -1,6 +1,6 @@
 import json
 
-from source.path.path_reference import get_userdata_path, get_data_folder_path
+from backend.path.path_reference import get_userdata_path, get_data_folder_path
 
 
 def load_userdata_json(filename: str) -> dict:
