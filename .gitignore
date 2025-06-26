@@ -9,6 +9,9 @@
 /source/linkedin_api/potential_curls/*.json
 /.env
 **/*.har
+/source/linkedin_api/entities/**/*.json
+/source/linkedin_api/entities/**/*.txt
 /source/linkedin_api/entities/recommended_jobs_analysis/*.txt
 /source/linkedin_api/entities/applied_jobs_analysis/*.txt
 /backend/linkedin_api/entities/recommended_jobs_analysis/new_approach/*.json
+/backend/linkedin_api/potential_curls/potential_har/*.json
