@@ -53,41 +53,51 @@ class CurlParser:
 
 class LinkedInGraphQLClient:
     """
-    A Python client to interact with LinkedIn's GraphQL API,
-    configured by parsing raw cURL commands.
+    A Python client that uses a pre-configured requests.Session
+    to interact with LinkedIn's GraphQL API.
     """
 
-    def __init__(self, onsite_apply_curl: str, detail_sections_curl: str):
-        print("Initializing client by parsing cURL commands...")
-        parser1 = CurlParser(onsite_apply_curl)
-        self.onsite_apply_config = parser1.parse()
-        parser2 = CurlParser(detail_sections_curl)
-        self.detail_sections_config = parser2.parse()
-        self.session = requests.Session()
+    def __init__(self, session: requests.Session):
+        """
+        Initializes the client with an existing, authenticated session.
+
+        Args:
+            session: A requests.Session object that already contains the necessary
+                     headers (like 'cookie' and 'csrf-token').
+        """
+        print("Initializing client with a pre-configured session...")
+        if not isinstance(session, requests.Session):
+            raise TypeError("The client must be initialized with a requests.Session object.")
+        self.session = session
+        # Define the base URLs and queryIds directly
+        self.onsite_apply_config = {
+            'base_url': 'https://www.linkedin.com/voyager/api/graphql',
+            'queryId': 'voyagerJobsDashOnsiteApplyApplication.b495f032afec05dd276f0d97d4f108c2'
+        }
+        self.detail_sections_config = {
+            'base_url': 'https://www.linkedin.com/voyager/api/graphql',
+            'queryId': 'voyagerJobsDashJobPostingDetailSections.d5e26c6a0b129827c0cfd9d5a714c5e7'
+        }
         print("Client initialized successfully.")
 
     def _make_request(self, config: dict, variables_str: str):
-        query_id = config['query_params'].get('queryId')
-        if not query_id:
-            raise ValueError("Could not find 'queryId' in the parsed cURL command.")
-
-        full_url = f"{config['base_url']}?variables={variables_str}&queryId={query_id}"
+        """
+        Makes a request using the shared session.
+        """
+        full_url = f"{config['base_url']}?variables={variables_str}&queryId={config['queryId']}"
 
         try:
-            # Use the session's headers and update them with request-specific ones
-            self.session.headers.update(config['headers'])
+            # The session object already holds all the necessary headers.
             response = self.session.get(full_url, timeout=15)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.HTTPError as http_err:
             print(f"  [!] HTTP error occurred: {http_err}")
             print(f"      Request URL: {http_err.request.url}")
+            # The CSRF error will be caught here.
             print(f"      Response Body: {http_err.response.text}")
         except requests.exceptions.RequestException as req_err:
             print(f"  [!] A request error occurred: {req_err}")
-        except json.JSONDecodeError:
-            print(f"  [!] Failed to decode JSON from response. Status: {response.status_code}")
-            print(f"      Response Text: {response.text}")
         return None
 
     def get_onsite_apply_application(self, job_id: str):

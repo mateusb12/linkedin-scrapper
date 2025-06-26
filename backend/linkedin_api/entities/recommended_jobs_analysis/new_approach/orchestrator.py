@@ -4,11 +4,16 @@ from dataclasses import asdict
 from datetime import datetime
 from urllib.parse import urlencode
 
-from backend.linkedin_api.entities.recommended_jobs_analysis.new_approach.json_cleaner_recommended_jobs import \
+import requests
+
+from backend.linkedin_api.entities.recommended_jobs_analysis.new_approach.fetch_single_job_details import \
+    LinkedInGraphQLClient
+from backend.linkedin_api.entities.recommended_jobs_analysis.new_approach.pagination_recommended_jobs import \
     get_recommended_jobs, parse_curl_command
+
+
 # Import the necessary components from your other modules
 # Note the addition of CurlParser here.
-from job_call_request import LinkedInGraphQLClient, CurlParser
 
 
 # Custom JSON encoder to handle datetime objects
@@ -72,12 +77,16 @@ def main():
     # --- Step 1: Parse the job list cURL and fetch the initial jobs ---
     try:
         print("Parsing job list cURL command...")
-        list_url, list_headers = parse_curl_command(CURL_JOB_LIST)
-        recommended_jobs = get_recommended_jobs(list_url, list_headers)
+        list_url, master_headers = parse_curl_command(CURL_JOB_LIST)
+        api_session = requests.Session()
+        api_session.headers.update(master_headers)
     except (ValueError, IndexError) as e:
         print(f"Error parsing job list cURL command: {e}")
         print("Please ensure CURL_JOB_LIST is a valid cURL command copied from your browser.")
         return
+
+    print("Fetching initial list of recommended jobs...")
+    recommended_jobs = get_recommended_jobs(list_url, api_session.headers)
 
     if not recommended_jobs:
         print("Orchestrator halting: Could not fetch the initial job list.")
@@ -85,10 +94,7 @@ def main():
 
     # --- Step 2: Initialize the detail-fetching client ---
     try:
-        linkedin_client = LinkedInGraphQLClient(
-            onsite_apply_curl=CURL_ONSITE_APPLY,
-            detail_sections_curl=CURL_DETAIL_SECTIONS
-        )
+        linkedin_client = LinkedInGraphQLClient(session=api_session)
     except ValueError as e:
         print(f"An error occurred during client setup: {e}")
         print("Please ensure CURL_ONSITE_APPLY and CURL_DETAIL_SECTIONS are valid.")
