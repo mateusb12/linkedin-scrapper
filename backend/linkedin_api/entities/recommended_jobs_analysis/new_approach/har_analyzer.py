@@ -36,7 +36,7 @@ class CurlCommand:
 
     def compare(self, other: 'CurlCommand'):
         """Prints a detailed comparison against another CurlCommand object."""
-        print("\n--- Comparing Commands ---")
+        print("\n--- Comparing Generated Command with Working Example ---")
         print(f"URL Match: {self.url == other.url}")
         print(f"Method Match: {self.method == other.method}")
 
@@ -98,34 +98,51 @@ def parse_bash_curl(curl_string: str) -> CurlCommand:
     return cmd
 
 
-def build_command_from_har(entry: dict, fallback_headers: Optional[dict] = None) -> CurlCommand:
+def find_master_cookie(har_data: dict) -> str:
     """
-    Builds a CurlCommand object from a HAR entry, using fallback headers
-    if the entry is missing crucial information like cookies.
+    Scans the entire HAR file to find the most complete 'Cookie' header.
+    This is used as a reliable fallback for requests missing auth info.
     """
-    print("\nDEBUG (build): Building command from a new HAR entry...")
-    cmd = CurlCommand()
-    req = entry.get('request', {})
+    print("DEBUG: Searching for the best available 'Cookie' header in the HAR file...")
+    best_cookie = ""
+    for entry in har_data.get('log', {}).get('entries', []):
+        for header in entry.get('request', {}).get('headers', []):
+            if header.get('name', '').lower() == 'cookie' and 'JSESSIONID' in header.get('value', ''):
+                if 'li_at' in header.get('value', ''):
+                    print("DEBUG: Found a high-quality 'Cookie' header with 'li_at'.")
+                    return header.get('value')
+                if not best_cookie:
+                    best_cookie = header.get('value')
 
-    cmd.method = req.get('method', 'GET').upper()
-    cmd.url = req.get('url')
-    cmd.compressed = True
+    if best_cookie:
+        print("DEBUG: Found a fallback 'Cookie' header (without 'li_at').")
+    else:
+        print("DEBUG: Could not find any 'Cookie' header in the HAR file.")
+
+    return best_cookie
+
+
+def build_command_from_har(entry: dict, fallback_cookie: str) -> Optional[CurlCommand]:
+    """
+    Builds a CurlCommand object from a HAR entry, using a fallback cookie
+    if the entry is missing its own.
+    """
+    req = entry.get('request', {})
+    if not req.get('url'):
+        return None
+
+    cmd = CurlCommand(
+        url=req.get('url'),
+        method=req.get('method', 'GET').upper(),
+        compressed=True
+    )
 
     final_headers = {h['name']: h['value'] for h in req.get('headers', []) if
                      h.get('name') and not h.get('name').startswith(':')}
-    print(f"DEBUG (build): Found {len(final_headers)} raw headers in HAR entry.")
 
     cookie_key = next((k for k in final_headers if k.lower() == 'cookie'), None)
-
-    if not cookie_key and fallback_headers:
-        fallback_cookie_key = next((k for k in fallback_headers if k.lower() == 'cookie'), None)
-        if fallback_cookie_key:
-            print(f"DEBUG (build): Injecting fallback 'Cookie' header.")
-            final_headers[fallback_cookie_key] = fallback_headers[fallback_cookie_key]
-    elif cookie_key:
-        print(f"DEBUG (build): Found existing 'Cookie' header with key '{cookie_key}'.")
-    else:
-        print("DEBUG (build): No 'Cookie' header found in entry or fallbacks.")
+    if not cookie_key and fallback_cookie:
+        final_headers['Cookie'] = fallback_cookie
 
     cmd.headers = final_headers
 
@@ -162,11 +179,16 @@ def serialize_to_powershell(cmd: CurlCommand) -> str:
     return ' '.join(parts)
 
 
-def main_debugger():
+def main():
     """
-    Main debugger function to compare a known-good cURL with a generated one.
+    Main function to process the HAR file, find requests based on a keyword,
+    and then run a debug comparison on the first valid result.
     """
-    # This is the new, confirmed-working cURL command you provided.
+    har_file = 'linkedin.har.json'
+    output_file = 'filtered_curls.json'
+    keyword_in_response = 'About the job'
+
+    # This is the known-good cURL command to use as a benchmark for debugging.
     working_bash_curl = r'''curl 'https://www.linkedin.com/voyager/api/graphql?variables=(jobPostingDetailDescription_start:0,jobPostingDetailDescription_count:5,jobCardPrefetchQuery:(prefetchJobPostingCardUrns:List(urn%3Ali%3Afsd_jobPostingCard%3A%284247012595%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284242599356%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284230416777%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284192449615%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284257440399%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284251838981%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284246700316%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284245579888%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284219963753%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284178798092%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284249962540%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284217638535%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284248021162%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284223003592%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284251405861%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284190476714%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284201151336%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284245245993%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284143563457%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284222504534%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284219660464%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284246102695%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284137047243%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284245119859%2CJOB_DETAILS%29),jobUseCase:JOB_DETAILS,count:5),jobDetailsContext:(isJobSearch:false))&queryId=voyagerJobsDashJobCards.174f05382121bd73f2f133da2e4af893' \
   -H 'accept: application/vnd.linkedin.normalized+json+2.1' \
   -H 'accept-language: en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7' \
@@ -190,68 +212,58 @@ def main_debugger():
   -H 'x-restli-protocol-version: 2.0.0' \
   --compressed'''
 
-    print("--- Parsing Known-Good cURL (from Browser) ---")
-    working_command = parse_bash_curl(working_bash_curl)
-    working_errors = working_command.validate()
-    if working_errors:
-        print("Working command has validation errors:", working_errors)
-    else:
-        print("Working command structure is valid.")
-
-    har_file = 'linkedin.har.json'
     try:
         with open(har_file, 'r', encoding='utf-8') as f:
-            har = json.load(f)
+            har_data = json.load(f)
     except Exception as e:
         print(f"Error loading HAR file: {e}")
         return
 
-    target_parsed_url = urlparse(working_command.url)
-    target_qs = parse_qs(target_parsed_url.query)
-    target_base_url = target_parsed_url._replace(query="").geturl()
+    master_cookie = find_master_cookie(har_data)
 
-    # Use a more flexible matching key from the variables
-    target_variables = target_qs.get('variables', [''])[0]
-    target_match_key = target_variables[1:50]  # Match based on the start of the variables string
+    all_command_objects = []
+    print(f"\n--- Searching for responses containing '{keyword_in_response}' ---")
 
-    print(f"\n--- Searching HAR file for a matching entry ---")
-    print(f"Target Match Key (from variables): {target_match_key}...")
+    for i, entry in enumerate(har_data.get('log', {}).get('entries', [])):
+        response_text = entry.get('response', {}).get('content', {}).get('text', '')
 
-    matching_entry = None
-    for i, entry in enumerate(har.get('log', {}).get('entries', [])):
-        entry_url = entry.get('request', {}).get('url')
-        if not entry_url: continue
+        if response_text and keyword_in_response.lower() in response_text.lower():
+            print(f"Found keyword in response of entry index {i}. Generating command...")
 
-        entry_parsed_url = urlparse(entry_url)
-        entry_base_url = entry_parsed_url._replace(query="").geturl()
+            command_obj = build_command_from_har(entry, master_cookie)
 
-        if entry_base_url == target_base_url:
-            entry_qs = parse_qs(entry_parsed_url.query)
-            if 'queryId' in entry_qs and entry_qs.get('queryId') == target_qs.get('queryId'):
-                entry_variables = entry_qs.get('variables', [''])[0]
-                if entry_variables.startswith(target_match_key):
-                    print(f"DEBUG (search): Match found at entry index {i}!")
-                    matching_entry = entry
-                    break
+            if command_obj:
+                errors = command_obj.validate()
+                if errors:
+                    print(f"  - Warning: Generated command for entry {i} is invalid: {errors}")
+                else:
+                    all_command_objects.append(command_obj)
 
-    if not matching_entry:
-        print(f"\nCould not find a HAR entry matching the key parameters of the working command URL.")
+    if not all_command_objects:
+        print("\nNo valid commands could be generated from matching responses.")
         return
 
-    print("\n--- Generating Command from Matching HAR Entry ---")
-    generated_command = build_command_from_har(matching_entry, fallback_headers=working_command.headers)
+    # --- Run Debug Comparison ---
+    # Parse the known-good command and compare it with the first valid command we generated.
+    print("\n\n--- Starting Debug Comparison ---")
+    working_command = parse_bash_curl(working_bash_curl)
+    print("Parsed known-good command from 'working_bash_curl' variable.")
+    all_command_objects[0].compare(working_command)
 
-    print("\nGenerated PowerShell Command:")
-    print(serialize_to_powershell(generated_command))
+    # --- Save all valid commands to file ---
+    final_results = []
+    for cmd_obj in all_command_objects:
+        final_results.append({
+            'url': cmd_obj.url,
+            'powershell_command': serialize_to_powershell(cmd_obj)
+        })
 
-    generated_errors = generated_command.validate()
-    if generated_errors:
-        print("\nGenerated command has validation errors:", generated_errors)
-    else:
-        print("\nGenerated command structure is valid.")
+    with open(output_file, 'w', encoding='utf-8') as out:
+        json.dump(final_results, out, indent=2, ensure_ascii=False)
 
-    generated_command.compare(working_command)
+    print(f"\nSuccess! Found and processed {len(final_results)} matching requests.")
+    print(f"Runnable PowerShell commands saved to '{output_file}'.")
 
 
 if __name__ == '__main__':
-    main_debugger()
+    main()
