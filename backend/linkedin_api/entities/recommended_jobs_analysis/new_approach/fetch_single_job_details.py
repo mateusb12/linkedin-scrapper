@@ -113,6 +113,15 @@ class LinkedInGraphQLClient:
         return self._make_request(self.detail_sections_config, variables)
 
 
+def has_api_errors(response_data):
+    """
+    Checks if the response dictionary from the API contains an 'errors' key.
+    """
+    if not response_data:
+        return True  # Treat no response as an error
+    return 'errors' in response_data or ('data' in response_data and 'errors' in response_data['data'])
+
+
 # --- SCRIPT CONFIGURATION ---
 CURL_ONSITE_APPLY = r'''
 curl 'https://www.linkedin.com/voyager/api/graphql?variables=(jobPostingUrn:urn%3Ali%3Afsd_jobPosting%3A4242594667)&queryId=voyagerJobsDashOnsiteApplyApplication.b495f032afec05dd276f0d97d4f108c2' \
@@ -155,10 +164,15 @@ if __name__ == '__main__':
     output_filename = 'individual_jobs_data.json'
 
     try:
-        linkedin_client = LinkedInGraphQLClient(
-            onsite_apply_curl=CURL_ONSITE_APPLY,
-            detail_sections_curl=CURL_DETAIL_SECTIONS
-        )
+        # Step 1: Parse the cURL command to get authentication headers
+        parser = CurlParser(CURL_ONSITE_APPLY)
+        config = parser.parse()
+        master_headers = config['headers']
+
+        # Step 2: Create a session and initialize the client with it
+        api_session = requests.Session()
+        api_session.headers.update(master_headers)
+        linkedin_client = LinkedInGraphQLClient(session=api_session)
 
         for job_id in job_ids:
             print(f"Processing Job ID: {job_id}")
@@ -170,12 +184,9 @@ if __name__ == '__main__':
             if has_api_errors(application_data):
                 is_job_id_valid = False
                 print(f"  [!] Error detected in 'OnsiteApplyApplication' response for job {job_id}.")
-                if application_data and 'data' in application_data:
-                    error_msg = application_data['data']['errors'][0].get('message', 'Unknown API error')
-                    print(f"      API Reason: {error_msg}")
             else:
                 print(f"  [✓] Successfully received OnsiteApplyApplication data.")
-                temp_job_data['onsite_apply_application'] = {'status': 'success', 'data': application_data}
+                temp_job_data['onsite_apply_application'] = application_data
 
             # --- Second Request: DetailSections (only if first was valid) ---
             if is_job_id_valid:
@@ -183,12 +194,9 @@ if __name__ == '__main__':
                 if has_api_errors(details_data):
                     is_job_id_valid = False
                     print(f"  [!] Error detected in 'DetailSections' response for job {job_id}.")
-                    if details_data and 'data' in details_data:
-                        error_msg = details_data['data']['errors'][0].get('message', 'Unknown API error')
-                        print(f"      API Reason: {error_msg}")
                 else:
                     print(f"  [✓] Successfully received DetailSections data.")
-                    temp_job_data['detail_sections'] = {'status': 'success', 'data': details_data}
+                    temp_job_data['detail_sections'] = details_data
 
             # --- Final Decision for this Job ID ---
             if is_job_id_valid:
@@ -199,15 +207,12 @@ if __name__ == '__main__':
 
             print("=" * 60)
 
-        # --- Save only the valid results to the JSON file ---
+        # Step 4: Save the valid results to a JSON file
         if all_valid_results:
             print(f"\nSaving {len(all_valid_results)} valid job(s) to {output_filename}...")
-            try:
-                with open(output_filename, 'w', encoding='utf-8') as f:
-                    json.dump(all_valid_results, f, ensure_ascii=False, indent=4)
-                print(f"Successfully saved data to {os.path.abspath(output_filename)}")
-            except IOError as e:
-                print(f"Error saving file: {e}")
+            with open(output_filename, 'w', encoding='utf-8') as f:
+                json.dump(all_valid_results, f, ensure_ascii=False, indent=4)
+            print(f"Successfully saved data to {os.path.abspath(output_filename)}")
         else:
             print(f"\nNo fully valid jobs were found. The output file '{output_filename}' will not be created.")
 

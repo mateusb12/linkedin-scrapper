@@ -1,7 +1,7 @@
 import json
 import requests
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import List, Optional, Dict, Tuple
 
@@ -278,9 +278,15 @@ def main():
         # Print the results.
         if parsed_jobs:
             print(f"Successfully parsed {len(parsed_jobs)} job postings.\n")
-            for job in parsed_jobs:
-                print(job)
-                print("-" * 20)
+            serializable = [asdict(job) for job in parsed_jobs]
+            for entry in serializable:
+                if entry.get('posted_at'):
+                    entry['posted_at'] = entry['posted_at'].isoformat()
+            output_file = 'pagination_results.json'
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(serializable, f, ensure_ascii=False, indent=4)
+            print(f"Saved parsed jobs to {output_file}")
+
         else:
             print("No job postings were found or parsed from the API response.")
 

@@ -1,7 +1,8 @@
 import json
 import os
-from dataclasses import asdict
+from dataclasses import asdict, field, dataclass
 from datetime import datetime
+from typing import Any
 from urllib.parse import urlencode
 
 import requests
@@ -22,6 +23,135 @@ class DateTimeEncoder(json.JSONEncoder):
         if isinstance(obj, datetime):
             return obj.isoformat()
         return super().default(obj)
+
+
+@dataclass
+class CleanCompany:
+    name: str | None = None
+    linkedin_url: str | None = None
+
+
+@dataclass
+class JobInsight:
+    text: str | None = None
+    insight_type: str | None = None
+
+
+@dataclass
+class CleanJob:
+    job_id: int
+    title: str
+    location: str | None = None
+    posted_at: str | None = None
+    is_promoted: bool = False
+    has_easy_apply: bool = False
+    workplace_type: str | None = None
+    employment_type: str | None = None
+    company_apply_url: str | None = None
+    job_description: str | None = None
+    company: CleanCompany = field(default_factory=CleanCompany)
+    insights: list[JobInsight] = field(default_factory=list)
+
+
+def safe_get(data: dict, keys: list[str], default: Any = None) -> Any:
+    """
+    Safely access nested dictionary keys.
+    """
+    for key in keys:
+        if isinstance(data, dict) and key in data:
+            data = data[key]
+        else:
+            return default
+    return data
+
+
+def clean_job_data(input_filename: str, output_filename: str):
+    """
+    Reads the raw, verbose JSON file and outputs a cleaned version.
+    """
+    try:
+        with open(input_filename, 'r', encoding='utf-8') as f:
+            raw_data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"Error reading {input_filename}: {e}")
+        return
+
+    cleaned_jobs = []
+    print(f"Found {len(raw_data)} jobs to process in '{input_filename}'.")
+
+    for job_data in raw_data:
+        # --- Find the core job posting details within the "included" list ---
+        job_details_card = None
+        job_posting_details = None
+        job_seeker_details = None
+
+        # The 'details' can be complex, so we search the 'included' list for key info
+        included_items = safe_get(job_data, ['details', 'detail_sections', 'included'], [])
+        if not included_items:
+            print(f"  [!] Skipping Job ID {job_data.get('job_id')} due to missing detail sections.")
+            continue
+
+        for item in included_items:
+            if item.get("$type") == "com.linkedin.voyager.dash.jobs.JobPostingCard":
+                job_details_card = item
+            elif item.get("$type") == "com.linkedin.voyager.dash.jobs.JobPosting":
+                job_posting_details = item
+            elif item.get("$type") == "com.linkedin.voyager.dash.jobs.JobSeekerApplicationDetail":
+                job_seeker_details = item
+
+        if not job_details_card:
+            print(f"  [!] Could not find JobPostingCard for Job ID {job_data.get('job_id')}. Skipping.")
+            continue
+
+        # --- Extract information ---
+        company_name = safe_get(job_details_card, ['primaryDescription', 'text'])
+        company_url = safe_get(job_details_card, ['logo', 'actionTarget'])
+
+        # Extract workplace and employment type from insights
+        workplace_type = None
+        employment_type = None
+        insights_v2 = safe_get(job_details_card,
+                               ['jobInsightsV2ResolutionResults', 0, 'jobInsightViewModel', 'description'], [])
+        for insight in insights_v2:
+            text = safe_get(insight, ['text', 'text'])
+            if text in ["Remote", "On-site", "Hybrid"]:
+                workplace_type = text
+            elif text in ["Full-time", "Part-time", "Contract"]:
+                employment_type = text
+
+        # Extract the full job description
+        description = safe_get(job_posting_details, ['description', 'text'])
+
+        clean_job = CleanJob(
+            job_id=job_data.get('job_id'),
+            title=job_data.get('title'),
+            location=job_data.get('location'),
+            posted_at=job_data.get('posted_at'),
+            is_promoted=job_data.get('is_promoted', False),
+            has_easy_apply=job_data.get('has_easy_apply', False),
+            company_apply_url=safe_get(job_seeker_details, ['companyApplyUrl']),
+            workplace_type=workplace_type,
+            employment_type=employment_type,
+            job_description=description,
+            company=CleanCompany(
+                name=company_name,
+                linkedin_url=company_url,
+            ),
+        )
+
+        cleaned_jobs.append(asdict(clean_job))
+
+    # --- Save the cleaned data ---
+    if cleaned_jobs:
+        print(f"\nSuccessfully processed {len(cleaned_jobs)} jobs.")
+        try:
+            with open(output_filename, 'w', encoding='utf-8') as f:
+                json.dump(cleaned_jobs, f, ensure_ascii=False, indent=4)
+            print(f"Cleaned data saved to '{output_filename}'.")
+        except IOError as e:
+            print(f"Error saving file: {e}")
+    else:
+        print("No valid jobs were processed to create a cleaned output file.")
 
 
 def main():
@@ -74,58 +204,96 @@ def main():
       -H 'csrf-token: PASTE_YOUR_CSRF_TOKEN_HERE'
     '''
 
-    # --- Step 1: Parse the job list cURL and fetch the initial jobs ---
+    # --- Step 1: Parse cURL and create a persistent session ---
     try:
-        print("Parsing job list cURL command...")
+        print("Parsing master cURL command to create a session...")
         list_url, master_headers = parse_curl_command(CURL_JOB_LIST)
         api_session = requests.Session()
         api_session.headers.update(master_headers)
     except (ValueError, IndexError) as e:
-        print(f"Error parsing job list cURL command: {e}")
-        print("Please ensure CURL_JOB_LIST is a valid cURL command copied from your browser.")
+        print(f"Error parsing master cURL command: {e}")
         return
 
-    print("Fetching initial list of recommended jobs...")
+    # --- Step 2: Fetch the initial list of recommended jobs ---
     recommended_jobs = get_recommended_jobs(list_url, api_session.headers)
-
     if not recommended_jobs:
         print("Orchestrator halting: Could not fetch the initial job list.")
         return
 
-    # --- Step 2: Initialize the detail-fetching client ---
-    try:
-        linkedin_client = LinkedInGraphQLClient(session=api_session)
-    except ValueError as e:
-        print(f"An error occurred during client setup: {e}")
-        print("Please ensure CURL_ONSITE_APPLY and CURL_DETAIL_SECTIONS are valid.")
-        return
+    # --- Step 3: Initialize the GraphQL client with the session ---
+    linkedin_client = LinkedInGraphQLClient(session=api_session)
 
-    # --- Step 3 & 4 ... (code is correct)
-    all_combined_jobs_data = []
-    print(f"\nFound {len(recommended_jobs)} recommended jobs. Processing details...")
-    for job in recommended_jobs:
-        print(f"\nProcessing Job ID: {job.job_id} ('{job.title}')")
-        job_data_dict = asdict(job)
+    # --- Step 4: Process each job and clean the data on the fly ---
+    all_cleaned_jobs = []
+    print(f"\nFound {len(recommended_jobs)} recommended jobs. Fetching details and cleaning...")
 
-        application_data = linkedin_client.get_onsite_apply_application(str(job.job_id))
-        details_data = linkedin_client.get_detail_sections(str(job.job_id))
+    for job_summary in recommended_jobs:
+        print(f"\nProcessing Job ID: {job_summary.job_id} ('{job_summary.title}')")
 
-        job_data_dict['details'] = {
-            'onsite_apply_application': application_data or {'status': 'error', 'data': 'Failed to fetch'},
-            'detail_sections': details_data or {'status': 'error', 'data': 'Failed to fetch'}
-        }
+        # Fetch detailed data for the job
+        details_data = linkedin_client.get_detail_sections(str(job_summary.job_id))
+        application_data = linkedin_client.get_onsite_apply_application(str(job_summary.job_id))
 
-        all_combined_jobs_data.append(job_data_dict)
-        print(f"Finished processing Job ID: {job.job_id}")
+        # --- Cleaning Logic (integrated directly here) ---
+        included_items = safe_get(details_data, ['included'], [])
+        if not included_items:
+            print(f"  [!] Skipping Job ID {job_summary.job_id} due to missing detail sections.")
+            continue
 
-    output_filename = 'combined_jobs_data.json'
-    if all_combined_jobs_data:
-        print(f"\nSaving data for {len(all_combined_jobs_data)} jobs to {output_filename}...")
+        job_details_card = next(
+            (item for item in included_items if item.get("$type") == "com.linkedin.voyager.dash.jobs.JobPostingCard"),
+            None)
+        job_posting_details = next(
+            (item for item in included_items if item.get("$type") == "com.linkedin.voyager.dash.jobs.JobPosting"), None)
+        job_seeker_details = safe_get(application_data, ['data', 'data', 'jobsDashOnsiteApplyApplicationByJobPosting'])
+
+        if not job_details_card:
+            print(f"  [!] Could not find JobPostingCard for Job ID {job_summary.job_id}. Skipping.")
+            continue
+
+        # Extract workplace and employment type
+        workplace_type, employment_type = None, None
+        insights_v2 = safe_get(job_details_card,
+                               ['jobInsightsV2ResolutionResults', 0, 'jobInsightViewModel', 'description'], [])
+        for insight in insights_v2:
+            text = safe_get(insight, ['text', 'text'])
+            if text in ["Remote", "On-site", "Hybrid"]:
+                workplace_type = text
+            elif text in ["Full-time", "Part-time", "Contract", "Internship"]:
+                employment_type = text
+
+        # Build the clean job object
+        clean_job = CleanJob(
+            job_id=job_summary.job_id,
+            title=job_summary.title,
+            location=job_summary.location,
+            posted_at=job_summary.posted_at.isoformat() if job_summary.posted_at else None,
+            is_promoted=job_summary.is_promoted,
+            has_easy_apply=job_summary.has_easy_apply,
+            company_apply_url=safe_get(job_seeker_details, ['companyApplyUrl']),
+            workplace_type=workplace_type,
+            employment_type=employment_type,
+            job_description=safe_get(job_posting_details, ['description', 'text']),
+            company=CleanCompany(
+                name=safe_get(job_details_card, ['primaryDescription', 'text']),
+                linkedin_url=safe_get(job_details_card, ['logo', 'actionTarget']),
+            ),
+        )
+
+        all_cleaned_jobs.append(clean_job)
+        print(f"  [✓] Successfully processed and cleaned Job ID: {job_summary.job_id}")
+
+    # --- Step 5: Save the final, cleaned data ---
+    output_filename = 'orchestrator_results.json'
+    if all_cleaned_jobs:
+        print(f"\nSaving cleaned data for {len(all_cleaned_jobs)} jobs to '{output_filename}'...")
+        # Convert list of dataclass objects to list of dicts for JSON serialization
+        jobs_to_save = [asdict(job) for job in all_cleaned_jobs]
         with open(output_filename, 'w', encoding='utf-8') as f:
-            json.dump(all_combined_jobs_data, f, ensure_ascii=False, indent=4, cls=DateTimeEncoder)
+            json.dump(jobs_to_save, f, ensure_ascii=False, indent=4)
         print(f"Orchestration complete. Successfully saved data to {os.path.abspath(output_filename)}")
     else:
-        print("\nNo job data was combined. The output file will not be created.")
+        print("\nNo job data was processed. The output file will not be created.")
 
 
 if __name__ == "__main__":
