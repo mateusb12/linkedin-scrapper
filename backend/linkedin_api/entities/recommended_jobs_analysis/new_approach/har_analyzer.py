@@ -18,19 +18,32 @@ class CurlCommand:
     def validate(self) -> list[str]:
         """
         Validates the command for essentials needed by the LinkedIn API.
-        Returns a list of error strings.
+        Returns a list of error strings with detailed debug prints.
         """
+        print("  - DEBUG (validate): Running validation...")
         errors = []
+
         # Case-insensitive check for csrf-token
-        if not any(k.lower() == 'csrf-token' for k in self.headers):
+        csrf_key = next((k for k in self.headers if k.lower() == 'csrf-token'), None)
+        if not csrf_key:
+            print("  - DEBUG (validate): FAIL - 'csrf-token' header is missing.")
             errors.append("Validation Error: Missing 'csrf-token' header.")
+        else:
+            print(f"  - DEBUG (validate): OK - Found csrf-token: {self.headers[csrf_key]}")
 
         # Case-insensitive check for Cookie header and JSESSIONID
         cookie_header_key = next((k for k in self.headers if k.lower() == 'cookie'), None)
         if not cookie_header_key:
+            print("  - DEBUG (validate): FAIL - 'Cookie' header is missing.")
             errors.append("Validation Error: Missing 'Cookie' header.")
-        elif 'JSESSIONID' not in self.headers.get(cookie_header_key, ''):
-            errors.append("Validation Error: Missing 'JSESSIONID' in cookies.")
+        else:
+            cookie_value = self.headers.get(cookie_header_key, '')
+            if 'JSESSIONID' not in cookie_value:
+                print("  - DEBUG (validate): FAIL - 'JSESSIONID' is missing from the 'Cookie' header.")
+                errors.append("Validation Error: Missing 'JSESSIONID' in cookies.")
+            else:
+                session_id = re.search(r'JSESSIONID="([^"]+)"', cookie_value)
+                print(f"  - DEBUG (validate): OK - Found JSESSIONID: {session_id.group(1) if session_id else 'N/A'}")
 
         return errors
 
@@ -142,7 +155,6 @@ def build_command_from_har(entry: dict, fallback_cookie: str) -> Optional[CurlCo
 
     cookie_key = next((k for k in final_headers if k.lower() == 'cookie'), None)
 
-    # Enhanced debugging logic for cookie handling
     if not cookie_key:
         if fallback_cookie:
             print("  - DEBUG (build): Entry has no cookie. Injecting master cookie.")
@@ -162,29 +174,85 @@ def build_command_from_har(entry: dict, fallback_cookie: str) -> Optional[CurlCo
 
 
 def serialize_to_powershell(cmd: CurlCommand) -> str:
-    """Serializes a CurlCommand object to a PowerShell Invoke-WebRequest string."""
+    """
+    Serializes a CurlCommand object to a robust, multi-line PowerShell script
+    that is safe to copy and paste, using Invoke-Expression.
+    """
+    print(f"  - DEBUG (serialize): Creating robust PowerShell script block for URL: {cmd.url[:50]}...")
 
     def ps_quote(s):
+        # Escapes single quotes for use inside a single-quoted string.
         if isinstance(s, str) and "'" in s:
             return f"'{s.replace("'", "''")}'"
         return f"'{s}'"
 
-    parts = ['curl', '-Uri', ps_quote(cmd.url)]
-    if cmd.method != 'GET':
-        parts.extend(['-Method', cmd.method])
+    # Build the headers hashtable as a multi-line string for clarity
+    header_lines = []
+    for name, value in cmd.headers.items():
+        header_lines.append(f"    {ps_quote(name)} = {ps_quote(value)}")
 
-    header_parts = [f"{ps_quote(name)} = {ps_quote(value)}" for name, value in cmd.headers.items()]
-    if header_parts:
-        header_str = "; ".join(header_parts)
-        parts.extend(['-Headers', f"@{{{header_str}}}"])
+    headers_block = "$headers = @{\n" + ";\n".join(header_lines) + "\n}"
 
+    # Build the main curl command
+    curl_parts = [
+        "curl",
+        "-Uri", ps_quote(cmd.url),
+        "-Method", cmd.method,
+        "-Headers", "$headers"
+    ]
+
+    script_body = headers_block
+
+    # Add body if it exists
     if cmd.body:
-        parts.extend(['-Body', ps_quote(cmd.body)])
+        # For a multi-line script, it's safer to define the body as a variable too
+        body_variable_block = f"$body = {ps_quote(cmd.body)}"
+        curl_parts.extend(["-Body", "$body"])
+        # Find and add ContentType if it exists
         ct_key = next((k for k in cmd.headers if k.lower() == 'content-type'), None)
         if ct_key:
-            parts.extend(['-ContentType', ps_quote(cmd.headers[ct_key])])
+            curl_parts.extend(["-ContentType", ps_quote(cmd.headers[ct_key])])
 
-    return ' '.join(parts)
+        script_body += f"\n{body_variable_block}"
+
+    script_body += f"\n{' '.join(curl_parts)}"
+
+    # To safely wrap this in Invoke-Expression "...", we must escape any
+    # double quotes that might exist within the script_body string.
+    # The PowerShell escape character for a double quote is a backtick (`).
+    escaped_script_body = script_body.replace('"', '`"')
+
+    # Wrap the entire script in an Invoke-Expression block with a here-string
+    return f'Invoke-Expression @"\n{escaped_script_body}\n"@'
+
+
+def get_browser_filter(url: str) -> str:
+    """
+    Creates a simple, unique keyword from a URL that can be used to filter
+    for the request in a browser's developer tools.
+    """
+    try:
+        parsed_url = urlparse(url)
+        query_params = parse_qs(parsed_url.query)
+
+        # The 'variables' parameter often contains a unique identifier.
+        variables = query_params.get('variables', [''])[0]
+
+        # Try to find a jobPostingUrn, as it's very specific.
+        urn_match = re.search(r'jobPostingUrn:([^,)]+)', variables)
+        if urn_match:
+            return urn_match.group(1)
+
+        # As a fallback, use the queryId, which is also a good filter.
+        query_id = query_params.get('queryId', [''])[0]
+        if query_id:
+            return query_id.split('.')[-1]  # Get the unique part of the queryId
+
+    except (IndexError, KeyError):
+        # If parsing fails, return a portion of the path as a basic filter.
+        return parsed_url.path.split('/')[-1]
+
+    return ""
 
 
 def main():
@@ -196,7 +264,6 @@ def main():
     output_file = 'filtered_curls.json'
     keyword_in_response = 'About the job'
 
-    # This is the known-good cURL command to use as a benchmark for debugging.
     working_bash_curl = r'''curl 'https://www.linkedin.com/voyager/api/graphql?variables=(jobPostingDetailDescription_start:0,jobPostingDetailDescription_count:5,jobCardPrefetchQuery:(prefetchJobPostingCardUrns:List(urn%3Ali%3Afsd_jobPostingCard%3A%284247012595%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284242599356%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284230416777%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284192449615%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284257440399%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284251838981%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284246700316%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284245579888%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284219963753%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284178798092%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284249962540%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284217638535%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284248021162%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284223003592%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284251405861%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284190476714%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284201151336%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284245245993%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284143563457%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284222504534%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284219660464%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284246102695%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284137047243%2CJOB_DETAILS%29,urn%3Ali%3Afsd_jobPostingCard%3A%284245119859%2CJOB_DETAILS%29),jobUseCase:JOB_DETAILS,count:5),jobDetailsContext:(isJobSearch:false))&queryId=voyagerJobsDashJobCards.174f05382121bd73f2f133da2e4af893' \
   -H 'accept: application/vnd.linkedin.normalized+json+2.1' \
   -H 'accept-language: en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7' \
@@ -227,10 +294,8 @@ def main():
         print(f"Error loading HAR file: {e}")
         return
 
-    # First, try to find a master cookie from the HAR file.
     master_cookie = find_master_cookie(har_data)
 
-    # If no cookie is found in the HAR, use the one from the working example as the ultimate fallback.
     if not master_cookie:
         print("DEBUG: HAR file has no cookies. Parsing 'working_bash_curl' to get a fallback cookie.")
         working_command_for_cookie = parse_bash_curl(working_bash_curl)
@@ -254,7 +319,6 @@ def main():
             if command_obj:
                 errors = command_obj.validate()
                 if errors:
-                    # Enhanced debugging for validation failures
                     print(f"  - Warning: Generated command for entry {i} is invalid: {errors}")
                     print(f"  - Offending URL: {command_obj.url}")
                 else:
@@ -264,19 +328,17 @@ def main():
         print("\nNo valid commands could be generated from matching responses.")
         return
 
-    # --- Run Debug Comparison ---
-    # Parse the known-good command and compare it with the first valid command we generated.
     print("\n\n--- Starting Debug Comparison ---")
     working_command = parse_bash_curl(working_bash_curl)
     print("Parsed known-good command from 'working_bash_curl' variable.")
     all_command_objects[0].compare(working_command)
 
-    # --- Save all valid commands to file ---
     final_results = []
     for cmd_obj in all_command_objects:
         final_results.append({
             'url': cmd_obj.url,
-            'powershell_command': serialize_to_powershell(cmd_obj)
+            'powershell_command': serialize_to_powershell(cmd_obj),
+            'browser_filter_keyword': get_browser_filter(cmd_obj.url)
         })
 
     with open(output_file, 'w', encoding='utf-8') as out:
