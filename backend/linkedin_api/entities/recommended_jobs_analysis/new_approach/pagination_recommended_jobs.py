@@ -47,32 +47,21 @@ def parse_curl_command(curl_string: str) -> Tuple[str, Dict[str, str]]:
         ValueError: If the URL cannot be found in the cURL string.
     """
     headers = {}
-
-    # Clean up the string from newlines, backslashes, and non-breaking spaces
     curl_string = curl_string.replace('\\\n', ' ').replace('\n', ' ').replace('\xa0', ' ').strip()
-
-    # Extract URL, which is typically the first argument in single quotes after 'curl'
     url_match = re.search(r"curl '([^']*)'", curl_string)
     if not url_match:
         raise ValueError("Could not find URL in cURL string. Ensure it's enclosed in single quotes.")
     url = url_match.group(1)
-
-    # Extract all headers specified with -H
     header_matches = re.findall(r"-H '([^']*)'", curl_string)
     for header in header_matches:
         try:
             key, value = header.split(':', 1)
             headers[key.strip()] = value.strip()
         except ValueError:
-            # This can happen if a header is malformed, e.g., doesn't contain a colon
             print(f"Warning: Could not parse header: {header}")
-
-    # Extract cookie from the -b flag and add it to the headers dictionary
-    # This will overwrite any 'cookie' header from -H, which is the correct behavior.
     cookie_match = re.search(r"-b '([^']*)'", curl_string)
     if cookie_match:
         headers['Cookie'] = cookie_match.group(1).strip()
-
     return url, headers
 
 
@@ -81,7 +70,6 @@ def extract_id_from_urn(urn: str) -> Optional[int]:
     if not isinstance(urn, str):
         return None
     try:
-        # Handles URNs like 'urn:li:fsd_company:12345' or 'urn:li:fsd_jobPostingCard:(67890,JOB_DETAILS)'
         if '(' in urn:
             return int(urn.split('(')[1].split(',')[0])
         else:
@@ -100,38 +88,33 @@ def parse_job_postings(data: Dict) -> List[JobPosting]:
     Returns:
         A list of JobPosting dataclass objects.
     """
-    included_items = data.get("included", [])
+    included_items = data.get("data", {}).get("elements", [{}])[0].get("elements", [])
+    if not included_items:
+        # Fallback for the other possible structure
+        included_items = data.get("included", [])
+
     companies: Dict[str, Company] = {}
     job_postings: List[JobPosting] = []
 
-    # First pass: Extract all company information for easy lookup.
     for item in included_items:
         if item.get("$type") == "com.linkedin.voyager.dash.organization.Company":
             company_urn = item.get("entityUrn")
             company_id = extract_id_from_urn(company_urn)
             if not company_id:
                 continue
-
-            # Extract company logo URL from the available artifacts.
             logo_info = item.get("logoResolutionResult", {}).get("vectorImage", {})
             logo_url = None
             if logo_info.get("rootUrl") and logo_info.get("artifacts"):
-                # Select the 200x200 resolution artifact for the logo URL.
                 artifact = next((a for a in logo_info["artifacts"] if a.get("width") == 200), None)
                 if artifact:
                     logo_url = logo_info["rootUrl"] + artifact["fileIdentifyingUrlPathSegment"]
-
-            # Company name will be retrieved from the job posting card later.
             companies[company_urn] = Company(id=company_id, name="", logo_url=logo_url)
 
-    # Second pass: Extract job postings and link them to companies.
     for item in included_items:
         if item.get("$type") == "com.linkedin.voyager.dash.jobs.JobPostingCard":
             job_id = extract_id_from_urn(item.get("entityUrn", ""))
             if not job_id:
                 continue
-
-            # Extract basic job details.
             title = item.get("jobPostingTitle", None)
             if not title:
                 continue
@@ -143,8 +126,6 @@ def parse_job_postings(data: Dict) -> List[JobPosting]:
             location = secondaryDescription.get("text") if secondaryDescription else "Unknown Location"
             salary_and_benefits = tertiaryDescription.get("text") if tertiaryDescription else None
             relevance_insight = relevance_pot.get("text", {}).get("text") if relevance_pot else None
-
-            # Extract details from footer items.
             posted_at_timestamp = None
             is_promoted = False
             has_easy_apply = False
@@ -155,17 +136,12 @@ def parse_job_postings(data: Dict) -> List[JobPosting]:
                     is_promoted = True
                 elif footer_item.get("type") == "EASY_APPLY_TEXT":
                     has_easy_apply = True
-
             posted_at = datetime.fromtimestamp(posted_at_timestamp / 1000) if posted_at_timestamp else None
-
-            # Find and link the corresponding company object.
             company_urn_ref = item.get("logo", {}).get("attributes", [{}])[0].get("detailData", {}).get("*companyLogo")
             company = companies.get(company_urn_ref)
             if company:
-                company.name = company_name  # Update company name from the job card.
+                company.name = company_name
                 company.linkedin_url = item.get("logo", {}).get("actionTarget")
-
-            # Create the JobPosting object.
             job_postings.append(
                 JobPosting(
                     job_id=job_id,
@@ -179,7 +155,6 @@ def parse_job_postings(data: Dict) -> List[JobPosting]:
                     relevance_insight=relevance_insight,
                 )
             )
-
     return job_postings
 
 
@@ -196,12 +171,10 @@ def fetch_linkedin_jobs(url: str, headers: Dict) -> Optional[Dict]:
     """
     try:
         response = requests.get(url, headers=headers)
-        # Raise an exception for bad status codes (4xx or 5xx)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
         print(f"Error making request to LinkedIn: {e}")
-        # The response might contain useful info even on failure
         if e.response is not None:
             print(f"Status Code: {e.response.status_code}")
             print(f"Response Text: {e.response.text}")
@@ -211,27 +184,10 @@ def fetch_linkedin_jobs(url: str, headers: Dict) -> Optional[Dict]:
         return None
 
 
-def get_recommended_jobs(url: str, headers: Dict) -> List[JobPosting]:
-    """
-    Fetches and parses recommended jobs from LinkedIn.
-    This function can be imported and used by other scripts.
-    """
-    print("Fetching initial list of recommended jobs...")
-    live_data = fetch_linkedin_jobs(url, headers)
-    if live_data:
-        parsed_jobs = parse_job_postings(live_data)
-        print(f"Successfully parsed {len(parsed_jobs)} job postings.")
-        return parsed_jobs
-    return []
-
-
 def main():
     """
-    Main function to fetch, parse, and print LinkedIn job postings.
+    Main function to fetch, parse, and save LinkedIn job postings to JSON files.
     """
-    # --- Configuration ---
-    # Paste the entire cURL command copied from your browser's developer tools here.
-    # The script will parse it to get the URL, headers, and cookies.
     curl_command = """
     curl 'https://www.linkedin.com/voyager/api/graphql?variables=(count:24,jobCollectionSlug:recommended,query:(origin:GENERIC_JOB_COLLECTIONS_LANDING),start:72)&queryId=voyagerJobsDashJobCards.93590893e4adb90623f00d61719b838c' \
       -H 'accept: application/vnd.linkedin.normalized+json+2.1' \
@@ -272,23 +228,42 @@ def main():
     live_data = fetch_linkedin_jobs(url, headers)
 
     if live_data:
-        # Parse the data to get a list of job postings.
+        # --- 1. Save the raw, unprocessed data ---
+        raw_output_file = 'raw_pagination_results.json'
+        try:
+            with open(raw_output_file, 'w', encoding='utf-8') as f:
+                json.dump(live_data, f, ensure_ascii=False, indent=4)
+            print(f"Successfully saved raw API data to {raw_output_file}")
+        except Exception as e:
+            print(f"Error saving raw data: {e}")
+
+        # --- 2. Parse the data to get a list of structured job postings ---
         parsed_jobs = parse_job_postings(live_data)
 
-        # Print the results.
         if parsed_jobs:
             print(f"Successfully parsed {len(parsed_jobs)} job postings.\n")
+
+            # Convert dataclasses to a serializable format (dictionary)
             serializable = [asdict(job) for job in parsed_jobs]
+
+            # Convert datetime objects to ISO 8601 string format
             for entry in serializable:
                 if entry.get('posted_at'):
                     entry['posted_at'] = entry['posted_at'].isoformat()
-            output_file = 'pagination_results.json'
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(serializable, f, ensure_ascii=False, indent=4)
-            print(f"Saved parsed jobs to {output_file}")
+
+            # --- 3. Save the structured, cleaned-up data ---
+            structured_output_file = 'structured_pagination_results.json'
+            try:
+                with open(structured_output_file, 'w', encoding='utf-8') as f:
+                    json.dump(serializable, f, ensure_ascii=False, indent=4)
+                print(f"Saved structured jobs to {structured_output_file}")
+            except Exception as e:
+                print(f"Error saving structured data: {e}")
 
         else:
             print("No job postings were found or parsed from the API response.")
+    else:
+        print("Failed to fetch data from LinkedIn. No files were created.")
 
 
 # --- Main Execution ---
