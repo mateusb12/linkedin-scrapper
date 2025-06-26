@@ -141,8 +141,16 @@ def build_command_from_har(entry: dict, fallback_cookie: str) -> Optional[CurlCo
                      h.get('name') and not h.get('name').startswith(':')}
 
     cookie_key = next((k for k in final_headers if k.lower() == 'cookie'), None)
-    if not cookie_key and fallback_cookie:
-        final_headers['Cookie'] = fallback_cookie
+
+    # Enhanced debugging logic for cookie handling
+    if not cookie_key:
+        if fallback_cookie:
+            print("  - DEBUG (build): Entry has no cookie. Injecting master cookie.")
+            final_headers['Cookie'] = fallback_cookie
+        else:
+            print("  - DEBUG (build): Entry has no cookie and NO master cookie is available to inject.")
+    else:
+        print("  - DEBUG (build): Entry has its own 'Cookie' header.")
 
     cmd.headers = final_headers
 
@@ -219,7 +227,18 @@ def main():
         print(f"Error loading HAR file: {e}")
         return
 
+    # First, try to find a master cookie from the HAR file.
     master_cookie = find_master_cookie(har_data)
+
+    # If no cookie is found in the HAR, use the one from the working example as the ultimate fallback.
+    if not master_cookie:
+        print("DEBUG: HAR file has no cookies. Parsing 'working_bash_curl' to get a fallback cookie.")
+        working_command_for_cookie = parse_bash_curl(working_bash_curl)
+        master_cookie = working_command_for_cookie.headers.get('Cookie', '')
+        if master_cookie:
+            print("DEBUG: Successfully extracted fallback cookie from 'working_bash_curl'.")
+        else:
+            print("ERROR: Could not extract a cookie from 'working_bash_curl'. Commands will likely fail.")
 
     all_command_objects = []
     print(f"\n--- Searching for responses containing '{keyword_in_response}' ---")
@@ -235,7 +254,9 @@ def main():
             if command_obj:
                 errors = command_obj.validate()
                 if errors:
+                    # Enhanced debugging for validation failures
                     print(f"  - Warning: Generated command for entry {i} is invalid: {errors}")
+                    print(f"  - Offending URL: {command_obj.url}")
                 else:
                     all_command_objects.append(command_obj)
 
