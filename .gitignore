@@ -21,3 +21,4 @@
 /backend/linkedin_api/potential_urls/potential_har/*.har.json
 /backend/linkedin_api/entities/new_approach/*.json
 /backend/linkedin_api/entities/new_approach/pagination/*.json
+/backend/linkedin_api/entities/new_approach/single_job/*.json
