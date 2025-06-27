@@ -15,3 +15,7 @@
 /source/linkedin_api/entities/applied_jobs_analysis/*.txt
 /backend/linkedin_api/entities/recommended_jobs_analysis/new_approach/*.json
 /backend/linkedin_api/potential_curls/potential_har/*.json
+/backend/linkedin_api/potential_urls/potential_curl/*.txt
+/backend/linkedin_api/potential_urls/potential_curl/*.json
+/backend/linkedin_api/potential_urls/potential_har/*.json
+/backend/linkedin_api/potential_urls/potential_har/*.har.json
