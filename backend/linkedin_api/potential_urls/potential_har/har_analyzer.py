@@ -235,21 +235,18 @@ def get_browser_filter(url: str) -> str:
         parsed_url = urlparse(url)
         query_params = parse_qs(parsed_url.query)
 
-        # The 'variables' parameter often contains a unique identifier.
-        variables = query_params.get('variables', [''])[0]
+        # Prioritize the full queryId for a more specific and reliable filter.
+        if 'queryId' in query_params:
+            return query_params['queryId'][0]
 
-        # Try to find a jobPostingUrn, as it's very specific.
+        # Fallback for job-posting-specific URNs if queryId is not available.
+        variables = query_params.get('variables', [''])[0]
         urn_match = re.search(r'jobPostingUrn:([^,)]+)', variables)
         if urn_match:
             return urn_match.group(1)
 
-        # As a fallback, use the queryId, which is also a good filter.
-        query_id = query_params.get('queryId', [''])[0]
-        if query_id:
-            return query_id.split('.')[-1]  # Get the unique part of the queryId
-
     except (IndexError, KeyError):
-        # If parsing fails, return a portion of the path as a basic filter.
+        # If all else fails, use the last component of the path.
         return parsed_url.path.split('/')[-1]
 
     return ""
