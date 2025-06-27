@@ -25,6 +25,10 @@ def get_data_folder_path() -> Path:
     return Path(get_source_folder_path(), 'data')
 
 
+def get_pagination_folder_path() -> Path:
+    return Path(get_source_folder_path(), 'linkedin_api', 'entities', 'new_approach', 'pagination')
+
+
 def get_userdata_path() -> Path:
     return Path(get_root_folder_path(), 'userdata')
 

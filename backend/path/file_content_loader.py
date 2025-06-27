@@ -1,6 +1,6 @@
 import json
 
-from backend.path.path_reference import get_userdata_path, get_data_folder_path
+from backend.path.path_reference import get_userdata_path, get_data_folder_path, get_pagination_folder_path
 
 
 def load_userdata_json(filename: str) -> dict:
@@ -22,5 +22,21 @@ def load_curl_file(filename: str) -> str:
 
     if not data:
         raise ValueError(f"File '{file_path}' is empty.")
+
+    return data
+
+
+def load_pagination_file(filename: str) -> dict:
+    pagination_folder_path = get_pagination_folder_path()
+    file_path = pagination_folder_path / filename
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"File '{file_path}' does not exist.")
+
+    with open(file_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    if not data:
+        raise ValueError(f"File '{file_path}' is empty or contains no valid JSON.")
 
     return data
