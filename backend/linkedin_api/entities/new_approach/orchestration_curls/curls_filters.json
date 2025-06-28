@@ -1,0 +1,4 @@
+{
+  "individual_job_curl": "voyagerJobsDashJobCards",
+  "pagination_curl": "jobCollectionSlug"
+}

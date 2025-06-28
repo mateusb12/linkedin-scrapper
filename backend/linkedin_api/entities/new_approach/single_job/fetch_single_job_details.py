@@ -52,20 +52,20 @@ def get_curl_param(pattern: str, text: str) -> str | None:
     return match.group(1).strip() if match else None
 
 
-CSRF_TOKEN = get_curl_param(r'JSESSIONID="ajax:([^;"]+)"', MAIN_CURL)
-LI_AT = get_curl_param(r"li_at=([^;]+)", MAIN_CURL)
-BCOOKIE = get_curl_param(r'bcookie="([^"]+)"', MAIN_CURL) or ""
-USER_AGENT = get_curl_param(r"-H 'user-agent: (.*?)'", MAIN_CURL)
-REFERER = get_curl_param(r"-H 'referer: (.*?)'", MAIN_CURL)
-
 INPUT_FILE: dict = load_pagination_file("structured_pagination_results.json")
 OUTPUT_FILE = Path("raw_job_details.json")
 
 
 # ---------------------------------------------------------------------------
 
-def make_session() -> requests.Session:
+def make_session(curl_string: str) -> requests.Session:
     """Prime a requests session with all headers/cookies once."""
+    CSRF_TOKEN = get_curl_param(r'JSESSIONID="ajax:([^;"]+)"', curl_string)
+    LI_AT = get_curl_param(r"li_at=([^;]+)", curl_string)
+    BCOOKIE = get_curl_param(r'bcookie="([^"]+)"', curl_string) or ""
+    USER_AGENT = get_curl_param(r"-H 'user-agent: (.*?)'", curl_string)
+    REFERER = get_curl_param(r"-H 'referer: (.*?)'", curl_string)
+
     s = requests.Session()
     s.headers.update(
         {
@@ -78,7 +78,7 @@ def make_session() -> requests.Session:
             "dnt": "1",
             "priority": "u=1, i",
             # This header is now dynamically extracted
-            "sec-ch-ua": get_curl_param(r"-H 'sec-ch-ua: (.*?)'", MAIN_CURL),
+            "sec-ch-ua": get_curl_param(r"-H 'sec-ch-ua: (.*?)'", curl_string),
             "sec-ch-ua-mobile": "?0",
             "sec-ch-ua-platform": '"Windows"',
             "sec-fetch-dest": "empty",
@@ -152,13 +152,13 @@ def fetch_job_detail(session: requests.Session, job_urn: str, debug: bool = Fals
     return json.loads(text)
 
 
-def main() -> None:
+def main(curl_string: str) -> None:
     urns = [j["urn"] for j in INPUT_FILE.get("jobs", []) if j.get("urn")]
     if not urns:
         print("No job URNs found in the input file.")
         return
 
-    sess = make_session()
+    sess = make_session(curl_string)
     results = []
 
     # --- DEBUG LIMITER ---
@@ -188,26 +188,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    missing = [
-        var_name
-        for var_name, var_value in {
-            "LI_AT": LI_AT,
-            "CSRF_TOKEN": CSRF_TOKEN,
-            "USER_AGENT": USER_AGENT,
-            "REFERER": REFERER,
-        }.items()
-        if not var_value
-    ]
-    if missing:
-        raise SystemExit(
-            f"Could not parse the following from the cURL string: {', '.join(missing)}"
-        )
-    print("--- Initial Parameters Parsed ---")
-    print(f"LI_AT: ...{LI_AT[-10:]}")
-    print(f"CSRF_TOKEN: {CSRF_TOKEN}")
-    print(f"BCOOKIE: {BCOOKIE}")
-    print(f"USER_AGENT: {USER_AGENT}")
-    print(f"REFERER: {REFERER}")
-    print("-" * 33 + "\n")
-
-    main()
+    curl_string = MAIN_CURL
+    main(curl_string)
