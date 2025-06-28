@@ -100,7 +100,7 @@ def make_session() -> requests.Session:
     return s
 
 
-def fetch_detail(session: requests.Session, job_urn: str) -> Dict[str, Any]:
+def fetch_job_detail(session: requests.Session, job_urn: str, debug: bool = False) -> Dict[str, Any]:
     """Return parsed JSON for one job’s detail-sections payload."""
     base_url = "https://www.linkedin.com/voyager/api/graphql"
 
@@ -124,16 +124,17 @@ def fetch_detail(session: requests.Session, job_urn: str) -> Dict[str, Any]:
     full_url = f"{base_url}?variables={variables_str}&queryId={query_id}"
 
     # --- START DEBUGGING BLOCK ---
-    print("-" * 80)
-    print(f"Making request for: {job_urn}")
-    print(f"URL (Mimicking MAIN_CURL): {full_url}")
-    print("\n[HEADERS SENT]")
-    for key, value in session.headers.items():
-        print(f"  {key}: {value}")
-    print("\n[COOKIES SENT]")
-    for key, value in session.cookies.items():
-        print(f"  {key}: {value}")
-    print("-" * 80)
+    if debug:
+        print("-" * 80)
+        print(f"Making request for: {job_urn}")
+        print(f"URL (Mimicking MAIN_CURL): {full_url}")
+        print("\n[HEADERS SENT]")
+        for key, value in session.headers.items():
+            print(f"  {key}: {value}")
+        print("\n[COOKIES SENT]")
+        for key, value in session.cookies.items():
+            print(f"  {key}: {value}")
+        print("-" * 80)
     # --- END DEBUGGING BLOCK ---
 
     r = session.get(full_url, timeout=15)
@@ -168,7 +169,7 @@ def main() -> None:
     for idx, urn in enumerate(urns_to_process, start=1):
         try:
             print(f"\n[{idx}/{len(urns_to_process)}] fetching {urn} … ", end="", flush=True)
-            data = fetch_detail(sess, urn)
+            data = fetch_job_detail(sess, urn)
             results.append({"jobPostingUrn": urn, "detailResponse": data})
             print("✓ SUCCESS")
             time.sleep(1.5)

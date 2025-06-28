@@ -3,6 +3,9 @@ from pathlib import Path
 
 from backend.linkedin_api.entities.new_approach.pagination.pagination_recommended_jobs import parse_curl_command, \
     fetch_linkedin_jobs, parse_jobs_page
+from backend.linkedin_api.entities.new_approach.single_job.fetch_single_job_details import make_session, \
+    fetch_job_detail
+from backend.linkedin_api.entities.new_approach.single_job.structure_single_job import extract_job_details
 from backend.path.path_reference import get_orchestration_curls_folder_path
 
 PAGINATION_CURL_COMMAND_PATH = Path(get_orchestration_curls_folder_path(), "pagination_curl.txt")
@@ -29,6 +32,22 @@ def load_pagination_data():
 
 def main():
     pagination_data = load_pagination_data()
+    job_urn_ids = [item["urn"] for item in pagination_data["jobs"] if item is not None]
+    session_object = make_session()
+    raw_results = []
+    for idx, urn in enumerate(job_urn_ids, start=1):
+        try:
+            print(f"[{idx}/{len(job_urn_ids)}] fetching {urn} … ", end="", flush=True)
+            data = fetch_job_detail(session_object, urn)
+            raw_results.append({"jobPostingUrn": urn, "detailResponse": data})
+            print("✓ SUCCESS")
+        except Exception as exc:
+            print(f"FAILED → {exc}")
+    structured_jobs = []
+    for job_entry in raw_results:
+        job_details = extract_job_details(job_entry)
+        if job_details:
+            structured_jobs.append(asdict(job_details))
     pass
 
 
