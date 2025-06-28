@@ -1,6 +1,10 @@
 import json
+import re
 from dataclasses import dataclass, field, asdict
+from pathlib import Path
 from typing import List, Optional, Dict
+
+from backend.path.path_reference import get_output_curls_folder_path
 
 
 # --- Dataclass Definitions ---
@@ -102,94 +106,102 @@ def get_id_from_url(url: str) -> Optional[str]:
         return None
 
 
-def parse_orchestration_data(pagination_data: dict, structured_jobs_data: dict):
+def parse_orchestration_data(pagination_data: dict, structured_jobs_data: list):
     """
-    Main function to load, merge, and save the job data.
+    Combines pagination data and structured job data into a unified structure.
+
+    This function iterates through the list of jobs and enriches the detailed
+    job information with data from the pagination dictionary, such as company
+    logos, URNs, and the user's application status for each job.
+
+    Args:
+        pagination_data: A dictionary containing paginated job search results,
+                         which includes company information, job summaries,
+                         paging details, and seeker states.
+        structured_jobs_data: A list of dictionaries, where each dictionary
+                                contains detailed information for a single job.
+
+    Returns:
+        A dictionary containing a list of unified job objects, along with the
+        original metadata and paging information.
     """
-    # --- 2. Pre-process data for efficient merging ---
+    unified_jobs = []
 
-    # Create a lookup map for structured jobs using the job ID as the key
-    structured_jobs_map = {}
-    for job_data in structured_jobs_data:
-        job_id = get_id_from_url(job_data.get('job_url'))
-        if job_id:
-            structured_jobs_map[job_id] = job_data
+    # A mapping of company URNs to their details for quick lookup
+    companies_map = pagination_data.get('companies', {})
 
-    # --- 3. Instantiate dataclasses from pagination_data ---
+    # A mapping of seeker states for quick lookup. The key is the job ID.
+    seeker_states_map = {}
+    for key, state in pagination_data.get('seeker_states', {}).items():
+        match = re.search(r'\((\d+),', key)
+        if match:
+            job_id = match.group(1)
+            seeker_states_map[job_id] = state
 
-    # Create Company objects
-    companies = {
-        urn: Company(
-            urn=data['urn'],
-            name=data['name'],
-            logo_url=data['logo_url']
-        )
-        for urn, data in pagination_data.get('companies', {}).items()
+    # Iterate through both job lists simultaneously.
+    for i, job_summary in enumerate(pagination_data.get('jobs', [])):
+        # Ensure we don't go out of bounds for the detailed jobs list.
+        if i >= len(structured_jobs_data):
+            break
+
+        detailed_job = structured_jobs_data[i]
+
+        # Start with the detailed job data as the base for our unified object.
+        unified_job = detailed_job.copy()
+
+        # Merge the summary data. We prefer the more detailed data, so we only add
+        # a field from the summary if it's not already present in the detailed view.
+        for key, value in job_summary.items():
+            if key not in unified_job or unified_job[key] is None or unified_job[key] == '':
+                unified_job[key] = value
+
+        # Enrich the company information.
+        company_urn = job_summary.get('company_urn')
+        if company_urn in companies_map:
+            # Merge company details from both sources
+            merged_company = companies_map[company_urn].copy()
+            if 'company' in detailed_job and detailed_job['company']:
+                merged_company.update(detailed_job['company'])
+            unified_job['company'] = merged_company
+
+        # Add the seeker state (e.g., if the job has been saved or applied to).
+        job_urn = job_summary.get('urn')
+        if job_urn:
+            job_id_match = re.search(r'\d+$', job_urn)
+            if job_id_match:
+                job_id = job_id_match.group(0)
+                if job_id in seeker_states_map:
+                    unified_job['seeker_state'] = seeker_states_map[job_id]
+
+        unified_jobs.append(unified_job)
+
+    # Construct the final result, preserving metadata and pagination controls.
+    final_result = {
+        'jobs': unified_jobs,
+        'metadata': pagination_data.get('metadata', {}),
+        'paging': pagination_data.get('paging', {})
     }
 
-    # Create SeekerState objects
-    seeker_states = {
-        urn: SeekerState(**data)
-        for urn, data in pagination_data.get('seeker_states', {}).items()
-    }
+    return final_result
 
-    # --- 4. Merge job data ---
-    merged_jobs = []
-    for p_job in pagination_data.get('jobs', []):
-        job_id = get_id_from_urn(p_job.get('urn'))
-        s_job = structured_jobs_map.get(job_id)
 
-        company_obj = companies.get(p_job.get('company_urn'))
+def main():
+    # Load the JSON files
+    output_folder = get_output_curls_folder_path()
 
-        # Merge data if a corresponding structured job is found
-        if s_job and company_obj:
-            # Update company URL from structured data
-            company_obj.url = s_job.get('company', {}).get('url')
+    with open(Path(output_folder, 'pagination_data.json'), 'r', encoding='utf-8') as f:
+        pagination_data = json.load(f)
 
-            # Create a unified Job object
-            job = Job(
-                urn=p_job['urn'],
-                title=p_job['title'],
-                company_urn=p_job['company_urn'],
-                location_names=p_job['location_names'],
-                posted_on=p_job['posted_on'],  # Or s_job['posted_on'] if you prefer that format
-                description_snippet=p_job['description_snippet'],
-                easy_apply=p_job['easy_apply'],
-                employment_type=s_job.get('employment_type'),  # Use more descriptive type
-                workplace_type=s_job.get('workplace_type'),
-                applicants=s_job.get('applicants'),
-                job_state=s_job.get('job_state'),
-                job_url=s_job.get('job_url'),
-                description=JobDescription(**s_job['description']) if s_job.get('description') else None,
-                company=company_obj
-            )
-        else:
-            # Create a Job object with only pagination data
-            job = Job(
-                urn=p_job.get('urn'),
-                title=p_job.get('title'),
-                company_urn=p_job.get('company_urn'),
-                location_names=p_job.get('location_names'),
-                posted_on=p_job.get('posted_on'),
-                description_snippet=p_job.get('description_snippet'),
-                easy_apply=p_job.get('easy_apply'),
-                employment_type=p_job.get('employment_type'),
-                company=company_obj
-            )
-        merged_jobs.append(job)
+    with open(Path(output_folder, 'structured_jobs.json'), 'r', encoding='utf-8') as f:
+        structured_jobs_data = json.load(f)
 
-    # --- 5. Assemble the final combined data structure ---
-    combined_data = CombinedData(
-        paging=Paging(**pagination_data['paging']),
-        metadata=Metadata(**pagination_data['metadata']),
-        jobs=merged_jobs,
-        companies=companies,
-        geos=pagination_data.get('geos', {}),
-        seeker_states=seeker_states
-    )
+    # Parse and combine the data
+    combined_data = parse_orchestration_data(pagination_data, structured_jobs_data)
 
-    # --- 6. Serialize the combined data to a new JSON file ---
-    # Convert the dataclass object to a dictionary for JSON serialization
-    output_dict = asdict(combined_data)
+    # Save the combined data to a new JSON file
+    with open('combined_jobs.json', 'w', encoding='utf-8') as f:
+        json.dump(combined_data, f, indent=4, ensure_ascii=False)
 
-    return output_dict
+
+if __name__ == '__main__':
+    main()

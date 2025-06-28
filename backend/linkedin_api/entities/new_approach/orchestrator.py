@@ -4,6 +4,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import List, Dict, Any
 
+from backend.linkedin_api.entities.new_approach.orchestration_curls.orchestration_parser import parse_orchestration_data
 from backend.linkedin_api.entities.new_approach.pagination.pagination_recommended_jobs import (
     parse_curl_command,
     fetch_linkedin_jobs,
@@ -74,16 +75,18 @@ def main():
     job_urn_ids = [item.get("urn") for item in pagination_data.get("jobs", []) if item and item.get("urn")]
 
     # 2. Fetch and structure individual job data
-    structured_jobs = fetch_individual_job_data(job_urn_ids)
+    structured_jobs_data = fetch_individual_job_data(job_urn_ids)
+
+    combined_data = parse_orchestration_data(pagination_data, structured_jobs_data)
 
     # 3. Persist outputs
     out_dir = Path("output")
     out_dir.mkdir(exist_ok=True)
 
     # Save pagination data
-    (out_dir / "pagination_data.json").write_text(
+    (out_dir / "combined_data.json").write_text(
         json.dumps(
-            pagination_data,
+            combined_data,
             indent=2,
             ensure_ascii=False,
             default=lambda o: o.isoformat() if isinstance(o, (date, datetime)) else str(o),
@@ -91,13 +94,6 @@ def main():
         encoding="utf-8",
     )
     print(f"✔ Saved pagination_data.json ({len(pagination_data.get('jobs', []))} entries)")
-
-    # Save structured job details
-    (out_dir / "structured_jobs.json").write_text(
-        json.dumps(structured_jobs, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    print(f"✔ Saved structured_jobs.json ({len(structured_jobs)} entries)")
 
 
 if __name__ == "__main__":

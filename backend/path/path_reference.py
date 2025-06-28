@@ -33,6 +33,10 @@ def get_orchestration_curls_folder_path() -> Path:
     return Path(get_source_folder_path(), 'linkedin_api', 'entities', 'new_approach', 'orchestration_curls')
 
 
+def get_output_curls_folder_path() -> Path:
+    return Path(get_source_folder_path(), 'linkedin_api', 'entities', 'new_approach', 'output')
+
+
 def get_userdata_path() -> Path:
     return Path(get_root_folder_path(), 'userdata')
 
