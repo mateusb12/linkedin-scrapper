@@ -270,11 +270,16 @@ def parse_jobs_page(data: Dict) -> Optional[JobsPage]:
                 is_applied='APPLIED' in actions
             )
 
+    valid_jobs = [
+        job for job in jobs
+        if job.urn is not None and job.title != "No Title"
+    ]
+
     # 4. Assemble the final JobsPage object.
     return JobsPage(
         paging=paging,
         metadata=metadata,
-        jobs=jobs,
+        jobs=valid_jobs,
         companies=companies,
         geos=geos,
         seeker_states=seeker_states
