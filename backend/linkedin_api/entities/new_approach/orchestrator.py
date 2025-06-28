@@ -2,74 +2,102 @@ import json
 from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
+from typing import List, Dict, Any
 
-from backend.linkedin_api.entities.new_approach.pagination.pagination_recommended_jobs import parse_curl_command, \
-    fetch_linkedin_jobs, parse_jobs_page
-from backend.linkedin_api.entities.new_approach.single_job.fetch_single_job_details import make_session, \
-    fetch_job_detail
+from backend.linkedin_api.entities.new_approach.pagination.pagination_recommended_jobs import (
+    parse_curl_command,
+    fetch_linkedin_jobs,
+    parse_jobs_page,
+)
+from backend.linkedin_api.entities.new_approach.single_job.fetch_single_job_details import (
+    make_session,
+    fetch_job_detail,
+)
 from backend.linkedin_api.entities.new_approach.single_job.structure_single_job import extract_job_details
 from backend.path.path_reference import get_orchestration_curls_folder_path
 
-PAGINATION_CURL_COMMAND_PATH = Path(get_orchestration_curls_folder_path(), "pagination_curl.txt")
-INDIVIDUAL_JOB_CURL_COMMAND_PATH = Path(get_orchestration_curls_folder_path(), "individual_job_curl.txt")
+# Paths to your orchestration cURL commands
+env_path = get_orchestration_curls_folder_path()
+PAGINATION_CURL_COMMAND_PATH = Path(env_path, "pagination_curl.txt")
+INDIVIDUAL_JOB_CURL_COMMAND_PATH = Path(env_path, "individual_job_curl.txt")
 
 
-def load_pagination_data():
+def fetch_pagination_data() -> Dict[str, Any]:
+    """
+    Executes the pagination cURL, parses the jobs page, and returns a dictionary
+    with pagination data.
+    """
     try:
-        with open(PAGINATION_CURL_COMMAND_PATH, 'r') as file:
-            PAGINATION_CURL_COMMAND_CONTENT = file.read().strip()
-        url, headers = parse_curl_command(PAGINATION_CURL_COMMAND_CONTENT)
-        print("--- Successfully parsed cURL command ---")
-        print("IMPORTANT: The cURL command contains sensitive, time-limited tokens (cookie, csrf-token).")
-        print(
-            "You will need to paste a fresh cURL command from your browser when they expire for the script to work.\n")
-    except ValueError as e:
-        print(f"Error: Could not parse the cURL command. Please check its format.")
-        print(f"Details: {e}")
-        return
+        content = PAGINATION_CURL_COMMAND_PATH.read_text(encoding="utf-8").strip()
+        url, headers = parse_curl_command(content)
+        print("--- Successfully parsed pagination cURL command ---")
+    except Exception as e:
+        raise RuntimeError(f"Failed to parse pagination cURL: {e}")
 
     live_data = fetch_linkedin_jobs(url, headers)
     parsed_page = parse_jobs_page(live_data)
     return asdict(parsed_page)
 
 
-def main():
-    with open(INDIVIDUAL_JOB_CURL_COMMAND_PATH, 'r') as file:
-        INDIVIDUAL_JOB_CURL_COMMAND_CONTENT = file.read().strip()
-    pagination_data = load_pagination_data()
-    job_urn_ids = [item["urn"] for item in pagination_data["jobs"] if item is not None]
-    session_object = make_session(INDIVIDUAL_JOB_CURL_COMMAND_CONTENT)
+def fetch_individual_job_data(job_urn_ids: List[str]) -> List[Dict[str, Any]]:
+    """
+    Given a list of job URNs, executes the individual-job cURL, fetches each job's detail,
+    and returns a list of structured job dicts.
+    """
+    # Read the individual-job cURL command once
+    content = INDIVIDUAL_JOB_CURL_COMMAND_PATH.read_text(encoding="utf-8").strip()
+    session = make_session(content)
+
     raw_results = []
+    total = len(job_urn_ids)
     for idx, urn in enumerate(job_urn_ids, start=1):
         try:
-            print(f"[{idx}/{len(job_urn_ids)}] fetching {urn} … ", end="", flush=True)
-            data = fetch_job_detail(session_object, urn)
+            print(f"[{idx}/{total}] Fetching detail for {urn}...", end=" ")
+            data = fetch_job_detail(session, urn)
             raw_results.append({"jobPostingUrn": urn, "detailResponse": data})
-            print("✓ SUCCESS")
+            print("✓")
         except Exception as exc:
-            print(f"FAILED → {exc}")
-    structured_jobs = []
-    for job_entry in raw_results:
-        job_details = extract_job_details(job_entry)
-        if job_details:
-            structured_jobs.append(asdict(job_details))
+            print(f"✗ Failed: {exc}")
 
-    # 6. Persist both artefacts
-    out_dir = Path("output")  # keep your repo root clean
+    # Structure the raw results
+    structured = []
+    for entry in raw_results:
+        details = extract_job_details(entry)
+        if details:
+            structured.append(asdict(details))
+    return structured
+
+
+def main():
+    # 1. Fetch pagination data
+    pagination_data = fetch_pagination_data()
+    job_urn_ids = [item.get("urn") for item in pagination_data.get("jobs", []) if item and item.get("urn")]
+
+    # 2. Fetch and structure individual job data
+    structured_jobs = fetch_individual_job_data(job_urn_ids)
+
+    # 3. Persist outputs
+    out_dir = Path("output")
     out_dir.mkdir(exist_ok=True)
 
+    # Save pagination data
     (out_dir / "pagination_data.json").write_text(
-        json.dumps(pagination_data, indent=2, ensure_ascii=False,
-                   default=lambda o: o.isoformat() if isinstance(o, (date, datetime)) else str(o)),
+        json.dumps(
+            pagination_data,
+            indent=2,
+            ensure_ascii=False,
+            default=lambda o: o.isoformat() if isinstance(o, (date, datetime)) else str(o),
+        ),
         encoding="utf-8",
     )
+    print(f"✔ Saved pagination_data.json ({len(pagination_data.get('jobs', []))} entries)")
+
+    # Save structured job details
     (out_dir / "structured_jobs.json").write_text(
         json.dumps(structured_jobs, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
-
-    print(f"✔ Saved {len(pagination_data['jobs'])} raw rows → output/pagination_data.json")
-    print(f"✔ Saved {len(structured_jobs)} parsed rows → output/structured_jobs.json")
+    print(f"✔ Saved structured_jobs.json ({len(structured_jobs)} entries)")
 
 
 if __name__ == "__main__":
