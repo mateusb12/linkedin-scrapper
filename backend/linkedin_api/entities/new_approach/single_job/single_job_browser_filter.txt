@@ -1,1 +1,1 @@
-voyagerJobsDashJobPostingDetailSections
+voyagerJobsDashJobCards
