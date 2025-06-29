@@ -4,7 +4,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-from backend.linkedin_scrappers.engine import CoreScrapper
+from backend.linkedin import CoreScrapper
 
 
 class ConnectionLinksScrapper(CoreScrapper):
