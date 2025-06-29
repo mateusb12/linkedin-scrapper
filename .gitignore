@@ -22,3 +22,4 @@
 /backend/linkedin/api_fetch/single_job/raw_job_details.json
 /backend/linkedin/api_fetch/single_job/structured_job_details.json
 /backend/repomix-output.md
+/backend/database/*.db
