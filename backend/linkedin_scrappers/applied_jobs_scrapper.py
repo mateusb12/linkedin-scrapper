@@ -2,7 +2,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
-from backend.core_scrapper.engine import CoreScrapper
+from backend.linkedin_scrappers.engine import CoreScrapper
 
 
 class AppliedJobsScrapper(CoreScrapper):
