@@ -1,10 +1,10 @@
 from flask import Flask
 
-from backend.controllers.curls import fetch_curls_bp
+from backend.controllers.job_curls import fetch_jobs_bp
 
 app = Flask(__name__)
 
-app.register_blueprint(fetch_curls_bp)
+app.register_blueprint(fetch_jobs_bp)
 
 
 @app.route('/')

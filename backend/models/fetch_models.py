@@ -4,7 +4,7 @@ from backend.models.job_models import Base
 
 
 class FetchCurls(Base):
-    __table_name__ = 'fetch_curls'
+    __tablename__ = 'fetch_curls'
 
     id = Column(Integer, primary_key=True, default=1, server_default="1")
 
