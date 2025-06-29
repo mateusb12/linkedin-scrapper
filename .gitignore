@@ -40,3 +40,4 @@
 /backend/linkedin_api/data_fetching/potential_urls/potential_curl/*.txt
 /backend/linkedin_api/data_fetching/potential_urls/potential_har/*.json
 /backend/linkedin_api/data_fetching/potential_urls/potential_har/*.har.json
+/backend/repomix-output.md
