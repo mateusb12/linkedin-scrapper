@@ -29,3 +29,14 @@
 /backend/linkedin_api/entities/pagination/*.txt
 /backend/linkedin_api/entities/pagination/*.json
 /backend/linkedin_api/entities/single_job/*.json
+/backend/linkedin_api/entities/output/combined_data.json
+/backend/linkedin_api/data_fetching/orchestration_curls/individual_job_curl.txt
+/backend/linkedin_api/data_fetching/orchestration_curls/pagination_curl.txt
+/backend/linkedin_api/data_fetching/output/*.json
+/backend/linkedin_api/data_fetching/pagination/*.txt
+/backend/linkedin_api/data_fetching/pagination/*.json
+/backend/linkedin_api/data_fetching/single_job/*.json
+/backend/linkedin_api/data_fetching/potential_urls/potential_curl/*.json
+/backend/linkedin_api/data_fetching/potential_urls/potential_curl/*.txt
+/backend/linkedin_api/data_fetching/potential_urls/potential_har/*.json
+/backend/linkedin_api/data_fetching/potential_urls/potential_har/*.har.json

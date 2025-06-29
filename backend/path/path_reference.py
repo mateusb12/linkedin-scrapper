@@ -26,15 +26,15 @@ def get_data_folder_path() -> Path:
 
 
 def get_pagination_folder_path() -> Path:
-    return Path(get_source_folder_path(), 'linkedin_api', 'entities', 'pagination')
+    return Path(get_source_folder_path(), 'linkedin_api', 'data_fetching', 'pagination')
 
 
 def get_orchestration_curls_folder_path() -> Path:
-    return Path(get_source_folder_path(), 'linkedin_api', 'entities', 'orchestration_curls')
+    return Path(get_source_folder_path(), 'linkedin_api', 'data_fetching', 'orchestration_curls')
 
 
 def get_output_curls_folder_path() -> Path:
-    return Path(get_source_folder_path(), 'linkedin_api', 'entities', 'output')
+    return Path(get_source_folder_path(), 'linkedin_api', 'data_fetching', 'output')
 
 
 def get_userdata_path() -> Path:

@@ -177,7 +177,7 @@ def parse_jobs_page(data: Dict) -> Optional[JobsPage]:
         print(f"Error: Could not find paging/metadata information. Missing key: {e}")
         return None
 
-    # 2. Pre-parse all Company and Geo entities from the lookup map.
+    # 2. Pre-parse all Company and Geo data_fetching from the lookup map.
     companies: Dict[str, Company] = {}
     geos: Dict[str, Geo] = {}
 
@@ -205,11 +205,11 @@ def parse_jobs_page(data: Dict) -> Optional[JobsPage]:
                 name=item.get('name', 'Unknown Location')
             )
 
-    # 3. Parse JobPostings and SeekerStates, linking them to the pre-parsed entities.
+    # 3. Parse JobPostings and SeekerStates, linking them to the pre-parsed data_fetching.
     jobs: List[JobPostingSummary] = []
     seeker_states: Dict[str, JobSeekerState] = {}
 
-    # We iterate through JobPostingCard objects, as they are the central nodes connecting other entities.
+    # We iterate through JobPostingCard objects, as they are the central nodes connecting other data_fetching.
     job_cards = [item for item in included_map.values() if
                  item.get('$type') == "com.linkedin.voyager.dash.jobs.JobPostingCard"]
 
