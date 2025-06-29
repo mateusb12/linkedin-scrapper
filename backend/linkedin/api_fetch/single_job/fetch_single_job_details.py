@@ -52,7 +52,7 @@ def get_curl_param(pattern: str, text: str) -> str | None:
     return match.group(1).strip() if match else None
 
 
-INPUT_FILE: dict = load_pagination_file("structured_pagination_results.json")
+# INPUT_FILE: dict = load_pagination_file("structured_pagination_results.json")
 OUTPUT_FILE = Path("raw_job_details.json")
 
 
