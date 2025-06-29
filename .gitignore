@@ -25,3 +25,7 @@
 /backend/linkedin_api/entities/new_approach/pagination/*.txt
 /backend/linkedin_api/entities/new_approach/orchestration_curls/*.txt
 /backend/linkedin_api/entities/new_approach/output/*.json
+/backend/linkedin_api/entities/orchestration_curls/*.txt
+/backend/linkedin_api/entities/pagination/*.txt
+/backend/linkedin_api/entities/pagination/*.json
+/backend/linkedin_api/entities/single_job/*.json
