@@ -20,7 +20,7 @@ PAGINATION_CURL_COMMAND_PATH = Path(env_path, "pagination_curl.txt")
 INDIVIDUAL_JOB_CURL_COMMAND_PATH = Path(env_path, "individual_job_curl.txt")
 
 
-def get_total_pages() -> Optional[int]:
+def get_total_job_pages() -> Optional[int]:
     """
     Fetches the first page of job results to determine the total number of available pages.
 
@@ -132,7 +132,7 @@ def run_fetch_for_page(page_number: int):
         page_number: The page number to fetch.
     """
     # First, get the page limit to validate the input
-    total_pages = get_total_pages()
+    total_pages = get_total_job_pages()
     if total_pages is None:
         print("Could not determine page limits. Halting execution.")
         return
@@ -184,7 +184,7 @@ def main():
     print("--- Running Script Demonstration ---")
 
     # Example 1: Get total pages
-    total_pages = get_total_pages()
+    total_pages = get_total_job_pages()
     if total_pages:
         print(f"\nDemonstration: Total pages found: {total_pages}")
 
