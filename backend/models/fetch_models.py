@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, Integer, CheckConstraint
 
-from backend.models.job_models import Base
+from backend.models.base_model import Base
 
 
 class FetchCurls(Base):

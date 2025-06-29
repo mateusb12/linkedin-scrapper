@@ -1,11 +1,9 @@
 # database/orm_models.py
 
-from sqlalchemy import create_engine, Column, String, Text, ForeignKey
-from sqlalchemy.orm import relationship, sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import Column, String, Text, ForeignKey
+from sqlalchemy.orm import relationship
 
-# Base class for our models to inherit from
-Base = declarative_base()
+from backend.models.base_model import Base
 
 
 class Company(Base):

@@ -1,12 +1,19 @@
 # database/database_setup.py
+from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.models.job_models import Base
+from backend import models
+
+print(f"Importing ORM models... {models.__name__}")
 
 # The database file path
-DATABASE_URL = "sqlite:///linkedin.db"
+root_dir = Path(__file__).parent.parent
+db_path = root_dir / "database" / "linkedin.db"
+
+
+DATABASE_URL = f"sqlite:///{db_path}"
 
 # Create the database engine
 engine = create_engine(DATABASE_URL, echo=False)  # Set echo=True to see generated SQL
@@ -21,7 +28,7 @@ def create_db_and_tables():
     This is safe to run multiple times; it won't recreate existing tables.
     """
     print("Creating database and tables...")
-    Base.metadata.create_all(bind=engine)
+    models.Base.metadata.create_all(bind=engine)
     print("Done.")
 
 
