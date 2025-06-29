@@ -1,12 +1,12 @@
-import argparse
 import json
-import math
 import re
+import math
 from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
+# Assuming these imports are correct relative to your project structure
 from backend.linkedin.api_fetch.orchestration_curls.orchestration_parser import parse_orchestration_data
 from backend.linkedin.api_fetch.pagination.pagination_recommended_jobs import parse_curl_command, fetch_linkedin_jobs, \
     parse_jobs_page
@@ -20,40 +20,73 @@ PAGINATION_CURL_COMMAND_PATH = Path(env_path, "pagination_curl.txt")
 INDIVIDUAL_JOB_CURL_COMMAND_PATH = Path(env_path, "individual_job_curl.txt")
 
 
-def fetch_pagination_data(page: int = 1) -> Dict[str, Any]:
+def get_total_pages() -> Optional[int]:
+    """
+    Fetches the first page of job results to determine the total number of available pages.
+
+    Returns:
+        The total number of pages as an integer, or None if it cannot be determined.
+    """
+    print("--- Attempting to determine total number of pages... ---")
+    # We only need to fetch the first page (start=0) to get the 'total' count.
+    data = fetch_page_data(page_number=1, quiet=True)  # Use quiet mode to suppress unnecessary logs
+
+    if not data or not data.get('paging'):
+        print("Error: Could not retrieve pagination metadata. The cURL command might be expired.")
+        return None
+
+    paging_info = data.get('paging', {})
+    total_jobs = paging_info.get('total', 0)
+    jobs_per_page = paging_info.get('count', 0)
+
+    if not total_jobs or not jobs_per_page:
+        print("Error: Pagination data is missing 'total' or 'count' fields.")
+        return None
+
+    # Use math.ceil to round up to the nearest whole number
+    total_pages = math.ceil(total_jobs / jobs_per_page)
+    print(f"--- Found {total_jobs} total jobs. ---")
+    return total_pages
+
+
+def fetch_page_data(page_number: int, quiet: bool = False) -> Optional[Dict[str, Any]]:
     """
     Executes the pagination cURL for a specific page, parses the jobs page,
     and returns a dictionary with pagination data.
 
     Args:
-        page: The page number to fetch (e.g., 1, 2, 3...).
+        page_number: The page number to fetch (e.g., 1, 2, 3...).
+        quiet: If True, suppresses some print statements. Used by get_total_pages.
+
+    Returns:
+        A dictionary containing the parsed data for the requested page.
     """
     try:
         content = PAGINATION_CURL_COMMAND_PATH.read_text(encoding="utf-8").strip()
         url, headers = parse_curl_command(content)
-        print("--- Successfully parsed pagination cURL command ---")
+        if not quiet:
+            print("--- Successfully parsed pagination cURL command ---")
     except Exception as e:
         raise RuntimeError(f"Failed to parse pagination cURL: {e}")
 
-    # --- New Logic to Modify URL for Pagination ---
     # Find the count (jobs per page), defaulting to 24 if not found
     count_match = re.search(r"count:(\d+)", url)
     count = int(count_match.group(1)) if count_match else 24
 
     # Calculate the start index based on the desired page
-    start_index = (page - 1) * count
+    start_index = (page_number - 1) * count
 
     # Replace the 'start:XX' value in the URL with the calculated one.
-    # This uses a regular expression to find 'start:' followed by any number of digits.
     modified_url = re.sub(r"start:\d+", f"start:{start_index}", url)
 
-    print(f"--- Fetching page {page} (start index: {start_index}) ---")
-    # --- End of New Logic ---
+    if not quiet:
+        print(f"--- Fetching page {page_number} (start index: {start_index}) ---")
 
-    live_data = fetch_linkedin_jobs(modified_url, headers)  # Use the modified URL
+    live_data = fetch_linkedin_jobs(modified_url, headers)
     if not live_data:
-        print("Received no data from the API. This could be due to an expired cURL token or invalid page number.")
-        return {}
+        if not quiet:
+            print("Received no data from the API. This could be due to an expired cURL token or invalid page number.")
+        return None
 
     parsed_page = parse_jobs_page(live_data)
     return asdict(parsed_page)
@@ -61,15 +94,18 @@ def fetch_pagination_data(page: int = 1) -> Dict[str, Any]:
 
 def fetch_individual_job_data(job_urn_ids: List[str]) -> List[Dict[str, Any]]:
     """
-    Given a list of job URNs, executes the individual-job cURL, fetches each job's detail,
-    and returns a list of structured job dicts.
+    Given a list of job URNs, fetches and structures the detailed data for each job.
     """
-    # Read the individual-job cURL command once
+    if not job_urn_ids:
+        print("No job URNs found to fetch individual details.")
+        return []
+
     content = INDIVIDUAL_JOB_CURL_COMMAND_PATH.read_text(encoding="utf-8").strip()
     session = make_session(content)
 
     raw_results = []
     total = len(job_urn_ids)
+    print(f"--- Fetching details for {total} jobs... ---")
     for idx, urn in enumerate(job_urn_ids, start=1):
         try:
             print(f"[{idx}/{total}] Fetching detail for {urn}...", end=" ")
@@ -79,7 +115,6 @@ def fetch_individual_job_data(job_urn_ids: List[str]) -> List[Dict[str, Any]]:
         except Exception as exc:
             print(f"✗ Failed: {exc}")
 
-    # Structure the raw results
     structured = []
     for entry in raw_results:
         details = extract_job_details(entry)
@@ -88,54 +123,45 @@ def fetch_individual_job_data(job_urn_ids: List[str]) -> List[Dict[str, Any]]:
     return structured
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Fetch LinkedIn job postings from a specific page.")
-    parser.add_argument(
-        "--page",
-        type=int,
-        default=1,
-        help="The page number of job results to fetch. Defaults to 1."
-    )
-    args = parser.parse_args()
+def run_fetch_for_page(page_number: int):
+    """
+    Orchestrates the entire process of fetching, processing, and saving
+    all job data for a single, specified page.
 
-    # 1. Fetch pagination data for the selected page
-    pagination_data = fetch_pagination_data(page=args.page)
-    if not pagination_data or not pagination_data.get('paging'):
-        print("Halting execution as no pagination data was fetched.")
+    Args:
+        page_number: The page number to fetch.
+    """
+    # First, get the page limit to validate the input
+    total_pages = get_total_pages()
+    if total_pages is None:
+        print("Could not determine page limits. Halting execution.")
         return
 
-    # --- New: Calculate and display total pages ---
-    paging_info = pagination_data.get('paging', {})
-    total_jobs = paging_info.get('total', 0)
-    jobs_per_page = paging_info.get('count', 0)
-    total_pages = 0
+    print(f"Total pages available: {total_pages}")
 
-    if jobs_per_page > 0:
-        # Use math.ceil to round up to the nearest whole number
-        total_pages = math.ceil(total_jobs / jobs_per_page)
-        print(f"--- Found {total_jobs} total jobs. Total pages available: {total_pages} ---")
-    else:
-        print("--- Could not determine total pages. ---")
+    # Validate the requested page number
+    if not (0 < page_number <= total_pages):
+        print(f"\nError: Requested page {page_number} is invalid. Only pages 1 through {total_pages} are available.")
+        return
 
-    # --- New: Validate the requested page number ---
-    if 0 < total_pages < args.page:
-        print(f"\nError: You requested page {args.page}, but only {total_pages} pages are available.")
-        print("Please run the script again with a valid page number.")
-        return  # Exit the script
-    # --- End of new logic ---
+    # 1. Fetch the specific page's data
+    page_data = fetch_page_data(page_number=page_number)
+    if not page_data:
+        print("Halting execution as no data was fetched for the specified page.")
+        return
 
-    job_urn_ids = [item.get("urn") for item in pagination_data.get("jobs", []) if item and item.get("urn")]
+    job_urn_ids = [item.get("urn") for item in page_data.get("jobs", []) if item and item.get("urn")]
 
     # 2. Fetch and structure individual job data
     structured_jobs_data = fetch_individual_job_data(job_urn_ids)
 
-    combined_data = parse_orchestration_data(pagination_data, structured_jobs_data)
+    combined_data = parse_orchestration_data(page_data, structured_jobs_data)
 
     # 3. Persist outputs
     out_dir = Path("output")
     out_dir.mkdir(exist_ok=True)
 
-    output_filename = f"combined_data_page_{args.page}.json"
+    output_filename = f"combined_data_page_{page_number}.json"
     output_path = out_dir / output_filename
 
     output_path.write_text(
@@ -147,8 +173,29 @@ def main():
         ),
         encoding="utf-8",
     )
-    print(f"\n✔ Saved {output_filename} ({len(pagination_data.get('jobs', []))} entries)")
+    print(f"\n✔ Saved {output_filename} ({len(page_data.get('jobs', []))} entries)")
+
+
+def main():
+    """
+    This function now serves as a demonstration of how to use the module's functions.
+    You can call get_total_pages() and run_fetch_for_page() from other scripts.
+    """
+    print("--- Running Script Demonstration ---")
+
+    # Example 1: Get total pages
+    total_pages = get_total_pages()
+    if total_pages:
+        print(f"\nDemonstration: Total pages found: {total_pages}")
+
+    # Example 2: Fetch data for a specific page (e.g., page 5)
+    # You can change this page number to test with a different page.
+    page_to_fetch = 5
+    print(f"\nDemonstration: Attempting to fetch data for page {page_to_fetch}...")
+    run_fetch_for_page(page_number=page_to_fetch)
 
 
 if __name__ == "__main__":
+    # The script is now designed to be imported, but this allows it to be run directly
+    # for demonstration purposes.
     main()
