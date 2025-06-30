@@ -3,24 +3,23 @@
 import json
 from pathlib import Path
 
-from backend.database.database_connection import get_db_session, create_db_and_tables
-from backend.models.job_models import Company, Job
-from backend.path.path_reference import get_output_curls_folder_path
+
+def load_populate_data(json_filepath: str) -> dict:
+    from path.path_reference import get_output_curls_folder_path
+    path = Path(get_output_curls_folder_path(), json_filepath)
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    return data
 
 
-def populate_from_json(json_filepath: str):
+def populate_from_json(data: dict):
     """
     Parses a JSON file containing job data and populates the database.
     It checks for existing companies and jobs to avoid duplicates.
     """
-    # Get a new database session
-    session = get_db_session()
-
-    print(f"Loading data from {json_filepath}...")
-    path = Path(get_output_curls_folder_path(), json_filepath)
-    with open(path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-
+    from database.database_connection import get_db_session
+    from models.job_models import Company, Job
+    db = get_db_session()
     jobs_data = data.get('jobs', [])
     print(f"Found {len(jobs_data)} jobs to process.")
 
@@ -38,7 +37,7 @@ def populate_from_json(json_filepath: str):
         # --- Process Company ---
         if company_urn not in processed_company_urns:
             # Check if company already exists in the database
-            existing_company = session.query(Company).filter_by(urn=company_urn).first()
+            existing_company = db.query(Company).filter_by(urn=company_urn).first()
             if not existing_company:
                 new_company = Company(
                     urn=company_urn,
@@ -46,14 +45,14 @@ def populate_from_json(json_filepath: str):
                     logo_url=company_data.get('logo_url'),
                     url=company_data.get('url')
                 )
-                session.add(new_company)
+                db.add(new_company)
                 print(f"Adding new company: {new_company.name}")
             processed_company_urns.add(company_urn)
 
         # --- Process Job ---
         job_urn = job_item.get('urn')
         if job_urn and job_urn not in processed_job_urns:
-            existing_job = session.query(Job).filter_by(urn=job_urn).first()
+            existing_job = db.query(Job).filter_by(urn=job_urn).first()
             if not existing_job:
                 new_job = Job(
                     urn=job_urn,
@@ -66,22 +65,23 @@ def populate_from_json(json_filepath: str):
                     description_full=job_item.get('description', {}).get('full_text'),
                     company_urn=company_urn
                 )
-                session.add(new_job)
+                db.add(new_job)
                 print(f"  -> Adding new job: {new_job.title}")
             processed_job_urns.add(job_urn)
 
     try:
         print("\nCommitting changes to the database...")
-        session.commit()
+        db.commit()
         print("Successfully populated the database.")
     except Exception as e:
         print(f"An error occurred: {e}")
-        session.rollback()
+        db.rollback()
     finally:
-        session.close()
+        db.close()
 
 
 if __name__ == "__main__":
+    from database.database_connection import create_db_and_tables
     # 1. Create the database schema if it doesn't exist
     create_db_and_tables()
 

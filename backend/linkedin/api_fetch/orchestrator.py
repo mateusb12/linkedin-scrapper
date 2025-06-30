@@ -53,7 +53,7 @@ def get_total_job_pages() -> Optional[int]:
 
 def load_pagination_job_curl_command() -> FetchCurl:
     """Loads the pagination cURL command from the database."""
-    from backend.database.database_connection import get_db_session
+    from database.database_connection import get_db_session
     db = get_db_session()
     record = db.query(FetchCurl).filter(FetchCurl.name == "Pagination").first()
     return record
@@ -61,7 +61,7 @@ def load_pagination_job_curl_command() -> FetchCurl:
 
 def load_single_job_curl_command() -> FetchCurl:
     """Loads the single job cURL command from the database."""
-    from backend.database.database_connection import get_db_session
+    from database.database_connection import get_db_session
     db = get_db_session()
     record = db.query(FetchCurl).filter(FetchCurl.name == "SingleJob").first()
     return record

@@ -4,6 +4,7 @@ from flask import Blueprint, abort, jsonify, request
 from sqlalchemy.orm.exc import NoResultFound
 
 from database.database_connection import get_db_session
+from database.populator import populate_from_json
 from linkedin.api_fetch.orchestrator import get_total_job_pages, run_fetch_for_page
 from models import FetchCurl
 from models.fetch_models import parse_fetch_string_flat
@@ -174,5 +175,7 @@ def fetch_page(page_number: int):
     page_data = run_fetch_for_page(page_number=page_number)
     if not page_data:
         abort(404, description=f"No data found for page {page_number}.")
+
+    populate_from_json(page_data)
 
     return jsonify(page_data)

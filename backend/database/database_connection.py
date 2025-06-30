@@ -12,7 +12,6 @@ print(f"Importing ORM models... {models.__name__}")
 root_dir = Path(__file__).parent.parent
 db_path = root_dir / "database" / "linkedin.db"
 
-
 DATABASE_URL = f"sqlite:///{db_path}"
 
 # Create the database engine
