@@ -41,6 +41,27 @@ class FetchCurl(Base):
         return f"<FetchCallRecord(id={self.id}, method='{self.method}', url='{self.base_url}')>"
 
     def to_dict(self):
+        """
+        Serializes the object to a dictionary, ensuring that JSON strings for
+        headers and body are parsed into proper dictionary objects.
+        """
+        parsed_headers = {}
+        if self.headers:
+            try:
+                # Parse the string representation of headers into a dict
+                parsed_headers = json.loads(self.headers)
+            except (json.JSONDecodeError, TypeError):
+                # Handle cases where headers are not a valid JSON string
+                parsed_headers = {"error": "Invalid JSON format in headers field."}
+
+        parsed_body = None
+        if self.body:
+            try:
+                # Parse the string representation of the body
+                parsed_body = json.loads(self.body)
+            except (json.JSONDecodeError, TypeError):
+                parsed_body = {"error": "Invalid JSON format in body field."}
+
         return {
             "id": self.id,
             "name": self.name,
@@ -51,8 +72,8 @@ class FetchCurl(Base):
             "variables_query_origin": self.variables_query_origin,
             "variables_start": self.variables_start,
             "method": self.method,
-            "headers": self.headers,
-            "body": self.body,
+            "headers": parsed_headers,  # Use the parsed dictionary
+            "body": parsed_body,          # Use the parsed body
             "referer": self.referer,
         }
 
@@ -116,7 +137,7 @@ def parse_fetch_string_flat(fetch_string: str) -> Optional[FlatFetchCall]:
 
         for key, value in var_matches:
             # Handle nested structures like 'query:(...)'
-            if value.startswith('(') and value.endswith(')'):
+            if value.startswith('(') and value.endswith('('):
                 nested_pattern = re.compile(r"(\w+):([\w_]+)")
                 nested_matches = nested_pattern.findall(value.strip('()'))
                 variables_dict[key] = dict(nested_matches)

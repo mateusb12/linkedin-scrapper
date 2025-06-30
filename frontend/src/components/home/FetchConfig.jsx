@@ -115,26 +115,54 @@ export default function JobDashboard() {
     const handleLogout = () => console.log("Logging out...");
 
     // ✅ UPDATED: The view rendering logic is now cleaner
-    const ConfigEditor = ({ title, jsonValue, setJsonValue, view, setView }) => {
+    const ConfigEditor = ({ title, subtitle, jsonValue, setJsonValue, view, setView }) => {
         const displayValue = view === 'json' ? jsonValue : generateCurlCommand(jsonValue);
 
         return (
             <div>
-                <div className="flex items-center justify-between mb-2">
-                    <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-300">
-                        {title}
-                    </h2>
+                <div className="flex justify-between mb-2">
+                    {/* LEFT: Title + Subtitle stacked */}
+                    <div>
+                        <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-300">
+                            {title}
+                        </h2>
+                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                            {subtitle}
+                        </p>
+                    </div>
+
+                    {/* RIGHT: View toggle buttons */}
                     <div className="flex items-center rounded-lg bg-gray-200 dark:bg-gray-700 p-1">
-                        <button onClick={() => setView('json')} className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${view === 'json' ? 'bg-white dark:bg-blue-600 text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>JSON</button>
-                        <button onClick={() => setView('curl')} className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${view === 'curl' ? 'bg-white dark:bg-blue-600 text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>cURL</button>
+                        <button
+                            onClick={() => setView('json')}
+                            className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${
+                                view === 'json'
+                                    ? 'bg-white dark:bg-blue-600 text-blue-600 dark:text-white'
+                                    : 'text-gray-600 dark:text-gray-400'
+                            }`}
+                        >
+                            JSON
+                        </button>
+                        <button
+                            onClick={() => setView('curl')}
+                            className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${
+                                view === 'curl'
+                                    ? 'bg-white dark:bg-blue-600 text-blue-600 dark:text-white'
+                                    : 'text-gray-600 dark:text-gray-400'
+                            }`}
+                        >
+                            cURL
+                        </button>
                     </div>
                 </div>
+
                 <textarea
                     value={displayValue}
                     onChange={(e) => view === 'json' ? setJsonValue(e.target.value) : null}
                     readOnly={view === 'curl'}
                     className="w-full min-h-[200px] p-4 bg-white dark:bg-[#2d2d3d] border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-200 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />
+
                 <button className="mt-4 py-2 px-6 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-500 transition-colors">
                     Update
                 </button>
@@ -156,6 +184,7 @@ export default function JobDashboard() {
                         <div className="space-y-8">
                             <ConfigEditor
                                 title="Pagination Request"
+                                subtitle="Filter: jobCollectionSlug"
                                 jsonValue={paginationCurl}
                                 setJsonValue={setPaginationCurl}
                                 view={paginationView}
@@ -163,6 +192,7 @@ export default function JobDashboard() {
                             />
                             <ConfigEditor
                                 title="Individual Job Request"
+                                subtitle="Filter: voyagerJobsDashJobCards"
                                 jsonValue={individualJobCurl}
                                 setJsonValue={setIndividualJobCurl}
                                 view={individualJobView}
