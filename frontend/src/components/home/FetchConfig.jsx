@@ -96,7 +96,7 @@ export default function JobDashboard() {
                                     onChange={(e) =>
                                         setPaginationCurl(e.target.value)
                                     }
-                                    className="w-full min-h-[150px] p-4 bg-[#2d2d3d] border border-gray-600 rounded-lg text-gray-200 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                    className="w-full min-h-[150px] p-4 bg-white dark:bg-[#2d2d3d] border border-gray-600 rounded-lg text-gray-200 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
                                 />
                                 <button className="mt-4 py-2 px-6 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-500 transition-colors">
                                     Update
@@ -145,7 +145,7 @@ export default function JobDashboard() {
     return (
         <div className="flex h-screen font-sans bg-gray-100 dark:bg-gray-900">
             {/* ------------------------- SIDEBAR ------------------------- */}
-            <aside className="w-64 flex-shrink-0 bg-[#2d2d3d] p-5 flex flex-col justify-between">
+            <aside className="w-64 flex-shrink-0 bg-white dark:bg-[#2d2d3d] p-5 flex flex-col justify-between">
                 <nav className="flex flex-col space-y-2">
                     {[
                         { label: "Fetch Config", id: "fetch-config" },
