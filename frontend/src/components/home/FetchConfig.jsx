@@ -1,23 +1,29 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import { Sun, Moon, LogOut } from "lucide-react";
 
 /**
- * JobDashboard – full‑screen dashboard with a permanent sidebar
- * featuring navigation at the top and the signed‑in user’s profile
- * anchored on the bottom‑left (just like the screenshot the user sent).
+ * JobDashboard – full‑screen dashboard layout
+ *  ┌────────────────────┬───────────────────────────────────────────────┐
+ *  │                    │  header (dark‑mode + logout icons)           │
+ *  │    SIDE BAR        ├───────────────────────────────────────────────┤
+ *  │ (permanent)        │  main content (switches by activeView)       │
+ *  └────────────────────┴───────────────────────────────────────────────┘
+ *  The header sits only above the right pane so the sidebar isn’t hidden.
  */
 export default function JobDashboard() {
     /* ---------------------------- STATE ---------------------------- */
     const [activeView, setActiveView] = useState("fetch-config");
     const [paginationCurl, setPaginationCurl] = useState("Loading...");
     const [individualJobCurl, setIndividualJobCurl] = useState("Loading...");
+    const [isDark, setIsDark] = useState(() =>
+        document.documentElement.classList.contains("dark")
+    );
 
     /* ----------------------- FAKE USER PROFILE --------------------- */
-    // In the future this can come from your auth context or /me endpoint
     const profile = {
         name: "Custom User",
         email: "user@gmail.com",
-        // fallback identicon avatar – swap with real one when available
         avatar:
             "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y"
     };
@@ -49,6 +55,23 @@ export default function JobDashboard() {
             });
     }, []);
 
+    /* --------------------------- HANDLERS -------------------------- */
+    const toggleDarkMode = () => {
+        setIsDark((prev) => {
+            const newVal = !prev;
+            if (newVal) {
+                document.documentElement.classList.add("dark");
+            } else {
+                document.documentElement.classList.remove("dark");
+            }
+            return newVal;
+        });
+    };
+
+    const handleLogout = () => {
+        console.log("Logging out...");
+    };
+
     /* ------------------------ RENDER VIEWS ------------------------- */
     const renderActiveView = () => {
         switch (activeView) {
@@ -70,7 +93,9 @@ export default function JobDashboard() {
                                 </h2>
                                 <textarea
                                     value={paginationCurl}
-                                    onChange={(e) => setPaginationCurl(e.target.value)}
+                                    onChange={(e) =>
+                                        setPaginationCurl(e.target.value)
+                                    }
                                     className="w-full min-h-[150px] p-4 bg-[#2d2d3d] border border-gray-600 rounded-lg text-gray-200 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
                                 />
                                 <button className="mt-4 py-2 px-6 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-500 transition-colors">
@@ -85,7 +110,9 @@ export default function JobDashboard() {
                                 </h2>
                                 <textarea
                                     value={individualJobCurl}
-                                    onChange={(e) => setIndividualJobCurl(e.target.value)}
+                                    onChange={(e) =>
+                                        setIndividualJobCurl(e.target.value)
+                                    }
                                     className="w-full min-h-[150px] p-4 bg-[#2d2d3d] border border-gray-600 rounded-lg text-gray-200 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
                                 />
                                 <button className="mt-4 py-2 px-6 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-500 transition-colors">
@@ -95,21 +122,20 @@ export default function JobDashboard() {
                         </div>
                     </div>
                 );
-
             case "job-listings":
                 return (
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-100">Job Listings</h1>
+                        <h1 className="text-3xl font-bold text-gray-100">
+                            Job Listings
+                        </h1>
                     </div>
                 );
-
             case "profile":
                 return (
                     <div>
                         <h1 className="text-3xl font-bold text-gray-100">Profile</h1>
                     </div>
                 );
-
             default:
                 return null;
         }
@@ -117,10 +143,9 @@ export default function JobDashboard() {
 
     /* ----------------------------- JSX ---------------------------- */
     return (
-        <div className="flex h-screen bg-gray-100 dark:bg-gray-900 font-sans">
-            {/* --------------------------- SIDEBAR --------------------------- */}
+        <div className="flex h-screen font-sans bg-gray-100 dark:bg-gray-900">
+            {/* ------------------------- SIDEBAR ------------------------- */}
             <aside className="w-64 flex-shrink-0 bg-[#2d2d3d] p-5 flex flex-col justify-between">
-                {/* Navigation */}
                 <nav className="flex flex-col space-y-2">
                     {[
                         { label: "Fetch Config", id: "fetch-config" },
@@ -140,8 +165,6 @@ export default function JobDashboard() {
                         </button>
                     ))}
                 </nav>
-
-                {/* Profile – sticks to the bottom */}
                 <div className="flex items-center space-x-3 pt-4 border-t border-gray-700">
                     <img
                         src={profile.avatar}
@@ -149,14 +172,41 @@ export default function JobDashboard() {
                         className="w-10 h-10 rounded-full object-cover"
                     />
                     <div className="flex flex-col leading-tight">
-                        <span className="text-gray-200 font-semibold">{profile.name}</span>
-                        <span className="text-gray-400 text-xs">{profile.email}</span>
+                        <span className="text-gray-200 font-semibold">
+                            {profile.name}
+                        </span>
+                        <span className="text-gray-400 text-xs">
+                            {profile.email}
+                        </span>
                     </div>
                 </div>
             </aside>
 
-            {/* ------------------------ MAIN CONTENT ------------------------ */}
-            <main className="flex-grow p-10 overflow-y-auto">{renderActiveView()}</main>
+            {/* ------------- RIGHT SIDE: HEADER + MAIN CONTENT ---------- */}
+            <div className="flex flex-col flex-1 min-w-0">
+                {/* --------------------------- TOP BAR --------------------------- */}
+                <header className="h-14 flex items-center justify-end px-4 bg-gray-200 dark:bg-gray-800 shadow-sm space-x-2">
+                    <button
+                        onClick={toggleDarkMode}
+                        className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-400 dark:hover:bg-gray-600 transition-colors"
+                        aria-label="Toggle dark mode"
+                    >
+                        {isDark ? <Sun size={18} /> : <Moon size={18} />}
+                    </button>
+                    <button
+                        onClick={handleLogout}
+                        className="w-9 h-9 flex items-center justify-center rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
+                        aria-label="Logout"
+                    >
+                        <LogOut size={18} />
+                    </button>
+                </header>
+
+                {/* ---------------------- MAIN CONTENT ---------------------- */}
+                <main className="flex-1 p-10 overflow-y-auto">
+                    {renderActiveView()}
+                </main>
+            </div>
         </div>
     );
 }
