@@ -15,4 +15,4 @@ def home():
 
 if __name__ == '__main__':
     create_db_and_tables()
-    app.run(debug=True)
+    app.run(debug=True, use_reloader=False)
