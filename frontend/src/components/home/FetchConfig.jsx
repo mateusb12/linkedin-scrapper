@@ -2,26 +2,74 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { Sun, Moon, LogOut } from "lucide-react";
 
+// ✅ NEW: cURL Command Generation Function
+const generateCurlCommand = (jsonString) => {
+    try {
+        // First, parse the JSON from the textarea
+        const config = JSON.parse(jsonString);
+
+        // This is the ideal structure, we assume the previous fixes are on the server
+        // or we can re-apply them here if needed.
+        const url = new URL(config.base_url);
+        // Add query variables to URL
+        Object.keys(config).forEach(key => {
+            if (key.startsWith('variables_')) {
+                const queryParamKey = key.replace('variables_', '');
+                url.searchParams.append(queryParamKey, config[key]);
+            }
+        });
+
+        let curlCmd = `curl '${url.toString()}'`;
+
+        if (config.method && config.method.toUpperCase() !== 'GET') {
+            curlCmd += ` \\\n  -X ${config.method.toUpperCase()}`;
+        }
+
+        // Generate headers
+        if (config.headers) {
+            for (const [key, value] of Object.entries(config.headers)) {
+                // If a value is an object (like a parsed x-li-track), stringify it back for the header
+                const headerValue = typeof value === 'object' ? JSON.stringify(value) : value;
+                curlCmd += ` \\\n  -H '${key}: ${headerValue.replace(/'/g, "'\\''")}'`;
+            }
+        }
+
+        // Handle body
+        if (config.body && config.body !== null && config.body !== 'null') {
+            const bodyValue = typeof config.body === 'object' ? JSON.stringify(config.body) : config.body;
+            curlCmd += ` \\\n  --data-raw '${bodyValue.replace(/'/g, "'\\''")}'`;
+        }
+
+        curlCmd += ' \\\n  --compressed';
+
+        return curlCmd;
+
+    } catch (e) {
+        console.error("Could not generate cURL command:", e);
+        return "Invalid JSON configuration. Cannot generate cURL.";
+    }
+};
+
+
 export default function JobDashboard() {
-    // 1. Initial state is determined by checking the <html> tag once.
     const [isDark, setIsDark] = useState(() =>
         document.documentElement.classList.contains("dark")
     );
 
-    // 2. A useEffect hook now syncs the state to the DOM.
-    // This is the single source of truth for the dark class.
     useEffect(() => {
         const root = document.documentElement;
-        if (isDark) {
-            root.classList.add('dark');
-        } else {
-            root.classList.remove('dark');
-        }
-    }, [isDark]); // This effect runs only when the `isDark` state changes.
+        if (isDark) root.classList.add('dark');
+        else root.classList.remove('dark');
+    }, [isDark]);
 
     const [activeView, setActiveView] = useState("fetch-config");
     const [paginationCurl, setPaginationCurl] = useState("Loading...");
     const [individualJobCurl, setIndividualJobCurl] = useState("Loading...");
+
+    // ✅ NEW: State to manage view mode (JSON or cURL)
+    const [paginationView, setPaginationView] = useState('json');
+    const [individualJobView, setIndividualJobView] = useState('json');
+
 
     const profile = {
         name: "Custom User",
@@ -33,32 +81,68 @@ export default function JobDashboard() {
         const paginationUrl = "http://localhost:5000/fetch-jobs/pagination-curl";
         const individualJobUrl = "http://localhost:5000/fetch-jobs/individual-job-curl";
 
+        const processAndSetData = (data, setter) => {
+            let processedData = data;
+            if (processedData && typeof processedData.headers === 'string') {
+                try {
+                    processedData.headers = JSON.parse(processedData.headers);
+                    if (processedData.headers && typeof processedData.headers['x-li-track'] === 'string') {
+                        processedData.headers['x-li-track'] = JSON.parse(processedData.headers['x-li-track']);
+                    }
+                } catch (e) {
+                    console.error("Failed to parse nested JSON", e);
+                }
+            }
+            setter(JSON.stringify(processedData, null, 2));
+        };
+
         axios.get(paginationUrl)
-            .then((res) => setPaginationCurl(res.data))
+            .then((res) => processAndSetData(res.data, setPaginationCurl))
             .catch((err) => {
                 console.error("Error fetching pagination curl:", err);
-                setPaginationCurl("Failed to fetch. Is your local server running?\n\nExample:\nGET http://example.com/api/jobs?page=1");
+                setPaginationCurl("Failed to fetch.");
             });
 
         axios.get(individualJobUrl)
-            .then((res) => setIndividualJobCurl(res.data))
+            .then((res) => processAndSetData(res.data, setIndividualJobCurl))
             .catch((err) => {
                 console.error("Error fetching individual job curl:", err);
-                setIndividualJobCurl("Failed to fetch. Is your local server running?\n\nExample:\nGET http://example.com/api/job/123");
+                setIndividualJobCurl("Failed to fetch.");
             });
     }, []);
 
-    // 3. The handler now only needs to toggle the state.
-    const toggleDarkMode = () => {
-        setIsDark(prev => !prev);
-    };
+    const toggleDarkMode = () => setIsDark(prev => !prev);
+    const handleLogout = () => console.log("Logging out...");
 
-    const handleLogout = () => {
-        console.log("Logging out...");
+    // ✅ UPDATED: The view rendering logic is now cleaner
+    const ConfigEditor = ({ title, jsonValue, setJsonValue, view, setView }) => {
+        const displayValue = view === 'json' ? jsonValue : generateCurlCommand(jsonValue);
+
+        return (
+            <div>
+                <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-300">
+                        {title}
+                    </h2>
+                    <div className="flex items-center rounded-lg bg-gray-200 dark:bg-gray-700 p-1">
+                        <button onClick={() => setView('json')} className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${view === 'json' ? 'bg-white dark:bg-blue-600 text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>JSON</button>
+                        <button onClick={() => setView('curl')} className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${view === 'curl' ? 'bg-white dark:bg-blue-600 text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>cURL</button>
+                    </div>
+                </div>
+                <textarea
+                    value={displayValue}
+                    onChange={(e) => view === 'json' ? setJsonValue(e.target.value) : null}
+                    readOnly={view === 'curl'}
+                    className="w-full min-h-[200px] p-4 bg-white dark:bg-[#2d2d3d] border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-200 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+                <button className="mt-4 py-2 px-6 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-500 transition-colors">
+                    Update
+                </button>
+            </div>
+        );
     };
 
     const renderActiveView = () => {
-        // ... (The rest of this function remains unchanged)
         switch (activeView) {
             case "fetch-config":
                 return (
@@ -70,56 +154,33 @@ export default function JobDashboard() {
                             Define the GET request details for fetching job data.
                         </p>
                         <div className="space-y-8">
-                            <div>
-                                <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-300 mb-2">
-                                    Pagination Request
-                                </h2>
-                                <textarea
-                                    value={paginationCurl}
-                                    onChange={(e) => setPaginationCurl(e.target.value)}
-                                    className="w-full min-h-[150px] p-4 bg-white dark:bg-[#2d2d3d] border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-200 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                                />
-                                <button className="mt-4 py-2 px-6 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-500 transition-colors">
-                                    Update
-                                </button>
-                            </div>
-                            <div>
-                                <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-300 mb-2">
-                                    Individual Job Request
-                                </h2>
-                                <textarea
-                                    value={individualJobCurl}
-                                    onChange={(e) => setIndividualJobCurl(e.target.value)}
-                                    className="w-full min-h-[150px] p-4 bg-white dark:bg-[#2d2d3d] border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-200 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                                />
-                                <button className="mt-4 py-2 px-6 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-500 transition-colors">
-                                    Update
-                                </button>
-                            </div>
+                            <ConfigEditor
+                                title="Pagination Request"
+                                jsonValue={paginationCurl}
+                                setJsonValue={setPaginationCurl}
+                                view={paginationView}
+                                setView={setPaginationView}
+                            />
+                            <ConfigEditor
+                                title="Individual Job Request"
+                                jsonValue={individualJobCurl}
+                                setJsonValue={setIndividualJobCurl}
+                                view={individualJobView}
+                                setView={setIndividualJobView}
+                            />
                         </div>
                     </div>
                 );
-            case "job-listings":
-                return (
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-                            Job Listings
-                        </h1>
-                    </div>
-                );
-            case "profile":
-                return (
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Profile</h1>
-                    </div>
-                );
-            default:
-                return null;
+            // ... other cases remain the same
+            case "job-listings": return <div>Job Listings</div>;
+            case "profile": return <div>Profile</div>;
+            default: return null;
         }
     };
 
     return (
         <div className="flex h-screen font-sans bg-gray-100 dark:bg-gray-900">
+            {/* Sidebar and Header remain the same */}
             <aside className="w-64 flex-shrink-0 bg-white dark:bg-[#2d2d3d] p-5 flex flex-col justify-between">
                 <nav className="flex flex-col space-y-2">
                     {[
