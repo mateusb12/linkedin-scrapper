@@ -5,6 +5,7 @@ from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+
 # Assuming these imports are correct relative to your project structure
 from linkedin.api_fetch.orchestration_curls.orchestration_parser import parse_orchestration_data
 from linkedin.api_fetch.pagination.pagination_recommended_jobs import parse_curl_command_from_curl_string, \
@@ -51,16 +52,16 @@ def get_total_job_pages() -> Optional[int]:
 
 
 def load_pagination_job_curl_command() -> FetchCurl:
+    """Loads the pagination cURL command from the database."""
     from backend.database.database_connection import get_db_session
-
     db = get_db_session()
     record = db.query(FetchCurl).filter(FetchCurl.name == "Pagination").first()
     return record
 
 
 def load_single_job_curl_command() -> FetchCurl:
+    """Loads the single job cURL command from the database."""
     from backend.database.database_connection import get_db_session
-
     db = get_db_session()
     record = db.query(FetchCurl).filter(FetchCurl.name == "SingleJob").first()
     return record
@@ -79,8 +80,6 @@ def fetch_page_data(page_number: int, quiet: bool = False) -> Optional[Dict[str,
         A dictionary containing the parsed data for the requested page.
     """
     try:
-        # content = PAGINATION_CURL_COMMAND_PATH.read_text(encoding="utf-8").strip()
-        # url, headers = parse_curl_command_from_curl_string(content)
         db_content = load_pagination_job_curl_command()
         url, headers = parse_curl_command_from_orm(db_content)
         if not quiet:
@@ -88,14 +87,9 @@ def fetch_page_data(page_number: int, quiet: bool = False) -> Optional[Dict[str,
     except Exception as e:
         raise RuntimeError(f"Failed to parse pagination cURL: {e}")
 
-    # Find the count (jobs per page), defaulting to 24 if not found
     count_match = re.search(r"count:(\d+)", url)
     count = int(count_match.group(1)) if count_match else 24
-
-    # Calculate the start index based on the desired page
     start_index = (page_number - 1) * count
-
-    # Replace the 'start:XX' value in the URL with the calculated one.
     modified_url = re.sub(r"start:\d+", f"start:{start_index}", url)
 
     if not quiet:
@@ -142,9 +136,70 @@ def fetch_individual_job_data(job_urn_ids: List[str]) -> List[Dict[str, Any]]:
     return structured
 
 
+def fetch_and_process_page_data(page_number: int) -> Optional[Dict[str, Any]]:
+    """
+    Fetches all necessary data for a given page number and combines it.
+
+    Args:
+        page_number: The page number to fetch.
+
+    Returns:
+        A dictionary containing the combined data for the page, or None if fetching fails.
+    """
+    # 1. Fetch the specific page's data
+    page_data = fetch_page_data(page_number=page_number)
+    if not page_data:
+        print(f"Halting processing for page {page_number} as no data was fetched.")
+        return None
+
+    # 2. Extract URNs to fetch individual job details
+    job_urn_ids = [item.get("urn") for item in page_data.get("jobs", []) if item and item.get("urn")]
+    if not job_urn_ids:
+        print(f"No job URNs found on page {page_number}.")
+        # Still return page_data in case it contains useful metadata
+        return parse_orchestration_data(page_data, [])
+
+    # 3. Fetch and structure individual job data
+    structured_jobs_data = fetch_individual_job_data(job_urn_ids)
+
+    # 4. Combine pagination and individual job data
+    combined_data = parse_orchestration_data(page_data, structured_jobs_data)
+    return combined_data
+
+
+def save_data_to_json(data: Dict[str, Any], page_number: int):
+    """
+    Saves the provided data to a JSON file.
+
+    Args:
+        data: The dictionary of data to save.
+        page_number: The page number, used for the filename.
+    """
+    out_dir = Path("output")
+    out_dir.mkdir(exist_ok=True)
+
+    output_filename = f"combined_data_page_{page_number}.json"
+    output_path = out_dir / output_filename
+
+    try:
+        output_path.write_text(
+            json.dumps(
+                data,
+                indent=2,
+                ensure_ascii=False,
+                default=lambda o: o.isoformat() if isinstance(o, (date, datetime)) else str(o),
+            ),
+            encoding="utf-8",
+        )
+        job_count = len(data.get('jobs', []))
+        print(f"\n✔ Saved {output_filename} ({job_count} entries)")
+    except Exception as e:
+        print(f"\n✗ Failed to save data for page {page_number}: {e}")
+
+
 def run_fetch_for_page(page_number: int):
     """
-    Orchestrates the entire process of fetching, processing, and saving
+    Orchestrates the process of fetching, processing, and saving
     all job data for a single, specified page.
 
     Args:
@@ -163,42 +218,20 @@ def run_fetch_for_page(page_number: int):
         print(f"\nError: Requested page {page_number} is invalid. Only pages 1 through {total_pages} are available.")
         return
 
-    # 1. Fetch the specific page's data
-    page_data = fetch_page_data(page_number=page_number)
-    if not page_data:
-        print("Halting execution as no data was fetched for the specified page.")
-        return
+    # Fetch and process the data
+    combined_data = fetch_and_process_page_data(page_number)
 
-    job_urn_ids = [item.get("urn") for item in page_data.get("jobs", []) if item and item.get("urn")]
-
-    # 2. Fetch and structure individual job data
-    structured_jobs_data = fetch_individual_job_data(job_urn_ids)
-
-    combined_data = parse_orchestration_data(page_data, structured_jobs_data)
-
-    # 3. Persist outputs
-    out_dir = Path("output")
-    out_dir.mkdir(exist_ok=True)
-
-    output_filename = f"combined_data_page_{page_number}.json"
-    output_path = out_dir / output_filename
-
-    output_path.write_text(
-        json.dumps(
-            combined_data,
-            indent=2,
-            ensure_ascii=False,
-            default=lambda o: o.isoformat() if isinstance(o, (date, datetime)) else str(o),
-        ),
-        encoding="utf-8",
-    )
-    print(f"\n✔ Saved {output_filename} ({len(page_data.get('jobs', []))} entries)")
+    # Save the data if it was fetched successfully
+    if combined_data:
+        save_data_to_json(combined_data, page_number)
+    else:
+        print(f"\nNo data was processed for page {page_number}, nothing to save.")
 
 
 def main():
     """
-    This function now serves as a demonstration of how to use the module's functions.
-    You can call get_total_pages() and run_fetch_for_page() from other scripts.
+    Serves as a demonstration of how to use the module's functions.
+    You can call get_total_job_pages() and run_fetch_for_page() from other scripts.
     """
     print("--- Running Script Demonstration ---")
 
@@ -209,8 +242,12 @@ def main():
 
     # Example 2: Fetch data for a specific page (e.g., page 5)
     # You can change this page number to test with a different page.
-    page_to_fetch = 5
-    print(f"\nDemonstration: Attempting to fetch data for page {page_to_fetch}...")
+    page_to_fetch = 5  # <--- CHANGE THIS VALUE TO TEST DIFFERENT PAGES
+    if total_pages and page_to_fetch > total_pages:
+        print(f"\nWarning: Page {page_to_fetch} is greater than the total of {total_pages} pages. Adjusting to last page.")
+        page_to_fetch = total_pages
+
+    print(f"\nDemonstration: Attempting to fetch and save data for page {page_to_fetch}...")
     run_fetch_for_page(page_number=page_to_fetch)
 
 

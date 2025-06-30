@@ -4,7 +4,7 @@ from flask import Blueprint, abort, jsonify, request
 from sqlalchemy.orm.exc import NoResultFound
 
 from database.database_connection import get_db_session
-from linkedin.api_fetch.orchestrator import get_total_job_pages
+from linkedin.api_fetch.orchestrator import get_total_job_pages, run_fetch_for_page
 from models import FetchCurl
 from models.fetch_models import parse_fetch_string_flat
 
@@ -156,3 +156,23 @@ def get_total_pages():
     total_pages: int = get_total_job_pages()
     return jsonify({"total_pages": total_pages})
 
+
+@fetch_jobs_bp.route('/fetch-page/<int:page_number>', methods=['GET'])
+def fetch_page(page_number: int):
+    """
+    Fetches a specific page of job data using the pagination cURL command.
+
+    Args:
+        page_number: The page number to fetch (e.g., 1, 2, 3...).
+
+    Returns:
+        A JSON response containing the parsed data for the requested page.
+    """
+    if page_number < 1:
+        abort(400, description="Page number must be greater than 0.")
+
+    page_data = run_fetch_for_page(page_number=page_number)
+    if not page_data:
+        abort(404, description=f"No data found for page {page_number}.")
+
+    return jsonify(page_data)
