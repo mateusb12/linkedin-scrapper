@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import { Sun, Moon, LogOut, Loader2, ChevronRight } from "lucide-react";
+import { Sun, Moon, LogOut, Loader2, ChevronRight, Clipboard, Check } from "lucide-react";
 
 // ✅ NEW: cURL Command Generation Function
 const generateCurlCommand = (jsonString) => {
@@ -60,10 +60,14 @@ const FetchJobsView = () => {
     const [isFetchingPages, setIsFetchingPages] = useState(false);
     const [log, setLog] = useState([]);
     const [error, setError] = useState('');
+    const [progress, setProgress] = useState(0);
+    const [fetchedData, setFetchedData] = useState([]);
+    const [isCopied, setIsCopied] = useState(false);
 
     const handleGetTotalPages = () => {
         setIsFetchingTotal(true);
         setError('');
+        setFetchedData([]);
         axios.get("http://localhost:5000/fetch-jobs/get-total-pages")
             .then(res => {
                 const pages = res.data.total_pages;
@@ -86,23 +90,53 @@ const FetchJobsView = () => {
         setIsFetchingPages(true);
         setError('');
         setLog([]);
+        setFetchedData([]);
+        setProgress(0);
+
+        const totalPagesToFetch = endPage - startPage + 1;
+        let successfulFetches = 0;
+        let allData = [];
 
         for (let i = startPage; i <= endPage; i++) {
             try {
                 setLog(prev => [...prev, `Fetching page ${i}...`]);
-                await axios.get(`http://localhost:5000/fetch-jobs/fetch-page/${i}`);
+                const res = await axios.get(`http://localhost:5000/fetch-jobs/fetch-page/${i}`);
                 setLog(prev => [...prev, `✅ Successfully fetched page ${i}`]);
+                if (Array.isArray(res.data.jobs)) {
+                    allData = [...allData, ...res.data.jobs];
+                } else {
+                    setLog(prev => [...prev, `⚠️ Page ${i} response did not contain 'jobs' array.`]);
+                }
+                successfulFetches++;
             } catch (err) {
                 console.error(`Error fetching page ${i}:`, err);
-                setLog(prev => [...prev, `❌ Failed to fetch page ${i}: ${err.response?.data?.description || err.message}`]);
+                const errorMessage = err.response?.data?.description || err.message;
+                setLog(prev => [...prev, `❌ Failed to fetch page ${i}: ${errorMessage}`]);
                 setError(`An error occurred. See log for details.`);
-                // Optional: break the loop on first error
-                // break;
             }
+            const pagesFetched = i - startPage + 1;
+            const newProgress = (pagesFetched / totalPagesToFetch) * 100;
+            setProgress(newProgress);
         }
 
-        setLog(prev => [...prev, "--- All tasks complete ---"]);
+        setFetchedData(allData);
+        setLog(prev => [...prev, `--- All tasks complete. Fetched ${successfulFetches}/${totalPagesToFetch} pages successfully. ---`]);
         setIsFetchingPages(false);
+    };
+
+    const handleCopy = () => {
+        const dataStr = JSON.stringify(fetchedData, null, 2);
+        const el = document.createElement('textarea');
+        el.value = dataStr;
+        el.setAttribute('readonly', '');
+        el.style.position = 'absolute';
+        el.style.left = '-9999px';
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
     };
 
     return (
@@ -122,7 +156,7 @@ const FetchJobsView = () => {
                 <div className="flex items-center mt-4 space-x-4">
                     <button
                         onClick={handleGetTotalPages}
-                        disabled={isFetchingTotal}
+                        disabled={isFetchingTotal || isFetchingPages}
                         className="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center"
                     >
                         {isFetchingTotal && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -178,14 +212,46 @@ const FetchJobsView = () => {
                 </div>
             </div>
 
-            {/* Log Output */}
-            {(log.length > 0 || error) && (
+            {/* Progress Bar and Log */}
+            {(isFetchingPages || log.length > 0) && (
                 <div className="mt-8">
-                    <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-300">Fetch Log</h2>
-                    {error && <p className="mt-2 text-sm text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-md">{error}</p>}
+                    <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-300">Fetch Progress</h2>
+                    {isFetchingPages && (
+                        <div className="mt-4">
+                            <div className="flex justify-between mb-1">
+                                <span className="text-base font-medium text-blue-700 dark:text-white">Progress</span>
+                                <span className="text-sm font-medium text-blue-700 dark:text-white">{Math.round(progress)}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                                <div className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
+                            </div>
+                        </div>
+                    )}
+                    {error && <p className="mt-4 text-sm text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-md">{error}</p>}
                     <pre className="mt-4 p-4 bg-gray-900 text-white rounded-lg text-sm font-mono overflow-x-auto h-64">
                         {log.map((entry, i) => <div key={i}>{entry}</div>)}
                     </pre>
+                </div>
+            )}
+
+            {/* Results Output */}
+            {fetchedData.length > 0 && !isFetchingPages && (
+                <div className="mt-8">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-300">Fetched Data</h2>
+                        <button
+                            onClick={handleCopy}
+                            className="flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 transition-colors"
+                        >
+                            {isCopied ? <Check size={16} className="mr-2 text-green-500" /> : <Clipboard size={16} className="mr-2" />}
+                            {isCopied ? 'Copied!' : 'Copy to Clipboard'}
+                        </button>
+                    </div>
+                    <textarea
+                        readOnly
+                        value={JSON.stringify(fetchedData, null, 2)}
+                        className="w-full min-h-[400px] mt-4 p-4 bg-white dark:bg-[#2d2d3d] border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-200 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
                 </div>
             )}
         </div>

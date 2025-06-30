@@ -221,11 +221,13 @@ def run_fetch_for_page(page_number: int):
     # Fetch and process the data
     combined_data = fetch_and_process_page_data(page_number)
 
-    # Save the data if it was fetched successfully
-    if combined_data:
-        save_data_to_json(combined_data, page_number)
-    else:
-        print(f"\nNo data was processed for page {page_number}, nothing to save.")
+    return combined_data
+
+    # # Save the data if it was fetched successfully
+    # if combined_data:
+    #     save_data_to_json(combined_data, page_number)
+    # else:
+    #     print(f"\nNo data was processed for page {page_number}, nothing to save.")
 
 
 def main():
