@@ -4,7 +4,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import List, Optional, Dict
 
-from backend.path.path_reference import get_output_curls_folder_path
+from path.path_reference import get_output_curls_folder_path
 
 
 # --- Dataclass Definitions ---

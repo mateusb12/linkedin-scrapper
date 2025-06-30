@@ -1,7 +1,7 @@
+import os
 from flask import Flask
-
-from backend.controllers.job_curls import fetch_jobs_bp
-from backend.database.database_connection import create_db_and_tables
+from controllers.job_curls import fetch_jobs_bp
+from database.database_connection import create_db_and_tables
 
 app = Flask(__name__)
 

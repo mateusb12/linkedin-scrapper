@@ -8,7 +8,7 @@ from urllib.parse import urlparse, parse_qs
 from sqlalchemy import create_engine, Column, Integer, String, Text
 from sqlalchemy.orm import sessionmaker
 
-from backend.models import Base
+from models import Base
 
 
 # 2. Define the ORM Model for our data

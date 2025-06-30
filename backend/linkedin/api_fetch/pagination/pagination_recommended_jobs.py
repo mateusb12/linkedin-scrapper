@@ -7,7 +7,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, date, timedelta
 from typing import List, Optional, Dict, Tuple
 
-from backend.models import FetchCurl
+from models import FetchCurl
 
 
 # --- Dataclass Definitions for Structured Output ---

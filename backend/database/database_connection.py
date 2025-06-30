@@ -4,7 +4,7 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend import models
+import models
 
 print(f"Importing ORM models... {models.__name__}")
 

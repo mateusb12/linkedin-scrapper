@@ -3,7 +3,7 @@
 from sqlalchemy import Column, String, Text, ForeignKey
 from sqlalchemy.orm import relationship
 
-from backend.models.base_model import Base
+from models.base_model import Base
 
 
 class Company(Base):

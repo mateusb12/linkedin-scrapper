@@ -6,14 +6,14 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 # Assuming these imports are correct relative to your project structure
-from backend.linkedin.api_fetch.orchestration_curls.orchestration_parser import parse_orchestration_data
-from backend.linkedin.api_fetch.pagination.pagination_recommended_jobs import parse_curl_command_from_curl_string, \
+from linkedin.api_fetch.orchestration_curls.orchestration_parser import parse_orchestration_data
+from linkedin.api_fetch.pagination.pagination_recommended_jobs import parse_curl_command_from_curl_string, \
     fetch_linkedin_jobs, \
     parse_jobs_page, parse_curl_command_from_orm
-from backend.linkedin.api_fetch.single_job.fetch_single_job_details import make_session, fetch_job_detail
-from backend.linkedin.api_fetch.single_job.structure_single_job import extract_job_details
-from backend.models import FetchCurl
-from backend.path.path_reference import get_orchestration_curls_folder_path
+from linkedin.api_fetch.single_job.fetch_single_job_details import make_session, fetch_job_detail
+from linkedin.api_fetch.single_job.structure_single_job import extract_job_details
+from models import FetchCurl
+from path.path_reference import get_orchestration_curls_folder_path
 
 # Paths to your orchestration cURL commands
 env_path = get_orchestration_curls_folder_path()

@@ -3,10 +3,10 @@ from dataclasses import asdict
 from flask import Blueprint, abort, jsonify, request
 from sqlalchemy.orm.exc import NoResultFound
 
-from backend.database.database_connection import get_db_session
-from backend.linkedin.api_fetch.orchestrator import get_total_job_pages
-from backend.models import FetchCurl
-from backend.models.fetch_models import parse_fetch_string_flat
+from database.database_connection import get_db_session
+from linkedin.api_fetch.orchestrator import get_total_job_pages
+from models import FetchCurl
+from models.fetch_models import parse_fetch_string_flat
 
 fetch_jobs_bp = Blueprint("fetch-jobs", __name__, url_prefix="/fetch-jobs")
 
