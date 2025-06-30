@@ -1,9 +1,13 @@
 import json
+from urllib.parse import urlencode
+
 import requests
 import re
 from dataclasses import dataclass, asdict
 from datetime import datetime, date, timedelta
 from typing import List, Optional, Dict, Tuple
+
+from backend.models import FetchCurl
 
 
 # --- Dataclass Definitions for Structured Output ---
@@ -73,7 +77,7 @@ class JobsPage:
 
 # --- Helper Functions ---
 
-def parse_curl_command(curl_string: str) -> Tuple[str, Dict[str, str]]:
+def parse_curl_command_from_curl_string(curl_string: str) -> Tuple[str, Dict[str, str]]:
     """
     Parses a cURL command string to extract the URL and headers.
 
@@ -109,6 +113,63 @@ def parse_curl_command(curl_string: str) -> Tuple[str, Dict[str, str]]:
     cookie_match = re.search(r"-b '([^']*)'", curl_string)
     if cookie_match:
         headers['Cookie'] = cookie_match.group(1).strip()
+
+    return url, headers
+
+
+def parse_curl_command_from_orm(orm_object: FetchCurl) -> Tuple[str, Dict[str, str]]:
+    """
+    Constructs the URL and extracts headers from a FetchCurl ORM object.
+
+    Args:
+        orm_object: An instance of the FetchCurl ORM class.
+
+    Returns:
+        A tuple containing the reconstructed URL and a dictionary of headers.
+    """
+    # --- URL Reconstruction ---
+    # Start with the base URL
+    url = orm_object.base_url
+
+    # Prepare query parameters
+    params = {}
+    variables = {}
+
+    # Gather variables for the 'variables' parameter
+    if orm_object.variables_count is not None:
+        variables['count'] = orm_object.variables_count
+    if orm_object.variables_job_collection_slug:
+        variables['jobCollectionSlug'] = orm_object.variables_job_collection_slug
+    if orm_object.variables_query_origin:
+        # The query is nested inside variables
+        variables['query'] = {'origin': orm_object.variables_query_origin}
+    if orm_object.variables_start is not None:
+        variables['start'] = orm_object.variables_start
+
+    # Add the JSON-like 'variables' string to the main parameters
+    if variables:
+        # The format is '(key:value,key:value)'
+        variables_str = '(' + ','.join(
+            [f'{k}:{v}' if not isinstance(v, dict) else f"{k}:({','.join([f'{vk}:{vv}' for vk, vv in v.items()])})" for
+             k, v in variables.items()]) + ')'
+        params['variables'] = variables_str
+
+    # Add queryId
+    if orm_object.query_id:
+        params['queryId'] = orm_object.query_id
+
+    # Append query string to the base URL if there are parameters
+    if params:
+        url += '?' + urlencode(params, safe=':(),')
+
+    # --- Header Extraction ---
+    headers = {}
+    if orm_object.headers:
+        try:
+            # Load headers from the JSON string
+            headers = json.loads(orm_object.headers)
+        except json.JSONDecodeError:
+            print(f"Warning: Could not parse headers JSON: {orm_object.headers}")
 
     return url, headers
 
@@ -325,7 +386,7 @@ curl 'https://www.linkedin.com/voyager/api/graphql?variables=(count:24,jobCollec
     """
 
     try:
-        url, headers = parse_curl_command(curl_command)
+        url, headers = parse_curl_command_from_curl_string(curl_command)
         print("--- Successfully parsed cURL command ---")
         print("IMPORTANT: The cURL command contains sensitive, time-limited tokens (cookie, csrf-token).")
         print(

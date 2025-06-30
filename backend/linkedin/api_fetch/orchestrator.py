@@ -5,13 +5,14 @@ from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-
 # Assuming these imports are correct relative to your project structure
 from backend.linkedin.api_fetch.orchestration_curls.orchestration_parser import parse_orchestration_data
-from backend.linkedin.api_fetch.pagination.pagination_recommended_jobs import parse_curl_command, fetch_linkedin_jobs, \
-    parse_jobs_page
+from backend.linkedin.api_fetch.pagination.pagination_recommended_jobs import parse_curl_command_from_curl_string, \
+    fetch_linkedin_jobs, \
+    parse_jobs_page, parse_curl_command_from_orm
 from backend.linkedin.api_fetch.single_job.fetch_single_job_details import make_session, fetch_job_detail
 from backend.linkedin.api_fetch.single_job.structure_single_job import extract_job_details
+from backend.models import FetchCurl
 from backend.path.path_reference import get_orchestration_curls_folder_path
 
 # Paths to your orchestration cURL commands
@@ -49,6 +50,22 @@ def get_total_job_pages() -> Optional[int]:
     return total_pages
 
 
+def load_pagination_job_curl_command() -> FetchCurl:
+    from backend.database.database_connection import get_db_session
+
+    db = get_db_session()
+    record = db.query(FetchCurl).filter(FetchCurl.name == "Pagination").first()
+    return record
+
+
+def load_single_job_curl_command() -> FetchCurl:
+    from backend.database.database_connection import get_db_session
+
+    db = get_db_session()
+    record = db.query(FetchCurl).filter(FetchCurl.name == "SingleJob").first()
+    return record
+
+
 def fetch_page_data(page_number: int, quiet: bool = False) -> Optional[Dict[str, Any]]:
     """
     Executes the pagination cURL for a specific page, parses the jobs page,
@@ -62,8 +79,10 @@ def fetch_page_data(page_number: int, quiet: bool = False) -> Optional[Dict[str,
         A dictionary containing the parsed data for the requested page.
     """
     try:
-        content = PAGINATION_CURL_COMMAND_PATH.read_text(encoding="utf-8").strip()
-        url, headers = parse_curl_command(content)
+        # content = PAGINATION_CURL_COMMAND_PATH.read_text(encoding="utf-8").strip()
+        # url, headers = parse_curl_command_from_curl_string(content)
+        db_content = load_pagination_job_curl_command()
+        url, headers = parse_curl_command_from_orm(db_content)
         if not quiet:
             print("--- Successfully parsed pagination cURL command ---")
     except Exception as e:
