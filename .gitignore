@@ -21,6 +21,7 @@
 /backend/linkedin/api_fetch/potential_urls/potential_har/linkedin.har.json
 /backend/linkedin/api_fetch/single_job/raw_job_details.json
 /backend/linkedin/api_fetch/single_job/structured_job_details.json
-/backend/repomix-output.md
 /backend/database/*.db
 /backend/linkedin/api_fetch/output/*.json
+/frontend/repomix-frontend.md
+/backend/repomix-backend.md
