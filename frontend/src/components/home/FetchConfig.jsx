@@ -3,6 +3,7 @@ import axios from "axios";
 import {FetchJobsView} from "./FetchJobs.jsx";
 import {Sidebar} from "./Navbar.jsx";
 import {Header} from "./Navbar.jsx";
+import JobList from "./JobList.jsx";
 
 // ✅ cURL Command Generation Function (unchanged)
 const generateCurlCommand = (jsonString) => {
@@ -168,7 +169,7 @@ export default function JobDashboard() {
         switch (activeView) {
             case "fetch-config": return <FetchConfig />;
             case "fetch-jobs": return <FetchJobsView />;
-            case "job-listings": return <div>Job Listings</div>;
+            case "job-listings": return <JobList/>;
             case "profile": return <div>Profile</div>;
             default: return null;
         }
