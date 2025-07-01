@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import JobCoreViewer from "./components/swiper/JobCoreViewer.jsx";
-import JobDashboard from "./components/home/FetchConfig.jsx";
+import JobDashboard from "./components/home/MainComponent.jsx";
 
 function App() {
   const [count, setCount] = useState(0)
