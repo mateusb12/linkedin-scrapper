@@ -1,8 +1,8 @@
 import React, {useEffect, useState} from "react";
 import axios from "axios";
 import {FetchJobsView} from "./FetchJobs.jsx";
-import Sidebar from "./Sidebar.jsx";
-import Header from "./Header.jsx";
+import {Sidebar} from "./Navbar.jsx";
+import {Header} from "./Navbar.jsx";
 
 // ✅ cURL Command Generation Function (unchanged)
 const generateCurlCommand = (jsonString) => {
@@ -29,7 +29,7 @@ const generateCurlCommand = (jsonString) => {
             }
         }
 
-        if (config.body && config.body !== null && config.body !== 'null') {
+        if (config.body && config.body !== 'null') {
             const bodyValue = typeof config.body === 'object' ? JSON.stringify(config.body) : config.body;
             curlCmd += ` \\\n  --data-raw '${bodyValue.replace(/'/g, "'\\''")}'`;
         }
