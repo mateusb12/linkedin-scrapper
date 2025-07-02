@@ -17,7 +17,7 @@ def clear_tables(entity_list: list):
 
 def main():
     from models import Company, Job, FetchCurl
-    entities_to_clear = [FetchCurl]
+    entities_to_clear = [Company, Job]
 
     print(
         "\nWARNING: This action will permanently erase ALL rows in the "

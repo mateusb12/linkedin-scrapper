@@ -51,23 +51,52 @@ export const FetchJobsView = () => {
         for (let i = startPage; i <= endPage; i++) {
             try {
                 setLog(prev => [...prev, `Fetching page ${i}...`]);
-                const res = await axios.get(`http://localhost:5000/fetch-jobs/fetch-page/${i}`);
+
+                const res = await axios.get(
+                    `http://localhost:5000/fetch-jobs/fetch-page/${i}`
+                );
+
                 setLog(prev => [...prev, `✅ Successfully fetched page ${i}`]);
+
                 if (Array.isArray(res.data.jobs)) {
                     allData = [...allData, ...res.data.jobs];
                 } else {
-                    setLog(prev => [...prev, `⚠️ Page ${i} response did not contain 'jobs' array.`]);
+                    setLog(prev => [
+                        ...prev,
+                        `⚠️ Page ${i} response did not contain a 'jobs' array.`
+                    ]);
                 }
+
                 successfulFetches++;
             } catch (err) {
                 console.error(`Error fetching page ${i}:`, err);
+
                 const errorMessage = err.response?.data?.description || err.message;
-                setLog(prev => [...prev, `❌ Failed to fetch page ${i}: ${errorMessage}`]);
-                setError(`An error occurred. See log for details.`);
+                setLog(prev => [
+                    ...prev,
+                    `❌ Failed to fetch page ${i}: ${errorMessage}`
+                ]);
+                setError("An error occurred. See log for details.");
+
+                // ── Abort on true network failure ───────────────────────────────
+                const isNetworkError =
+                    !err.response ||
+                    err.code === "ERR_NETWORK" ||
+                    err.message === "Network Error";
+
+                if (isNetworkError) {
+                    const pagesFetched = i - startPage + 1;
+                    setProgress((pagesFetched / totalPagesToFetch) * 100);
+
+                    setLog(prev => [
+                        ...prev,
+                        "🛑 Network error detected — aborting remaining requests."
+                    ]);
+                    break;
+                }
             }
             const pagesFetched = i - startPage + 1;
-            const newProgress = (pagesFetched / totalPagesToFetch) * 100;
-            setProgress(newProgress);
+            setProgress((pagesFetched / totalPagesToFetch) * 100);
         }
 
         setFetchedData(allData);
