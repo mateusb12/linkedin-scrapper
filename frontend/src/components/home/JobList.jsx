@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Briefcase, MapPin, Building, Clock } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Briefcase, MapPin, Clock } from 'lucide-react';
 
 // Mock data representing job listings. In a real app, this would come from an API.
 const mockData = [
@@ -65,7 +65,7 @@ const JobListItem = ({ job, onSelect, isSelected }) => {
             onClick={() => onSelect(job)}
             className={`${baseClasses} ${isSelected ? selectedClasses : unselectedClasses}`}
         >
-            <h3 className="font-bold text-gray-800 dark:text-gray-100">{job.title}</h3>
+            <h3 className="font-bold text-gray-800 dark:text-gray-100 truncate">{job.title}</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{job.company.name}</p>
             <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{job.location}</p>
         </div>
@@ -137,11 +137,18 @@ const JobDetailView = ({ job }) => {
 /**
  * The main component for the job listings page.
  */
-const App = () => {
+const MainJobListing = () => {
     const [jobs, setJobs] = useState([]);
     const [filteredJobs, setFilteredJobs] = useState([]);
     const [filter, setFilter] = useState('');
     const [selectedJob, setSelectedJob] = useState(null);
+
+    // State for resizable column
+    const [isDragging, setIsDragging] = useState(false);
+    const [leftPanelWidth, setLeftPanelWidth] = useState(35); // Initial width in percentage
+    const containerRef = useRef(null);
+    const MIN_WIDTH = 20; // Minimum width in percentage
+    const MAX_WIDTH = 80; // Maximum width in percentage
 
     // Effect to load initial data
     useEffect(() => {
@@ -160,19 +167,65 @@ const App = () => {
         );
         setFilteredJobs(newFilteredJobs);
 
-        // If the currently selected job is not in the new filtered list,
-        // either select the first of the new list or clear the selection.
         if (selectedJob && !newFilteredJobs.some(job => job.urn === selectedJob.urn)) {
             setSelectedJob(newFilteredJobs.length > 0 ? newFilteredJobs[0] : null);
         }
 
     }, [filter, jobs, selectedJob]);
 
+    // Handlers for resizing
+    const handleMouseDown = (e) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const handleMouseUp = useCallback(() => {
+        setIsDragging(false);
+    }, []);
+
+    const handleMouseMove = useCallback((e) => {
+        if (!isDragging || !containerRef.current) return;
+
+        const containerRect = containerRef.current.getBoundingClientRect();
+        const newWidthPx = e.clientX - containerRect.left;
+        const newWidthPercent = (newWidthPx / containerRect.width) * 100;
+
+        // Clamp the width between min and max values
+        const clampedWidth = Math.max(MIN_WIDTH, Math.min(newWidthPercent, MAX_WIDTH));
+
+        setLeftPanelWidth(clampedWidth);
+    }, [isDragging, MIN_WIDTH, MAX_WIDTH]);
+
+    // Effect to add and remove global event listeners for resizing
+    useEffect(() => {
+        if (isDragging) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+        } else {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        }
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isDragging, handleMouseMove, handleMouseUp]);
+
+
     return (
         <div className="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
-            <div className="flex flex-col md:flex-row h-screen">
+            <div
+                ref={containerRef}
+                className="flex h-screen"
+                // Add a class to prevent text selection while dragging
+                style={{ userSelect: isDragging ? 'none' : 'auto' }}
+            >
                 {/* Left Column: Job List */}
-                <div className="w-full md:w-1/3 lg:w-2/5 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+                <div
+                    className="flex flex-col flex-shrink-0"
+                    style={{ width: `${leftPanelWidth}%` }}
+                >
                     <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                         <input
                             type="text"
@@ -199,8 +252,14 @@ const App = () => {
                     </div>
                 </div>
 
+                {/* Resizer Handle */}
+                <div
+                    className="w-2 cursor-col-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-500 dark:hover:bg-blue-600 transition-colors duration-200"
+                    onMouseDown={handleMouseDown}
+                />
+
                 {/* Right Column: Job Details */}
-                <main className="w-full md:w-2/3 lg:w-3/5 flex-grow">
+                <main className="flex-grow">
                     <JobDetailView job={selectedJob} />
                 </main>
             </div>
@@ -208,4 +267,4 @@ const App = () => {
     );
 };
 
-export default App;
+export default MainJobListing;
