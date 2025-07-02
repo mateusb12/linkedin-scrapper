@@ -63,7 +63,10 @@ def populate_from_json(data: dict):
                     posted_on=job_item.get('posted_on'),
                     job_url=job_item.get('job_url'),
                     description_full=job_item.get('description', {}).get('full_text'),
-                    company_urn=company_urn
+                    company_urn=company_urn,
+                    applicants=job_item.get('applicants', 0),
+                    description_snippet=job_item.get('description_snippet', ""),
+                    easy_apply=job_item.get('easy_apply', False),
                 )
                 db.add(new_job)
                 print(f"  -> Adding new job: {new_job.title}")
@@ -82,6 +85,7 @@ def populate_from_json(data: dict):
 
 if __name__ == "__main__":
     from database.database_connection import create_db_and_tables
+
     # 1. Create the database schema if it doesn't exist
     create_db_and_tables()
 

@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from typing import List, Optional
 
@@ -93,7 +94,8 @@ def extract_job_details(job_data: dict) -> Optional[JobPosting]:
             except (ValueError, IndexError):
                 pass
 
-        job_url = job_application_info.get("companyApplyUrl")
+        raw_job_url = job_application_info.get("companyApplyUrl")
+        job_url = re.sub(r'/job-apply/(\d+)$', r'/jobs/view/\1/', raw_job_url)
 
         # Extracting description sections
         full_desc_text = description_info.get("descriptionText", {}).get("text", "")

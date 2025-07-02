@@ -1,6 +1,6 @@
 # database/orm_models.py
 
-from sqlalchemy import Column, String, Text, ForeignKey
+from sqlalchemy import Column, String, Text, ForeignKey, Integer, Boolean
 from sqlalchemy.orm import relationship
 
 from models.base_model import Base
@@ -45,6 +45,9 @@ class Job(Base):
     posted_on = Column(String)
     job_url = Column(String)
     description_full = Column(Text)
+    applicants = Column(Integer, default=0)
+    description_snippet = Column(Text, default="")
+    easy_apply = Column(Boolean, default=False)
 
     # Foreign Key to link to the 'companies' table
     company_urn = Column(String, ForeignKey('companies.urn'))
