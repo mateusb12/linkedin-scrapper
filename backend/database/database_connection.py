@@ -14,8 +14,8 @@ db_path = root_dir / "database" / "linkedin.db"
 
 DATABASE_URL = f"sqlite:///{db_path}"
 
-# Create the database engine
-engine = create_engine(DATABASE_URL, echo=False)  # Set echo=True to see generated SQL
+engine = create_engine(DATABASE_URL, echo=False)
+
 
 # Create a configured "Session" class
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

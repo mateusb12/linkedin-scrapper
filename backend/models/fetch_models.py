@@ -8,11 +8,11 @@ from urllib.parse import urlparse, parse_qs
 from sqlalchemy import create_engine, Column, Integer, String, Text
 from sqlalchemy.orm import sessionmaker
 
-from models import Base
+from database.extensions import db
 
 
 # 2. Define the ORM Model for our data
-class FetchCurl(Base):
+class FetchCurl(db.Model):
     """
     SQLAlchemy ORM model to store the flattened fetch call data in a database.
     """
