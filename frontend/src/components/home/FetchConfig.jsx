@@ -113,7 +113,7 @@ export default function JobDashboard() {
             // Send the exact textarea content (JSON or otherwise) as plain text
             axios.put(
                 endpoint,
-                displayValue, // raw body
+                jsonValue,
                 {
                     headers: { 'Content-Type': 'text/plain' }
                 }

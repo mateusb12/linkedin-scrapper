@@ -8,6 +8,7 @@ from database.populator import populate_from_json
 from linkedin.api_fetch.orchestrator import get_total_job_pages, run_fetch_for_page
 from models import FetchCurl
 from models.fetch_models import parse_fetch_string_flat
+from utils.node_fetch_conversion import looks_like_node_fetch, parse_fetch_to_dict
 
 fetch_jobs_bp = Blueprint("fetch-jobs", __name__, url_prefix="/fetch-jobs")
 
@@ -64,12 +65,18 @@ def _upsert_curl_by_name(name: str):
         abort(400, description="Request body cannot be empty.")
 
     # Parse the raw cURL string from the request body into a structured object.
-    cleaned_string = " ".join(raw_body.split())
-    structured_data = parse_fetch_string_flat(cleaned_string)
-    if not structured_data:
-        abort(400, description="Failed to parse the provided fetch string.")
+    node_fetch = looks_like_node_fetch(raw_body)
+    if node_fetch:
+        data_dict = parse_fetch_to_dict(raw_body)
+    else:
+        cleaned_string = " ".join(raw_body.split())
+        structured_data = parse_fetch_string_flat(cleaned_string)
+        if not structured_data:
+            abort(400, description="Failed to parse the provided fetch string.")
 
-    data_dict = asdict(structured_data)
+        data_dict = asdict(structured_data)
+
+    record = FetchCurl(**data_dict)
     db = get_db_session()
 
     try:
