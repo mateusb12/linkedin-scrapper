@@ -1,7 +1,7 @@
 import json
 import os
 
-from backend.path.path_reference import get_userdata_path, get_data_folder_path, get_pagination_folder_path
+from path.path_reference import get_userdata_path, get_data_folder_path, get_pagination_folder_path
 
 
 def load_userdata_json(filename: str) -> dict:

@@ -4,48 +4,57 @@ import { Briefcase, MapPin, Clock } from 'lucide-react';
 // Mock data representing job listings. In a real app, this would come from an API.
 const mockData = [
     {
-        "urn": "urn:li:fsd_jobPosting:4230148335",
-        "title": "Desenvolvedor Pleno III - Python (Temporário)",
         "company": {
-            "name": "Extreme Digital Solutions - EDS",
-            "logo_url": "https://media.licdn.com/dms/image/v2/D4D0BAQGlkyJOKvz6WQ/company-logo_200_200/company-logo_200_200/0/1718300941618/extremedigitalsolutions_logo?e=1756944000&v=beta&t=oI-7S3m9HjhFU3FHTjeRlK5dJgYvYkpREgESPnEDubI",
-        },
-        "location": "Brazil (Remote)",
-        "posted_on": "May 14, 2025",
-        "employment_type": "Full-time",
-        "workplace_type": "Remote",
-        "job_url": "https://extremegroup.inhire.app/vagas/77da1eac-16a3-41fe-81a1-10c74fb250f3/cc7c-desenvolvedor-pleno-iii-python-(temporário)",
-        "description_full": "A Extreme Digital Solutions é uma empresa jovem, fundada em 2014, antenada nas mais modernas tendências e tecnologias do mercado, que busca sempre a excelência na entrega de seus projetos e a satisfação de seus clientes e colaboradores.\n\nResponsabilidades:\n- Desenvolver e manter aplicações web de alta qualidade;\n- Colaborar com as equipes de front-end e back-end para projetar e lançar novos recursos;\n- Participar de todo o ciclo de vida do desenvolvimento de software."
-    },
-    {
-        "urn": "urn:li:fsd_jobPosting:4237482675",
-        "title": "Pessoa Desenvolvedora Python/Golang",
-        "company": {
-            "name": "MJV Technology & Innovation",
             "logo_url": "https://media.licdn.com/dms/image/v2/D4D0BAQGlEIHzx81JxQ/company-logo_200_200/B4DZd_pzPSGkAM-/0/1750193354321/mjv_tech_and_innovation_logo?e=1756944000&v=beta&t=xR0LnBf7cjDPrMdJHVK3ij8oYNuFSuOmwBYOZXlY67A",
+            "name": "MJV Technology & Innovation",
+            "url": "https://www.linkedin.com/company/mjv-tech-and-innovation/life",
+            "urn": "urn:li:fsd_company:83580"
         },
+        "company_urn": "urn:li:fsd_company:83580",
+        "description_full": "Descrição da vaga\n\nSer MJVer 🤝 é estar em um dos melhores lugares para trabalhar. [...]",
+        "employment_type": "Full-time",
+        "job_url": "https://mjvcarreiras.gupy.io/jobs/9231998",
         "location": "Brazil (Remote)",
         "posted_on": "May 30, 2025",
-        "employment_type": "Full-time",
-        "workplace_type": "Remote",
-        "job_url": "https://mjvcarreiras.gupy.io/jobs/9231998",
-        "description_full": "Descrição da vaga: Ser MJVer é estar em um dos melhores lugares para trabalhar, segundo o GPTW. É fazer parte de um time global e diverso, com mais de 5 mil colaboradores, que tem a inovação no DNA e que acredita na transformação de negócios por meio da tecnologia, design e dados.\n\nQualificações:\n- Experiência com desenvolvimento em Python e/ou GoLang;\n- Conhecimento em APIs REST;\n- Familiaridade com bancos de dados relacionais e não relacionais."
+        "title": "Pessoa Desenvolvedora Python/Golang\nTrabalho Remoto\nEfetivo",
+        "urn": "urn:li:fsd_jobPosting:4237482675",
+        "workplace_type": "Remote"
     },
     {
-        "urn": "urn:li:fsd_jobPosting:4255765625",
-        "title": "Pessoa Desenvolvedora Backend Pleno (Shop)",
         "company": {
-            "name": "Nomad",
-            "logo_url": "https://media.licdn.com/dms/image/v2/C4D0BAQE9GGFNNqIm9A/company-logo_200_200/company-logo_200_200/0/1630494318628/nomadglobalapp_logo?e=1756944000&v=beta&t=kR0UJsgyKN0m-gWqXLkF2oRHupun_9r3KViH0ewQs20",
+            "logo_url": "https://media.licdn.com/dms/image/v2/D4D0BAQEEnATeFu7uAw/company-logo_200_200/company-logo_200_200/0/1721777167872/auramind_ai_logo?e=1756944000&v=beta&t=d5_ogfQhy_swysPpWBOhvX6ce55VcsoQJZ_7Bz69UVg",
+            "name": "Auramind.ai",
+            "url": "https://www.linkedin.com/company/auramind-ai/life",
+            "urn": "urn:li:fsd_company:103623376"
         },
-        "location": "Greater São Paulo Area (Remote)",
-        "posted_on": "Jun 24, 2025",
+        "company_urn": "urn:li:fsd_company:103623376",
+        "description_full": "Procuramos um(a) desenvolvedor(a) Python PLENO que vai além do óbvio. [...]",
         "employment_type": "Full-time",
-        "workplace_type": "Remote",
-        "job_url": "https://apply.workable.com/nomadglobal/j/B40F96B0DD?utm_source=linkedin.com",
-        "description_full": "Description: Existimos para derrubar fronteiras e fazer o seu dinheiro “falar” inglês pelo mundo. Somos a primeira e única plataforma que permite que brasileiros tenham uma vida financeira global, sem burocracia, de forma transparente e segura.\n\nSuas responsabilidades serão:\n- Projetar, desenvolver e manter APIs e serviços de back-end escaláveis;\n- Trabalhar em estreita colaboração com as equipes de produto e front-end;\n- Garantir a qualidade e o desempenho do código."
+        "job_url": "https://www.linkedin.com/jobs/view/4257609291/",
+        "location": "Goiânia, Goiás, Brazil (Remote)",
+        "posted_on": "Jul 2, 2025",
+        "title": "Backend Developer - Python - Pleno",
+        "urn": "urn:li:fsd_jobPosting:4257609291",
+        "workplace_type": "Remote"
+    },
+    {
+        "company": {
+            "logo_url": "https://media.licdn.com/dms/image/v2/D560BAQFhAT_f2S08EQ/company-logo_200_200/company-logo_200_200/0/1699284516534/wexinc_logo?e=1756944000&v=beta&t=NtZa7aSPem2JOsxFBPYXN28p70MHEoYBoGvVu-fdaQw",
+            "name": "WEX",
+            "url": "https://www.linkedin.com/company/wexinc/life",
+            "urn": "urn:li:fsd_company:11637"
+        },
+        "company_urn": "urn:li:fsd_company:11637",
+        "description_full": "About The Team/Role\n\nWe are the Core Information Delivery team, supporting core reporting frameworks [...]",
+        "employment_type": "Full-time",
+        "job_url": "https://careers.wexinc.com/us/en/job/WEXWEXUSR17144EXTERNALENUS/Mid-Python-Developer?utm_source=linkedin&utm_medium=phenom-feeds",
+        "location": "São Paulo, Brazil (Remote)",
+        "posted_on": "Feb 22, 2025",
+        "title": "Mid Python Developer",
+        "urn": "urn:li:fsd_jobPosting:4161846248",
+        "workplace_type": "Remote"
     }
-];
+]
 
 
 /**
@@ -150,14 +159,35 @@ const MainJobListing = () => {
     const MIN_WIDTH = 20; // Minimum width in percentage
     const MAX_WIDTH = 80; // Maximum width in percentage
 
-    // Effect to load initial data
+    // Effect to load initial data from API with mock data as fallback
     useEffect(() => {
-        setJobs(mockData);
-        setFilteredJobs(mockData);
-        if (mockData.length > 0) {
-            setSelectedJob(mockData[0]); // Select the first job by default
-        }
-    }, []);
+        const fetchJobs = async () => {
+            try {
+                const response = await fetch('http://localhost:5000/jobs/all');
+                if (!response.ok) {
+                    // If response is not ok (e.g., 404, 500), throw to trigger catch block
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                console.log("Successfully fetched jobs from API.");
+                setJobs(data);
+                setFilteredJobs(data);
+                if (data.length > 0) {
+                    setSelectedJob(data[0]); // Select the first job by default
+                }
+            } catch (error) {
+                // This block will run if the fetch fails (e.g., network error, server down)
+                console.error("Failed to fetch jobs from API, using mock data as fallback.", error);
+                setJobs(mockData);
+                setFilteredJobs(mockData);
+                if (mockData.length > 0) {
+                    setSelectedJob(mockData[0]); // Select the first mock job by default
+                }
+            }
+        };
+
+        fetchJobs();
+    }, []); // Empty dependency array means this effect runs once on component mount
 
     // Effect to handle filtering logic
     useEffect(() => {
@@ -167,11 +197,16 @@ const MainJobListing = () => {
         );
         setFilteredJobs(newFilteredJobs);
 
+        // If the currently selected job is filtered out, select the first available job
         if (selectedJob && !newFilteredJobs.some(job => job.urn === selectedJob.urn)) {
             setSelectedJob(newFilteredJobs.length > 0 ? newFilteredJobs[0] : null);
+        } else if (!selectedJob && newFilteredJobs.length > 0) {
+            // If no job is selected and the list is not empty, select the first one
+            setSelectedJob(newFilteredJobs[0]);
         }
 
     }, [filter, jobs, selectedJob]);
+
 
     // Handlers for resizing
     const handleMouseDown = (e) => {

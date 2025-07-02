@@ -247,7 +247,7 @@ def parse_jobs_page(data: Dict) -> Optional[JobsPage]:
 
         if item_type == "com.linkedin.voyager.dash.organization.Company":
             logo_url = None
-            logo_info = item.get("logoResolutionResult", {}).get("vectorImage", {})
+            logo_info = (item.get("logoResolutionResult") or {}).get("vectorImage") or {}
             if logo_info and logo_info.get("rootUrl") and logo_info.get("artifacts"):
                 # Prefer 200px artifact for the logo, but fall back to the first available one.
                 artifact = next((a for a in logo_info["artifacts"] if a.get("width") == 200),
