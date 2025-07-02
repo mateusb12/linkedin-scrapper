@@ -1,5 +1,7 @@
 import React from 'react';
 import {LogOut, Moon, Sun} from "lucide-react";
+import { useState, useEffect } from 'react';
+import {useDarkMode} from "../../hooks/useDarkMode.jsx";
 
 export const Sidebar = ({ activeView, setActiveView }) => {
     // Navigation items are defined directly inside the component
@@ -52,7 +54,8 @@ export const Sidebar = ({ activeView, setActiveView }) => {
     );
 };
 
-export const Header = ({ isDark, toggleDarkMode, handleLogout }) => {
+export const Header = ({ handleLogout }) => {
+    const [isDark, toggleDarkMode] = useDarkMode();
     return (
         <header className="h-14 flex items-center justify-end px-4 bg-gray-200 dark:bg-gray-800 shadow-sm space-x-2">
             <button

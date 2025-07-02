@@ -4,6 +4,7 @@ import {FetchJobsView} from "./FetchJobs.jsx";
 import {Sidebar} from "./Navbar.jsx";
 import {Header} from "./Navbar.jsx";
 import JobList from "./JobList.jsx";
+import {useDarkMode} from "../../hooks/useDarkMode.jsx";
 
 // ✅ cURL Command Generation Function (unchanged)
 const generateCurlCommand = (jsonString) => {
@@ -120,9 +121,7 @@ const generateFetchCommand = (jsonString) => {
 
 
 export default function JobDashboard() {
-    const [isDark, setIsDark] = useState(() =>
-        document.documentElement.classList.contains("dark")
-    );
+    const [isDark, toggleDarkMode] = useDarkMode();
 
     useEffect(() => {
         const root = document.documentElement;
@@ -170,7 +169,6 @@ export default function JobDashboard() {
             });
     }, []);
 
-    const toggleDarkMode = () => setIsDark(prev => !prev);
     const handleLogout = () => console.log("Logging out...");
 
     const ConfigEditor = ({title, subtitle, jsonValue, setJsonValue, view, setView}) => {
@@ -338,8 +336,6 @@ export default function JobDashboard() {
             <div className="flex flex-col flex-1 min-w-0">
                 {/* ✅ REFACTORED: Header component */}
                 <Header
-                    isDark={isDark}
-                    toggleDarkMode={toggleDarkMode}
                     handleLogout={handleLogout}
                 />
 
