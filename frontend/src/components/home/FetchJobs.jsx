@@ -1,7 +1,7 @@
-// --- New Fetch Jobs View Component ---
-import React, {useState} from "react";
+import React, { useState } from "react";
 import axios from "axios";
-import {Check, Clipboard, Loader2} from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { ResultsView } from "./ResultsView"; // Assumes ResultsView.jsx is in the same folder
 
 export const FetchJobsView = () => {
     const [totalPages, setTotalPages] = useState(0);
@@ -13,7 +13,6 @@ export const FetchJobsView = () => {
     const [error, setError] = useState('');
     const [progress, setProgress] = useState(0);
     const [fetchedData, setFetchedData] = useState([]);
-    const [isCopied, setIsCopied] = useState(false);
 
     const handleGetTotalPages = () => {
         setIsFetchingTotal(true);
@@ -78,7 +77,6 @@ export const FetchJobsView = () => {
                 ]);
                 setError("An error occurred. See log for details.");
 
-                // ── Abort on true network failure ───────────────────────────────
                 const isNetworkError =
                     !err.response ||
                     err.code === "ERR_NETWORK" ||
@@ -102,21 +100,6 @@ export const FetchJobsView = () => {
         setFetchedData(allData);
         setLog(prev => [...prev, `--- All tasks complete. Fetched ${successfulFetches}/${totalPagesToFetch} pages successfully. ---`]);
         setIsFetchingPages(false);
-    };
-
-    const handleCopy = () => {
-        const dataStr = JSON.stringify(fetchedData, null, 2);
-        const el = document.createElement('textarea');
-        el.value = dataStr;
-        el.setAttribute('readonly', '');
-        el.style.position = 'absolute';
-        el.style.left = '-9999px';
-        document.body.appendChild(el);
-        el.select();
-        document.execCommand('copy');
-        document.body.removeChild(el);
-        setIsCopied(true);
-        setTimeout(() => setIsCopied(false), 2000);
     };
 
     return (
@@ -224,24 +207,7 @@ export const FetchJobsView = () => {
 
             {/* Results Output */}
             {fetchedData.length > 0 && !isFetchingPages && (
-                <div className="mt-8">
-                    <div className="flex justify-between items-center">
-                        <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-300">Fetched Data</h2>
-                        <button
-                            onClick={handleCopy}
-                            className="flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 transition-colors"
-                        >
-                            {isCopied ? <Check size={16} className="mr-2 text-green-500"/> :
-                                <Clipboard size={16} className="mr-2"/>}
-                            {isCopied ? 'Copied!' : 'Copy to Clipboard'}
-                        </button>
-                    </div>
-                    <textarea
-                        readOnly
-                        value={JSON.stringify(fetchedData, null, 2)}
-                        className="w-full min-h-[400px] mt-4 p-4 bg-white dark:bg-[#2d2d3d] border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-200 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    />
-                </div>
+                <ResultsView data={fetchedData} />
             )}
         </div>
     );
