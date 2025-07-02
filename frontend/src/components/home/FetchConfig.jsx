@@ -98,8 +98,42 @@ export default function JobDashboard() {
     const toggleDarkMode = () => setIsDark(prev => !prev);
     const handleLogout = () => console.log("Logging out...");
 
-    const ConfigEditor = ({ title, subtitle, jsonValue, setJsonValue, view, setView }) => {
+    const ConfigEditor = ({title, subtitle, jsonValue, setJsonValue, view, setView}) => {
         const displayValue = view === 'json' ? jsonValue : generateCurlCommand(jsonValue);
+        const [status, setStatus] = useState(null); // null | 'success' | 'error'
+        const [showStatus, setShowStatus] = useState(false);
+
+        const handleUpdate = () => {
+            try {
+                const config = JSON.parse(jsonValue);
+                axios.put(
+                    config.base_url,       // your endpoint
+                    displayValue,          // raw text body
+                    {
+                        headers: {
+                            'Content-Type': 'text/plain'
+                        }
+                    }
+                )
+                    .then(res => {
+                        setStatus('success');
+                        setShowStatus(true);
+                        setTimeout(() => setShowStatus(false), 2000);
+                        console.log('Updated!', res);
+                    })
+                    .catch(err => {
+                        console.error('Update failed:', err);
+                        setStatus('error');
+                        setShowStatus(true);
+                        setTimeout(() => setShowStatus(false), 3000);
+                    });
+            } catch (e) {
+                console.error('Invalid JSON config:', e);
+                setStatus('error');
+                setShowStatus(true);
+                setTimeout(() => setShowStatus(false), 3000);
+            }
+        };
 
         return (
             <div>
@@ -129,7 +163,15 @@ export default function JobDashboard() {
                     readOnly={view === 'curl'}
                     className="w-full min-h-[200px] p-4 bg-white dark:bg-[#2d2d3d] border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-200 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />
-                <button className="mt-4 py-2 px-6 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-500 transition-colors">
+                {showStatus && (
+                    <div
+                        className={`mt-2 text-sm font-semibold ${status === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                        {status === 'success' ? '✅ Updated!' : '❌ Failed to update'}
+                    </div>
+                )}
+                <button
+                    onClick={handleUpdate}
+                    className="mt-4 py-2 px-6 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-500 transition-colors">
                     Update
                 </button>
             </div>
@@ -167,11 +209,16 @@ export default function JobDashboard() {
 
     const renderActiveView = () => {
         switch (activeView) {
-            case "fetch-config": return <FetchConfig />;
-            case "fetch-jobs": return <FetchJobsView />;
-            case "job-listings": return <JobList/>;
-            case "profile": return <div>Profile</div>;
-            default: return null;
+            case "fetch-config":
+                return <FetchConfig/>;
+            case "fetch-jobs":
+                return <FetchJobsView/>;
+            case "job-listings":
+                return <JobList/>;
+            case "profile":
+                return <div>Profile</div>;
+            default:
+                return null;
         }
     };
 
