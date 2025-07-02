@@ -29,16 +29,19 @@ def _get_curl_by_name(name: str):
     """
     db = get_db_session()
     try:
-        # Use .one() to get a single record. It raises NoResultFound if no
-        # record is found, which is caught below.
-        curl_record = db.query(FetchCurl).filter(FetchCurl.name == name).one()
+        # Use .first() to get the first matching record.
+        curl_record = db.query(FetchCurl).filter(FetchCurl.name == name).first()
+
+        if not curl_record:
+            abort(404, description=f"'{name}' cURL configuration has not been set yet.")
 
         if not curl_record.base_url:
             abort(404, description=f"'{name}' cURL is configured but has no base URL.")
 
         return jsonify(curl_record.to_dict()), 200
-    except NoResultFound:
-        abort(404, description=f"'{name}' cURL configuration has not been set yet.")
+    except Exception as e:
+        print(f"Error retrieving cURL by name '{name}': {str(e)}")
+        abort(500, description=f"An unexpected error occurred: {str(e)}")
     finally:
         db.close()
 
@@ -76,7 +79,6 @@ def _upsert_curl_by_name(name: str):
 
         data_dict = asdict(structured_data)
 
-    record = FetchCurl(**data_dict)
     db = get_db_session()
 
     try:

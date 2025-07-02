@@ -68,7 +68,6 @@ def parse_fetch_to_dict(fetch_str: str, row_id: int | None = None) -> dict | Non
 
     # 2.5 assemble the record ------------------------------------------------------
     record = {
-        "name": req_type,
         "base_url": base_url,
         "query_id": query_id,
         "variables_count": int(count),

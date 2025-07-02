@@ -43,6 +43,81 @@ const generateCurlCommand = (jsonString) => {
     }
 };
 
+const generateFetchCommand = (jsonString) => {
+    try {
+        // 1. Parse the input JSON string into a JavaScript object.
+        const config = JSON.parse(jsonString);
+
+        // 2. Manually construct the query string to handle the special 'variables' format.
+        const queryParams = [];
+        const variableParts = {};
+        const nestedQueryParts = {};
+
+        // Separate different types of parameters from the config.
+        for (const key in config) {
+            if (key.startsWith('variables_query_')) {
+                // Handle nested query variables, e.g., variables_query_origin -> query:(origin:...)
+                const paramName = key.replace('variables_query_', '');
+                nestedQueryParts[paramName] = config[key];
+            } else if (key.startsWith('variables_')) {
+                // Handle top-level variables.
+                const paramName = key.replace('variables_', '');
+                variableParts[paramName] = config[key];
+            }
+        }
+
+        // Add standard query parameters.
+        queryParams.push('includeWebMetadata=true');
+        if (config.query_id) {
+            queryParams.push(`queryId=${config.query_id}`);
+        }
+
+        // Format the nested query parts if they exist.
+        const nestedQueryString = Object.entries(nestedQueryParts)
+            .map(([key, value]) => `${key}:${value}`)
+            .join(',');
+
+        if (nestedQueryString) {
+            variableParts['query'] = `(${nestedQueryString})`;
+        }
+
+        // Format the final 'variables' string.
+        const variablesString = Object.entries(variableParts)
+            .map(([key, value]) => `${key}:${value}`)
+            .join(',');
+
+        if (variablesString) {
+            // The value is wrapped in parentheses but the parameter itself is not encoded.
+            queryParams.push(`variables=(${variablesString})`);
+        }
+
+        // 3. Combine the base URL and the constructed query string.
+        const finalUrl = `${config.base_url}?${queryParams.join('&')}`;
+
+        // 4. Prepare the options object for the fetch call.
+        const fetchOptions = {
+            headers: config.headers || {},
+            method: config.method || 'GET',
+            body: config.body, // Body can be null for GET requests.
+        };
+
+        // According to the fetch spec, GET/HEAD requests cannot have a body.
+        if (fetchOptions.method.toUpperCase() === 'GET' || fetchOptions.method.toUpperCase() === 'HEAD') {
+            delete fetchOptions.body;
+        }
+
+
+        // 5. Assemble and return the final, pretty-printed fetch command string.
+        // JSON.stringify with a spacer (2) makes the output readable.
+        return `fetch("${finalUrl}", ${JSON.stringify(fetchOptions, null, 2)});`;
+
+    } catch (e) {
+        // Handle cases where the input string is not valid JSON.
+        console.error("Could not generate fetch command:", e);
+        return "Invalid JSON configuration. Cannot generate fetch command.";
+    }
+};
+
 
 export default function JobDashboard() {
     const [isDark, setIsDark] = useState(() =>
@@ -58,8 +133,8 @@ export default function JobDashboard() {
     const [activeView, setActiveView] = useState("fetch-config");
     const [paginationCurl, setPaginationCurl] = useState("Loading...");
     const [individualJobCurl, setIndividualJobCurl] = useState("Loading...");
-    const [paginationView, setPaginationView] = useState('json');
-    const [individualJobView, setIndividualJobView] = useState('json');
+    const [paginationView, setPaginationView] = useState('fetch');
+    const [individualJobView, setIndividualJobView] = useState('fetch');
 
     useEffect(() => {
         const paginationUrl = "http://localhost:5000/fetch-jobs/pagination-curl";
@@ -99,10 +174,21 @@ export default function JobDashboard() {
     const handleLogout = () => console.log("Logging out...");
 
     const ConfigEditor = ({title, subtitle, jsonValue, setJsonValue, view, setView}) => {
-        const displayValue = view === 'json' ? jsonValue : generateCurlCommand(jsonValue);
+        const displayValue = view === 'json' ? jsonValue : generateFetchCommand(jsonValue);
         const [status, setStatus] = useState(null); // null | 'success' | 'error'
         const [showStatus, setShowStatus] = useState(false);
         const [errorMsg, setErrorMsg] = useState('');
+
+        const getDisplayValue = () => {
+            switch (view) {
+                case 'curl':
+                    return generateCurlCommand(jsonValue);
+                case 'fetch':
+                    return generateFetchCommand(jsonValue);
+                default:
+                    return jsonValue;
+            }
+        };
 
         const handleUpdate = () => {
             // Decide where to send the config
@@ -152,6 +238,12 @@ export default function JobDashboard() {
                     </div>
                     <div className="flex items-center rounded-lg bg-gray-200 dark:bg-gray-700 p-1">
                         <button
+                            onClick={() => setView('fetch')}
+                            className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${view === 'fetch' ? 'bg-white dark:bg-blue-600 text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}
+                        >
+                            Fetch
+                        </button>
+                        <button
                             onClick={() => setView('json')}
                             className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${view === 'json' ? 'bg-white dark:bg-blue-600 text-blue-600 dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}
                         >
@@ -166,7 +258,7 @@ export default function JobDashboard() {
                     </div>
                 </div>
                 <textarea
-                    value={displayValue}
+                    value={getDisplayValue()}
                     onChange={(e) => view === 'json' ? setJsonValue(e.target.value) : null}
                     readOnly={view === 'curl'}
                     className="w-full min-h-[200px] p-4 bg-white dark:bg-[#2d2d3d] border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-200 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
