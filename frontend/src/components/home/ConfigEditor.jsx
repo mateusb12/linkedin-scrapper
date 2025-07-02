@@ -48,9 +48,11 @@ export const ConfigEditor = ({
             ? "http://localhost:5000/fetch-jobs/pagination-curl"
             : "http://localhost:5000/fetch-jobs/individual-job-curl";
 
+        const payload = getDisplayValue();
+
         // IMPORTANT: The update logic still sends the JSON value,
         // as the backend API is designed to receive a JSON configuration.
-        axios.put(endpoint, jsonValue, { headers: { 'Content-Type': 'text/plain' } })
+        axios.put(endpoint, payload, { headers: { 'Content-Type': 'text/plain' } })
             .then(res => {
                 setStatus('success');
                 setErrorMsg('');

@@ -122,41 +122,63 @@ export default function JobDashboard() {
     }, [isDark]);
 
     useEffect(() => {
-        const paginationUrl = "http://localhost:5000/fetch-jobs/pagination-curl";
+        const paginationUrl    = "http://localhost:5000/fetch-jobs/pagination-curl";
         const individualJobUrl = "http://localhost:5000/fetch-jobs/individual-job-curl";
 
-        const processAndSetAllData = (data, setJson, setFetch, setCurl) => {
-            let processedData = data;
-            if (processedData && typeof processedData.headers === 'string') {
+        const processAndSet = (data, setJson, setFetch, setCurl) => {
+            // If the backend stored headers as a JSON string, parse it
+            if (data && typeof data.headers === "string") {
                 try {
-                    processedData.headers = JSON.parse(processedData.headers);
-                    if (processedData.headers && typeof processedData.headers['x-li-track'] === 'string') {
-                        processedData.headers['x-li-track'] = JSON.parse(processedData.headers['x-li-track']);
+                    data.headers = JSON.parse(data.headers);
+                    if (typeof data.headers["x-li-track"] === "string") {
+                        data.headers["x-li-track"] = JSON.parse(data.headers["x-li-track"]);
                     }
-                } catch (e) {
-                    console.error("Failed to parse nested JSON", e);
+                } catch (err) {
+                    console.error("Failed to parse nested header JSON:", err);
                 }
             }
-            const jsonString = JSON.stringify(processedData, null, 2);
+
+            const jsonString = JSON.stringify(data, null, 2);
             setJson(jsonString);
             setFetch(generateFetchCommand(jsonString));
             setCurl(generateCurlCommand(jsonString));
         };
 
-        axios.get(paginationUrl)
-            .then((res) => processAndSetAllData(res.data, setPaginationJson, setPaginationFetch, setPaginationCurl))
+        Promise.all([axios.get(paginationUrl), axios.get(individualJobUrl)])
+            .then(([pagRes, indRes]) => {
+                processAndSet(
+                    pagRes.data,
+                    setPaginationJson,
+                    setPaginationFetch,
+                    setPaginationCurl
+                );
+                processAndSet(
+                    indRes.data,
+                    setIndividualJobJson,
+                    setIndividualJobFetch,
+                    setIndividualJobCurl
+                );
+            })
             .catch((err) => {
-                setPaginationJson("Failed to fetch.");
-                console.error("Error fetching pagination curl:", err);
-            });
-
-        axios.get(individualJobUrl)
-            .then((res) => processAndSetAllData(res.data, setIndividualJobJson, setIndividualJobFetch, setIndividualJobCurl))
-            .catch((err) => {
-                setIndividualJobJson("Failed to fetch.");
-                console.error("Error fetching individual job curl:", err);
+                console.error("Error fetching configs:", err);
+                // Update the UI to show an error message
+                const errorMessage = `Failed to fetch config. Check browser console for CORS errors.`;
+                setPaginationJson(errorMessage);
+                setIndividualJobJson(errorMessage);
             });
     }, []);
+
+    useEffect(() => {
+        if (!paginationJson || paginationJson.startsWith("Load") || paginationJson.startsWith("Failed")) return;
+        setPaginationFetch(generateFetchCommand(paginationJson));
+        setPaginationCurl(generateCurlCommand(paginationJson));
+    }, [paginationJson]);
+
+    useEffect(() => {
+        if (!individualJobJson || individualJobJson.startsWith("Load") || individualJobJson.startsWith("Failed")) return;
+        setIndividualJobFetch(generateFetchCommand(individualJobJson));
+        setIndividualJobCurl(generateCurlCommand(individualJobJson));
+    }, [individualJobJson]);
 
     const handleLogout = () => console.log("Logging out...");
 
