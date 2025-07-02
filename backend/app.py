@@ -2,12 +2,14 @@ import os
 from flask import Flask
 from flask_cors import CORS
 from controllers.job_curls import fetch_jobs_bp
+from controllers.job_data import job_data_bp
 from database.database_connection import create_db_and_tables
 
 app = Flask(__name__)
 CORS(app)
 
 app.register_blueprint(fetch_jobs_bp)
+app.register_blueprint(job_data_bp)
 
 
 @app.route('/')
