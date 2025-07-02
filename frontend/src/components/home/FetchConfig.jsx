@@ -102,37 +102,45 @@ export default function JobDashboard() {
         const displayValue = view === 'json' ? jsonValue : generateCurlCommand(jsonValue);
         const [status, setStatus] = useState(null); // null | 'success' | 'error'
         const [showStatus, setShowStatus] = useState(false);
+        const [errorMsg, setErrorMsg] = useState('');
 
         const handleUpdate = () => {
-            try {
-                const config = JSON.parse(jsonValue);
-                axios.put(
-                    config.base_url,       // your endpoint
-                    displayValue,          // raw text body
-                    {
-                        headers: {
-                            'Content-Type': 'text/plain'
-                        }
-                    }
-                )
-                    .then(res => {
-                        setStatus('success');
-                        setShowStatus(true);
-                        setTimeout(() => setShowStatus(false), 2000);
-                        console.log('Updated!', res);
-                    })
-                    .catch(err => {
-                        console.error('Update failed:', err);
-                        setStatus('error');
-                        setShowStatus(true);
-                        setTimeout(() => setShowStatus(false), 3000);
-                    });
-            } catch (e) {
-                console.error('Invalid JSON config:', e);
-                setStatus('error');
-                setShowStatus(true);
-                setTimeout(() => setShowStatus(false), 3000);
-            }
+            // Decide where to send the config
+            const endpoint = title === "Pagination Request"
+                ? "http://localhost:5000/fetch-jobs/pagination-curl"
+                : "http://localhost:5000/fetch-jobs/individual-job-curl";
+
+            // Send the exact textarea content (JSON or otherwise) as plain text
+            axios.put(
+                endpoint,
+                displayValue, // raw body
+                {
+                    headers: { 'Content-Type': 'text/plain' }
+                }
+            )
+                .then(res => {
+                    setStatus('success');
+                    setErrorMsg('');
+                    setShowStatus(true);
+                    setTimeout(() => setShowStatus(false), 2000);
+                    console.log('✅ Updated (plain-text) config:', res.data);
+                })
+                .catch(err => {
+                    // Build a helpful error message
+                    const detail =
+                        err.response?.data?.message ||
+                        (typeof err.response?.data === 'string'
+                            ? err.response.data
+                            : JSON.stringify(err.response?.data || {})) ||
+                        err.message ||
+                        'Unknown error';
+
+                    console.error('❌ Update failed:', detail);
+                    setErrorMsg(detail);
+                    setStatus('error');
+                    setShowStatus(true);
+                    setTimeout(() => setShowStatus(false), 3000);
+                });
         };
 
         return (
@@ -165,8 +173,13 @@ export default function JobDashboard() {
                 />
                 {showStatus && (
                     <div
-                        className={`mt-2 text-sm font-semibold ${status === 'success' ? 'text-green-600' : 'text-red-600'}`}>
-                        {status === 'success' ? '✅ Updated!' : '❌ Failed to update'}
+                        className={`mt-2 text-sm font-semibold ${
+                            status === 'success' ? 'text-green-600' : 'text-red-600'
+                        }`}
+                    >
+                        {status === 'success'
+                            ? '✅ Updated!'
+                            : `❌ Failed to update: ${errorMsg}`}
                     </div>
                 )}
                 <button
