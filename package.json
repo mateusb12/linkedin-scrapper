@@ -1,0 +1,7 @@
+{
+  "name": "linkedin-scrapper",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "cd frontend && npm start"
+  }
+}
