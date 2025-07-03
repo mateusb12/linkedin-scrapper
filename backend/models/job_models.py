@@ -1,6 +1,6 @@
 # database/orm_models.py
 
-from sqlalchemy import Column, String, Text, ForeignKey, Integer, Boolean
+from sqlalchemy import Column, String, Text, ForeignKey, Integer, Boolean, JSON
 from sqlalchemy.orm import relationship
 
 from database.extensions import db
@@ -48,6 +48,10 @@ class Job(db.Model):
     applicants = Column(Integer, default=0)
     description_snippet = Column(Text, default="")
     easy_apply = Column(Boolean, default=False)
+
+    responsibilities = Column(JSON, nullable=True)
+    qualifications = Column(JSON, nullable=True)
+    keywords = Column(JSON, nullable=True)
 
     # Foreign Key to link to the 'companies' table
     company_urn = Column(String, ForeignKey('companies.urn'))

@@ -1,5 +1,9 @@
 import os
 import sys
+
+directory = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, directory)
+
 from flask import Flask
 from flask_cors import CORS
 from controllers.job_curls import fetch_jobs_bp
