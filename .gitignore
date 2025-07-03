@@ -25,3 +25,4 @@
 /backend/linkedin/api_fetch/output/*.json
 /frontend/repomix-frontend.md
 /backend/repomix-backend.md
+/backend/.env

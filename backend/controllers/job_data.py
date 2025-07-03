@@ -26,3 +26,27 @@ def get_all_jobs():
         return jsonify({"error": str(e)}), 500
     finally:
         session.close()
+
+
+@job_data_bp.route("/keywords", methods=["PATCH"])
+def insert_extra_fields():
+    """
+    Inserts extra fields into all job records in the database.
+    This is a placeholder function that can be expanded to include specific logic.
+    """
+    session = get_db_session()
+    try:
+        print("Inserting extra fields into all job records...")
+        jobs = (
+            session.query(Job).options(joinedload(Job.company)).all()
+        )
+        session.commit()
+        print("Extra fields inserted successfully.")
+        jobs = [job.to_dict() for job in jobs]
+        return jsonify({"message": "Extra fields inserted successfully.", "jobs": jobs}), 200
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        session.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()

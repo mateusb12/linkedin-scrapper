@@ -1,6 +1,8 @@
 import os
 import sys
 
+from dotenv import load_dotenv
+
 directory = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, directory)
 
@@ -15,6 +17,8 @@ from path.file_content_loader import load_db_path
 
 directory = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(directory)
+
+load_dotenv()
 
 db_path = load_db_path()
 
