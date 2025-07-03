@@ -69,7 +69,10 @@ class Job(db.Model):
             "job_url": self.job_url,
             "description_full": self.description_full,
             "company_urn": self.company_urn,
-            "company": self.company.to_dict() if self.company else None
+            "company": self.company.to_dict() if self.company else None,
+            "applicants": self.applicants,
+            "description_snippet": self.description_snippet,
+            "easy_apply": self.easy_apply
         }
         if include_company and self.company is not None:
             data["company"] = self.company.to_dict(include_jobs=False)

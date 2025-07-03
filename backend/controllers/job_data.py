@@ -8,18 +8,20 @@ job_data_bp = Blueprint("jobs", __name__, url_prefix="/jobs")
 
 
 @job_data_bp.route("/all", methods=["GET"])
-def handle_pagination_curl():
+def get_all_jobs():
     """
-    [DEPRECATED] Handles getting and setting the "Pagination" cURL command.
-    This endpoint is preserved for backward compatibility.
+    Fetches all jobs and their associated company data from the database.
     """
     session = get_db_session()
     try:
+        print("Attempting to query the database for all jobs...")
         jobs = (
             session.query(Job).options(joinedload(Job.company)).all()
         )
+        print(f"Fetched {len(jobs)} jobs from the database.")
         return jsonify([job.to_dict() for job in jobs]), 200
     except Exception as e:
+        print(f"An error occurred: {e}")
         session.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
