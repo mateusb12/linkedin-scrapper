@@ -48,6 +48,7 @@ class Job(db.Model):
     applicants = Column(Integer, default=0)
     description_snippet = Column(Text, default="")
     easy_apply = Column(Boolean, default=False)
+    language = Column(String, default="PTBR")
 
     responsibilities = Column(JSON, nullable=True)
     qualifications = Column(JSON, nullable=True)
@@ -76,7 +77,8 @@ class Job(db.Model):
             "company": self.company.to_dict() if self.company else None,
             "applicants": self.applicants,
             "description_snippet": self.description_snippet,
-            "easy_apply": self.easy_apply
+            "easy_apply": self.easy_apply,
+            "language": self.language,
         }
         if include_company and self.company is not None:
             data["company"] = self.company.to_dict(include_jobs=False)

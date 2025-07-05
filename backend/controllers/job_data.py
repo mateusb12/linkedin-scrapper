@@ -1,5 +1,6 @@
 import sys
 import time
+import traceback
 from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify
@@ -37,49 +38,63 @@ def get_all_jobs():
 
 @job_data_bp.route("/keywords", methods=["PATCH"])
 def insert_extra_fields():
-    """Augments every Job with responsibilities / qualifications / keywords."""
     session = get_db_session()
     BATCH_SIZE = 5
+    last_urn = ""
 
     try:
-        # 1. Build query and compute workload size --------------------------
-        base_q = (
-            session.query(Job)
-            .filter(Job.description_full.isnot(None),
-                    Job.keywords.is_(None))
-        )
-        total_jobs = base_q.count()
-        jobs_iter = base_q.options(joinedload(Job.company)).yield_per(BATCH_SIZE)
-
-        # 2. Initialise progress tracker ------------------------------------
-        progress = JobConsoleProgress(total_jobs)
+        # count total once
+        total_jobs = session.query(Job) \
+            .filter(Job.description_full.isnot(None), Job.keywords.is_(None)) \
+            .count()
         print(f"Starting keyword expansion for {total_jobs} jobs…")
 
-        # 3. Main loop -------------------------------------------------------
-        for idx, job in enumerate(jobs_iter, 1):
-            job_description = job.description_full or ""
-            expansion = expand_job_data(job_description)
+        progress = JobConsoleProgress(total_jobs)
 
-            job.responsibilities = expansion.get("responsibilities", [])
-            job.qualifications = expansion.get("qualifications", [])
-            job.keywords = expansion.get("keywords", [])
+        processed = 0
+        while True:
+            batch = (
+                session.query(Job)
+                .options(joinedload(Job.company))
+                .filter(
+                    Job.description_full.isnot(None),
+                    Job.keywords.is_(None),
+                    Job.urn > last_urn
+                )
+                .order_by(Job.urn)
+                .limit(BATCH_SIZE)
+                .all()
+            )
+            if not batch:
+                break
 
-            if idx % BATCH_SIZE == 0:
-                session.flush()
-                session.commit()
-                session.expunge_all()
+            for job in batch:
+                expansion = expand_job_data(job.description_full or "")
+                if not isinstance(expansion, dict):
+                    raise TypeError(
+                        f"expand_job_data returned {type(expansion).__name__}, "
+                        "expected dict-like result"
+                    )
+                job.responsibilities = expansion.get("responsibilities", [])
+                job.qualifications = expansion.get("qualifications", [])
+                job.keywords = expansion.get("keywords", [])
+                job.language = expansion.get("language", "PTBR")
 
-            progress(idx)
+                last_urn = job.urn
+                processed += 1
+                progress(processed)
 
-        # 4. Finalise --------------------------------------------------------
-        session.commit()
-        progress(total_jobs)  # final print
+            session.commit()
+            for job in batch:
+                session.expunge(job)
+
         print("\n✅ Extra fields inserted successfully.")
         return jsonify({"message": "Done"}), 200
 
     except Exception as exc:
         session.rollback()
-        print(f"\n❌ error: {exc}")
+        print("\n❌ An error occurred:")
+        traceback.print_exc()
         return jsonify({"error": str(exc)}), 500
 
     finally:

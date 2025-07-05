@@ -5,10 +5,10 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.wait import WebDriverWait
 
-from backend.linkedin import CoreScrapper
-from backend.models.recommendation import Recommendation
-from backend.utils.experience_utils import clean_experiences
-from backend.utils.selenium_utils import load_element_text, get_text_content_from_ul_element
+from linkedin import CoreScrapper
+from models.recommendation import Recommendation
+from utils.experience_utils import clean_experiences
+from utils.selenium_utils import load_element_text, get_text_content_from_ul_element
 
 
 class FriendsScrapper(CoreScrapper):

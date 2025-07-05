@@ -5,7 +5,7 @@ from selenium.common import NoSuchElementException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
 
-from backend.path.path_reference import get_root_folder_path, get_data_folder_path
+from path.path_reference import get_root_folder_path, get_data_folder_path
 from selenium.webdriver.chrome.options import Options
 from selenium import webdriver
 

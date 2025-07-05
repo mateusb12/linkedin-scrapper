@@ -3,7 +3,7 @@ import re
 from flask import abort
 from sqlalchemy.orm import Session
 
-from backend.models import FetchCurl
+from models import FetchCurl
 
 
 def ensure_singleton(db: Session) -> FetchCurl:
