@@ -7,6 +7,7 @@ from sqlalchemy.orm import joinedload
 
 from database.database_connection import get_db_session
 from models import Job
+from services.gemini_service import expand_job_data
 from services.openrouter_service import expand_job, parse_response
 from utils.metric_utils import JobConsoleProgress
 
@@ -56,8 +57,8 @@ def insert_extra_fields():
 
         # 3. Main loop -------------------------------------------------------
         for idx, job in enumerate(jobs_iter, 1):
-            expanded_job = expand_job(job.description_full)
-            expansion = parse_response(expanded_job)
+            job_description = job.description_full or ""
+            expansion = expand_job_data(job_description)
 
             job.responsibilities = expansion.get("responsibilities", [])
             job.qualifications = expansion.get("qualifications", [])
