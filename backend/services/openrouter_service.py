@@ -64,7 +64,6 @@ Se identificou? Então, #VemSerMeta!
 """
 
 
-@execution_time
 def expand_job(description: str) -> str:
     """Call OpenRouter preset and return raw assistant response."""
     load_dotenv()
