@@ -1,10 +1,12 @@
 import React from "react";
 
+// Define the base URL for the API endpoint
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
 // Mock data from backend_resume.md for initial display
 const mockResumeContent = `
 # Mateus Bessa
-**Desenvolvedor de software**  
-📬 [matbessa12@gmail.com](mailto:matbessa12@gmail.com)  
+**Desenvolvedor de software** 📬 [matbessa12@gmail.com](mailto:matbessa12@gmail.com)  
 📞 +55 85 99917 1902  
 🔗 [LinkedIn](https://www.linkedin.com/in/mateus-bessa-m)  
 🔗 [Portfólio](https://tinyurl.com/mateus-pfl)
@@ -102,9 +104,7 @@ Desenvolvedor de Software Full-stack com foco em backend, especializado em Pytho
 ## Educação
 
 - **Universidade de Fortaleza** – Bacharelado em Ciências da Computação  
-  *Fortaleza, Brazil | 2019–2023*  
-
-- **Politechnika Lubelska** – Intercâmbio acadêmico  
+  *Fortaleza, Brazil | 2019–2023* - **Politechnika Lubelska** – Intercâmbio acadêmico  
   *Lublin, Polônia | 2022*
 
 ---
@@ -139,10 +139,8 @@ const parseSection = (text, startHeading) => {
 
 // Main parser function to extract all relevant information
 const parseResume = (markdownText) => {
-    // FIX: Match the actual Portuguese headings from your resume file.
     const skillsSection = parseSection(markdownText, '## Habilidades');
     const skills = skillsSection.flatMap(line => {
-        // This part was already good!
         const parts = line.split(':');
         if (parts.length > 1) {
             return parts[1].split(',').map(skill => skill.trim());
@@ -150,43 +148,37 @@ const parseResume = (markdownText) => {
         return [];
     });
 
-    // FIX: Match the "Experiências Profissionais" heading.
     const experienceSection = parseSection(markdownText, '## Experiências Profissionais');
     const experiences = [];
     let currentExperience = null;
     for (const line of experienceSection) {
         if (line.startsWith('###')) {
             if (currentExperience) experiences.push(currentExperience);
-            // Extract title and date range correctly
             const [title, date] = line.replace('###', '').split('(');
             currentExperience = {
-                title: `${title.trim()}${date ? `(${date}` : ''}`, // Re-add the opening parenthesis
+                title: `${title.trim()}${date ? `(${date}` : ''}`,
                 details: []
             };
         } else if (currentExperience && line.trim().startsWith('-')) {
-            currentExperience.details.push(line.trim().substring(1).trim()); // Clean the leading dash
+            currentExperience.details.push(line.trim().substring(1).trim());
         }
     }
     if (currentExperience) experiences.push(currentExperience);
 
-    // FIX: Match the "Educação" heading and improve parsing logic.
     const educationSection = parseSection(markdownText, '## Educação');
     const educations = [];
     for (let i = 0; i < educationSection.length; i++) {
         const line = educationSection[i];
-        if (line.startsWith('- **')) { // Identifies a new education entry
+        if (line.startsWith('- **')) {
             const nextLine = educationSection[i + 1] || '';
             const [location, date] = nextLine.split('|');
 
             educations.push({
-                // Extracts the degree/institution from the line
                 degree: line.replace('- **', '').split('**')[0].trim() + ' ' + line.split('–')[1].trim(),
-                // Extracts date and cleans up asterisks
                 date: date ? date.trim().replace(/\*/g, '') : '',
-                // Extracts location and cleans up asterisks
                 details: [location ? location.trim().replace(/\*/g, '') : '']
             });
-            i++; // Skip the next line since we've already processed it
+            i++;
         }
     }
 
@@ -238,13 +230,27 @@ const BotIcon = (props) => (
     </svg>
 );
 
+// New icon for the Save button
+const DatabaseIcon = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <ellipse cx="12" cy="5" rx="9" ry="3" />
+        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+    </svg>
+);
+
 
 function ResumeParser() {
+    // State for file handling and parsing
     const [resumeContent, setResumeContent] = React.useState(mockResumeContent);
     const [fileName, setFileName] = React.useState("backend_resume.md");
     const [isParsing, setIsParsing] = React.useState(false);
     const [error, setError] = React.useState(null);
     const [extractedData, setExtractedData] = React.useState(null);
+
+    // New state for saving data to the backend
+    const [isSaving, setIsSaving] = React.useState(false);
+    const [saveStatus, setSaveStatus] = React.useState({ message: '', isError: false });
 
     const fileInputRef = React.useRef(null);
 
@@ -258,6 +264,7 @@ function ResumeParser() {
                     setFileName(file.name);
                     setError(null);
                     setExtractedData(null); // Reset extracted data on new file
+                    setSaveStatus({ message: '', isError: false }); // Reset save status
                 };
                 reader.readAsText(file);
             } else {
@@ -273,6 +280,7 @@ function ResumeParser() {
         }
         setIsParsing(true);
         setError(null);
+        setSaveStatus({ message: '', isError: false }); // Reset save status
         // Simulate parsing delay
         setTimeout(() => {
             try {
@@ -291,20 +299,63 @@ function ResumeParser() {
         fileInputRef.current.click();
     };
 
+    // New function to handle saving the data
+    const handleSave = async () => {
+        if (!extractedData) {
+            setSaveStatus({ message: 'No extracted data to save. Please analyze a resume first.', isError: true });
+            return;
+        }
+
+        setIsSaving(true);
+        setSaveStatus({ message: '', isError: false });
+
+        // Prepare the payload in the format expected by the backend
+        const payload = {
+            hard_skills: extractedData.skills,
+            professional_experience: extractedData.experiences,
+            education: extractedData.educations,
+        };
+
+        try {
+            const response = await fetch(`${API_BASE}/jobs/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                // Use the error message from the backend if available
+                throw new Error(result.error || `HTTP error! status: ${response.status}`);
+            }
+
+            setSaveStatus({ message: `Resume saved successfully! ID: ${result.id}`, isError: false });
+
+        } catch (error) {
+            console.error('Save error:', error);
+            setSaveStatus({ message: error.message, isError: true });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     return (
         <div className="bg-gray-900 text-white min-h-screen font-sans">
             <div className="container mx-auto p-4 sm:p-6 lg:p-8">
                 <header className="mb-8">
                     <h1 className="text-4xl font-bold text-center text-cyan-400">Resume Analyzer</h1>
                     <p className="text-center text-gray-400 mt-2">
-                        Upload your Markdown resume to extract key information for job matching.
+                        Upload, analyze, and save your Markdown resume.
                     </p>
                 </header>
 
                 <div className="max-w-4xl mx-auto flex flex-col gap-8">
                     {/* Section 1: Upload and Control */}
                     <div className="bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <h2 className="text-2xl font-semibold mb-4 border-b border-gray-700 pb-2">Upload Your Resume</h2>
+                        <h2 className="text-2xl font-semibold mb-4 border-b border-gray-700 pb-2">Upload & Actions</h2>
 
                         <div
                             className="border-2 border-dashed border-gray-600 rounded-lg p-8 text-center cursor-pointer hover:border-cyan-400 hover:bg-gray-700/50 transition-all duration-300"
@@ -333,11 +384,11 @@ function ResumeParser() {
                             </div>
                         )}
 
-                        <div className="mt-6 flex flex-col sm:flex-row gap-4">
+                        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <button
                                 onClick={handleAnalyze}
                                 disabled={isParsing || !resumeContent}
-                                className="w-full flex-1 bg-cyan-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-cyan-600 transition-colors duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                className="w-full bg-cyan-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-cyan-600 transition-colors duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
                                 {isParsing ? (
                                     <>
@@ -352,13 +403,29 @@ function ResumeParser() {
                                 )}
                             </button>
                             <button
-                                disabled
-                                className="w-full flex-1 bg-gray-700 text-gray-400 font-bold py-3 px-4 rounded-lg cursor-not-allowed"
+                                onClick={handleSave}
+                                disabled={isSaving || !extractedData}
+                                className="w-full bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-600 transition-colors duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
-                                Upload PDF (Unavailable)
+                                {isSaving ? (
+                                    <>
+                                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Saving...
+                                    </>
+                                ) : (
+                                    <> <DatabaseIcon className="h-5 w-5"/> Save to DB </>
+                                )}
                             </button>
                         </div>
                         {error && <p className="text-red-400 mt-4 text-center">{error}</p>}
+                        {saveStatus.message && (
+                            <p className={`mt-4 text-center ${saveStatus.isError ? 'text-red-400' : 'text-green-400'}`}>
+                                {saveStatus.message}
+                            </p>
+                        )}
                     </div>
 
                     {/* Section 2: Extracted Data */}
@@ -400,9 +467,12 @@ function ResumeParser() {
                                         {extractedData.experiences.map((exp, index) => (
                                             <div key={index} className="bg-gray-700/50 p-4 rounded-lg">
                                                 <h4 className="font-bold text-gray-200">{exp.title}</h4>
-                                                {exp.details.map((detail, i) => (
-                                                    <p key={i} className="text-gray-400 text-sm ml-2">{detail}</p>
-                                                ))}
+                                                {/* The backend expects a list of objects, so we can keep the details structured */}
+                                                <ul className="list-disc list-inside text-gray-400 text-sm ml-2 mt-1">
+                                                    {exp.details.map((detail, i) => (
+                                                        <li key={i}>{detail}</li>
+                                                    ))}
+                                                </ul>
                                             </div>
                                         ))}
                                     </div>
