@@ -79,6 +79,9 @@ class Job(db.Model):
             "description_snippet": self.description_snippet,
             "easy_apply": self.easy_apply,
             "language": self.language,
+            "responsibilities": self.responsibilities or [],
+            "qualifications": self.qualifications or [],
+            "keywords": self.keywords or [],
         }
         if include_company and self.company is not None:
             data["company"] = self.company.to_dict(include_jobs=False)
