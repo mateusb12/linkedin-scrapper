@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Briefcase, MapPin, Clock, Users, Zap, Building, ChevronRight, CheckCircle, Target, BookOpen, Globe, XCircle, Filter, X } from 'lucide-react';
 
 // Mock data representing job listings. In a real app, this would come from an API.
@@ -145,7 +145,6 @@ const JobDetailView = ({ job }) => {
                 const parsed = JSON.parse(field);
                 return Array.isArray(parsed) ? parsed : [];
             } catch (e) {
-                console.error("Invalid JSON string:", field, e);
                 return [];
             }
         }
@@ -307,7 +306,79 @@ const FilterSelect = ({ label, value, onChange, children }) => (
 );
 
 /**
- * The main component for the job listings page. (UPDATED WITH FIXES)
+ * A multi-select component for filtering by skills.
+ */
+const MultiSelectFilter = ({ options, selectedOptions, onChange, placeholder = "Select skills..." }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const ref = useRef(null);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (ref.current && !ref.current.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [ref]);
+
+    const handleSelect = (option) => {
+        const newSelectedOptions = selectedOptions.includes(option)
+            ? selectedOptions.filter(item => item !== option)
+            : [...selectedOptions, option];
+        onChange(newSelectedOptions);
+    };
+
+    const removeOption = (option) => {
+        onChange(selectedOptions.filter(item => item !== option));
+    };
+
+    return (
+        <div className="relative col-span-1 md:col-span-2" ref={ref}>
+            <div
+                className="w-full flex flex-wrap gap-1 items-center p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 min-h-[42px] cursor-pointer"
+                onClick={() => setIsOpen(!isOpen)}
+            >
+                {selectedOptions.length > 0 ? (
+                    selectedOptions.map(option => (
+                        <span key={option} className="flex items-center gap-1 bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded-full dark:bg-blue-900 dark:text-blue-300">
+                            {option}
+                            <button
+                                onClick={(e) => { e.stopPropagation(); removeOption(option); }}
+                                className="text-blue-500 hover:text-blue-700 focus:outline-none"
+                                aria-label={`Remove ${option}`}
+                            >
+                                <X size={12} />
+                            </button>
+                        </span>
+                    ))
+                ) : (
+                    <span className="text-gray-500 dark:text-gray-400 px-1">{placeholder}</span>
+                )}
+            </div>
+            {isOpen && (
+                <div className="absolute z-10 w-full mt-1 max-h-60 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-lg">
+                    {options.map(option => (
+                        <label key={option} className="flex items-center w-full px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={selectedOptions.includes(option)}
+                                onChange={() => handleSelect(option)}
+                                className="form-checkbox h-4 w-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                            />
+                            <span className="ml-3 text-gray-900 dark:text-gray-100">{option}</span>
+                        </label>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+
+/**
+ * The main component for the job listings page. (FIXED SKILL EXTRACTION)
  */
 const MainJobListing = () => {
     const [jobs, setJobs] = useState([]);
@@ -319,6 +390,7 @@ const MainJobListing = () => {
     const [workplaceType, setWorkplaceType] = useState('All');
     const [datePosted, setDatePosted] = useState('All');
     const [employmentType, setEmploymentType] = useState('All');
+    const [selectedSkills, setSelectedSkills] = useState([]);
     const [sortBy, setSortBy] = useState('relevance');
 
     // --- State for resizable column ---
@@ -328,19 +400,16 @@ const MainJobListing = () => {
     const MIN_WIDTH = 25;
     const MAX_WIDTH = 75;
 
-    // --- FIXED: Effect to load initial data from API with mock data as fallback ---
+    // --- Effect to load initial data from API with mock data as fallback ---
     useEffect(() => {
         const fetchJobs = async () => {
             try {
-                // Try to fetch from a local API endpoint if available
                 const response = await fetch('http://localhost:5000/jobs/all');
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
-                console.log(`Successfully fetched ${data.length} jobs from API.`);
                 setJobs(data);
                 if (data.length > 0) setSelectedJob(data[0]);
             } catch (error) {
-                // Fallback to mock data if the API fails
                 console.error("Failed to fetch jobs from API, using mock data.", error);
                 setJobs(mockData);
                 if (mockData.length > 0) setSelectedJob(mockData[0]);
@@ -350,7 +419,54 @@ const MainJobListing = () => {
         fetchJobs();
     }, []);
 
-    // --- FIXED: Effect to handle all filtering and sorting ---
+    // --- Memoized calculation for unique values ---
+    const getUniqueValues = (key) => {
+        const values = new Set(jobs.map(job => job[key]).filter(Boolean));
+        return ['All', ...Array.from(values)];
+    };
+
+    const uniqueEmploymentTypes = useMemo(() => getUniqueValues('employment_type'), [jobs]);
+
+    const uniqueSkills = useMemo(() => {
+        const allSkills = new Set();
+
+        jobs.forEach(job => {
+            let skillsArray = [];
+            // Check for skills in `job.skills` or `job.keywords` for robustness.
+            const skillsData = job.skills || job.keywords;
+
+            if (skillsData) {
+                if (typeof skillsData === 'string') {
+                    try {
+                        const parsed = JSON.parse(skillsData);
+                        if (Array.isArray(parsed)) {
+                            skillsArray = parsed;
+                        }
+                    } catch (e) {
+                        // Fallback for non-JSON strings (e.g., "React, Node, JS")
+                        if (skillsData.includes(',')) {
+                            skillsArray = skillsData.split(',').map(s => s.trim());
+                        } else {
+                            skillsArray = [skillsData];
+                        }
+                    }
+                } else if (Array.isArray(skillsData)) {
+                    skillsArray = skillsData;
+                }
+            }
+
+            skillsArray.forEach(skill => {
+                if (typeof skill === 'string' && skill.trim()) {
+                    allSkills.add(skill.trim());
+                }
+            });
+        });
+
+        return Array.from(allSkills).sort();
+    }, [jobs]);
+
+
+    // --- Effect to handle all filtering and sorting ---
     useEffect(() => {
         let processedJobs = [...jobs];
 
@@ -372,9 +488,9 @@ const MainJobListing = () => {
 
         // 3. Date Posted Filter
         if (datePosted !== 'All') {
-            const cutoffDate = new Date(); // Create a fresh Date object for calculation
+            const cutoffDate = new Date();
             const daysToSubtract = parseInt(datePosted, 10);
-            cutoffDate.setDate(cutoffDate.getDate() - daysToSubtract); // Modify the new object
+            cutoffDate.setDate(cutoffDate.getDate() - daysToSubtract);
 
             processedJobs = processedJobs.filter(job => {
                 if (!job.posted_on) return false;
@@ -388,7 +504,34 @@ const MainJobListing = () => {
             processedJobs = processedJobs.filter(job => job.employment_type === employmentType);
         }
 
-        // 5. Sorting
+        // 5. Skills Filter
+        if (selectedSkills.length > 0) {
+            processedJobs = processedJobs.filter(job => {
+                const skillsData = job.skills || job.keywords;
+                if (!skillsData) return false;
+
+                let jobSkills = [];
+                if (typeof skillsData === 'string') {
+                    try {
+                        const parsed = JSON.parse(skillsData);
+                        if (Array.isArray(parsed)) jobSkills = parsed.map(s => s.trim());
+                    } catch(e) {
+                        if (skillsData.includes(',')) {
+                            jobSkills = skillsData.split(',').map(s => s.trim());
+                        } else {
+                            jobSkills = [skillsData];
+                        }
+                    }
+                } else if (Array.isArray(skillsData)) {
+                    jobSkills = skillsData.map(s => s.trim());
+                }
+
+                // Job must have ALL selected skills
+                return selectedSkills.every(selectedSkill => jobSkills.includes(selectedSkill));
+            });
+        }
+
+        // 6. Sorting
         if (sortBy === 'date') {
             processedJobs.sort((a, b) => new Date(b.posted_on) - new Date(a.posted_on));
         }
@@ -403,7 +546,7 @@ const MainJobListing = () => {
             setSelectedJob(processedJobs[0]);
         }
 
-    }, [searchTerm, workplaceType, datePosted, employmentType, sortBy, jobs, selectedJob]);
+    }, [searchTerm, workplaceType, datePosted, employmentType, selectedSkills, sortBy, jobs, selectedJob]);
 
 
     // Handlers for resizing
@@ -428,21 +571,12 @@ const MainJobListing = () => {
         if (isDragging) {
             window.addEventListener('mousemove', handleMouseMove);
             window.addEventListener('mouseup', handleMouseUp);
-        } else {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
         }
         return () => {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
         };
     }, [isDragging, handleMouseMove, handleMouseUp]);
-
-    const getUniqueEmploymentTypes = () => {
-        const types = new Set(jobs.map(job => job.employment_type).filter(Boolean));
-        return ['All', ...Array.from(types)];
-    };
-
 
     return (
         <div className="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
@@ -461,7 +595,7 @@ const MainJobListing = () => {
                         <input
                             type="text"
                             placeholder="Search by title or company..."
-                            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                             onChange={(e) => setSearchTerm(e.target.value)}
                             value={searchTerm}
                         />
@@ -482,12 +616,18 @@ const MainJobListing = () => {
                                 <option value="30">Last 30 days</option>
                             </FilterSelect>
                             <FilterSelect value={employmentType} onChange={(e) => setEmploymentType(e.target.value)}>
-                                {getUniqueEmploymentTypes().map(type => <option key={type} value={type}>{type === 'All' ? 'All Job Types' : type}</option>)}
+                                {uniqueEmploymentTypes.map(type => <option key={type} value={type}>{type === 'All' ? 'All Job Types' : type}</option>)}
                             </FilterSelect>
                             <FilterSelect value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
                                 <option value="relevance">Sort by: Relevance</option>
                                 <option value="date">Sort by: Date</option>
                             </FilterSelect>
+                            <MultiSelectFilter
+                                options={uniqueSkills}
+                                selectedOptions={selectedSkills}
+                                onChange={setSelectedSkills}
+                                placeholder="Filter by skills..."
+                            />
                         </div>
 
                         {/* Results Count */}
