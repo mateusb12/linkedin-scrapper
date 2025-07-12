@@ -1,82 +1,106 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Briefcase, MapPin, Clock, Users, Zap, Building, ChevronRight, CheckCircle, Target, BookOpen, Globe, XCircle } from 'lucide-react';
+import { Briefcase, MapPin, Clock, Users, Zap, Building, ChevronRight, CheckCircle, Target, BookOpen, Globe, XCircle, Filter, X } from 'lucide-react';
 
 // Mock data representing job listings. In a real app, this would come from an API.
+// This is now a FALLBACK if the API call fails.
 const mockData = [
     {
-        "applicants": 0,
-        "company": {
-            "logo_url": "https://media.licdn.com/dms/image/v2/D4D0BAQGlEIHzx81JxQ/company-logo_200_200/B4DZd_pzPSGkAM-/0/1750193354321/mjv_tech_and_innovation_logo?e=1756944000&v=beta&t=xR0LnBf7cjDPrMdJHVK3ij8oYNuFSuOmwBYOZXlY67A",
-            "name": "MJV Technology & Innovation",
-            "url": "https://www.linkedin.com/company/mjv-tech-and-innovation/life",
-            "urn": "urn:li:fsd_company:83580"
-        },
-        "company_urn": "urn:li:fsd_company:83580",
-        "description_full": "Descrição da vaga\n\nSer MJVer 🤝 é estar em um dos melhores lugares para trabalhar...\n[TRUNCATED HERE FOR BREVITY — you’ll get full JSON in download]",
-        "description_snippet": "4 school alumni work here",
-        "easy_apply": false,
+        "applicants": 5,
+        "company": { "name": "Innovatech Solutions", "logo_url": "https://placehold.co/64x64/7c3aed/ffffff?text=IS" },
+        "job_url": "https://example.com/job/1",
+        "location": "San Francisco, CA (On-site)",
+        "posted_on": new Date(new Date().setDate(new Date().getDate() - 1)).toISOString(), // Yesterday
+        "title": "Senior Frontend Developer",
+        "urn": "urn:li:fsd_jobPosting:1",
+        "workplace_type": "On-site",
         "employment_type": "Full-time",
-        "job_url": "https://mjvcarreiras.gupy.io/jobs/9231998",
-        "location": "Brazil (Remote)",
-        "posted_on": "May 30, 2025",
-        "title": "Pessoa Desenvolvedora Python/Golang\nTrabalho Remoto\nEfetivo",
-        "urn": "urn:li:fsd_jobPosting:4237482675",
-        "workplace_type": "Remote",
-        "skills": "[\"Python\", \"Go\", \"SQL\", \"Docker\", \"Kubernetes\"]",
-        "responsibilities": "[\"Develop and maintain backend services\", \"Collaborate with cross-functional teams\", \"Write clean, scalable, and efficient code\"]",
-        "requirements": "[\"Bachelor's degree in Computer Science or related field\", \"3+ years of experience with Python or Go\", \"Experience with cloud platforms (AWS, GCP, Azure)\"]",
-        "language": "Portuguese"
+        "skills": "[\"React\", \"TypeScript\", \"Next.js\", \"GraphQL\"]",
+        "easy_apply": true,
+        "language": "English"
     },
     {
         "applicants": 12,
-        "company": {
-            "logo_url": "https://media.licdn.com/dms/image/v2/D4D0BAQEEnATeFu7uAw/company-logo_200_200/company-logo_200_200/0/1721777167872/auramind_ai_logo?e=1756944000&v=beta&t=d5_ogfQhy_swysPpWBOhvX6ce55VcsoQJZ_7Bz69UVg",
-            "name": "Auramind.ai",
-            "url": "https://www.linkedin.com/company/auramind-ai/life",
-            "urn": "urn:li:fsd_company:103623376"
-        },
-        "company_urn": "urn:li:fsd_company:103623376",
-        "description_full": "Procuramos um(a) desenvolvedor(a) Python PLENO que vai além do óbvio...",
-        "description_snippet": "Company review time is typically 1 week",
-        "easy_apply": true,
-        "employment_type": "Full-time",
+        "company": { "name": "Auramind.ai", "logo_url": "https://media.licdn.com/dms/image/v2/D4D0BAQEEnATeFu7uAw/company-logo_200_200/company-logo_200_200/0/1721777167872/auramind_ai_logo?e=1756944000&v=beta&t=d5_ogfQhy_swysPpWBOhvX6ce55VcsoQJZ_7Bz69UVg" },
         "job_url": "https://www.linkedin.com/jobs/view/4257609291/",
         "location": "Goiânia, Goiás, Brazil (Remote)",
-        "posted_on": "Jul 2, 2025",
+        "posted_on": new Date(new Date().setDate(new Date().getDate() - 2)).toISOString(), // 2 days ago
         "title": "Backend Developer - Python - Pleno",
         "urn": "urn:li:fsd_jobPosting:4257609291",
         "workplace_type": "Remote",
+        "employment_type": "Full-time",
         "skills": "[\"Python\", \"Django\", \"Flask\", \"RESTful APIs\"]",
-        "responsibilities": "[]",
-        "requirements": "[\"Proven experience as a Python Developer\", \"Experience with at least one Python web framework (e.g., Django, Flask)\", \"Familiarity with ORM libraries\"]",
+        "easy_apply": true,
         "language": "Portuguese"
     },
     {
         "applicants": 3,
-        "company": {
-            "logo_url": "https://media.licdn.com/dms/image/v2/D560BAQFhAT_f2S08EQ/company-logo_200_200/company-logo_200_200/0/1699284516534/wexinc_logo?e=1756944000&v=beta&t=NtZa7aSPem2JOsxFBPYXN28p70MHEoYBoGvVu-fdaQw",
-            "name": "WEX",
-            "url": "https://www.linkedin.com/company/wexinc/life",
-            "urn": "urn:li:fsd_company:11637"
-        },
-        "company_urn": "urn:li:fsd_company:11637",
-        "description_full": "About The Team/Role\n\nWe are the Core Information Delivery team, supporting core reporting frameworks...",
-        "description_snippet": "2 company alumni work here",
-        "easy_apply": false,
-        "employment_type": "Full-time",
+        "company": { "name": "WEX", "logo_url": "https://media.licdn.com/dms/image/v2/D560BAQFhAT_f2S08EQ/company-logo_200_200/company-logo_200_200/0/1699284516534/wexinc_logo?e=1756944000&v=beta&t=NtZa7aSPem2JOsxFBPYXN28p70MHEoYBoGvVu-fdaQw" },
         "job_url": "https://careers.wexinc.com/us/en/job/WEXWEXUSR17144EXTERNALENUS/Mid-Python-Developer?utm_source=linkedin&utm_medium=phenom-feeds",
-        "location": "São Paulo, Brazil (Remote)",
-        "posted_on": "Feb 22, 2025",
+        "location": "São Paulo, Brazil (Hybrid)",
+        "posted_on": new Date(new Date().setDate(new Date().getDate() - 8)).toISOString(), // 8 days ago
         "title": "Mid Python Developer",
         "urn": "urn:li:fsd_jobPosting:4161846248",
         "workplace_type": "Hybrid",
-        "skills": null,
-        "responsibilities": null,
-        "requirements": null,
+        "employment_type": "Full-time",
+        "skills": null, "easy_apply": false, "language": "English"
+    },
+    {
+        "applicants": 25,
+        "company": { "name": "DataDriven Inc.", "logo_url": "https://placehold.co/64x64/db2777/ffffff?text=DD" },
+        "job_url": "https://example.com/job/2",
+        "location": "New York, NY (Remote)",
+        "posted_on": new Date(new Date().setDate(new Date().getDate() - 15)).toISOString(), // 15 days ago
+        "title": "Data Scientist",
+        "urn": "urn:li:fsd_jobPosting:2",
+        "workplace_type": "Remote",
+        "employment_type": "Contract",
+        "skills": "[\"Python\", \"Pandas\", \"Scikit-learn\", \"TensorFlow\"]",
+        "easy_apply": false,
+        "language": "English"
+    },
+    {
+        "applicants": 0,
+        "company": { "name": "MJV Technology & Innovation", "logo_url": "https://media.licdn.com/dms/image/v2/D4D0BAQGlEIHzx81JxQ/company-logo_200_200/B4DZd_pzPSGkAM-/0/1750193354321/mjv_tech_and_innovation_logo?e=1756944000&v=beta&t=xR0LnBf7cjDPrMdJHVK3ij8oYNuFSuOmwBYOZXlY67A" },
+        "job_url": "https://mjvcarreiras.gupy.io/jobs/9231998",
+        "location": "Brazil (Remote)",
+        "posted_on": new Date(new Date().setDate(new Date().getDate() - 40)).toISOString(), // 40 days ago
+        "title": "Pessoa Desenvolvedora Python/Golang",
+        "urn": "urn:li:fsd_jobPosting:4237482675",
+        "workplace_type": "Remote",
+        "employment_type": "Full-time",
+        "skills": "[\"Python\", \"Go\", \"SQL\", \"Docker\", \"Kubernetes\"]",
+        "easy_apply": false,
+        "language": "Portuguese"
+    },
+    {
+        "applicants": 8,
+        "company": { "name": "CyberGuardians", "logo_url": "https://placehold.co/64x64/16a34a/ffffff?text=CG" },
+        "job_url": "https://example.com/job/3",
+        "location": "London, UK (Hybrid)",
+        "posted_on": new Date(new Date().setDate(new Date().getDate() - 5)).toISOString(), // 5 days ago
+        "title": "Cybersecurity Analyst",
+        "urn": "urn:li:fsd_jobPosting:3",
+        "workplace_type": "Hybrid",
+        "employment_type": "Full-time",
+        "skills": "[\"SIEM\", \"Penetration Testing\", \"Firewalls\"]",
+        "easy_apply": true,
+        "language": "English"
+    },
+    {
+        "applicants": 1,
+        "company": { "name": "Creative Minds Agency", "logo_url": "https://placehold.co/64x64/f97316/ffffff?text=CM" },
+        "job_url": "https://example.com/job/4",
+        "location": "Remote",
+        "posted_on": new Date().toISOString(), // Today
+        "title": "UX/UI Designer Intern",
+        "urn": "urn:li:fsd_jobPosting:4",
+        "workplace_type": "Remote",
+        "employment_type": "Internship",
+        "skills": "[\"Figma\", \"Adobe XD\", \"User Research\"]",
+        "easy_apply": false,
         "language": "English"
     }
-]
-
+];
 
 /**
  * A compact card for the job list on the left.
@@ -102,7 +126,7 @@ const JobListItem = ({ job, onSelect, isSelected }) => {
 };
 
 /**
- * A detailed view of a single job. (UPDATED)
+ * A detailed view of a single job.
  */
 const JobDetailView = ({ job }) => {
     if (!job) {
@@ -126,6 +150,12 @@ const JobDetailView = ({ job }) => {
             }
         }
         return [];
+    };
+
+    const formatDate = (dateString) => {
+        if (!dateString) return 'N/A';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     };
 
     const skills = parseJsonArray(job.skills || job.keywords);
@@ -178,7 +208,7 @@ const JobDetailView = ({ job }) => {
                     <Briefcase size={18} className="mr-3 text-gray-500 flex-shrink-0" /> <span className="truncate">{job.employment_type || 'Not specified'}</span>
                 </div>
                 <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
-                    <Clock size={18} className="mr-3 text-gray-500 flex-shrink-0" /> <span className="truncate">Posted: {job.posted_on || 'N/A'}</span>
+                    <Clock size={18} className="mr-3 text-gray-500 flex-shrink-0" /> <span className="truncate">Posted: {formatDate(job.posted_on)}</span>
                 </div>
                 <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
                     <Building size={18} className="mr-3 text-gray-500 flex-shrink-0" /> <span className="truncate">{job.workplace_type || 'Not specified'}</span>
@@ -205,7 +235,6 @@ const JobDetailView = ({ job }) => {
             )}
 
             <div className="space-y-8">
-                {/* Skills Section */}
                 <div>
                     <h3 className="text-xl font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700 flex items-center">
                         <ChevronRight size={20} className="mr-2" /> Skills
@@ -218,12 +247,8 @@ const JobDetailView = ({ job }) => {
                                 </span>
                             ))}
                         </div>
-                    ) : (
-                        <Placeholder />
-                    )}
+                    ) : <Placeholder />}
                 </div>
-
-                {/* Responsibilities Section */}
                 <div>
                     <h3 className="text-xl font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700 flex items-center">
                         <Target size={20} className="mr-2" /> Key Responsibilities
@@ -237,12 +262,8 @@ const JobDetailView = ({ job }) => {
                                 </li>
                             ))}
                         </ul>
-                    ) : (
-                        <Placeholder />
-                    )}
+                    ) : <Placeholder />}
                 </div>
-
-                {/* Requirements Section */}
                 <div>
                     <h3 className="text-xl font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700 flex items-center">
                         <BookOpen size={20} className="mr-2" /> Qualifications
@@ -256,12 +277,8 @@ const JobDetailView = ({ job }) => {
                                 </li>
                             ))}
                         </ul>
-                    ) : (
-                        <Placeholder />
-                    )}
+                    ) : <Placeholder />}
                 </div>
-
-                {/* About the job Section */}
                 <div>
                     <h3 className="text-xl font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700">About the job</h3>
                     <div className="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-300">
@@ -273,24 +290,45 @@ const JobDetailView = ({ job }) => {
     );
 };
 
+// Custom Select Component for styling
+const FilterSelect = ({ label, value, onChange, children }) => (
+    <div className="relative">
+        <select
+            value={value}
+            onChange={onChange}
+            className="w-full appearance-none p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+        >
+            {children}
+        </select>
+        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 dark:text-gray-300">
+            <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+        </div>
+    </div>
+);
 
 /**
- * The main component for the job listings page.
+ * The main component for the job listings page. (UPDATED WITH FIXES)
  */
 const MainJobListing = () => {
     const [jobs, setJobs] = useState([]);
     const [filteredJobs, setFilteredJobs] = useState([]);
-    const [filter, setFilter] = useState('');
     const [selectedJob, setSelectedJob] = useState(null);
 
-    // State for resizable column
-    const [isDragging, setIsDragging] = useState(false);
-    const [leftPanelWidth, setLeftPanelWidth] = useState(35); // Initial width in percentage
-    const containerRef = useRef(null);
-    const MIN_WIDTH = 20; // Minimum width in percentage
-    const MAX_WIDTH = 80; // Maximum width in percentage
+    // --- State for filters and sorting ---
+    const [searchTerm, setSearchTerm] = useState('');
+    const [workplaceType, setWorkplaceType] = useState('All');
+    const [datePosted, setDatePosted] = useState('All');
+    const [employmentType, setEmploymentType] = useState('All');
+    const [sortBy, setSortBy] = useState('relevance');
 
-    // Effect to load initial data from API with mock data as fallback
+    // --- State for resizable column ---
+    const [isDragging, setIsDragging] = useState(false);
+    const [leftPanelWidth, setLeftPanelWidth] = useState(35);
+    const containerRef = useRef(null);
+    const MIN_WIDTH = 25;
+    const MAX_WIDTH = 75;
+
+    // --- FIXED: Effect to load initial data from API with mock data as fallback ---
     useEffect(() => {
         const fetchJobs = async () => {
             try {
@@ -298,48 +336,74 @@ const MainJobListing = () => {
                 const response = await fetch('http://localhost:5000/jobs/all');
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
-                console.log("Successfully fetched jobs from API.");
+                console.log(`Successfully fetched ${data.length} jobs from API.`);
                 setJobs(data);
                 if (data.length > 0) setSelectedJob(data[0]);
             } catch (error) {
                 // Fallback to mock data if the API fails
                 console.error("Failed to fetch jobs from API, using mock data.", error);
-                const updatedMockData = mockData.map((job, index) => ({
-                    ...job,
-                    applicants: index === 1 ? 12 : index === 2 ? 3 : 0,
-                }));
-                setJobs(updatedMockData);
-                if (updatedMockData.length > 0) setSelectedJob(updatedMockData[0]);
+                setJobs(mockData);
+                if (mockData.length > 0) setSelectedJob(mockData[0]);
             }
         };
 
         fetchJobs();
     }, []);
 
-    // Effect to handle filtering logic
+    // --- FIXED: Effect to handle all filtering and sorting ---
     useEffect(() => {
-        const normalize = (s) =>
-            (s || "")
-                .replace(/\s+/g, " ")  // Replace newlines/tabs/multiple spaces with a single space
-                .trim()
-                .toLowerCase();
+        let processedJobs = [...jobs];
 
-        const normalizedFilter = normalize(filter);
-
-        const newFilteredJobs = jobs.filter((job) => {
-            const title = normalize(job.title);
-            const company = normalize(job.company?.name);
-            return title.includes(normalizedFilter) || company.includes(normalizedFilter);
-        });
-
-        setFilteredJobs(newFilteredJobs);
-
-        if (selectedJob && !newFilteredJobs.some((job) => job.urn === selectedJob.urn)) {
-            setSelectedJob(newFilteredJobs.length > 0 ? newFilteredJobs[0] : null);
-        } else if (!selectedJob && newFilteredJobs.length > 0) {
-            setSelectedJob(newFilteredJobs[0]);
+        // 1. Text Search Filter
+        if (searchTerm) {
+            const normalize = (s) => (s || "").toLowerCase().trim();
+            const normalizedFilter = normalize(searchTerm);
+            processedJobs = processedJobs.filter((job) => {
+                const title = normalize(job.title);
+                const company = normalize(job.company?.name);
+                return title.includes(normalizedFilter) || company.includes(normalizedFilter);
+            });
         }
-    }, [filter, jobs, selectedJob]);
+
+        // 2. Workplace Type Filter
+        if (workplaceType !== 'All') {
+            processedJobs = processedJobs.filter(job => job.workplace_type === workplaceType);
+        }
+
+        // 3. Date Posted Filter
+        if (datePosted !== 'All') {
+            const cutoffDate = new Date(); // Create a fresh Date object for calculation
+            const daysToSubtract = parseInt(datePosted, 10);
+            cutoffDate.setDate(cutoffDate.getDate() - daysToSubtract); // Modify the new object
+
+            processedJobs = processedJobs.filter(job => {
+                if (!job.posted_on) return false;
+                const postedDate = new Date(job.posted_on);
+                return postedDate >= cutoffDate;
+            });
+        }
+
+        // 4. Employment Type Filter
+        if (employmentType !== 'All') {
+            processedJobs = processedJobs.filter(job => job.employment_type === employmentType);
+        }
+
+        // 5. Sorting
+        if (sortBy === 'date') {
+            processedJobs.sort((a, b) => new Date(b.posted_on) - new Date(a.posted_on));
+        }
+        // 'relevance' sort is the default order after filtering.
+
+        setFilteredJobs(processedJobs);
+
+        // Update selected job if it's no longer in the filtered list
+        if (selectedJob && !processedJobs.some((job) => job.urn === selectedJob.urn)) {
+            setSelectedJob(processedJobs.length > 0 ? processedJobs[0] : null);
+        } else if (!selectedJob && processedJobs.length > 0) {
+            setSelectedJob(processedJobs[0]);
+        }
+
+    }, [searchTerm, workplaceType, datePosted, employmentType, sortBy, jobs, selectedJob]);
 
 
     // Handlers for resizing
@@ -348,22 +412,18 @@ const MainJobListing = () => {
         setIsDragging(true);
     };
 
-    const handleMouseUp = useCallback(() => {
-        setIsDragging(false);
-    }, []);
+    const handleMouseUp = useCallback(() => setIsDragging(false), []);
 
     const handleMouseMove = useCallback((e) => {
         if (!isDragging || !containerRef.current) return;
-
         const containerRect = containerRef.current.getBoundingClientRect();
         const newWidthPx = e.clientX - containerRect.left;
         const newWidthPercent = (newWidthPx / containerRect.width) * 100;
-
         const clampedWidth = Math.max(MIN_WIDTH, Math.min(newWidthPercent, MAX_WIDTH));
         setLeftPanelWidth(clampedWidth);
     }, [isDragging, MIN_WIDTH, MAX_WIDTH]);
 
-    // Effect to add and remove global event listeners for resizing
+    // Effect for resizing event listeners
     useEffect(() => {
         if (isDragging) {
             window.addEventListener('mousemove', handleMouseMove);
@@ -372,12 +432,16 @@ const MainJobListing = () => {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
         }
-
         return () => {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
         };
     }, [isDragging, handleMouseMove, handleMouseUp]);
+
+    const getUniqueEmploymentTypes = () => {
+        const types = new Set(jobs.map(job => job.employment_type).filter(Boolean));
+        return ['All', ...Array.from(types)];
+    };
 
 
     return (
@@ -387,21 +451,50 @@ const MainJobListing = () => {
                 className="flex h-screen"
                 style={{ userSelect: isDragging ? 'none' : 'auto' }}
             >
-                {/* Left Column: Job List */}
+                {/* Left Column: Job List & Filters */}
                 <div
                     className="flex flex-col flex-shrink-0"
                     style={{ width: `${leftPanelWidth}%` }}
                 >
-                    <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-700 space-y-4">
+                        {/* Search Input */}
                         <input
                             type="text"
-                            placeholder="Filter by title or company..."
+                            placeholder="Search by title or company..."
                             className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                            onChange={(e) => setFilter(e.target.value)}
-                            value={filter}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            value={searchTerm}
                         />
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 pl-1">{filteredJobs.length} results</p>
+
+                        {/* Filter Controls */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <FilterSelect value={workplaceType} onChange={(e) => setWorkplaceType(e.target.value)}>
+                                <option value="All">All Workplaces</option>
+                                <option value="Remote">Remote</option>
+                                <option value="Hybrid">Hybrid</option>
+                                <option value="On-site">On-site</option>
+                            </FilterSelect>
+                            <FilterSelect value={datePosted} onChange={(e) => setDatePosted(e.target.value)}>
+                                <option value="All">Any Time</option>
+                                <option value="1">Last 24 hours</option>
+                                <option value="7">Last 7 days</option>
+                                <option value="14">Last 14 days</option>
+                                <option value="30">Last 30 days</option>
+                            </FilterSelect>
+                            <FilterSelect value={employmentType} onChange={(e) => setEmploymentType(e.target.value)}>
+                                {getUniqueEmploymentTypes().map(type => <option key={type} value={type}>{type === 'All' ? 'All Job Types' : type}</option>)}
+                            </FilterSelect>
+                            <FilterSelect value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                                <option value="relevance">Sort by: Relevance</option>
+                                <option value="date">Sort by: Date</option>
+                            </FilterSelect>
+                        </div>
+
+                        {/* Results Count */}
+                        <p className="text-sm text-gray-500 dark:text-gray-400 pl-1">{filteredJobs.length} results</p>
                     </div>
+
+                    {/* Job List */}
                     <div className="flex-grow overflow-y-auto">
                         {filteredJobs.length > 0 ? (
                             filteredJobs.map(job => (
@@ -413,7 +506,11 @@ const MainJobListing = () => {
                                 />
                             ))
                         ) : (
-                            <p className="p-4 text-center text-gray-500">No jobs found.</p>
+                            <div className="p-8 text-center text-gray-500">
+                                <Filter size={48} className="mx-auto mb-4 text-gray-400" />
+                                <h3 className="text-xl font-semibold">No jobs found</h3>
+                                <p>Try adjusting your search or filter criteria.</p>
+                            </div>
                         )}
                     </div>
                 </div>
@@ -425,7 +522,7 @@ const MainJobListing = () => {
                 />
 
                 {/* Right Column: Job Details */}
-                <main className="flex-grow">
+                <main className="flex-grow bg-white dark:bg-gray-800/50">
                     <JobDetailView job={selectedJob} />
                 </main>
             </div>
