@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Briefcase, MapPin, Clock, Users, Zap } from 'lucide-react';
+import { Briefcase, MapPin, Clock, Users, Zap, Building, ChevronRight, CheckCircle, Target, BookOpen, Globe, XCircle } from 'lucide-react';
 
 // Mock data representing job listings. In a real app, this would come from an API.
 const mockData = [
@@ -21,7 +21,11 @@ const mockData = [
         "posted_on": "May 30, 2025",
         "title": "Pessoa Desenvolvedora Python/Golang\nTrabalho Remoto\nEfetivo",
         "urn": "urn:li:fsd_jobPosting:4237482675",
-        "workplace_type": "Remote"
+        "workplace_type": "Remote",
+        "skills": "[\"Python\", \"Go\", \"SQL\", \"Docker\", \"Kubernetes\"]",
+        "responsibilities": "[\"Develop and maintain backend services\", \"Collaborate with cross-functional teams\", \"Write clean, scalable, and efficient code\"]",
+        "requirements": "[\"Bachelor's degree in Computer Science or related field\", \"3+ years of experience with Python or Go\", \"Experience with cloud platforms (AWS, GCP, Azure)\"]",
+        "language": "Portuguese"
     },
     {
         "applicants": 12,
@@ -41,7 +45,11 @@ const mockData = [
         "posted_on": "Jul 2, 2025",
         "title": "Backend Developer - Python - Pleno",
         "urn": "urn:li:fsd_jobPosting:4257609291",
-        "workplace_type": "Remote"
+        "workplace_type": "Remote",
+        "skills": "[\"Python\", \"Django\", \"Flask\", \"RESTful APIs\"]",
+        "responsibilities": "[]",
+        "requirements": "[\"Proven experience as a Python Developer\", \"Experience with at least one Python web framework (e.g., Django, Flask)\", \"Familiarity with ORM libraries\"]",
+        "language": "Portuguese"
     },
     {
         "applicants": 3,
@@ -61,17 +69,17 @@ const mockData = [
         "posted_on": "Feb 22, 2025",
         "title": "Mid Python Developer",
         "urn": "urn:li:fsd_jobPosting:4161846248",
-        "workplace_type": "Remote"
+        "workplace_type": "Hybrid",
+        "skills": null,
+        "responsibilities": null,
+        "requirements": null,
+        "language": "English"
     }
 ]
 
 
 /**
  * A compact card for the job list on the left.
- * @param {object} props - The component props.
- * @param {object} props.job - The job data.
- * @param {function} props.onSelect - Function to call when the card is clicked.
- * @param {boolean} props.isSelected - Whether this card is the currently selected one.
  */
 const JobListItem = ({ job, onSelect, isSelected }) => {
     const baseClasses = "p-4 border-l-4 cursor-pointer transition-colors duration-200";
@@ -84,19 +92,17 @@ const JobListItem = ({ job, onSelect, isSelected }) => {
             className={`${baseClasses} ${isSelected ? selectedClasses : unselectedClasses}`}
         >
             <div className="flex justify-between items-center">
-                <h3 className="font-bold text-gray-800 dark:text-gray-100 truncate">{job.title}</h3>
+                <h3 className="font-bold text-gray-800 dark:text-gray-100 truncate">{job.title || 'Untitled Job'}</h3>
                 {job.easy_apply && <Zap size={16} className="text-yellow-500 flex-shrink-0 ml-2" title="Easy Apply" />}
             </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{job.company.name}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{job.location}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{job.company?.name || 'Unknown Company'}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{job.location || 'Location not specified'}</p>
         </div>
     );
 };
 
 /**
- * A detailed view of a single job.
- * @param {object} props - The component props.
- * @param {object|null} props.job - The job to display.
+ * A detailed view of a single job. (UPDATED)
  */
 const JobDetailView = ({ job }) => {
     if (!job) {
@@ -107,18 +113,44 @@ const JobDetailView = ({ job }) => {
         );
     }
 
+    const parseJsonArray = (field) => {
+        if (!field) return [];
+        if (Array.isArray(field)) return field;
+        if (typeof field === 'string') {
+            try {
+                const parsed = JSON.parse(field);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+                console.error("Invalid JSON string:", field, e);
+                return [];
+            }
+        }
+        return [];
+    };
+
+    const skills = parseJsonArray(job.skills || job.keywords);
+    const responsibilities = parseJsonArray(job.responsibilities);
+    const requirements = parseJsonArray(job.requirements || job.qualifications);
+
+    const Placeholder = ({ text = "None specified" }) => (
+        <div className="flex items-center text-gray-500 dark:text-gray-400 italic">
+            <XCircle size={16} className="mr-2 flex-shrink-0" />
+            <span>{text}</span>
+        </div>
+    );
+
     return (
         <div className="p-6 md:p-8 h-full overflow-y-auto">
             <div className="flex items-start mb-6">
                 <img
-                    src={job.company.logo_url}
-                    alt={`${job.company.name} logo`}
+                    src={job.company?.logo_url}
+                    alt={`${job.company?.name} logo`}
                     className="w-16 h-16 rounded-lg mr-6 object-contain border border-gray-200 dark:border-gray-700"
-                    onError={(e) => { e.target.onerror = null; e.target.src = `https://placehold.co/64x64/e2e8f0/4a5568?text=${job.company.name.charAt(0)}`; }}
+                    onError={(e) => { e.target.onerror = null; e.target.src = `https://placehold.co/64x64/e2e8f0/4a5568?text=${job.company?.name?.charAt(0) || '?'}`; }}
                 />
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{job.title}</h2>
-                    <p className="text-lg text-gray-700 dark:text-gray-300">{job.company.name}</p>
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{job.title || 'Untitled Job'}</h2>
+                    <p className="text-lg text-gray-700 dark:text-gray-300">{job.company?.name || 'Unknown Company'}</p>
                 </div>
             </div>
 
@@ -138,17 +170,23 @@ const JobDetailView = ({ job }) => {
                 )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 mb-8 text-sm">
                 <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
-                    <MapPin size={18} className="mr-3 text-gray-500 flex-shrink-0" /> <span className="truncate">{job.location}</span>
+                    <MapPin size={18} className="mr-3 text-gray-500 flex-shrink-0" /> <span className="truncate">{job.location || 'Not specified'}</span>
                 </div>
                 <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
-                    <Briefcase size={18} className="mr-3 text-gray-500 flex-shrink-0" /> <span className="truncate">{job.employment_type}</span>
+                    <Briefcase size={18} className="mr-3 text-gray-500 flex-shrink-0" /> <span className="truncate">{job.employment_type || 'Not specified'}</span>
                 </div>
                 <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
-                    <Clock size={18} className="mr-3 text-gray-500 flex-shrink-0" /> <span className="truncate">Posted: {job.posted_on}</span>
+                    <Clock size={18} className="mr-3 text-gray-500 flex-shrink-0" /> <span className="truncate">Posted: {job.posted_on || 'N/A'}</span>
                 </div>
-                <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg col-span-1 sm:col-span-2 lg:col-span-3">
+                <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
+                    <Building size={18} className="mr-3 text-gray-500 flex-shrink-0" /> <span className="truncate">{job.workplace_type || 'Not specified'}</span>
+                </div>
+                <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
+                    <Globe size={18} className="mr-3 text-gray-500 flex-shrink-0" /> <span className="truncate">{job.language || 'Not specified'}</span>
+                </div>
+                <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
                     <Users size={18} className="mr-3 text-gray-500 flex-shrink-0" />
                     <span>
                         {job.applicants > 0
@@ -166,9 +204,70 @@ const JobDetailView = ({ job }) => {
                 </div>
             )}
 
-            <div className="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-300">
-                <h3 className="text-xl font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700">About the job</h3>
-                <p style={{ whiteSpace: 'pre-wrap' }}>{job.description_full}</p>
+            <div className="space-y-8">
+                {/* Skills Section */}
+                <div>
+                    <h3 className="text-xl font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700 flex items-center">
+                        <ChevronRight size={20} className="mr-2" /> Skills
+                    </h3>
+                    {skills.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                            {skills.map((skill, index) => (
+                                <span key={index} className="bg-sky-100 text-sky-800 text-xs font-semibold px-2.5 py-0.5 rounded-full dark:bg-sky-900 dark:text-sky-300">
+                                    {skill}
+                                </span>
+                            ))}
+                        </div>
+                    ) : (
+                        <Placeholder />
+                    )}
+                </div>
+
+                {/* Responsibilities Section */}
+                <div>
+                    <h3 className="text-xl font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700 flex items-center">
+                        <Target size={20} className="mr-2" /> Key Responsibilities
+                    </h3>
+                    {responsibilities.length > 0 ? (
+                        <ul className="space-y-2 text-gray-700 dark:text-gray-300">
+                            {responsibilities.map((item, index) => (
+                                <li key={index} className="flex items-start">
+                                    <CheckCircle size={16} className="text-green-500 mr-3 mt-1 flex-shrink-0" />
+                                    <span>{item}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <Placeholder />
+                    )}
+                </div>
+
+                {/* Requirements Section */}
+                <div>
+                    <h3 className="text-xl font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700 flex items-center">
+                        <BookOpen size={20} className="mr-2" /> Qualifications
+                    </h3>
+                    {requirements.length > 0 ? (
+                        <ul className="space-y-2 text-gray-700 dark:text-gray-300">
+                            {requirements.map((item, index) => (
+                                <li key={index} className="flex items-start">
+                                    <CheckCircle size={16} className="text-green-500 mr-3 mt-1 flex-shrink-0" />
+                                    <span>{item}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <Placeholder />
+                    )}
+                </div>
+
+                {/* About the job Section */}
+                <div>
+                    <h3 className="text-xl font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700">About the job</h3>
+                    <div className="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-300">
+                        <p style={{ whiteSpace: 'pre-wrap' }}>{job.description_full || "No full description available."}</p>
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -205,7 +304,6 @@ const MainJobListing = () => {
             } catch (error) {
                 // Fallback to mock data if the API fails
                 console.error("Failed to fetch jobs from API, using mock data.", error);
-                // I updated the mock data to include some non-zero applicant counts for demonstration
                 const updatedMockData = mockData.map((job, index) => ({
                     ...job,
                     applicants: index === 1 ? 12 : index === 2 ? 3 : 0,
@@ -216,22 +314,31 @@ const MainJobListing = () => {
         };
 
         fetchJobs();
-    }, []); // Empty dependency array means this effect runs once on component mount
+    }, []);
 
     // Effect to handle filtering logic
     useEffect(() => {
-        const newFilteredJobs = jobs.filter(job =>
-            job.title.toLowerCase().includes(filter.toLowerCase()) ||
-            job.company.name.toLowerCase().includes(filter.toLowerCase())
-        );
+        const normalize = (s) =>
+            (s || "")
+                .replace(/\s+/g, " ")  // Replace newlines/tabs/multiple spaces with a single space
+                .trim()
+                .toLowerCase();
+
+        const normalizedFilter = normalize(filter);
+
+        const newFilteredJobs = jobs.filter((job) => {
+            const title = normalize(job.title);
+            const company = normalize(job.company?.name);
+            return title.includes(normalizedFilter) || company.includes(normalizedFilter);
+        });
+
         setFilteredJobs(newFilteredJobs);
 
-        if (selectedJob && !newFilteredJobs.some(job => job.urn === selectedJob.urn)) {
+        if (selectedJob && !newFilteredJobs.some((job) => job.urn === selectedJob.urn)) {
             setSelectedJob(newFilteredJobs.length > 0 ? newFilteredJobs[0] : null);
         } else if (!selectedJob && newFilteredJobs.length > 0) {
             setSelectedJob(newFilteredJobs[0]);
         }
-
     }, [filter, jobs, selectedJob]);
 
 
