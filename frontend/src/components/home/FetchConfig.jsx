@@ -5,7 +5,8 @@ import { FetchJobsView } from "./FetchJobs.jsx";
 import { Sidebar, Header } from "./Navbar.jsx";
 import JobList from "./JobList.jsx";
 import { useDarkMode } from "../../hooks/useDarkMode.jsx";
-import { ConfigEditor } from "./ConfigEditor.jsx"; // Import the extracted component
+import { ConfigEditor } from "./ConfigEditor.jsx";
+import ResumeParser from "./Resume.jsx"; // Import the extracted component
 
 // Helper functions moved here to be used for initial state generation
 const generateCurlCommand = (jsonString) => {
@@ -221,6 +222,8 @@ export default function JobDashboard() {
                 return <FetchJobsView />;
             case "job-listings":
                 return <JobList />;
+            case "resume":
+                return <ResumeParser />;
             case "profile":
                 return <div>Profile</div>;
             default:

@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react';
 import {useDarkMode} from "../../hooks/useDarkMode.jsx";
 
 export const Sidebar = ({ activeView, setActiveView }) => {
-    // Navigation items are defined directly inside the component
     const navItems = [
         { label: "Fetch Config", id: "fetch-config" },
         { label: "Fetch Jobs", id: "fetch-jobs" },
         { label: "Job Listings", id: "job-listings" },
+        { label: "Resume", id: "resume" },
         { label: "Profile", id: "profile" }
     ];
 
