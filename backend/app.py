@@ -3,6 +3,8 @@ import sys
 
 from dotenv import load_dotenv
 
+from controllers.resume_data import resume_bp
+
 directory = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, directory)
 
@@ -33,6 +35,7 @@ migrate = Migrate(app, db)
 
 app.register_blueprint(fetch_jobs_bp)
 app.register_blueprint(job_data_bp)
+app.register_blueprint(resume_bp)
 
 
 @app.route('/')
