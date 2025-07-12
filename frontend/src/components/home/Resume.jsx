@@ -139,8 +139,10 @@ const parseSection = (text, startHeading) => {
 
 // Main parser function to extract all relevant information
 const parseResume = (markdownText) => {
-    const skillsSection = parseSection(markdownText, '## 🛠 Hard Skills');
+    // FIX: Match the actual Portuguese headings from your resume file.
+    const skillsSection = parseSection(markdownText, '## Habilidades');
     const skills = skillsSection.flatMap(line => {
+        // This part was already good!
         const parts = line.split(':');
         if (parts.length > 1) {
             return parts[1].split(',').map(skill => skill.trim());
@@ -148,43 +150,45 @@ const parseResume = (markdownText) => {
         return [];
     });
 
-    const experienceSection = parseSection(markdownText, '## 💼 Professional Experiences');
+    // FIX: Match the "Experiências Profissionais" heading.
+    const experienceSection = parseSection(markdownText, '## Experiências Profissionais');
     const experiences = [];
     let currentExperience = null;
     for (const line of experienceSection) {
         if (line.startsWith('###')) {
             if (currentExperience) experiences.push(currentExperience);
+            // Extract title and date range correctly
+            const [title, date] = line.replace('###', '').split('(');
             currentExperience = {
-                title: line.replace('###', '').split('*')[0].trim().replace(/\*\*/g, ''),
+                title: `${title.trim()}${date ? `(${date}` : ''}`, // Re-add the opening parenthesis
                 details: []
             };
         } else if (currentExperience && line.trim().startsWith('-')) {
-            currentExperience.details.push(line.trim());
-        } else if (currentExperience) {
-            // Append to title if it's part of it
-            currentExperience.title += ` ${line.trim()}`;
+            currentExperience.details.push(line.trim().substring(1).trim()); // Clean the leading dash
         }
     }
     if (currentExperience) experiences.push(currentExperience);
 
-    const educationSection = parseSection(markdownText, '## 🎓 Education');
+    // FIX: Match the "Educação" heading and improve parsing logic.
+    const educationSection = parseSection(markdownText, '## Educação');
     const educations = [];
-    let currentEducation = null;
-    for(const line of educationSection) {
-        if(line.trim() === '') continue;
-        if(!line.startsWith('Universidade') && !line.startsWith('Politechnika')) {
-            if(currentEducation) educations.push(currentEducation);
-            currentEducation = {
-                degree: line.split('|')[0].trim().replace(/\*\*/g, ''),
-                date: line.split('|')[1]?.trim().replace(/\*/g, ''),
-                details: []
-            };
-        } else if (currentEducation) {
-            currentEducation.details.push(line.trim());
+    for (let i = 0; i < educationSection.length; i++) {
+        const line = educationSection[i];
+        if (line.startsWith('- **')) { // Identifies a new education entry
+            const nextLine = educationSection[i + 1] || '';
+            const [location, date] = nextLine.split('|');
+
+            educations.push({
+                // Extracts the degree/institution from the line
+                degree: line.replace('- **', '').split('**')[0].trim() + ' ' + line.split('–')[1].trim(),
+                // Extracts date and cleans up asterisks
+                date: date ? date.trim().replace(/\*/g, '') : '',
+                // Extracts location and cleans up asterisks
+                details: [location ? location.trim().replace(/\*/g, '') : '']
+            });
+            i++; // Skip the next line since we've already processed it
         }
     }
-    if(currentEducation) educations.push(currentEducation);
-
 
     return { skills, experiences, educations };
 };
