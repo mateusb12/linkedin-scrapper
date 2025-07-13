@@ -9,6 +9,7 @@ export const Sidebar = ({ activeView, setActiveView }) => {
         { label: "Fetch Jobs", id: "fetch-jobs" },
         { label: "Job Listings", id: "job-listings" },
         { label: "Resume", id: "resume" },
+        { label: "Match", id: "match" },
         { label: "Profile", id: "profile" }
     ];
 
