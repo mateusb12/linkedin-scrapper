@@ -1,122 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import mockResumeContent from "../../data/backend_resume.md?raw";
 import ExtractedResumeInformation from "./ExtractedResumeInformation.jsx";
-
-// Define the base URL for the API endpoint
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
-// #region Helper Functions (Parser is fixed here)
-
-/**
- * CORRECTED HELPER FUNCTION
- * Parses a specific section from markdown text.
- * It now correctly handles '---' separators under headings.
- */
-const parseSection = (text, startHeading) => {
-    const lines = text.split('\n');
-    let content = [];
-    let inSection = false;
-    for (const line of lines) {
-        if (line.startsWith(startHeading)) {
-            inSection = true;
-            continue;
-        }
-        // Only break when a new H2-level section starts.
-        if (inSection && line.startsWith('## ')) {
-            break;
-        }
-        // Add content if we are in the section, it's not empty, and it's not a separator.
-        if (inSection && line.trim() !== '' && !line.startsWith('---')) {
-            content.push(line);
-        }
-    }
-    return content;
-};
-
-// Main parser function to extract all relevant information
-const parseResume = (markdownText) => {
-    const nameMatch = markdownText.match(/^#\s+(.*)/);
-    const name = nameMatch ? nameMatch[1].trim() : 'Could not load resume name';
-
-    const skillsSection = parseSection(markdownText, '## Habilidades');
-    const skills = skillsSection.flatMap(line => {
-        const parts = line.split(':');
-        if (parts.length > 1) {
-            return parts[1].split(',').map(skill => skill.trim());
-        }
-        return [];
-    });
-
-    const experienceSection = parseSection(markdownText, '## Experiências Profissionais');
-    const experiences = [];
-    let currentExperience = null;
-    for (const line of experienceSection) {
-        if (line.startsWith('###')) {
-            if (currentExperience) experiences.push(currentExperience);
-            const [title, date] = line.replace('###', '').split('(');
-            currentExperience = {
-                title: `${title.trim()}${date ? `(${date}` : ''}`,
-                details: []
-            };
-        } else if (currentExperience && line.trim().startsWith('-')) {
-            currentExperience.details.push(line.trim().substring(1).trim());
-        }
-    }
-    if (currentExperience) experiences.push(currentExperience);
-
-    const educationSection = parseSection(markdownText, '## Educação');
-    const educations = [];
-    for (let i = 0; i < educationSection.length; i++) {
-        const line = educationSection[i];
-        if (line.startsWith('- **')) {
-            const nextLine = educationSection[i + 1] || '';
-            const [location, date] = nextLine.split('|');
-
-            educations.push({
-                degree: line.replace('- **', '').split('**')[0].trim() + ' ' + (line.split('–')[1] || '').trim(),
-                date: date ? date.trim().replace(/\*/g, '') : '',
-                details: [location ? location.trim().replace(/\*/g, '') : '']
-            });
-            i++;
-        }
-    }
-
-    return { name, skills, experiences, educations };
-};
-
-// Helper function to reconstruct markdown from JSON data
-const reconstructMarkdown = (data) => {
-    let markdown = `# ${data.name || 'New Resume'}\n\n`;
-
-    markdown += "## Habilidades\n---\n";
-    if (data.skills && data.skills.length > 0) {
-        markdown += `Tecnologias: ${data.skills.join(', ')}\n\n`;
-    }
-
-    markdown += "## Experiências Profissionais\n---\n";
-    if (data.experiences) {
-        data.experiences.forEach(exp => {
-            markdown += `### ${exp.title}\n`;
-            exp.details.forEach(detail => {
-                markdown += `- ${detail}\n`;
-            });
-            markdown += '\n';
-        });
-    }
-
-    markdown += "## Educação\n---\n";
-    if (data.educations) {
-        data.educations.forEach(edu => {
-            markdown += `- **${edu.degree}**\n`;
-            const detailsLine = [edu.details.join(' | '), edu.date].filter(Boolean).join(' | ');
-            markdown += `  *${detailsLine}*\n\n`;
-        });
-    }
-
-    return markdown;
-};
-
-// #endregion
+import * as resumeService from "../../services/ResumeService.js";
+import { parseResume, reconstructMarkdown } from "../../utils/resumeUtils.js";
 
 // #region Icons
 const UploadCloudIcon = (props) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"> <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" /> <path d="M12 12v9" /> <path d="m16 16-4-4-4 4" /> </svg> );
@@ -132,7 +18,6 @@ const SaveIcon = (props) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg"
 
 function ResumeParser() {
     // State for file handling, parsing, and editing
-    const [resumeContent, setResumeContent] = useState(mockResumeContent);
     const [editableContent, setEditableContent] = useState(mockResumeContent);
     const [fileName, setFileName] = useState("backend_resume.md");
     const [isParsing, setIsParsing] = useState(false);
@@ -152,14 +37,12 @@ function ResumeParser() {
     const [isDeleting, setIsDeleting] = useState(false);
 
     useEffect(() => {
-        fetchResumes();
+        loadResumes();
     }, []);
 
-    const fetchResumes = async () => {
+    const loadResumes = async () => {
         try {
-            const response = await fetch(`${API_BASE}/jobs/`);
-            if (!response.ok) throw new Error('Failed to fetch resumes');
-            const data = await response.json();
+            const data = await resumeService.fetchResumes();
             setResumes(data);
         } catch (error) {
             setSaveStatus({ message: error.message, isError: true });
@@ -173,7 +56,6 @@ function ResumeParser() {
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     const content = e.target.result;
-                    setResumeContent(content);
                     setEditableContent(content);
                     setFileName(file.name);
                     setError(null);
@@ -239,17 +121,9 @@ function ResumeParser() {
         };
 
         try {
-            const response = await fetch(`${API_BASE}/jobs/`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.error || `HTTP error! status: ${response.status}`);
-
+            const result = await resumeService.createResume(payload);
             setSaveStatus({ message: `Resume '${result.name}' created successfully!`, isError: false });
-            await fetchResumes();
+            await loadResumes();
             handleNew();
         } catch (error) {
             console.error('Create error:', error);
@@ -276,17 +150,9 @@ function ResumeParser() {
         };
 
         try {
-            const response = await fetch(`${API_BASE}/jobs/${selectedResumeId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-            const result = await response.json();
-
-            if (!response.ok) throw new Error(result.error || `HTTP error! status: ${response.status}`);
-
+            const result = await resumeService.updateResume(selectedResumeId, payload);
             setSaveStatus({ message: result.message, isError: false });
-            await fetchResumes();
+            await loadResumes();
         } catch (error) {
             console.error('Update error:', error);
             setSaveStatus({ message: error.message, isError: true });
@@ -298,18 +164,16 @@ function ResumeParser() {
     const handleDelete = async () => {
         if (!selectedResumeId) return;
         const resumeToDelete = resumes.find(r => r.id === parseInt(selectedResumeId));
+        // Using a simple confirm dialog for this example. In a real app, use a custom modal.
         if (!window.confirm(`Are you sure you want to delete the resume "${resumeToDelete?.name}"?`)) return;
 
         setIsDeleting(true);
         setSaveStatus({ message: '', isError: false });
 
         try {
-            const response = await fetch(`${API_BASE}/jobs/${selectedResumeId}`, { method: 'DELETE' });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.error || `HTTP error! status: ${response.status}`);
-
+            const result = await resumeService.deleteResume(selectedResumeId);
             setSaveStatus({ message: result.message, isError: false });
-            await fetchResumes();
+            await loadResumes();
             handleNew();
         } catch (error) {
             console.error('Delete error:', error);
@@ -330,10 +194,7 @@ function ResumeParser() {
         setSaveStatus({ message: '', isError: false });
 
         try {
-            const response = await fetch(`${API_BASE}/jobs/${id}`);
-            if (!response.ok) throw new Error(`Failed to fetch resume ${id}`);
-            const data = await response.json();
-
+            const data = await resumeService.fetchResumeById(id);
             const extracted = {
                 name: data.name,
                 skills: data.hard_skills,
@@ -356,7 +217,6 @@ function ResumeParser() {
 
     const handleNew = () => {
         setSelectedResumeId('');
-        setResumeContent(mockResumeContent);
         setEditableContent(mockResumeContent);
         setFileName("backend_resume.md");
         setResumeName('');
@@ -367,7 +227,6 @@ function ResumeParser() {
             fileInputRef.current.value = "";
         }
     };
-
 
     return (
         <div className="bg-gray-900 text-white min-h-screen font-sans">
