@@ -3,6 +3,7 @@ import mockResumeContent from "../../data/backend_resume.md?raw";
 import ExtractedResumeInformation from "./ExtractedResumeInformation.jsx";
 import * as resumeService from "../../services/ResumeService.js";
 import { parseResume, reconstructMarkdown } from "../../utils/resumeUtils.js";
+import BackendData from "./ResumeBackendData.jsx";
 
 // #region Icons
 const UploadCloudIcon = (props) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"> <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" /> <path d="M12 12v9" /> <path d="m16 16-4-4-4 4" /> </svg> );
@@ -322,6 +323,8 @@ function ResumeParser() {
 
                     {/* Section 2: Extracted Data */}
                     <ExtractedResumeInformation extractedData={extractedData} isParsing={isParsing} />
+
+                    <BackendData extractedData={extractedData} resumeName={resumeName} />
                 </div>
             </div>
         </div>
