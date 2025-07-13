@@ -55,7 +55,10 @@ const MatchedJobItem = ({ job, onSelect, isSelected }) => {
     );
 };
 
-const JobDetailView = ({ job, resumeSkills = [] }) => {
+// No changes needed above this line
+// ...
+
+const JobDetailView = ({ job }) => { // resumeSkills prop is no longer needed here
     if (!job) {
         return (
             <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
@@ -70,7 +73,7 @@ const JobDetailView = ({ job, resumeSkills = [] }) => {
     };
 
     const jobSkills = getSkillsArray(job.skills || job.keywords);
-    const normalizedResumeSkills = resumeSkills.map(normalizeSkill);
+    // No longer need to normalize resume skills here
 
     const Placeholder = ({ text = "None specified" }) => (
         <div className="flex items-center text-gray-500 dark:text-gray-400 italic">
@@ -115,7 +118,8 @@ const JobDetailView = ({ job, resumeSkills = [] }) => {
                     {jobSkills.length > 0 ? (
                         <div className="flex flex-wrap gap-2">
                             {jobSkills.map((skill, index) => {
-                                const isMatched = normalizedResumeSkills.includes(normalizeSkill(skill));
+                                // ✨ FIX: Use the `matchedSkillsSet` from the job object for accurate UI highlighting
+                                const isMatched = job.matchedSkillsSet?.has(skill);
                                 return (
                                     <span key={index} className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${isMatched ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}`}>
                                         {isMatched && <CheckCircle size={14} />}
@@ -137,6 +141,11 @@ const JobDetailView = ({ job, resumeSkills = [] }) => {
         </div>
     );
 };
+
+
+// ...
+// No changes needed in the main Match component below this line
+// ...
 
 const Match = () => {
     const [resumes, setResumes] = useState([]);
@@ -354,7 +363,8 @@ const Match = () => {
 
                 {/* Right Panel: Job Details */}
                 <main className="flex-grow bg-white dark:bg-gray-800/50">
-                    <JobDetailView job={selectedJob} resumeSkills={selectedResume?.hard_skills} />
+                    {/* ✨ FIX: Pass the entire job object, no longer need to pass resumeSkills separately */}
+                    <JobDetailView job={selectedJob} />
                 </main>
             </div>
         </div>
