@@ -7,7 +7,7 @@ import JobList from "../home/JobList.jsx";
 import { useDarkMode } from "../../hooks/useDarkMode.jsx";
 import { ConfigEditor } from "./ConfigEditor.jsx";
 import ResumeParser from "../resume/ResumeParser.jsx";
-import Match from "../home/Match.jsx"; // Import the extracted component
+import Match from "../match-find/Match.jsx";
 
 // Helper functions moved here to be used for initial state generation
 const generateCurlCommand = (jsonString) => {

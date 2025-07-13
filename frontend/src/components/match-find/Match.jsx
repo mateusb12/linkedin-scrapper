@@ -1,43 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Target, CheckCircle, BarChart2, Briefcase, MapPin, Clock, Building, Users, ChevronRight, XCircle, Globe, Award } from 'lucide-react';
+import { findBestMatches, getSkillsArray, normalizeSkill } from './MatchLogic';
 
 // Define the base URL for the API endpoint
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
-// --- HELPER FUNCTIONS ---
-
-/**
- * Normalizes a skill string for comparison.
- * Converts to lowercase and removes all non-alphanumeric characters.
- * e.g., "Back-end" -> "backend", "Node.js" -> "nodejs"
- * @param {string} skill The skill string to normalize.
- * @returns {string} The normalized skill string.
- */
-const normalizeSkill = (skill) => {
-    if (typeof skill !== 'string') return '';
-    return skill.toLowerCase().replace(/[^a-z0-9]/g, '');
-};
-
-/**
- * Parses skills data from various formats into a string array.
- * @param {any} skillsData The skills data to parse.
- * @returns {string[]} An array of skill strings.
- */
-const getSkillsArray = (skillsData) => {
-    if (!skillsData) return [];
-    if (Array.isArray(skillsData)) return skillsData;
-    if (typeof skillsData === 'string') {
-        try {
-            const parsed = JSON.parse(skillsData);
-            return Array.isArray(parsed) ? parsed : [];
-        } catch (e) {
-            // Handle non-JSON strings if necessary, e.g., comma-separated
-            return [];
-        }
-    }
-    return [];
-};
-
 
 // Mock job data as a fallback
 const mockJobs = [
@@ -94,7 +60,6 @@ const JobDetailView = ({ job, resumeSkills = [] }) => {
     };
 
     const jobSkills = getSkillsArray(job.skills || job.keywords);
-    // Normalize resume skills once for efficient comparison
     const normalizedResumeSkills = resumeSkills.map(normalizeSkill);
 
     const Placeholder = ({ text = "None specified" }) => (
@@ -140,7 +105,6 @@ const JobDetailView = ({ job, resumeSkills = [] }) => {
                     {jobSkills.length > 0 ? (
                         <div className="flex flex-wrap gap-2">
                             {jobSkills.map((skill, index) => {
-                                // Normalize the job skill before checking for a match
                                 const isMatched = normalizedResumeSkills.includes(normalizeSkill(skill));
                                 return (
                                     <span key={index} className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${isMatched ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}`}>
@@ -175,7 +139,6 @@ const Match = () => {
     const [errorMessage, setErrorMessage] = useState('');
     const [jobMetrics, setJobMetrics] = useState({ total: 0, complete: 0, incomplete: 0 });
 
-    // Effect to fetch the list of available resumes
     useEffect(() => {
         const fetchResumes = async () => {
             try {
@@ -191,7 +154,6 @@ const Match = () => {
         fetchResumes();
     }, []);
 
-    // Effect to fetch all jobs from the API or use mock data as a fallback
     useEffect(() => {
         const fetchJobs = async () => {
             try {
@@ -207,7 +169,6 @@ const Match = () => {
         fetchJobs();
     }, []);
 
-    // Effect to calculate job metrics whenever the main jobs list is updated
     useEffect(() => {
         if (jobs.length > 0) {
             let completeCount = 0;
@@ -232,7 +193,6 @@ const Match = () => {
         }
     }, [jobs]);
 
-    // Handler for when a user selects a resume from the dropdown
     const handleSelectResume = useCallback(async (id) => {
         setSelectedResumeId(id);
         if (!id) {
@@ -258,7 +218,6 @@ const Match = () => {
         }
     }, []);
 
-    // Handler for the "Find Best Matches" button click
     const handleMatch = () => {
         if (!selectedResume || !selectedResume.hard_skills) {
             setErrorMessage('Please select a resume with skills to start matching.');
@@ -272,32 +231,7 @@ const Match = () => {
         setSelectedJob(null);
 
         setTimeout(() => {
-            const completeJobs = jobs.filter(job => {
-                const hasResponsibilities = job.responsibilities && job.responsibilities.length > 0;
-                const hasQualifications = job.qualifications && job.qualifications.length > 0;
-                const skillsList = getSkillsArray(job.keywords || job.skills);
-                const hasKeywords = skillsList.length > 0;
-                return hasResponsibilities && hasQualifications && hasKeywords;
-            });
-
-            // Normalize resume skills for comparison
-            const normalizedResumeSkills = selectedResume.hard_skills.map(normalizeSkill);
-
-            const scoredJobs = completeJobs.map(job => {
-                const jobSkills = getSkillsArray(job.keywords || job.skills);
-                // Normalize job skills for comparison
-                const normalizedJobSkills = jobSkills.map(normalizeSkill);
-
-                // Find how many of the job's required skills are in the resume
-                const matchingSkills = normalizedJobSkills.filter(skill => normalizedResumeSkills.includes(skill));
-
-                // Calculate score based on the proportion of matched skills
-                const matchScore = jobSkills.length > 0 ? (matchingSkills.length / jobSkills.length) * 100 : 0;
-
-                return { ...job, matchScore };
-            });
-
-            const sortedJobs = scoredJobs.sort((a, b) => b.matchScore - a.matchScore);
+            const sortedJobs = findBestMatches(jobs, selectedResume);
 
             setMatchedJobs(sortedJobs);
             setSelectedJob(sortedJobs.length > 0 ? sortedJobs[0] : null);
