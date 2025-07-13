@@ -4,8 +4,13 @@ import mockResumeContent from "../../data/backend_resume.md?raw";
 // Define the base URL for the API endpoint
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
+// #region Helper Functions (Parser is fixed here)
 
-// Helper function to parse a specific section from the resume markdown
+/**
+ * CORRECTED HELPER FUNCTION
+ * Parses a specific section from markdown text.
+ * It now correctly handles '---' separators under headings.
+ */
 const parseSection = (text, startHeading) => {
     const lines = text.split('\n');
     let content = [];
@@ -15,10 +20,12 @@ const parseSection = (text, startHeading) => {
             inSection = true;
             continue;
         }
-        if (inSection && (line.startsWith('---') || line.startsWith('## '))) {
+        // Only break when a new H2-level section starts.
+        if (inSection && line.startsWith('## ')) {
             break;
         }
-        if (inSection && line.trim() !== '') {
+        // Add content if we are in the section, it's not empty, and it's not a separator.
+        if (inSection && line.trim() !== '' && !line.startsWith('---')) {
             content.push(line);
         }
     }
@@ -27,7 +34,6 @@ const parseSection = (text, startHeading) => {
 
 // Main parser function to extract all relevant information
 const parseResume = (markdownText) => {
-    // Extract name from the first H1 tag
     const nameMatch = markdownText.match(/^#\s+(.*)/);
     const name = nameMatch ? nameMatch[1].trim() : 'Could not load resume name';
 
@@ -66,7 +72,7 @@ const parseResume = (markdownText) => {
             const [location, date] = nextLine.split('|');
 
             educations.push({
-                degree: line.replace('- **', '').split('**')[0].trim() + ' ' + line.split('–')[1].trim(),
+                degree: line.replace('- **', '').split('**')[0].trim() + ' ' + (line.split('–')[1] || '').trim(),
                 date: date ? date.trim().replace(/\*/g, '') : '',
                 details: [location ? location.trim().replace(/\*/g, '') : '']
             });
@@ -77,80 +83,56 @@ const parseResume = (markdownText) => {
     return { name, skills, experiences, educations };
 };
 
+// Helper function to reconstruct markdown from JSON data
+const reconstructMarkdown = (data) => {
+    let markdown = `# ${data.name || 'New Resume'}\n\n`;
 
-// Icons for UI (assuming they are defined as before)
-const UploadCloudIcon = (props) => (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
-        <path d="M12 12v9" />
-        <path d="m16 16-4-4-4 4" />
-    </svg>
-);
-const FileTextIcon = (props) => (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-        <polyline points="14 2 14 8 20 8" />
-        <line x1="16" x2="8" y1="13" y2="13" />
-        <line x1="16" x2="8" y1="17" y2="17" />
-        <line x1="10" x2="8" y1="9" y2="9" />
-    </svg>
-);
-const BriefcaseIcon = (props) => (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect width="20" height="14" x="2" y="7" rx="2" ry="2" />
-        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-    </svg>
-);
-const GraduationCapIcon = (props) => (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
-        <path d="M6 12v5c3 3 9 3 12 0v-5" />
-    </svg>
-);
-const BotIcon = (props) => (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 8V4H8" />
-        <rect width="16" height="12" x="4" y="8" rx="2" />
-        <path d="M2 14h2" />
-        <path d="M20 14h2" />
-        <path d="M15 13v2" />
-        <path d="M9 13v2" />
-    </svg>
-);
-const DatabaseIcon = (props) => (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <ellipse cx="12" cy="5" rx="9" ry="3" />
-        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
-        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-    </svg>
-);
-const PlusCircleIcon = (props) => (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10" />
-        <line x1="12" y1="8" x2="12" y2="16" />
-        <line x1="8" y1="12" x2="16" y2="12" />
-    </svg>
-);
-const TrashIcon = (props) => (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 6h18" />
-        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-    </svg>
-);
-const SaveIcon = (props) => (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-        <polyline points="17 21 17 13 7 13 7 21" />
-        <polyline points="7 3 7 8 15 8" />
-    </svg>
-);
+    markdown += "## Habilidades\n---\n";
+    if (data.skills && data.skills.length > 0) {
+        markdown += `Tecnologias: ${data.skills.join(', ')}\n\n`;
+    }
 
+    markdown += "## Experiências Profissionais\n---\n";
+    if (data.experiences) {
+        data.experiences.forEach(exp => {
+            markdown += `### ${exp.title}\n`;
+            exp.details.forEach(detail => {
+                markdown += `- ${detail}\n`;
+            });
+            markdown += '\n';
+        });
+    }
 
+    markdown += "## Educação\n---\n";
+    if (data.educations) {
+        data.educations.forEach(edu => {
+            markdown += `- **${edu.degree}**\n`;
+            const detailsLine = [edu.details.join(' | '), edu.date].filter(Boolean).join(' | ');
+            markdown += `  *${detailsLine}*\n\n`;
+        });
+    }
+
+    return markdown;
+};
+
+// #endregion
+
+// #region Icons
+const UploadCloudIcon = (props) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"> <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" /> <path d="M12 12v9" /> <path d="m16 16-4-4-4 4" /> </svg> );
+const FileTextIcon = (props) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"> <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /> <polyline points="14 2 14 8 20 8" /> <line x1="16" x2="8" y1="13" y2="13" /> <line x1="16" x2="8" y1="17" y2="17" /> <line x1="10" x2="8" y1="9" y2="9" /> </svg> );
+const BriefcaseIcon = (props) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"> <rect width="20" height="14" x="2" y="7" rx="2" ry="2" /> <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /> </svg> );
+const GraduationCapIcon = (props) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"> <path d="M22 10v6M2 10l10-5 10 5-10 5z" /> <path d="M6 12v5c3 3 9 3 12 0v-5" /> </svg> );
+const BotIcon = (props) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"> <path d="M12 8V4H8" /> <rect width="16" height="12" x="4" y="8" rx="2" /> <path d="M2 14h2" /> <path d="M20 14h2" /> <path d="M15 13v2" /> <path d="M9 13v2" /> </svg> );
+const DatabaseIcon = (props) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"> <ellipse cx="12" cy="5" rx="9" ry="3" /> <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" /> <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" /> </svg> );
+const PlusCircleIcon = (props) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"> <circle cx="12" cy="12" r="10" /> <line x1="12" y1="8" x2="12" y2="16" /> <line x1="8" y1="12" x2="16" y2="12" /> </svg> );
+const TrashIcon = (props) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"> <path d="M3 6h18" /> <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /> <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /> </svg> );
+const SaveIcon = (props) => ( <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"> <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /> <polyline points="17 21 17 13 7 13 7 21" /> <polyline points="7 3 7 8 15 8" /> </svg> );
+// #endregion
 
 function ResumeParser() {
-    // State for file handling and parsing
+    // State for file handling, parsing, and editing
     const [resumeContent, setResumeContent] = useState(mockResumeContent);
+    const [editableContent, setEditableContent] = useState(mockResumeContent);
     const [fileName, setFileName] = useState("backend_resume.md");
     const [isParsing, setIsParsing] = useState(false);
     const [error, setError] = useState(null);
@@ -163,20 +145,17 @@ function ResumeParser() {
     const fileInputRef = useRef(null);
 
     // CRUD states
-    const [resumes, setResumes] = useState([]); // <-- Changed from resumeIds
+    const [resumes, setResumes] = useState([]);
     const [selectedResumeId, setSelectedResumeId] = useState('');
-    const [resumeName, setResumeName] = useState(''); // <-- New state for the name
+    const [resumeName, setResumeName] = useState('');
     const [isDeleting, setIsDeleting] = useState(false);
 
-
-    // Fetch all resumes on component mount
     useEffect(() => {
         fetchResumes();
     }, []);
 
     const fetchResumes = async () => {
         try {
-            // Fetch the full list of resumes (id and name)
             const response = await fetch(`${API_BASE}/jobs/`);
             if (!response.ok) throw new Error('Failed to fetch resumes');
             const data = await response.json();
@@ -194,12 +173,12 @@ function ResumeParser() {
                 reader.onload = (e) => {
                     const content = e.target.result;
                     setResumeContent(content);
+                    setEditableContent(content);
                     setFileName(file.name);
                     setError(null);
                     setExtractedData(null);
                     setSaveStatus({ message: '', isError: false });
 
-                    // Automatically parse and set the name from the file
                     const data = parseResume(content);
                     setResumeName(data.name);
                 };
@@ -211,8 +190,8 @@ function ResumeParser() {
     };
 
     const handleAnalyze = () => {
-        if (!resumeContent) {
-            setError("Please upload a resume first.");
+        if (!editableContent) {
+            setError("Please upload a resume or write in the editor.");
             return;
         }
         setIsParsing(true);
@@ -220,9 +199,11 @@ function ResumeParser() {
         setSaveStatus({ message: '', isError: false });
         setTimeout(() => {
             try {
-                const data = parseResume(resumeContent);
+                const data = parseResume(editableContent);
                 setExtractedData(data);
-                setResumeName(data.name); // Set name on analysis
+                if (!resumeName) {
+                    setResumeName(data.name);
+                }
             } catch (err) {
                 setError("Failed to parse the resume. Please check the format.");
                 console.error(err);
@@ -238,7 +219,7 @@ function ResumeParser() {
 
     const handleCreate = async () => {
         if (!extractedData) {
-            setSaveStatus({ message: 'No extracted data to save. Please analyze a resume first.', isError: true });
+            setSaveStatus({ message: 'No extracted data. Please click "Analyze" after making changes.', isError: true });
             return;
         }
         if (!resumeName.trim()) {
@@ -250,7 +231,7 @@ function ResumeParser() {
         setSaveStatus({ message: '', isError: false });
 
         const payload = {
-            name: resumeName, // <-- Add name to payload
+            name: resumeName,
             hard_skills: extractedData.skills,
             professional_experience: extractedData.experiences,
             education: extractedData.educations,
@@ -267,8 +248,8 @@ function ResumeParser() {
             if (!response.ok) throw new Error(result.error || `HTTP error! status: ${response.status}`);
 
             setSaveStatus({ message: `Resume '${result.name}' created successfully!`, isError: false });
-            fetchResumes(); // Refresh the list of resumes
-            handleNew(); // Clear form for next entry
+            await fetchResumes();
+            handleNew();
         } catch (error) {
             console.error('Create error:', error);
             setSaveStatus({ message: error.message, isError: true });
@@ -279,7 +260,7 @@ function ResumeParser() {
 
     const handleUpdate = async () => {
         if (!selectedResumeId || !extractedData) {
-            setSaveStatus({ message: 'No resume selected or no data to update.', isError: true });
+            setSaveStatus({ message: 'No resume selected or no data to update. Please "Analyze" first.', isError: true });
             return;
         }
 
@@ -287,7 +268,7 @@ function ResumeParser() {
         setSaveStatus({ message: '', isError: false });
 
         const payload = {
-            name: resumeName, // <-- Add name to payload
+            name: resumeName,
             hard_skills: extractedData.skills,
             professional_experience: extractedData.experiences,
             education: extractedData.educations,
@@ -301,11 +282,10 @@ function ResumeParser() {
             });
             const result = await response.json();
 
-            if (!response.ok) {
-                throw new Error(result.error || `HTTP error! status: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(result.error || `HTTP error! status: ${response.status}`);
+
             setSaveStatus({ message: result.message, isError: false });
-            fetchResumes(); // Refresh resume list to show the new name
+            await fetchResumes();
         } catch (error) {
             console.error('Update error:', error);
             setSaveStatus({ message: error.message, isError: true });
@@ -315,30 +295,21 @@ function ResumeParser() {
     };
 
     const handleDelete = async () => {
-        if (!selectedResumeId) {
-            setSaveStatus({ message: 'Please select a resume to delete.', isError: true });
-            return;
-        }
+        if (!selectedResumeId) return;
         const resumeToDelete = resumes.find(r => r.id === parseInt(selectedResumeId));
-        if (!window.confirm(`Are you sure you want to delete the resume "${resumeToDelete?.name}"?`)) {
-            return;
-        }
+        if (!window.confirm(`Are you sure you want to delete the resume "${resumeToDelete?.name}"?`)) return;
 
         setIsDeleting(true);
         setSaveStatus({ message: '', isError: false });
 
         try {
-            const response = await fetch(`${API_BASE}/jobs/${selectedResumeId}`, {
-                method: 'DELETE',
-            });
+            const response = await fetch(`${API_BASE}/jobs/${selectedResumeId}`, { method: 'DELETE' });
             const result = await response.json();
-            if (!response.ok) {
-                throw new Error(result.error || `HTTP error! status: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(result.error || `HTTP error! status: ${response.status}`);
 
             setSaveStatus({ message: result.message, isError: false });
-            fetchResumes(); // Refresh list
-            handleNew(); // Clear form
+            await fetchResumes();
+            handleNew();
         } catch (error) {
             console.error('Delete error:', error);
             setSaveStatus({ message: error.message, isError: true });
@@ -362,13 +333,17 @@ function ResumeParser() {
             if (!response.ok) throw new Error(`Failed to fetch resume ${id}`);
             const data = await response.json();
 
-            setResumeName(data.name); // <-- Set the name from fetched data
-            setExtractedData({
+            const extracted = {
+                name: data.name,
                 skills: data.hard_skills,
                 experiences: data.professional_experience,
                 educations: data.education,
-            });
-            setResumeContent("Resume loaded from database. You can edit the name or re-upload a file to update.");
+            };
+
+            const reconstructedMd = reconstructMarkdown(extracted);
+            setEditableContent(reconstructedMd);
+            setExtractedData(extracted);
+            setResumeName(data.name);
             setFileName(`Loaded: ${data.name}`);
         } catch (error) {
             setError(error.message);
@@ -381,8 +356,9 @@ function ResumeParser() {
     const handleNew = () => {
         setSelectedResumeId('');
         setResumeContent(mockResumeContent);
+        setEditableContent(mockResumeContent);
         setFileName("backend_resume.md");
-        setResumeName(''); // <-- Clear the name
+        setResumeName('');
         setExtractedData(null);
         setError(null);
         setSaveStatus({ message: '', isError: false });
@@ -398,21 +374,18 @@ function ResumeParser() {
                 <header className="mb-8">
                     <h1 className="text-4xl font-bold text-center text-cyan-400">Resume Analyzer</h1>
                     <p className="text-center text-gray-400 mt-2">
-                        Upload, analyze, and manage your Markdown resumes.
+                        Upload, edit, analyze, and manage your Markdown resumes.
                     </p>
                 </header>
 
                 <div className="max-w-4xl mx-auto flex flex-col gap-8">
-                    {/* Section 1: Upload and Control */}
+                    {/* Section 1: Upload, Edit, and Control */}
                     <div className="bg-gray-800 p-6 rounded-xl shadow-lg">
                         <h2 className="text-2xl font-semibold mb-4 border-b border-gray-700 pb-2">Resume Management</h2>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                            {/* Resume Selection Dropdown */}
                             <div>
-                                <label htmlFor="resume-select" className="block text-sm font-medium text-gray-400 mb-1">
-                                    Select an Existing Resume
-                                </label>
+                                <label htmlFor="resume-select" className="block text-sm font-medium text-gray-400 mb-1">Select an Existing Resume</label>
                                 <select
                                     id="resume-select"
                                     value={selectedResumeId}
@@ -425,11 +398,8 @@ function ResumeParser() {
                                     ))}
                                 </select>
                             </div>
-                            {/* Resume Name Input */}
                             <div>
-                                <label htmlFor="resume-name" className="block text-sm font-medium text-gray-400 mb-1">
-                                    Resume Name
-                                </label>
+                                <label htmlFor="resume-name" className="block text-sm font-medium text-gray-400 mb-1">Resume Name</label>
                                 <input
                                     type="text"
                                     id="resume-name"
@@ -441,23 +411,13 @@ function ResumeParser() {
                             </div>
                         </div>
 
-
                         <div
                             className="border-2 border-dashed border-gray-600 rounded-lg p-8 text-center cursor-pointer hover:border-cyan-400 hover:bg-gray-700/50 transition-all duration-300"
                             onClick={handleUploadClick}
                         >
                             <UploadCloudIcon className="mx-auto h-12 w-12 text-gray-500" />
-                            <p className="mt-4 text-gray-400">
-                                <span className="font-semibold text-cyan-400">Click to upload</span> or drag and drop
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">Markdown (.md) files only</p>
-                            <input
-                                type="file"
-                                ref={fileInputRef}
-                                onChange={handleFileChange}
-                                className="hidden"
-                                accept=".md"
-                            />
+                            <p className="mt-4 text-gray-400"><span className="font-semibold text-cyan-400">Click to upload</span> a new .md file</p>
+                            <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".md" />
                         </div>
 
                         {fileName && (
@@ -469,50 +429,28 @@ function ResumeParser() {
                             </div>
                         )}
 
+                        <div className="mt-6">
+                            <label htmlFor="markdown-editor" className="block text-sm font-medium text-gray-400 mb-1">
+                                Resume Editor
+                            </label>
+                            <textarea
+                                id="markdown-editor"
+                                value={editableContent}
+                                onChange={(e) => setEditableContent(e.target.value)}
+                                className="w-full h-64 bg-gray-900 border border-gray-600 rounded-md p-3 text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                placeholder="Your resume markdown will appear here..."
+                            />
+                        </div>
+
                         <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            {/* New/Clear Button */}
-                            <button
-                                onClick={handleNew}
-                                className="w-full bg-gray-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition-colors duration-300 flex items-center justify-center gap-2"
-                            >
-                                <PlusCircleIcon className="h-5 w-5" /> New
-                            </button>
-                            {/* Analyze Button */}
-                            <button
-                                onClick={handleAnalyze}
-                                disabled={isParsing || !resumeContent}
-                                className="w-full bg-cyan-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-cyan-600 transition-colors duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                            >
-                                {isParsing ? 'Analyzing...' : <><BotIcon className="h-5 w-5" /> Analyze</>}
-                            </button>
-
-                            {/* Conditional Save/Update Button */}
+                            <button onClick={handleNew} className="w-full bg-gray-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition-colors duration-300 flex items-center justify-center gap-2"> <PlusCircleIcon className="h-5 w-5" /> New </button>
+                            <button onClick={handleAnalyze} disabled={isParsing || !editableContent} className="w-full bg-cyan-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-cyan-600 transition-colors duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"> {isParsing ? 'Analyzing...' : <><BotIcon className="h-5 w-5" /> Analyze</>} </button>
                             {selectedResumeId ? (
-                                <button
-                                    onClick={handleUpdate}
-                                    disabled={isSaving || !extractedData}
-                                    className="w-full bg-green-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-600 transition-colors duration-300 disabled:bg-gray-600 flex items-center justify-center gap-2"
-                                >
-                                    {isSaving ? 'Updating...' : <><SaveIcon className="h-5 w-5" /> Update</>}
-                                </button>
+                                <button onClick={handleUpdate} disabled={isSaving || !extractedData} className="w-full bg-green-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-600 transition-colors duration-300 disabled:bg-gray-600 flex items-center justify-center gap-2"> {isSaving ? 'Updating...' : <><SaveIcon className="h-5 w-5" /> Update</>} </button>
                             ) : (
-                                <button
-                                    onClick={handleCreate}
-                                    disabled={isSaving || !extractedData}
-                                    className="w-full bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-600 transition-colors duration-300 disabled:bg-gray-600 flex items-center justify-center gap-2"
-                                >
-                                    {isSaving ? 'Saving...' : <><DatabaseIcon className="h-5 w-5" /> Create</>}
-                                </button>
+                                <button onClick={handleCreate} disabled={isSaving || !extractedData} className="w-full bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-600 transition-colors duration-300 disabled:bg-gray-600 flex items-center justify-center gap-2"> {isSaving ? 'Saving...' : <><DatabaseIcon className="h-5 w-5" /> Create</>} </button>
                             )}
-
-                            {/* Delete Button */}
-                            <button
-                                onClick={handleDelete}
-                                disabled={isDeleting || !selectedResumeId}
-                                className="w-full bg-red-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-600 transition-colors duration-300 disabled:bg-gray-600 flex items-center justify-center gap-2"
-                            >
-                                {isDeleting ? 'Deleting...' : <><TrashIcon className="h-5 w-5" /> Delete</>}
-                            </button>
+                            <button onClick={handleDelete} disabled={isDeleting || !selectedResumeId} className="w-full bg-red-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-600 transition-colors duration-300 disabled:bg-gray-600 flex items-center justify-center gap-2"> {isDeleting ? 'Deleting...' : <><TrashIcon className="h-5 w-5" /> Delete</>} </button>
                         </div>
                         {error && <p className="text-red-400 mt-4 text-center">{error}</p>}
                         {saveStatus.message && (
@@ -522,13 +460,13 @@ function ResumeParser() {
                         )}
                     </div>
 
-                    {/* Section 2: Extracted Data (This section remains unchanged) */}
+                    {/* Section 2: Extracted Data */}
                     <div className="bg-gray-800 p-6 rounded-xl shadow-lg">
                         <h2 className="text-2xl font-semibold mb-4 border-b border-gray-700 pb-2">Extracted Information</h2>
                         {!extractedData && !isParsing && (
                             <div className="text-center text-gray-500 py-16">
                                 <BotIcon className="mx-auto h-16 w-16 text-gray-600" />
-                                <p className="mt-4">Analysis results will appear here.</p>
+                                <p className="mt-4">Analysis results will appear here after you click "Analyze".</p>
                             </div>
                         )}
                         {isParsing && (
@@ -542,7 +480,6 @@ function ResumeParser() {
                         )}
                         {extractedData && (
                             <div className="space-y-6">
-                                {/* Skills */}
                                 <div>
                                     <h3 className="text-xl font-semibold text-cyan-400 mb-3">🛠 Hard Skills</h3>
                                     <div className="flex flex-wrap gap-2">
@@ -553,7 +490,6 @@ function ResumeParser() {
                                         ))}
                                     </div>
                                 </div>
-                                {/* Professional Experience */}
                                 <div>
                                     <h3 className="text-xl font-semibold text-cyan-400 mb-3 flex items-center gap-2"><BriefcaseIcon /> Professional Experience</h3>
                                     <div className="space-y-4">
@@ -569,7 +505,6 @@ function ResumeParser() {
                                         ))}
                                     </div>
                                 </div>
-                                {/* Education */}
                                 <div>
                                     <h3 className="text-xl font-semibold text-cyan-400 mb-3 flex items-center gap-2"><GraduationCapIcon /> Education</h3>
                                     <div className="space-y-4">
