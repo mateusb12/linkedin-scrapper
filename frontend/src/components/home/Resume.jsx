@@ -29,7 +29,7 @@ const parseSection = (text, startHeading) => {
 const parseResume = (markdownText) => {
     // Extract name from the first H1 tag
     const nameMatch = markdownText.match(/^#\s+(.*)/);
-    const name = nameMatch ? nameMatch[1].trim() : 'Unnamed Resume';
+    const name = nameMatch ? nameMatch[1].trim() : 'Could not load resume name';
 
     const skillsSection = parseSection(markdownText, '## Habilidades');
     const skills = skillsSection.flatMap(line => {

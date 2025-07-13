@@ -378,7 +378,7 @@ const MultiSelectFilter = ({ options, selectedOptions, onChange, placeholder = "
 
 
 /**
- * The main component for the job listings page. (FIXED SKILL EXTRACTION)
+ * The main component for the job listings page.
  */
 const MainJobListing = () => {
     const [jobs, setJobs] = useState([]);
@@ -389,7 +389,7 @@ const MainJobListing = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [workplaceType, setWorkplaceType] = useState('All');
     const [datePosted, setDatePosted] = useState('All');
-    const [employmentType, setEmploymentType] = useState('All');
+    const [applicationType, setApplicationType] = useState('All'); // <-- New state
     const [selectedSkills, setSelectedSkills] = useState([]);
     const [sortBy, setSortBy] = useState('relevance');
 
@@ -404,6 +404,8 @@ const MainJobListing = () => {
     useEffect(() => {
         const fetchJobs = async () => {
             try {
+                // In a real app, you might fetch from a live API endpoint.
+                // Using a placeholder that might fail to demonstrate fallback.
                 const response = await fetch('http://localhost:5000/jobs/all');
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const data = await response.json();
@@ -419,49 +421,30 @@ const MainJobListing = () => {
         fetchJobs();
     }, []);
 
-    // --- Memoized calculation for unique values ---
-    const getUniqueValues = (key) => {
-        const values = new Set(jobs.map(job => job[key]).filter(Boolean));
-        return ['All', ...Array.from(values)];
-    };
-
-    const uniqueEmploymentTypes = useMemo(() => getUniqueValues('employment_type'), [jobs]);
-
+    // --- Memoized calculation for unique skills ---
     const uniqueSkills = useMemo(() => {
         const allSkills = new Set();
-
         jobs.forEach(job => {
             let skillsArray = [];
-            // Check for skills in `job.skills` or `job.keywords` for robustness.
             const skillsData = job.skills || job.keywords;
-
             if (skillsData) {
-                if (typeof skillsData === 'string') {
-                    try {
-                        const parsed = JSON.parse(skillsData);
-                        if (Array.isArray(parsed)) {
-                            skillsArray = parsed;
-                        }
-                    } catch (e) {
-                        // Fallback for non-JSON strings (e.g., "React, Node, JS")
-                        if (skillsData.includes(',')) {
-                            skillsArray = skillsData.split(',').map(s => s.trim());
-                        } else {
-                            skillsArray = [skillsData];
-                        }
+                try {
+                    const parsed = JSON.parse(skillsData);
+                    if (Array.isArray(parsed)) skillsArray = parsed;
+                } catch (e) {
+                    if (typeof skillsData === 'string' && skillsData.includes(',')) {
+                        skillsArray = skillsData.split(',').map(s => s.trim());
+                    } else if (typeof skillsData === 'string') {
+                        skillsArray = [skillsData];
                     }
-                } else if (Array.isArray(skillsData)) {
-                    skillsArray = skillsData;
                 }
             }
-
             skillsArray.forEach(skill => {
                 if (typeof skill === 'string' && skill.trim()) {
                     allSkills.add(skill.trim());
                 }
             });
         });
-
         return Array.from(allSkills).sort();
     }, [jobs]);
 
@@ -499,9 +482,10 @@ const MainJobListing = () => {
             });
         }
 
-        // 4. Employment Type Filter
-        if (employmentType !== 'All') {
-            processedJobs = processedJobs.filter(job => job.employment_type === employmentType);
+        // 4. Application Type Filter (NEW)
+        if (applicationType !== 'All') {
+            const isEasyApply = applicationType === 'easy_apply';
+            processedJobs = processedJobs.filter(job => job.easy_apply === isEasyApply);
         }
 
         // 5. Skills Filter
@@ -525,8 +509,6 @@ const MainJobListing = () => {
                 } else if (Array.isArray(skillsData)) {
                     jobSkills = skillsData.map(s => s.trim());
                 }
-
-                // Job must have ALL selected skills
                 return selectedSkills.every(selectedSkill => jobSkills.includes(selectedSkill));
             });
         }
@@ -535,7 +517,6 @@ const MainJobListing = () => {
         if (sortBy === 'date') {
             processedJobs.sort((a, b) => new Date(b.posted_on) - new Date(a.posted_on));
         }
-        // 'relevance' sort is the default order after filtering.
 
         setFilteredJobs(processedJobs);
 
@@ -546,7 +527,7 @@ const MainJobListing = () => {
             setSelectedJob(processedJobs[0]);
         }
 
-    }, [searchTerm, workplaceType, datePosted, employmentType, selectedSkills, sortBy, jobs, selectedJob]);
+    }, [searchTerm, workplaceType, datePosted, applicationType, selectedSkills, sortBy, jobs, selectedJob]);
 
 
     // Handlers for resizing
@@ -615,8 +596,10 @@ const MainJobListing = () => {
                                 <option value="14">Last 14 days</option>
                                 <option value="30">Last 30 days</option>
                             </FilterSelect>
-                            <FilterSelect value={employmentType} onChange={(e) => setEmploymentType(e.target.value)}>
-                                {uniqueEmploymentTypes.map(type => <option key={type} value={type}>{type === 'All' ? 'All Job Types' : type}</option>)}
+                            <FilterSelect value={applicationType} onChange={(e) => setApplicationType(e.target.value)}>
+                                <option value="All">All Application Types</option>
+                                <option value="easy_apply">Easy Apply</option>
+                                <option value="company_website">Company Website</option>
                             </FilterSelect>
                             <FilterSelect value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
                                 <option value="relevance">Sort by: Relevance</option>
