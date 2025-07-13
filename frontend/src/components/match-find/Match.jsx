@@ -13,13 +13,17 @@ const mockJobs = [
     { applicants: 25, company: { name: "DataDriven Inc." }, job_url: "#", location: "New York, NY (Remote)", posted_on: new Date().toISOString(), title: "Data Scientist", urn: "4", workplace_type: "Remote", employment_type: "Contract", responsibilities: ["Analyze data"], qualifications: [], skills: "[\"Python\", \"Pandas\", \"TensorFlow\"]", easy_apply: false }, // Incomplete
 ];
 
+const getColorFromScore = (score) => {
+    // cap score at 50 for hue interpolation, so 0 → red, 50 → green
+    const capped = Math.min(score, 50);
+    const hue = Math.round((capped / 50) * 120);
+    return `hsl(${hue}, 80%, 50%)`;
+};
+
 
 const MatchedJobItem = ({ job, onSelect, isSelected }) => {
     const score = Math.round(job.matchScore || 0);
-    let scoreColor = 'bg-gray-500'; // Default for 0 or low scores
-    if (score > 75) scoreColor = 'bg-green-500';
-    else if (score > 50) scoreColor = 'bg-sky-500';
-    else if (score > 25) scoreColor = 'bg-yellow-500';
+    const barColor = getColorFromScore(score);
 
     const baseClasses = "p-4 border-l-4 cursor-pointer transition-colors duration-200";
     const selectedClasses = "bg-sky-100 dark:bg-sky-900/30 border-sky-500";
@@ -38,8 +42,14 @@ const MatchedJobItem = ({ job, onSelect, isSelected }) => {
                     <div className="text-xs text-gray-500">Match</div>
                 </div>
             </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mt-2">
-                <div className={`${scoreColor} h-1.5 rounded-full`} style={{ width: `${score}%` }}></div>
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mt-2 overflow-hidden">
+                <div
+                    className="h-1.5 rounded-full transition-all duration-200"
+                    style={{
+                        width: `${score}%`,
+                        backgroundColor: barColor
+                    }}
+                />
             </div>
         </div>
     );
