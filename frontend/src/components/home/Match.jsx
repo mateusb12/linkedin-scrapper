@@ -1,21 +1,18 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Target, CheckCircle, BarChart2, Briefcase, MapPin, Clock, Building, Zap, Users, ChevronRight, BookOpen, XCircle, Globe, Award } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Target, CheckCircle, BarChart2, Briefcase, MapPin, Clock, Building, Users, ChevronRight, XCircle, Globe, Award } from 'lucide-react';
 
 // Define the base URL for the API endpoint
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 // Mock job data as a fallback
 const mockJobs = [
-    { applicants: 5, company: { name: "Innovatech Solutions" }, job_url: "#", location: "San Francisco, CA", posted_on: new Date().toISOString(), title: "Senior Frontend Developer", urn: "1", workplace_type: "On-site", employment_type: "Full-time", skills: "[\"React\", \"TypeScript\", \"Next.js\"]", easy_apply: true },
-    { applicants: 12, company: { name: "Auramind.ai" }, job_url: "#", location: "Goiânia, Brazil (Remote)", posted_on: new Date().toISOString(), title: "Backend Developer - Python", urn: "2", workplace_type: "Remote", employment_type: "Full-time", skills: "[\"Python\", \"Django\", \"Flask\", \"RESTful APIs\"]", easy_apply: true },
-    { applicants: 3, company: { name: "WEX" }, job_url: "#", location: "São Paulo, Brazil (Hybrid)", posted_on: new Date().toISOString(), title: "Mid Python Developer", urn: "3", workplace_type: "Hybrid", employment_type: "Full-time", skills: "[\"Python\", \"SQL\"]", easy_apply: false },
-    { applicants: 25, company: { name: "DataDriven Inc." }, job_url: "#", location: "New York, NY (Remote)", posted_on: new Date().toISOString(), title: "Data Scientist", urn: "4", workplace_type: "Remote", employment_type: "Contract", skills: "[\"Python\", \"Pandas\", \"TensorFlow\"]", easy_apply: false },
+    { applicants: 5, company: { name: "Innovatech Solutions" }, job_url: "#", location: "San Francisco, CA", posted_on: new Date().toISOString(), title: "Senior Frontend Developer", urn: "1", workplace_type: "On-site", employment_type: "Full-time", responsibilities: ["Develop new features"], qualifications: ["3+ years of React"], skills: "[\"React\", \"TypeScript\", \"Next.js\"]", easy_apply: true },
+    { applicants: 12, company: { name: "Auramind.ai" }, job_url: "#", location: "Goiânia, Brazil (Remote)", posted_on: new Date().toISOString(), title: "Backend Developer - Python", urn: "2", workplace_type: "Remote", employment_type: "Full-time", responsibilities: ["Build APIs"], qualifications: ["Experience with Django"], skills: "[\"Python\", \"Django\", \"Flask\", \"RESTful APIs\"]", easy_apply: true },
+    { applicants: 3, company: { name: "WEX" }, job_url: "#", location: "São Paulo, Brazil (Hybrid)", posted_on: new Date().toISOString(), title: "Mid Python Developer", urn: "3", workplace_type: "Hybrid", employment_type: "Full-time", responsibilities: [], qualifications: ["SQL knowledge"], skills: "[\"Python\", \"SQL\"]", easy_apply: false }, // Incomplete
+    { applicants: 25, company: { name: "DataDriven Inc." }, job_url: "#", location: "New York, NY (Remote)", posted_on: new Date().toISOString(), title: "Data Scientist", urn: "4", workplace_type: "Remote", employment_type: "Contract", responsibilities: ["Analyze data"], qualifications: [], skills: "[\"Python\", \"Pandas\", \"TensorFlow\"]", easy_apply: false }, // Incomplete
 ];
 
-/**
- * A compact card for the matched job list.
- * It includes a visual indicator for the match score.
- */
+
 const MatchedJobItem = ({ job, onSelect, isSelected }) => {
     const score = Math.round(job.matchScore || 0);
     let scoreColor = 'bg-gray-500'; // Default for 0 or low scores
@@ -47,10 +44,6 @@ const MatchedJobItem = ({ job, onSelect, isSelected }) => {
     );
 };
 
-
-/**
- * A detailed view of a single job, highlighting matched skills.
- */
 const JobDetailView = ({ job, resumeSkills = [] }) => {
     if (!job) {
         return (
@@ -60,20 +53,24 @@ const JobDetailView = ({ job, resumeSkills = [] }) => {
         );
     }
 
-    const parseJsonArray = (field) => {
-        if (!field) return [];
-        try {
-            const parsed = JSON.parse(field);
-            return Array.isArray(parsed) ? parsed : [];
-        } catch (e) { return []; }
-    };
+    const getSkillsArray = (skillsData) => {
+        if (!skillsData) return [];
+        if (Array.isArray(skillsData)) return skillsData;
+        if (typeof skillsData === 'string') {
+            try {
+                const parsed = JSON.parse(skillsData);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (e) { return []; }
+        }
+        return [];
+    }
 
     const formatDate = (dateString) => {
         if (!dateString) return 'N/A';
         return new Date(dateString).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
     };
 
-    const jobSkills = parseJsonArray(job.skills || job.keywords);
+    const jobSkills = getSkillsArray(job.skills || job.keywords);
     const resumeSkillsLower = resumeSkills.map(s => s.toLowerCase());
 
     const Placeholder = ({ text = "None specified" }) => (
@@ -142,26 +139,16 @@ const JobDetailView = ({ job, resumeSkills = [] }) => {
     );
 };
 
-
-/**
- * Main component to match resumes with jobs.
- */
 const Match = () => {
-    // Resume-related state
     const [resumes, setResumes] = useState([]);
     const [selectedResumeId, setSelectedResumeId] = useState('');
     const [selectedResume, setSelectedResume] = useState(null);
-
-    // Job-related state
     const [jobs, setJobs] = useState([]);
     const [matchedJobs, setMatchedJobs] = useState([]);
     const [selectedJob, setSelectedJob] = useState(null);
-
-    // Control state
-    const [status, setStatus] = useState('idle'); // idle, loading, matching, success, error
+    const [status, setStatus] = useState('idle');
     const [errorMessage, setErrorMessage] = useState('');
 
-    // Fetch all resumes on component mount
     useEffect(() => {
         const fetchResumes = async () => {
             try {
@@ -177,7 +164,6 @@ const Match = () => {
         fetchResumes();
     }, []);
 
-    // Fetch all jobs on component mount
     useEffect(() => {
         const fetchJobs = async () => {
             try {
@@ -193,7 +179,6 @@ const Match = () => {
         fetchJobs();
     }, []);
 
-    // Fetch details of the selected resume
     const handleSelectResume = useCallback(async (id) => {
         setSelectedResumeId(id);
         if (!id) {
@@ -218,7 +203,6 @@ const Match = () => {
         }
     }, []);
 
-    // Core matching logic
     const handleMatch = () => {
         if (!selectedResume || !selectedResume.hard_skills) {
             setErrorMessage('Please select a resume with skills to start matching.');
@@ -231,37 +215,49 @@ const Match = () => {
         setMatchedJobs([]);
         setSelectedJob(null);
 
-        // Simulate matching process
+        // Helper to robustly parse skills from either an array (API) or a string (mock data)
+        const getSkillsArray = (skillsData) => {
+            if (!skillsData) return [];
+            if (Array.isArray(skillsData)) return skillsData;
+            if (typeof skillsData === 'string') {
+                try {
+                    const parsed = JSON.parse(skillsData);
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch (e) { return []; }
+            }
+            return [];
+        }
+
         setTimeout(() => {
+            // 1. Filter out incomplete jobs first
+            const completeJobs = jobs.filter(job => {
+                const hasResponsibilities = job.responsibilities && job.responsibilities.length > 0;
+                const hasQualifications = job.qualifications && job.qualifications.length > 0;
+                const skillsList = getSkillsArray(job.keywords || job.skills);
+                const hasKeywords = skillsList.length > 0;
+
+                return hasResponsibilities && hasQualifications && hasKeywords;
+            });
+
             const resumeSkills = selectedResume.hard_skills.map(s => s.toLowerCase());
 
-            const scoredJobs = jobs.map(job => {
-                const jobSkillsRaw = job.skills || job.keywords;
-                let jobSkills = [];
-                if (jobSkillsRaw) {
-                    try {
-                        const parsed = JSON.parse(jobSkillsRaw);
-                        if (Array.isArray(parsed)) jobSkills = parsed.map(s => s.toLowerCase());
-                    } catch (e) { /* ignore parse error */ }
-                }
+            // 2. Score and sort the remaining complete jobs
+            const scoredJobs = completeJobs.map(job => {
+                const jobSkills = getSkillsArray(job.keywords || job.skills).map(s => s.toLowerCase());
 
-                if (jobSkills.length === 0) {
-                    return { ...job, matchScore: 0, matchingSkills: [] };
-                }
-
+                // The filter above ensures jobSkills.length > 0, so no need to check for zero division
                 const matchingSkills = jobSkills.filter(skill => resumeSkills.includes(skill));
                 const matchScore = (matchingSkills.length / jobSkills.length) * 100;
 
                 return { ...job, matchScore, matchingSkills };
             });
 
-            // Sort by match score descending
             const sortedJobs = scoredJobs.sort((a, b) => b.matchScore - a.matchScore);
 
             setMatchedJobs(sortedJobs);
             setSelectedJob(sortedJobs.length > 0 ? sortedJobs[0] : null);
             setStatus('success');
-        }, 500); // Artificial delay
+        }, 500);
     };
 
     const StatusIndicator = () => {
@@ -288,8 +284,8 @@ const Match = () => {
         if (status === 'success' && matchedJobs.length === 0) {
             return (
                 <div className="p-8 text-center text-gray-500">
-                    <h3 className="text-xl font-semibold">No Matches Found</h3>
-                    <p>We couldn't find any jobs matching the skills in this resume.</p>
+                    <h3 className="text-xl font-semibold">No Complete Jobs Found</h3>
+                    <p>Try again after more jobs with full details are added.</p>
                 </div>
             )
         }
@@ -300,12 +296,10 @@ const Match = () => {
     return (
         <div className="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
             <div className="flex h-screen">
-                {/* Left Column: Controls & Job List */}
                 <div className="flex flex-col flex-shrink-0 w-[35%] max-w-md border-r border-gray-200 dark:border-gray-700">
                     <div className="p-4 border-b border-gray-200 dark:border-gray-700 space-y-4">
                         <h2 className="text-xl font-bold flex items-center gap-2"><Award size={24} className="text-sky-500" /> Job Matcher</h2>
 
-                        {/* Resume Selector */}
                         <div>
                             <label htmlFor="resume-select" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
                                 1. Select your resume
@@ -323,7 +317,6 @@ const Match = () => {
                             </select>
                         </div>
 
-                        {/* Match Button */}
                         <div>
                             <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
                                 2. Find your matches
@@ -340,7 +333,6 @@ const Match = () => {
                         {errorMessage && <p className="text-sm text-red-500 dark:text-red-400 text-center">{errorMessage}</p>}
                     </div>
 
-                    {/* Matched Job List */}
                     <div className="flex-grow overflow-y-auto">
                         <StatusIndicator />
                         {matchedJobs.length > 0 && (
@@ -356,7 +348,6 @@ const Match = () => {
                     </div>
                 </div>
 
-                {/* Right Column: Job Details */}
                 <main className="flex-grow bg-white dark:bg-gray-800/50">
                     <JobDetailView job={selectedJob} resumeSkills={selectedResume?.hard_skills} />
                 </main>
