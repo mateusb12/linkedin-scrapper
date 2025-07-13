@@ -18,6 +18,7 @@ class Resume(db.Model):
     def to_dict(self):
         return {
             "id": self.id,
+            "name": self.name,
             "hard_skills": self.hard_skills,
             "professional_experience": self.professional_experience,
             "education": self.education

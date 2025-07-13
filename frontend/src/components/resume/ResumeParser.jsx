@@ -64,7 +64,7 @@ function ResumeParser() {
                     setSaveStatus({ message: '', isError: false });
 
                     const data = parseResume(content);
-                    setResumeName(data.name);
+                    setResumeName(data.name || '');
                 };
                 reader.readAsText(file);
             } else {
@@ -86,7 +86,7 @@ function ResumeParser() {
                 const data = parseResume(editableContent);
                 setExtractedData(data);
                 if (!resumeName) {
-                    setResumeName(data.name);
+                    setResumeName(data.name || '');
                 }
             } catch (err) {
                 setError("Failed to parse the resume. Please check the format.");
@@ -196,6 +196,7 @@ function ResumeParser() {
 
         try {
             const data = await resumeService.fetchResumeById(id);
+            console.log("Fetched resume data:", data);
             const extracted = {
                 name: data.name,
                 skills: data.hard_skills,
@@ -206,7 +207,7 @@ function ResumeParser() {
             const reconstructedMd = reconstructMarkdown(extracted);
             setEditableContent(reconstructedMd);
             setExtractedData(extracted);
-            setResumeName(data.name);
+            setResumeName(data.name || '');
             setFileName(`Loaded: ${data.name}`);
         } catch (error) {
             setError(error.message);
@@ -265,7 +266,7 @@ function ResumeParser() {
                                     type="text"
                                     id="resume-name"
                                     value={resumeName}
-                                    onChange={(e) => setResumeName(e.target.value)}
+                                    onChange={(e) => setResumeName(e.target.value || '')}
                                     placeholder="Enter a name for the resume"
                                     className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
                                 />
