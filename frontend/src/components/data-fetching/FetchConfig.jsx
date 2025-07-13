@@ -6,7 +6,7 @@ import { Sidebar, Header } from "../home/Navbar.jsx";
 import JobList from "../home/JobList.jsx";
 import { useDarkMode } from "../../hooks/useDarkMode.jsx";
 import { ConfigEditor } from "./ConfigEditor.jsx";
-import ResumeParser from "../home/Resume.jsx";
+import ResumeParser from "../resume/ResumeParser.jsx";
 import Match from "../home/Match.jsx"; // Import the extracted component
 
 // Helper functions moved here to be used for initial state generation
