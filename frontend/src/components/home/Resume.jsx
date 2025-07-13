@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 // Define the base URL for the API endpoint
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -6,9 +6,9 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 // Mock data from backend_resume.md for initial display
 const mockResumeContent = `
 # Mateus Bessa
-**Desenvolvedor de software** 📬 [matbessa12@gmail.com](mailto:matbessa12@gmail.com)  
-📞 +55 85 99917 1902  
-🔗 [LinkedIn](https://www.linkedin.com/in/mateus-bessa-m)  
+**Desenvolvedor de software** 📬 [matbessa12@gmail.com](mailto:matbessa12@gmail.com)
+📞 +55 85 99917 1902
+🔗 [LinkedIn](https://www.linkedin.com/in/mateus-bessa-m)
 🔗 [Portfólio](https://tinyurl.com/mateus-pfl)
 
 ---
@@ -21,24 +21,24 @@ Desenvolvedor de Software Full-stack com foco em backend, especializado em Pytho
 ## Habilidades
 
 ### Desenvolvimento
-- **Linguagens**: Python, C#, Javascript  
-- **Frontend**: NextJS, ReactNative, React  
-- **Fundamentos**: SQL, HTML, CSS  
-- **Testes**: Unit tests, Integration tests  
-- **Metodologias**: Scrum, Agile, Kanban  
-- **Documentação**: Swagger  
+- **Linguagens**: Python, C#, Javascript
+- **Frontend**: NextJS, ReactNative, React
+- **Fundamentos**: SQL, HTML, CSS
+- **Testes**: Unit tests, Integration tests
+- **Metodologias**: Scrum, Agile, Kanban
+- **Documentação**: Swagger
 
 ### Infraestrutura
-- **Cloud**: AWS, Google Cloud, Azure  
-- **Containers**: Docker, Kubernetes  
-- **CI/CD**: TILT, Github Actions  
-- **OS**: Linux  
+- **Cloud**: AWS, Google Cloud, Azure
+- **Containers**: Docker, Kubernetes
+- **CI/CD**: TILT, Github Actions
+- **OS**: Linux
 
 ### Tecnologia
-- **Frameworks**: Flask, Django, NodeJS  
-- **Databases**: Postgres, Mongo, Supabase  
-- **Segurança**: JWT, OAuth2  
-- **Versionamento**: Github, Gitlab  
+- **Frameworks**: Flask, Django, NodeJS
+- **Databases**: Postgres, Mongo, Supabase
+- **Segurança**: JWT, OAuth2
+- **Versionamento**: Github, Gitlab
 
 ---
 
@@ -69,32 +69,32 @@ Desenvolvedor de Software Full-stack com foco em backend, especializado em Pytho
 
 ## Projetos
 
-### AM Finance  
-🔗 [amfinance.com.br](https://www.amfinance.com.br)  
+### AM Finance
+🔗 [amfinance.com.br](https://www.amfinance.com.br)
 - Plataforma de organização financeira com criptografia e análise de dados.
 - Construído com NextJS, Supabase, PWA.
 - Categoriza gastos automaticamente e emite alertas mensais.
 
-### Farlink  
-🔗 [tinyurl.com/farlink-m](https://tinyurl.com/farlink-m)  
+### Farlink
+🔗 [tinyurl.com/farlink-m](https://tinyurl.com/farlink-m)
 - Rede social educacional com vídeos curtos e quizzes.
 - Construído com React Native, NodeJS, MongoDB e Azure.
 - Backend com API Gateway e CDN para vídeos.
 
-### Book Analyzer  
-🔗 [tinyurl.com/farlink-m](https://tinyurl.com/farlink-m)  
+### Book Analyzer
+🔗 [tinyurl.com/farlink-m](https://tinyurl.com/farlink-m)
 - Converte livros em grafos no estilo de redes sociais.
 - Construído com Django, ReactJS, Numpy, Pandas, Spacy, GraphViz.
 - Suporte a .txt e web scraping de wikis públicas.
 
-### Flight Scrapper  
-🔗 [tinyurl.com/travl-s](https://tinyurl.com/travl-s)  
+### Flight Scrapper
+🔗 [tinyurl.com/travl-s](https://tinyurl.com/travl-s)
 - Alerta de queda de preço em passagens aéreas via Telegram.
 - Construído com Flask, Firebase, Pandas, Matplotlib, Selenium.
 - Usa API Kiwi Tequila para verificação diária de preços.
 
-### Valorant Impact  
-🔗 [tinyurl.com/val-imp](https://tinyurl.com/val-imp)  
+### Valorant Impact
+🔗 [tinyurl.com/val-imp](https://tinyurl.com/val-imp)
 - Análise do impacto das jogadas no jogo Valorant.
 - Construído com Flask, Optuna, Pandas, LightGBM, Scipy, Seaborn.
 - Modelo LightGBM para prever vitória com base em decisões táticas.
@@ -103,15 +103,15 @@ Desenvolvedor de Software Full-stack com foco em backend, especializado em Pytho
 
 ## Educação
 
-- **Universidade de Fortaleza** – Bacharelado em Ciências da Computação  
-  *Fortaleza, Brazil | 2019–2023* - **Politechnika Lubelska** – Intercâmbio acadêmico  
+- **Universidade de Fortaleza** – Bacharelado em Ciências da Computação
+  *Fortaleza, Brazil | 2019–2023* - **Politechnika Lubelska** – Intercâmbio acadêmico
   *Lublin, Polônia | 2022*
 
 ---
 
 ## Idiomas
-- **Português**: C2 (Nativo)  
-- **Inglês**: C2 (Fluente)  
+- **Português**: C2 (Nativo)
+- **Inglês**: C2 (Fluente)
 - **Espanhol**: A1 (Básico)
 ...
 `;
@@ -238,22 +238,67 @@ const DatabaseIcon = (props) => (
         <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
     </svg>
 );
+const PlusCircleIcon = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="16" />
+        <line x1="8" y1="12" x2="16" y2="12" />
+    </svg>
+);
+
+const TrashIcon = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 6h18" />
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+);
+
+const SaveIcon = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+        <polyline points="17 21 17 13 7 13 7 21" />
+        <polyline points="7 3 7 8 15 8" />
+    </svg>
+);
+
 
 
 function ResumeParser() {
     // State for file handling and parsing
-    const [resumeContent, setResumeContent] = React.useState(mockResumeContent);
-    const [fileName, setFileName] = React.useState("backend_resume.md");
-    const [isParsing, setIsParsing] = React.useState(false);
-    const [error, setError] = React.useState(null);
-    const [extractedData, setExtractedData] = React.useState(null);
+    const [resumeContent, setResumeContent] = useState(mockResumeContent);
+    const [fileName, setFileName] = useState("backend_resume.md");
+    const [isParsing, setIsParsing] = useState(false);
+    const [error, setError] = useState(null);
+    const [extractedData, setExtractedData] = useState(null);
 
     // New state for saving data to the backend
-    const [isSaving, setIsSaving] = React.useState(false);
-    const [saveStatus, setSaveStatus] = React.useState({ message: '', isError: false });
+    const [isSaving, setIsSaving] = useState(false);
+    const [saveStatus, setSaveStatus] = useState({ message: '', isError: false });
 
-    const fileInputRef = React.useRef(null);
+    const fileInputRef = useRef(null);
 
+    // CRUD states
+    const [resumeIds, setResumeIds] = useState([]);
+    const [selectedResumeId, setSelectedResumeId] = useState('');
+    const [isDeleting, setIsDeleting] = useState(false);
+
+
+    // Fetch all resume IDs on component mount
+    useEffect(() => {
+        fetchResumeIds();
+    }, []);
+
+    const fetchResumeIds = async () => {
+        try {
+            const response = await fetch(`${API_BASE}/jobs/ids`);
+            if (!response.ok) throw new Error('Failed to fetch resume IDs');
+            const data = await response.json();
+            setResumeIds(data.ids);
+        } catch (error) {
+            setSaveStatus({ message: error.message, isError: true });
+        }
+    };
     const handleFileChange = (event) => {
         const file = event.target.files[0];
         if (file) {
@@ -272,7 +317,6 @@ function ResumeParser() {
             }
         }
     };
-
     const handleAnalyze = () => {
         if (!resumeContent) {
             setError("Please upload a resume first.");
@@ -299,8 +343,7 @@ function ResumeParser() {
         fileInputRef.current.click();
     };
 
-    // New function to handle saving the data
-    const handleSave = async () => {
+    const handleCreate = async () => {
         if (!extractedData) {
             setSaveStatus({ message: 'No extracted data to save. Please analyze a resume first.', isError: true });
             return;
@@ -309,7 +352,6 @@ function ResumeParser() {
         setIsSaving(true);
         setSaveStatus({ message: '', isError: false });
 
-        // Prepare the payload in the format expected by the backend
         const payload = {
             hard_skills: extractedData.skills,
             professional_experience: extractedData.experiences,
@@ -319,28 +361,135 @@ function ResumeParser() {
         try {
             const response = await fetch(`${API_BASE}/jobs/`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             });
 
             const result = await response.json();
-
-            if (!response.ok) {
-                // Use the error message from the backend if available
-                throw new Error(result.error || `HTTP error! status: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(result.error || `HTTP error! status: ${response.status}`);
 
             setSaveStatus({ message: `Resume saved successfully! ID: ${result.id}`, isError: false });
-
+            fetchResumeIds(); // Refresh the list of IDs
+            handleNew(); // Clear form for next entry
         } catch (error) {
-            console.error('Save error:', error);
+            console.error('Create error:', error);
             setSaveStatus({ message: error.message, isError: true });
         } finally {
             setIsSaving(false);
         }
     };
+
+    const handleUpdate = async () => {
+        if (!selectedResumeId || !extractedData) {
+            setSaveStatus({ message: 'No resume selected or no data to update.', isError: true });
+            return;
+        }
+
+        setIsSaving(true);
+        setSaveStatus({ message: '', isError: false });
+
+        const payload = {
+            hard_skills: extractedData.skills,
+            professional_experience: extractedData.experiences,
+            education: extractedData.educations,
+        };
+
+        try {
+            const response = await fetch(`${API_BASE}/jobs/${selectedResumeId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                const result = await response.json();
+                throw new Error(result.error || `HTTP error! status: ${response.status}`);
+            }
+
+            setSaveStatus({ message: `Resume ID ${selectedResumeId} updated successfully!`, isError: false });
+        } catch (error) {
+            console.error('Update error:', error);
+            setSaveStatus({ message: error.message, isError: true });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!selectedResumeId) {
+            setSaveStatus({ message: 'Please select a resume to delete.', isError: true });
+            return;
+        }
+
+        if (!window.confirm(`Are you sure you want to delete resume ID ${selectedResumeId}?`)) {
+            return;
+        }
+
+        setIsDeleting(true);
+        setSaveStatus({ message: '', isError: false });
+
+        try {
+            const response = await fetch(`${API_BASE}/jobs/${selectedResumeId}`, {
+                method: 'DELETE',
+            });
+
+            if (!response.ok) {
+                const result = await response.json();
+                throw new Error(result.error || `HTTP error! status: ${response.status}`);
+            }
+
+            setSaveStatus({ message: `Resume ID ${selectedResumeId} deleted successfully.`, isError: false });
+            fetchResumeIds(); // Refresh IDs
+            handleNew(); // Clear form
+        } catch (error) {
+            console.error('Delete error:', error);
+            setSaveStatus({ message: error.message, isError: true });
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
+    const handleSelectResume = async (id) => {
+        setSelectedResumeId(id);
+        if (!id) {
+            handleNew();
+            return;
+        }
+
+        setIsParsing(true); // Show loading state
+        setSaveStatus({ message: '', isError: false });
+
+        try {
+            const response = await fetch(`${API_BASE}/jobs/${id}`);
+            if (!response.ok) throw new Error(`Failed to fetch resume ${id}`);
+            const data = await response.json();
+            setExtractedData({
+                skills: data.hard_skills,
+                experiences: data.professional_experience,
+                educations: data.education,
+            });
+            setResumeContent("Resume loaded from database. Edit data below and update.");
+            setFileName(`resume_${id}.json`);
+        } catch (error) {
+            setError(error.message);
+            setExtractedData(null);
+        } finally {
+            setIsParsing(false);
+        }
+    };
+
+    const handleNew = () => {
+        setSelectedResumeId('');
+        setResumeContent(mockResumeContent);
+        setFileName("backend_resume.md");
+        setExtractedData(null);
+        setError(null);
+        setSaveStatus({ message: '', isError: false });
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
+    };
+
 
     return (
         <div className="bg-gray-900 text-white min-h-screen font-sans">
@@ -348,14 +497,33 @@ function ResumeParser() {
                 <header className="mb-8">
                     <h1 className="text-4xl font-bold text-center text-cyan-400">Resume Analyzer</h1>
                     <p className="text-center text-gray-400 mt-2">
-                        Upload, analyze, and save your Markdown resume.
+                        Upload, analyze, and manage your Markdown resumes.
                     </p>
                 </header>
 
                 <div className="max-w-4xl mx-auto flex flex-col gap-8">
                     {/* Section 1: Upload and Control */}
                     <div className="bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <h2 className="text-2xl font-semibold mb-4 border-b border-gray-700 pb-2">Upload & Actions</h2>
+                        <h2 className="text-2xl font-semibold mb-4 border-b border-gray-700 pb-2">Resume Management</h2>
+
+                        {/* Resume Selection Dropdown */}
+                        <div className="mb-4">
+                            <label htmlFor="resume-select" className="block text-sm font-medium text-gray-400 mb-1">
+                                Select an Existing Resume
+                            </label>
+                            <select
+                                id="resume-select"
+                                value={selectedResumeId}
+                                onChange={(e) => handleSelectResume(e.target.value)}
+                                className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            >
+                                <option value="">-- Load a saved resume --</option>
+                                {resumeIds.map(id => (
+                                    <option key={id} value={id}>Resume ID: {id}</option>
+                                ))}
+                            </select>
+                        </div>
+
 
                         <div
                             className="border-2 border-dashed border-gray-600 rounded-lg p-8 text-center cursor-pointer hover:border-cyan-400 hover:bg-gray-700/50 transition-all duration-300"
@@ -384,40 +552,49 @@ function ResumeParser() {
                             </div>
                         )}
 
-                        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {/* New/Clear Button */}
+                            <button
+                                onClick={handleNew}
+                                className="w-full bg-gray-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 transition-colors duration-300 flex items-center justify-center gap-2"
+                            >
+                                <PlusCircleIcon className="h-5 w-5" /> New
+                            </button>
+                            {/* Analyze Button */}
                             <button
                                 onClick={handleAnalyze}
                                 disabled={isParsing || !resumeContent}
                                 className="w-full bg-cyan-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-cyan-600 transition-colors duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
-                                {isParsing ? (
-                                    <>
-                                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                        </svg>
-                                        Analyzing...
-                                    </>
-                                ) : (
-                                    <> <BotIcon className="h-5 w-5"/> Analyze Resume </>
-                                )}
+                                {isParsing ? 'Analyzing...' : <><BotIcon className="h-5 w-5" /> Analyze</>}
                             </button>
+
+                            {/* Conditional Save/Update Button */}
+                            {selectedResumeId ? (
+                                <button
+                                    onClick={handleUpdate}
+                                    disabled={isSaving || !extractedData}
+                                    className="w-full bg-green-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-600 transition-colors duration-300 disabled:bg-gray-600 flex items-center justify-center gap-2"
+                                >
+                                    {isSaving ? 'Updating...' : <><SaveIcon className="h-5 w-5" /> Update</>}
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={handleCreate}
+                                    disabled={isSaving || !extractedData}
+                                    className="w-full bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-600 transition-colors duration-300 disabled:bg-gray-600 flex items-center justify-center gap-2"
+                                >
+                                    {isSaving ? 'Saving...' : <><DatabaseIcon className="h-5 w-5" /> Create</>}
+                                </button>
+                            )}
+
+                            {/* Delete Button */}
                             <button
-                                onClick={handleSave}
-                                disabled={isSaving || !extractedData}
-                                className="w-full bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-600 transition-colors duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                onClick={handleDelete}
+                                disabled={isDeleting || !selectedResumeId}
+                                className="w-full bg-red-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-600 transition-colors duration-300 disabled:bg-gray-600 flex items-center justify-center gap-2"
                             >
-                                {isSaving ? (
-                                    <>
-                                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                        </svg>
-                                        Saving...
-                                    </>
-                                ) : (
-                                    <> <DatabaseIcon className="h-5 w-5"/> Save to DB </>
-                                )}
+                                {isDeleting ? 'Deleting...' : <><TrashIcon className="h-5 w-5" /> Delete</>}
                             </button>
                         </div>
                         {error && <p className="text-red-400 mt-4 text-center">{error}</p>}
@@ -433,7 +610,7 @@ function ResumeParser() {
                         <h2 className="text-2xl font-semibold mb-4 border-b border-gray-700 pb-2">Extracted Information</h2>
                         {!extractedData && !isParsing && (
                             <div className="text-center text-gray-500 py-16">
-                                <BotIcon className="mx-auto h-16 w-16 text-gray-600"/>
+                                <BotIcon className="mx-auto h-16 w-16 text-gray-600" />
                                 <p className="mt-4">Analysis results will appear here.</p>
                             </div>
                         )}
@@ -462,7 +639,7 @@ function ResumeParser() {
 
                                 {/* Professional Experience */}
                                 <div>
-                                    <h3 className="text-xl font-semibold text-cyan-400 mb-3 flex items-center gap-2"><BriefcaseIcon/> Professional Experience</h3>
+                                    <h3 className="text-xl font-semibold text-cyan-400 mb-3 flex items-center gap-2"><BriefcaseIcon /> Professional Experience</h3>
                                     <div className="space-y-4">
                                         {extractedData.experiences.map((exp, index) => (
                                             <div key={index} className="bg-gray-700/50 p-4 rounded-lg">
@@ -480,7 +657,7 @@ function ResumeParser() {
 
                                 {/* Education */}
                                 <div>
-                                    <h3 className="text-xl font-semibold text-cyan-400 mb-3 flex items-center gap-2"><GraduationCapIcon/> Education</h3>
+                                    <h3 className="text-xl font-semibold text-cyan-400 mb-3 flex items-center gap-2"><GraduationCapIcon /> Education</h3>
                                     <div className="space-y-4">
                                         {extractedData.educations.map((edu, index) => (
                                             <div key={index} className="bg-gray-700/50 p-4 rounded-lg">

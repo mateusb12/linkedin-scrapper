@@ -45,6 +45,21 @@ def get_resume(resume_id):
         session.close()
 
 
+@resume_bp.route("/ids", methods=["GET"])
+def get_all_resume_ids():
+    session = get_db_session()
+    try:
+        ids = session.query(Resume.id).all()
+        id_list = [id_tuple[0] for id_tuple in ids]
+        return jsonify({"ids": id_list}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        session.close()
+
+
 @resume_bp.route("/<int:resume_id>", methods=["PUT"])
 def update_resume(resume_id):
     session = get_db_session()
