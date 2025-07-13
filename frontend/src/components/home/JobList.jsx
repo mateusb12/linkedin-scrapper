@@ -110,6 +110,12 @@ const JobListItem = ({ job, onSelect, isSelected }) => {
     const selectedClasses = "bg-sky-100 dark:bg-sky-900/30 border-sky-500";
     const unselectedClasses = "border-transparent hover:bg-gray-100 dark:hover:bg-gray-800";
 
+    const formatDate = (dateString) => {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    };
+
     return (
         <div
             onClick={() => onSelect(job)}
@@ -121,6 +127,7 @@ const JobListItem = ({ job, onSelect, isSelected }) => {
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{job.company?.name || 'Unknown Company'}</p>
             <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{job.location || 'Location not specified'}</p>
+            <p className="text-xs text-gray-400 mt-1 italic">Posted on {formatDate(job.posted_on)}</p>
         </div>
     );
 };
