@@ -1,120 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
+import mockResumeContent from "../../data/backend_resume.md?raw";
 
 // Define the base URL for the API endpoint
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
-// Mock data from backend_resume.md for initial display
-const mockResumeContent = `
-# Mateus Bessa
-**Desenvolvedor de software** 📬 [matbessa12@gmail.com](mailto:matbessa12@gmail.com)
-📞 +55 85 99917 1902
-🔗 [LinkedIn](https://www.linkedin.com/in/mateus-bessa-m)
-🔗 [Portfólio](https://tinyurl.com/mateus-pfl)
-
----
-
-## Resumo
-Desenvolvedor de Software Full-stack com foco em backend, especializado em Python, Flask, C# e plataformas em cloud. Experiente na construção de sistemas robustos e escaláveis nos setores de fintech, edtech e desenvolvimento de jogos. Tenho experiência com liderança de equipes, práticas de clean code e na entrega de soluções que alinham tecnologia aos objetivos do produto.
-
----
-
-## Habilidades
-
-### Desenvolvimento
-- **Linguagens**: Python, C#, Javascript
-- **Frontend**: NextJS, ReactNative, React
-- **Fundamentos**: SQL, HTML, CSS
-- **Testes**: Unit tests, Integration tests
-- **Metodologias**: Scrum, Agile, Kanban
-- **Documentação**: Swagger
-
-### Infraestrutura
-- **Cloud**: AWS, Google Cloud, Azure
-- **Containers**: Docker, Kubernetes
-- **CI/CD**: TILT, Github Actions
-- **OS**: Linux
-
-### Tecnologia
-- **Frameworks**: Flask, Django, NodeJS
-- **Databases**: Postgres, Mongo, Supabase
-- **Segurança**: JWT, OAuth2
-- **Versionamento**: Github, Gitlab
-
----
-
-## Experiências Profissionais
-
-### Pontotel – Backend Developer (Mar/2025 - Jun/2025)
-- Coordenei os sprints da equipe de backend e distribuí tarefas utilizando Scrum.
-- Mentoria e code review de membros da equipe, melhorando a eficiência.
-- Desenvolvi APIs RESTful com Flask, microsserviços e autenticação JWT.
-- Modelei e otimizei banco de dados PostgreSQL com ORM.
-- Adotei Clean Code, Design Patterns e documentação via Swagger.
-- Configurei webhooks e integração com frontend React para sincronização de chatbot.
-
-### Omnichat – Backend Lead (Aug/2024 - Jan/2025)
-- Implementei scripts via Google Cloud para atender demandas urgentes.
-- Refatorei código legado com DTOs e validações modernas.
-- Desenvolvi importadores de dados com pré-validação e testes.
-- Criei API interna para métricas de calendário com MongoDB.
-- Trabalhei com Flask, Celery, FastAPI, Pytest, TILT, Alembic, Poetry, Docker e Kubernetes.
-
-### Insane Games – Intern (Feb/2024 - Jun/2024)
-- Desenvolvi sistemas backend para jogos Unity com C#.
-- Colaborei com equipes de Game Design e Áudio.
-- Gerenciei produção de assets em Tech Art com Blender.
-- Fiz mapeamento UV e shaders, garantindo qualidade dos produtos.
-
----
-
-## Projetos
-
-### AM Finance
-🔗 [amfinance.com.br](https://www.amfinance.com.br)
-- Plataforma de organização financeira com criptografia e análise de dados.
-- Construído com NextJS, Supabase, PWA.
-- Categoriza gastos automaticamente e emite alertas mensais.
-
-### Farlink
-🔗 [tinyurl.com/farlink-m](https://tinyurl.com/farlink-m)
-- Rede social educacional com vídeos curtos e quizzes.
-- Construído com React Native, NodeJS, MongoDB e Azure.
-- Backend com API Gateway e CDN para vídeos.
-
-### Book Analyzer
-🔗 [tinyurl.com/farlink-m](https://tinyurl.com/farlink-m)
-- Converte livros em grafos no estilo de redes sociais.
-- Construído com Django, ReactJS, Numpy, Pandas, Spacy, GraphViz.
-- Suporte a .txt e web scraping de wikis públicas.
-
-### Flight Scrapper
-🔗 [tinyurl.com/travl-s](https://tinyurl.com/travl-s)
-- Alerta de queda de preço em passagens aéreas via Telegram.
-- Construído com Flask, Firebase, Pandas, Matplotlib, Selenium.
-- Usa API Kiwi Tequila para verificação diária de preços.
-
-### Valorant Impact
-🔗 [tinyurl.com/val-imp](https://tinyurl.com/val-imp)
-- Análise do impacto das jogadas no jogo Valorant.
-- Construído com Flask, Optuna, Pandas, LightGBM, Scipy, Seaborn.
-- Modelo LightGBM para prever vitória com base em decisões táticas.
-
----
-
-## Educação
-
-- **Universidade de Fortaleza** – Bacharelado em Ciências da Computação
-  *Fortaleza, Brazil | 2019–2023* - **Politechnika Lubelska** – Intercâmbio acadêmico
-  *Lublin, Polônia | 2022*
-
----
-
-## Idiomas
-- **Português**: C2 (Nativo)
-- **Inglês**: C2 (Fluente)
-- **Espanhol**: A1 (Básico)
-...
-`;
 
 
 // Helper function to parse a specific section from the resume markdown
@@ -139,6 +27,10 @@ const parseSection = (text, startHeading) => {
 
 // Main parser function to extract all relevant information
 const parseResume = (markdownText) => {
+    // Extract name from the first H1 tag
+    const nameMatch = markdownText.match(/^#\s+(.*)/);
+    const name = nameMatch ? nameMatch[1].trim() : 'Unnamed Resume';
+
     const skillsSection = parseSection(markdownText, '## Habilidades');
     const skills = skillsSection.flatMap(line => {
         const parts = line.split(':');
@@ -182,11 +74,11 @@ const parseResume = (markdownText) => {
         }
     }
 
-    return { skills, experiences, educations };
+    return { name, skills, experiences, educations };
 };
 
 
-// Icons for UI
+// Icons for UI (assuming they are defined as before)
 const UploadCloudIcon = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
@@ -194,7 +86,6 @@ const UploadCloudIcon = (props) => (
         <path d="m16 16-4-4-4 4" />
     </svg>
 );
-
 const FileTextIcon = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
@@ -204,21 +95,18 @@ const FileTextIcon = (props) => (
         <line x1="10" x2="8" y1="9" y2="9" />
     </svg>
 );
-
 const BriefcaseIcon = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect width="20" height="14" x="2" y="7" rx="2" ry="2" />
         <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
     </svg>
 );
-
 const GraduationCapIcon = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
         <path d="M6 12v5c3 3 9 3 12 0v-5" />
     </svg>
 );
-
 const BotIcon = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 8V4H8" />
@@ -229,8 +117,6 @@ const BotIcon = (props) => (
         <path d="M9 13v2" />
     </svg>
 );
-
-// New icon for the Save button
 const DatabaseIcon = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <ellipse cx="12" cy="5" rx="9" ry="3" />
@@ -245,7 +131,6 @@ const PlusCircleIcon = (props) => (
         <line x1="8" y1="12" x2="16" y2="12" />
     </svg>
 );
-
 const TrashIcon = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M3 6h18" />
@@ -253,7 +138,6 @@ const TrashIcon = (props) => (
         <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
     </svg>
 );
-
 const SaveIcon = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -272,44 +156,52 @@ function ResumeParser() {
     const [error, setError] = useState(null);
     const [extractedData, setExtractedData] = useState(null);
 
-    // New state for saving data to the backend
+    // State for saving data to the backend
     const [isSaving, setIsSaving] = useState(false);
     const [saveStatus, setSaveStatus] = useState({ message: '', isError: false });
 
     const fileInputRef = useRef(null);
 
     // CRUD states
-    const [resumeIds, setResumeIds] = useState([]);
+    const [resumes, setResumes] = useState([]); // <-- Changed from resumeIds
     const [selectedResumeId, setSelectedResumeId] = useState('');
+    const [resumeName, setResumeName] = useState(''); // <-- New state for the name
     const [isDeleting, setIsDeleting] = useState(false);
 
 
-    // Fetch all resume IDs on component mount
+    // Fetch all resumes on component mount
     useEffect(() => {
-        fetchResumeIds();
+        fetchResumes();
     }, []);
 
-    const fetchResumeIds = async () => {
+    const fetchResumes = async () => {
         try {
-            const response = await fetch(`${API_BASE}/jobs/ids`);
-            if (!response.ok) throw new Error('Failed to fetch resume IDs');
+            // Fetch the full list of resumes (id and name)
+            const response = await fetch(`${API_BASE}/jobs/`);
+            if (!response.ok) throw new Error('Failed to fetch resumes');
             const data = await response.json();
-            setResumeIds(data.ids);
+            setResumes(data);
         } catch (error) {
             setSaveStatus({ message: error.message, isError: true });
         }
     };
+
     const handleFileChange = (event) => {
         const file = event.target.files[0];
         if (file) {
             if (file.name.endsWith('.md')) {
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    setResumeContent(e.target.result);
+                    const content = e.target.result;
+                    setResumeContent(content);
                     setFileName(file.name);
                     setError(null);
-                    setExtractedData(null); // Reset extracted data on new file
-                    setSaveStatus({ message: '', isError: false }); // Reset save status
+                    setExtractedData(null);
+                    setSaveStatus({ message: '', isError: false });
+
+                    // Automatically parse and set the name from the file
+                    const data = parseResume(content);
+                    setResumeName(data.name);
                 };
                 reader.readAsText(file);
             } else {
@@ -317,6 +209,7 @@ function ResumeParser() {
             }
         }
     };
+
     const handleAnalyze = () => {
         if (!resumeContent) {
             setError("Please upload a resume first.");
@@ -324,12 +217,12 @@ function ResumeParser() {
         }
         setIsParsing(true);
         setError(null);
-        setSaveStatus({ message: '', isError: false }); // Reset save status
-        // Simulate parsing delay
+        setSaveStatus({ message: '', isError: false });
         setTimeout(() => {
             try {
                 const data = parseResume(resumeContent);
                 setExtractedData(data);
+                setResumeName(data.name); // Set name on analysis
             } catch (err) {
                 setError("Failed to parse the resume. Please check the format.");
                 console.error(err);
@@ -348,11 +241,16 @@ function ResumeParser() {
             setSaveStatus({ message: 'No extracted data to save. Please analyze a resume first.', isError: true });
             return;
         }
+        if (!resumeName.trim()) {
+            setSaveStatus({ message: 'Resume name cannot be empty.', isError: true });
+            return;
+        }
 
         setIsSaving(true);
         setSaveStatus({ message: '', isError: false });
 
         const payload = {
+            name: resumeName, // <-- Add name to payload
             hard_skills: extractedData.skills,
             professional_experience: extractedData.experiences,
             education: extractedData.educations,
@@ -368,8 +266,8 @@ function ResumeParser() {
             const result = await response.json();
             if (!response.ok) throw new Error(result.error || `HTTP error! status: ${response.status}`);
 
-            setSaveStatus({ message: `Resume saved successfully! ID: ${result.id}`, isError: false });
-            fetchResumeIds(); // Refresh the list of IDs
+            setSaveStatus({ message: `Resume '${result.name}' created successfully!`, isError: false });
+            fetchResumes(); // Refresh the list of resumes
             handleNew(); // Clear form for next entry
         } catch (error) {
             console.error('Create error:', error);
@@ -389,6 +287,7 @@ function ResumeParser() {
         setSaveStatus({ message: '', isError: false });
 
         const payload = {
+            name: resumeName, // <-- Add name to payload
             hard_skills: extractedData.skills,
             professional_experience: extractedData.experiences,
             education: extractedData.educations,
@@ -400,13 +299,13 @@ function ResumeParser() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             });
+            const result = await response.json();
 
             if (!response.ok) {
-                const result = await response.json();
                 throw new Error(result.error || `HTTP error! status: ${response.status}`);
             }
-
-            setSaveStatus({ message: `Resume ID ${selectedResumeId} updated successfully!`, isError: false });
+            setSaveStatus({ message: result.message, isError: false });
+            fetchResumes(); // Refresh resume list to show the new name
         } catch (error) {
             console.error('Update error:', error);
             setSaveStatus({ message: error.message, isError: true });
@@ -420,8 +319,8 @@ function ResumeParser() {
             setSaveStatus({ message: 'Please select a resume to delete.', isError: true });
             return;
         }
-
-        if (!window.confirm(`Are you sure you want to delete resume ID ${selectedResumeId}?`)) {
+        const resumeToDelete = resumes.find(r => r.id === parseInt(selectedResumeId));
+        if (!window.confirm(`Are you sure you want to delete the resume "${resumeToDelete?.name}"?`)) {
             return;
         }
 
@@ -432,14 +331,13 @@ function ResumeParser() {
             const response = await fetch(`${API_BASE}/jobs/${selectedResumeId}`, {
                 method: 'DELETE',
             });
-
+            const result = await response.json();
             if (!response.ok) {
-                const result = await response.json();
                 throw new Error(result.error || `HTTP error! status: ${response.status}`);
             }
 
-            setSaveStatus({ message: `Resume ID ${selectedResumeId} deleted successfully.`, isError: false });
-            fetchResumeIds(); // Refresh IDs
+            setSaveStatus({ message: result.message, isError: false });
+            fetchResumes(); // Refresh list
             handleNew(); // Clear form
         } catch (error) {
             console.error('Delete error:', error);
@@ -456,20 +354,22 @@ function ResumeParser() {
             return;
         }
 
-        setIsParsing(true); // Show loading state
+        setIsParsing(true);
         setSaveStatus({ message: '', isError: false });
 
         try {
             const response = await fetch(`${API_BASE}/jobs/${id}`);
             if (!response.ok) throw new Error(`Failed to fetch resume ${id}`);
             const data = await response.json();
+
+            setResumeName(data.name); // <-- Set the name from fetched data
             setExtractedData({
                 skills: data.hard_skills,
                 experiences: data.professional_experience,
                 educations: data.education,
             });
-            setResumeContent("Resume loaded from database. Edit data below and update.");
-            setFileName(`resume_${id}.json`);
+            setResumeContent("Resume loaded from database. You can edit the name or re-upload a file to update.");
+            setFileName(`Loaded: ${data.name}`);
         } catch (error) {
             setError(error.message);
             setExtractedData(null);
@@ -482,6 +382,7 @@ function ResumeParser() {
         setSelectedResumeId('');
         setResumeContent(mockResumeContent);
         setFileName("backend_resume.md");
+        setResumeName(''); // <-- Clear the name
         setExtractedData(null);
         setError(null);
         setSaveStatus({ message: '', isError: false });
@@ -506,22 +407,38 @@ function ResumeParser() {
                     <div className="bg-gray-800 p-6 rounded-xl shadow-lg">
                         <h2 className="text-2xl font-semibold mb-4 border-b border-gray-700 pb-2">Resume Management</h2>
 
-                        {/* Resume Selection Dropdown */}
-                        <div className="mb-4">
-                            <label htmlFor="resume-select" className="block text-sm font-medium text-gray-400 mb-1">
-                                Select an Existing Resume
-                            </label>
-                            <select
-                                id="resume-select"
-                                value={selectedResumeId}
-                                onChange={(e) => handleSelectResume(e.target.value)}
-                                className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            >
-                                <option value="">-- Load a saved resume --</option>
-                                {resumeIds.map(id => (
-                                    <option key={id} value={id}>Resume ID: {id}</option>
-                                ))}
-                            </select>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            {/* Resume Selection Dropdown */}
+                            <div>
+                                <label htmlFor="resume-select" className="block text-sm font-medium text-gray-400 mb-1">
+                                    Select an Existing Resume
+                                </label>
+                                <select
+                                    id="resume-select"
+                                    value={selectedResumeId}
+                                    onChange={(e) => handleSelectResume(e.target.value)}
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                >
+                                    <option value="">-- Load a saved resume --</option>
+                                    {resumes.map(resume => (
+                                        <option key={resume.id} value={resume.id}>{resume.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            {/* Resume Name Input */}
+                            <div>
+                                <label htmlFor="resume-name" className="block text-sm font-medium text-gray-400 mb-1">
+                                    Resume Name
+                                </label>
+                                <input
+                                    type="text"
+                                    id="resume-name"
+                                    value={resumeName}
+                                    onChange={(e) => setResumeName(e.target.value)}
+                                    placeholder="Enter a name for the resume"
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                />
+                            </div>
                         </div>
 
 
@@ -605,7 +522,7 @@ function ResumeParser() {
                         )}
                     </div>
 
-                    {/* Section 2: Extracted Data */}
+                    {/* Section 2: Extracted Data (This section remains unchanged) */}
                     <div className="bg-gray-800 p-6 rounded-xl shadow-lg">
                         <h2 className="text-2xl font-semibold mb-4 border-b border-gray-700 pb-2">Extracted Information</h2>
                         {!extractedData && !isParsing && (
@@ -636,7 +553,6 @@ function ResumeParser() {
                                         ))}
                                     </div>
                                 </div>
-
                                 {/* Professional Experience */}
                                 <div>
                                     <h3 className="text-xl font-semibold text-cyan-400 mb-3 flex items-center gap-2"><BriefcaseIcon /> Professional Experience</h3>
@@ -644,7 +560,6 @@ function ResumeParser() {
                                         {extractedData.experiences.map((exp, index) => (
                                             <div key={index} className="bg-gray-700/50 p-4 rounded-lg">
                                                 <h4 className="font-bold text-gray-200">{exp.title}</h4>
-                                                {/* The backend expects a list of objects, so we can keep the details structured */}
                                                 <ul className="list-disc list-inside text-gray-400 text-sm ml-2 mt-1">
                                                     {exp.details.map((detail, i) => (
                                                         <li key={i}>{detail}</li>
@@ -654,7 +569,6 @@ function ResumeParser() {
                                         ))}
                                     </div>
                                 </div>
-
                                 {/* Education */}
                                 <div>
                                     <h3 className="text-xl font-semibold text-cyan-400 mb-3 flex items-center gap-2"><GraduationCapIcon /> Education</h3>
