@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Target, CheckCircle, BarChart2, Briefcase, MapPin, Clock, Building, Users, ChevronRight, XCircle, Globe, Award } from 'lucide-react';
+import { Target, CheckCircle, BarChart2, Briefcase, MapPin, Clock, Building, Users, ChevronRight, XCircle, Globe, Award, ClipboardList, ListChecks } from 'lucide-react';
 import { findBestMatches, getSkillsArray, normalizeSkill } from './MatchLogic';
 
 // Define the base URL for the API endpoint
@@ -7,14 +7,14 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 // Mock job data as a fallback
 const mockJobs = [
-    { applicants: 5, company: { name: "Innovatech Solutions" }, job_url: "#", location: "San Francisco, CA", posted_on: new Date().toISOString(), title: "Senior Frontend Developer", urn: "1", workplace_type: "On-site", employment_type: "Full-time", responsibilities: ["Develop new features"], qualifications: ["3+ years of React"], skills: "[\"React\", \"TypeScript\", \"Next.js\"]", easy_apply: true },
-    { applicants: 12, company: { name: "Auramind.ai" }, job_url: "#", location: "Goiânia, Brazil (Remote)", posted_on: new Date().toISOString(), title: "Backend Developer - Python", urn: "2", workplace_type: "Remote", employment_type: "Full-time", responsibilities: ["Build APIs"], qualifications: ["Experience with Django"], skills: "[\"Python\", \"Django\", \"back-end\", \"RESTful APIs\"]", easy_apply: true },
-    { applicants: 3, company: { name: "WEX" }, job_url: "#", location: "São Paulo, Brazil (Hybrid)", posted_on: new Date().toISOString(), title: "Mid Python Developer", urn: "3", workplace_type: "Hybrid", employment_type: "Full-time", responsibilities: [], qualifications: ["SQL knowledge"], skills: "[\"Python\", \"SQL\"]", easy_apply: false }, // Incomplete
-    { applicants: 25, company: { name: "DataDriven Inc." }, job_url: "#", location: "New York, NY (Remote)", posted_on: new Date().toISOString(), title: "Data Scientist", urn: "4", workplace_type: "Remote", employment_type: "Contract", responsibilities: ["Analyze data"], qualifications: [], skills: "[\"Python\", \"Pandas\", \"TensorFlow\"]", easy_apply: false }, // Incomplete
+    { applicants: 5, company: { name: "Innovatech Solutions" }, job_url: "#", location: "San Francisco, CA", posted_on: new Date().toISOString(), title: "Senior Frontend Developer", urn: "1", workplace_type: "On-site", employment_type: "Full-time", responsibilities: ["Develop new user-facing features", "Build reusable code and libraries for future use"], qualifications: ["3+ years of experience with React", "Strong proficiency in JavaScript and TypeScript"], keywords: ["React", "TypeScript", "Next.js"], easy_apply: true },
+    { applicants: 12, company: { name: "Auramind.ai" }, job_url: "#", location: "Goiânia, Brazil (Remote)", posted_on: new Date().toISOString(), title: "Backend Developer - Python", urn: "2", workplace_type: "Remote", employment_type: "Full-time", responsibilities: ["Design and implement RESTful APIs", "Maintain and improve database performance"], qualifications: ["Proven experience as a Python Developer", "Experience with Django or Flask frameworks"], keywords: ["Python", "Django", "back-end", "RESTful APIs"], easy_apply: true },
+    { applicants: 3, company: { name: "WEX" }, job_url: "#", location: "São Paulo, Brazil (Hybrid)", posted_on: new Date().toISOString(), title: "Mid Python Developer", urn: "3", workplace_type: "Hybrid", employment_type: "Full-time", responsibilities: [], qualifications: ["Knowledge of SQL and database design"], keywords: ["Python", "SQL"], easy_apply: false }, // Incomplete
+    { applicants: 25, company: { name: "DataDriven Inc." }, job_url: "#", location: "New York, NY (Remote)", posted_on: new Date().toISOString(), title: "Data Scientist", urn: "4", workplace_type: "Remote", employment_type: "Contract", responsibilities: ["Analyze large, complex data sets to identify trends"], qualifications: [], keywords: ["Python", "Pandas", "TensorFlow"], easy_apply: false }, // Incomplete
 ];
 
+
 const getColorFromScore = (score) => {
-    // cap score at 50 for hue interpolation, so 0 → red, 50 → green
     const capped = Math.min(score, 50);
     const hue = Math.round((capped / 50) * 120);
     return `hsl(${hue}, 80%, 50%)`;
@@ -55,10 +55,7 @@ const MatchedJobItem = ({ job, onSelect, isSelected }) => {
     );
 };
 
-// No changes needed above this line
-// ...
-
-const JobDetailView = ({ job }) => { // resumeSkills prop is no longer needed here
+const JobDetailView = ({ job }) => {
     if (!job) {
         return (
             <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
@@ -72,13 +69,25 @@ const JobDetailView = ({ job }) => { // resumeSkills prop is no longer needed he
         return new Date(dateString).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
     };
 
-    const jobSkills = getSkillsArray(job.skills || job.keywords);
-    // No longer need to normalize resume skills here
+    const jobKeywords = getSkillsArray(job.keywords);
 
     const Placeholder = ({ text = "None specified" }) => (
         <div className="flex items-center text-gray-500 dark:text-gray-400 italic">
             <XCircle size={16} className="mr-2" />
             <span>{text}</span>
+        </div>
+    );
+
+    const DetailSection = ({ title, icon, items }) => (
+        <div>
+            <h3 className="text-xl font-semibold mb-4 border-b pb-2 dark:border-gray-700 flex items-center">{icon} {title}</h3>
+            {items && items.length > 0 ? (
+                <ul className="space-y-2 list-disc list-inside text-gray-800 dark:text-gray-300">
+                    {items.map((item, index) => (
+                        <li key={index}>{item}</li>
+                    ))}
+                </ul>
+            ) : <Placeholder />}
         </div>
     );
 
@@ -114,22 +123,28 @@ const JobDetailView = ({ job }) => { // resumeSkills prop is no longer needed he
 
             <div className="space-y-8">
                 <div>
-                    <h3 className="text-xl font-semibold mb-4 border-b pb-2 dark:border-gray-700 flex items-center"><ChevronRight size={20} className="mr-2" /> Required Skills</h3>
-                    {jobSkills.length > 0 ? (
+                    {/* ✨ FIXED: Renamed to Keywords */}
+                    <h3 className="text-xl font-semibold mb-4 border-b pb-2 dark:border-gray-700 flex items-center"><ChevronRight size={20} className="mr-2" /> Required Keywords</h3>
+                    {jobKeywords.length > 0 ? (
                         <div className="flex flex-wrap gap-2">
-                            {jobSkills.map((skill, index) => {
-                                // ✨ FIX: Use the `matchedSkillsSet` from the job object for accurate UI highlighting
-                                const isMatched = job.matchedSkillsSet?.has(skill);
+                            {jobKeywords.map((keyword, index) => {
+                                const isMatched = job.matchedSkillsSet?.has(keyword);
                                 return (
                                     <span key={index} className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${isMatched ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}`}>
                                         {isMatched && <CheckCircle size={14} />}
-                                        {skill}
+                                        {keyword}
                                     </span>
                                 );
                             })}
                         </div>
-                    ) : <Placeholder />}
+                    ) : <Placeholder text="No keywords specified" />}
                 </div>
+
+                {/* ✨ FIXED: Display Responsibilities */}
+                <DetailSection title="Responsibilities" icon={<ClipboardList size={20} className="mr-2" />} items={job.responsibilities} />
+
+                {/* ✨ FIXED: Display Qualifications */}
+                <DetailSection title="Qualifications" icon={<ListChecks size={20} className="mr-2" />} items={job.qualifications} />
 
                 <div>
                     <h3 className="text-xl font-semibold mb-4 border-b pb-2 dark:border-gray-700">About the job</h3>
@@ -142,10 +157,6 @@ const JobDetailView = ({ job }) => { // resumeSkills prop is no longer needed he
     );
 };
 
-
-// ...
-// No changes needed in the main Match component below this line
-// ...
 
 const Match = () => {
     const [resumes, setResumes] = useState([]);
@@ -196,7 +207,7 @@ const Match = () => {
             jobs.forEach(job => {
                 const hasResponsibilities = job.responsibilities && job.responsibilities.length > 0;
                 const hasQualifications = job.qualifications && job.qualifications.length > 0;
-                const skillsList = getSkillsArray(job.keywords || job.skills);
+                const skillsList = getSkillsArray(job.keywords);
                 const hasKeywords = skillsList.length > 0;
 
                 if (hasResponsibilities && hasQualifications && hasKeywords) {
@@ -294,12 +305,10 @@ const Match = () => {
     return (
         <div className="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
             <div className="flex h-screen">
-                {/* Left Panel: Controls and Matched Jobs List */}
                 <div className="flex flex-col flex-shrink-0 w-[35%] max-w-md border-r border-gray-200 dark:border-gray-700">
                     <div className="p-4 border-b border-gray-200 dark:border-gray-700 space-y-4">
                         <h2 className="text-xl font-bold flex items-center gap-2"><Award size={24} className="text-sky-500" /> Job Matcher</h2>
 
-                        {/* Resume Selector */}
                         <div>
                             <label htmlFor="resume-select" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
                                 1. Select your resume
@@ -317,7 +326,6 @@ const Match = () => {
                             </select>
                         </div>
 
-                        {/* Job Metrics Display */}
                         {jobMetrics.total > 0 && (
                             <div className="text-xs text-center text-gray-500 dark:text-gray-400 space-y-1 p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
                                 <p>Fetched <strong>{jobMetrics.total}</strong> jobs</p>
@@ -328,7 +336,6 @@ const Match = () => {
                             </div>
                         )}
 
-                        {/* Match Button */}
                         <div>
                             <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
                                 2. Find your matches
@@ -345,7 +352,6 @@ const Match = () => {
                         {errorMessage && <p className="text-sm text-red-500 dark:text-red-400 text-center">{errorMessage}</p>}
                     </div>
 
-                    {/* Matched Jobs List */}
                     <div className="flex-grow overflow-y-auto">
                         <StatusIndicator />
                         {matchedJobs.length > 0 && (
@@ -361,9 +367,7 @@ const Match = () => {
                     </div>
                 </div>
 
-                {/* Right Panel: Job Details */}
                 <main className="flex-grow bg-white dark:bg-gray-800/50">
-                    {/* ✨ FIX: Pass the entire job object, no longer need to pass resumeSkills separately */}
                     <JobDetailView job={selectedJob} />
                 </main>
             </div>
