@@ -148,7 +148,23 @@ const Match = () => {
     const [selectedJob, setSelectedJob] = useState(null);
     const [status, setStatus] = useState('idle');
     const [errorMessage, setErrorMessage] = useState('');
+    // New state for job metrics
+    const [jobMetrics, setJobMetrics] = useState({ total: 0, complete: 0, incomplete: 0 });
 
+    // Centralized helper function to parse skills from various formats
+    const getSkillsArray = (skillsData) => {
+        if (!skillsData) return [];
+        if (Array.isArray(skillsData)) return skillsData;
+        if (typeof skillsData === 'string') {
+            try {
+                const parsed = JSON.parse(skillsData);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (e) { return []; }
+        }
+        return [];
+    };
+
+    // Effect to fetch the list of available resumes
     useEffect(() => {
         const fetchResumes = async () => {
             try {
@@ -164,6 +180,7 @@ const Match = () => {
         fetchResumes();
     }, []);
 
+    // Effect to fetch all jobs from the API or use mock data as a fallback
     useEffect(() => {
         const fetchJobs = async () => {
             try {
@@ -179,6 +196,32 @@ const Match = () => {
         fetchJobs();
     }, []);
 
+    // Effect to calculate job metrics whenever the main jobs list is updated
+    useEffect(() => {
+        if (jobs.length > 0) {
+            let completeCount = 0;
+            const totalCount = jobs.length;
+
+            jobs.forEach(job => {
+                const hasResponsibilities = job.responsibilities && job.responsibilities.length > 0;
+                const hasQualifications = job.qualifications && job.qualifications.length > 0;
+                const skillsList = getSkillsArray(job.keywords || job.skills);
+                const hasKeywords = skillsList.length > 0;
+
+                if (hasResponsibilities && hasQualifications && hasKeywords) {
+                    completeCount++;
+                }
+            });
+
+            setJobMetrics({
+                total: totalCount,
+                complete: completeCount,
+                incomplete: totalCount - completeCount,
+            });
+        }
+    }, [jobs]); // This effect depends on the 'jobs' state
+
+    // Handler for when a user selects a resume from the dropdown
     const handleSelectResume = useCallback(async (id) => {
         setSelectedResumeId(id);
         if (!id) {
@@ -196,13 +239,15 @@ const Match = () => {
             const data = await response.json();
             setSelectedResume(data);
             setStatus('idle');
-        } catch (error) {
+        } catch (error)
+        {
             console.error(error);
             setErrorMessage(`Failed to load resume: ${error.message}`);
             setStatus('error');
         }
     }, []);
 
+    // Handler for the "Find Best Matches" button click
     const handleMatch = () => {
         if (!selectedResume || !selectedResume.hard_skills) {
             setErrorMessage('Please select a resume with skills to start matching.');
@@ -215,19 +260,7 @@ const Match = () => {
         setMatchedJobs([]);
         setSelectedJob(null);
 
-        // Helper to robustly parse skills from either an array (API) or a string (mock data)
-        const getSkillsArray = (skillsData) => {
-            if (!skillsData) return [];
-            if (Array.isArray(skillsData)) return skillsData;
-            if (typeof skillsData === 'string') {
-                try {
-                    const parsed = JSON.parse(skillsData);
-                    return Array.isArray(parsed) ? parsed : [];
-                } catch (e) { return []; }
-            }
-            return [];
-        }
-
+        // Use a timeout to simulate processing time and allow UI to update
         setTimeout(() => {
             // 1. Filter out incomplete jobs first
             const completeJobs = jobs.filter(job => {
@@ -235,7 +268,6 @@ const Match = () => {
                 const hasQualifications = job.qualifications && job.qualifications.length > 0;
                 const skillsList = getSkillsArray(job.keywords || job.skills);
                 const hasKeywords = skillsList.length > 0;
-
                 return hasResponsibilities && hasQualifications && hasKeywords;
             });
 
@@ -244,11 +276,8 @@ const Match = () => {
             // 2. Score and sort the remaining complete jobs
             const scoredJobs = completeJobs.map(job => {
                 const jobSkills = getSkillsArray(job.keywords || job.skills).map(s => s.toLowerCase());
-
-                // The filter above ensures jobSkills.length > 0, so no need to check for zero division
                 const matchingSkills = jobSkills.filter(skill => resumeSkills.includes(skill));
-                const matchScore = (matchingSkills.length / jobSkills.length) * 100;
-
+                const matchScore = jobSkills.length > 0 ? (matchingSkills.length / jobSkills.length) * 100 : 0;
                 return { ...job, matchScore, matchingSkills };
             });
 
@@ -260,6 +289,7 @@ const Match = () => {
         }, 500);
     };
 
+    // Component to show the current status (e.g., idle, loading, no results)
     const StatusIndicator = () => {
         if (status === 'idle' && matchedJobs.length === 0) {
             return (
@@ -296,10 +326,12 @@ const Match = () => {
     return (
         <div className="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
             <div className="flex h-screen">
+                {/* Left Panel: Controls and Matched Jobs List */}
                 <div className="flex flex-col flex-shrink-0 w-[35%] max-w-md border-r border-gray-200 dark:border-gray-700">
                     <div className="p-4 border-b border-gray-200 dark:border-gray-700 space-y-4">
                         <h2 className="text-xl font-bold flex items-center gap-2"><Award size={24} className="text-sky-500" /> Job Matcher</h2>
 
+                        {/* Resume Selector */}
                         <div>
                             <label htmlFor="resume-select" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
                                 1. Select your resume
@@ -317,6 +349,18 @@ const Match = () => {
                             </select>
                         </div>
 
+                        {/* Job Metrics Display */}
+                        {jobMetrics.total > 0 && (
+                            <div className="text-xs text-center text-gray-500 dark:text-gray-400 space-y-1 p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                                <p>Fetched <strong>{jobMetrics.total}</strong> jobs</p>
+                                <p>
+                                    <span className="text-green-600 dark:text-green-400">{jobMetrics.complete} full jobs</span>
+                                    <span className="mx-1">({jobMetrics.incomplete} incomplete)</span>
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Match Button */}
                         <div>
                             <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
                                 2. Find your matches
@@ -333,6 +377,7 @@ const Match = () => {
                         {errorMessage && <p className="text-sm text-red-500 dark:text-red-400 text-center">{errorMessage}</p>}
                     </div>
 
+                    {/* Matched Jobs List */}
                     <div className="flex-grow overflow-y-auto">
                         <StatusIndicator />
                         {matchedJobs.length > 0 && (
@@ -348,6 +393,7 @@ const Match = () => {
                     </div>
                 </div>
 
+                {/* Right Panel: Job Details */}
                 <main className="flex-grow bg-white dark:bg-gray-800/50">
                     <JobDetailView job={selectedJob} resumeSkills={selectedResume?.hard_skills} />
                 </main>
