@@ -2,11 +2,11 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { FetchJobsView } from "./FetchJobs.jsx";
-import { Sidebar, Header } from "./Navbar.jsx";
-import JobList from "./JobList.jsx";
+import { Sidebar, Header } from "../home/Navbar.jsx";
+import JobList from "../home/JobList.jsx";
 import { useDarkMode } from "../../hooks/useDarkMode.jsx";
 import { ConfigEditor } from "./ConfigEditor.jsx";
-import ResumeParser from "./Resume.jsx"; // Import the extracted component
+import ResumeParser from "../home/Resume.jsx"; // Import the extracted component
 
 // Helper functions moved here to be used for initial state generation
 const generateCurlCommand = (jsonString) => {

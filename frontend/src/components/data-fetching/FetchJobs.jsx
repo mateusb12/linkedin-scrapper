@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { Loader2 } from "lucide-react";
-import { ResultsView } from "./ResultsView"; // Assumes ResultsView.jsx is in the same folder
+import { ResultsView } from "../home/ResultsView.jsx"; // Assumes ResultsView.jsx is in the same folder
 
 export const FetchJobsView = () => {
     const [totalPages, setTotalPages] = useState(0);
