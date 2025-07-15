@@ -205,12 +205,11 @@ const Match = () => {
             const totalCount = jobs.length;
 
             jobs.forEach(job => {
-                const hasResponsibilities = job.responsibilities && job.responsibilities.length > 0;
-                const hasQualifications = job.qualifications && job.qualifications.length > 0;
-                const skillsList = getSkillsArray(job.keywords);
-                const hasKeywords = skillsList.length > 0;
+                const hasTitle = job.title && job.title.trim() !== '';
+                const hasLocation = job.location && job.location.trim() !== '';
+                const hasDescription = job.description_full && job.description_full.trim() !== '';
 
-                if (hasResponsibilities && hasQualifications && hasKeywords) {
+                if (hasTitle && hasLocation && hasDescription) {
                     completeCount++;
                 }
             });
