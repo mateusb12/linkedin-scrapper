@@ -1,147 +1,96 @@
-export const normalizeSkill = (skill) => {
-    if (typeof skill !== 'string') return '';
-    return skill.toLowerCase().trim().replace(/\s+/g, '');
+export const API_BASE = "http://localhost:5000";
+
+// Mock data as a fallback in case the API fails
+export const MOCK_RESUMES = [{
+    "education": [{ "date": "2019–2023 - Politechnika Lubelska – Intercâmbio acadêmico", "degree": "Universidade de Fortaleza Bacharelado em Ciências da Computação ", "details": ["Fortaleza, Brazil"] }],
+    "hard_skills": ["Python", "C#", "Javascript", "NextJS", "ReactNative", "React", "SQL", "HTML", "CSS", "Unit tests", "Integration tests", "Scrum", "Agile", "Kanban", "Swagger", "AWS", "Google Cloud", "Azure", "Docker", "Kubernetes", "TILT", "Github Actions", "Linux", "Flask", "Django", "NodeJS", "Postgres", "Mongo", "Supabase", "JWT", "OAuth2", "Github", "Gitlab", "Backend", "Frontend", "Fullstack", "Firebase", "Typescript", "GIT", "JSON", "REST", "Desenvolvimento de Software", "DevOps", "CI/CD", "NoSQL", "Software Engineering", "Cloud Computing", "Clean Code", "Clean Architecture"],
+    "id": 1,
+    "name": "Backend python",
+    "professional_experience": [{ "details": ["Coordenei os sprints da equipe de backend e distribuí tarefas utilizando Scrum.", "Mentoria e code review de membros da equipe, melhorando a eficiência.", "Desenvolvi APIs RESTful com Flask, microsserviços e autenticação JWT.", "Modelei e otimizei banco de dados PostgreSQL com ORM.", "Adotei Clean Code, Design Patterns e documentação via Swagger.", "Configurei webhooks e integração com frontend React para sincronização de chatbot."], "title": "Pontotel – Backend Developer(Mar/2025 - Jun/2025)" }, { "details": ["Implementei scripts via Google Cloud para atender demandas urgentes.", "Refatorei código legado com DTOs e validações modernas.", "Desenvolvi importadores de dados com pré-validação e testes.", "Criei API interna para métricas de calendário com MongoDB.", "Trabalhei com Flask, Celery, FastAPI, Pytest, TILT, Alembic, Poetry, Docker e Kubernetes."], "title": "Omnichat – Backend Lead(Aug/2024 - Jan/2025)" }, { "details": ["Desenvolvi sistemas backend para jogos Unity com C#.", "Colaborei com equipes de Game Design e Áudio.", "Gerenciei produção de assets em Tech Art com Blender.", "Fiz mapeamento UV e shaders, garantindo qualidade dos produtos."], "title": "Insane Games – Intern(Feb/2024 - Jun/2024)" }]
+}];
+
+export const MOCK_JOBS = [
+    { applicants: 5, company: { name: "Innovatech Solutions", logo_url: "https://placehold.co/64x64/3b82f6/ffffff?text=IS" }, job_url: "#", location: "San Francisco, CA", posted_on: "2025-07-10T12:00:00Z", title: "Senior Frontend Developer", urn: "urn:li:job:1", workplace_type: "On-site", employment_type: "Full-time", responsibilities: ["Develop new user-facing features for our flagship product.", "Build reusable code and libraries for future use.", "Ensure the technical feasibility of UI/UX designs.", "Optimize application for maximum speed and scalability."], qualifications: ["5+ years of experience with React and the modern JavaScript ecosystem.", "Strong proficiency in JavaScript, TypeScript, HTML5, and CSS3.", "Experience with state management libraries like Redux or Zustand.", "Familiarity with RESTful APIs and modern authorization mechanisms."], keywords: "React,TypeScript,Next.js,JavaScript,CSS,HTML,Frontend,UI,UX", easy_apply: true, applied_on: null, description_full: "Join our dynamic frontend team to build the next generation of user interfaces. You will be a key player in driving the technical direction of our products." },
+    { applicants: 12, company: { name: "Auramind.ai", logo_url: "https://placehold.co/64x64/8b5cf6/ffffff?text=A" }, job_url: "#", location: "Goiânia, Brazil (Remote)", posted_on: "2025-07-12T12:00:00Z", title: "Backend Developer - Python", urn: "urn:li:job:2", workplace_type: "Remote", employment_type: "Full-time", responsibilities: ["Design and implement scalable and secure RESTful APIs using Python.", "Maintain and improve database performance and reliability (PostgreSQL).", "Write clean, maintainable, and well-tested code.", "Collaborate with frontend developers and product managers to deliver high-quality features."], qualifications: ["Proven experience as a Python Developer.", "Strong experience with Django or Flask frameworks.", "Solid understanding of database design, SQL, and ORMs.", "Experience with containerization (Docker) and CI/CD pipelines."], keywords: "Python,Django,Flask,PostgreSQL,Docker,Backend,RESTful APIs,SQL,CI/CD", easy_apply: true, applied_on: null, description_full: "Auramind.ai is seeking a talented Python Backend Developer to join our fully remote team. You will be responsible for building the core infrastructure that powers our AI-driven platform." },
+];
+
+export const getColorFromScore = (score) => {
+    const capped = Math.min(Math.max(score, 0), 100);
+    const hue = Math.round((capped / 100) * 120);
+    return `hsl(${hue}, 70%, 45%)`;
 };
 
-/**
- * Calculates the cosine similarity between two strings based on their character n-grams.
- * (Unchanged from previous version)
- * @param {string} s1 The first string.
- * @param {string} s2 The second string.
- * @returns {number} The cosine similarity score.
- */
-export const cosineSimilarity = (s1, s2, n = 2) => {
-    if (typeof s1 !== 'string' || typeof s2 !== 'string') return 0;
-
-    const stringToNgramMap = (str, n) => {
-        const ngrams = new Map();
-        if (!str || str.length < n) return ngrams;
-        for (let i = 0; i <= str.length - n; i++) {
-            const ngram = str.slice(i, i + n);
-            ngrams.set(ngram, (ngrams.get(ngram) || 0) + 1);
-        }
-        return ngrams;
-    };
-
-    const vec1 = stringToNgramMap(s1, n);
-    const vec2 = stringToNgramMap(s2, n);
-
-    if (vec1.size === 0 || vec2.size === 0) return 0;
-
-    const allNgrams = new Set([...vec1.keys(), ...vec2.keys()]);
-
-    let dotProduct = 0;
-    let mag1 = 0;
-    let mag2 = 0;
-
-    for (const ngram of allNgrams) {
-        const count1 = vec1.get(ngram) || 0;
-        const count2 = vec2.get(ngram) || 0;
-        dotProduct += count1 * count2;
-        mag1 += count1 * count1;
-        mag2 += count2 * count2;
+export const handleResponse = async (response, defaultErrorMsg) => {
+    if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({ error: `HTTP error! status: ${response.status}` }));
+        throw new Error(errorBody.error || defaultErrorMsg);
     }
-
-    const magnitude = Math.sqrt(mag1) * Math.sqrt(mag2);
-    if (magnitude === 0) return 0;
-
-    return dotProduct / magnitude;
+    return response.json();
 };
 
-/**
- * Parses skills data from various formats into a string array.
- * (Unchanged from previous version)
- * @param {any} skillsData The skills data to parse.
- * @returns {string[]} An array of skill strings.
- */
-export const getSkillsArray = (skillsData) => {
-    if (!skillsData) return [];
-    if (Array.isArray(skillsData)) return skillsData;
-    if (typeof skillsData === 'string') {
-        try {
-            const parsed = JSON.parse(skillsData);
-            return Array.isArray(parsed) ? parsed : [];
-        } catch (e) {
-            return skillsData.split(',').map(s => s.trim()).filter(Boolean);
-        }
+export const fetchResumes = async () => {
+    try {
+        const response = await fetch(`${API_BASE}/jobs/`);
+        return handleResponse(response, 'Failed to fetch resumes');
+    } catch (error) {
+        console.warn("API fetch for resumes failed, using mock data as a fallback.", error);
+        return Promise.resolve(MOCK_RESUMES);
     }
-    return [];
 };
 
-
-/**
- * Filters jobs, calculates match scores, and IDENTIFIES MATCHED SKILLS.
- * @param {Array<Object>} jobs - The list of all jobs to be processed.
- * @param {Object} resume - The selected resume object with a `hard_skills` array.
- * @returns {Array<Object>} A new array of jobs, sorted by score, with an added `matchedSkillsSet` property.
- */
-export const findBestMatches = (jobs, resume) => {
-    if (!resume || !resume.hard_skills || !Array.isArray(jobs)) {
-        return [];
+export const fetchResumeById = async (id) => {
+    try {
+        const response = await fetch(`${API_BASE}/jobs/${id}`);
+        return handleResponse(response, `Failed to fetch resume with ID ${id}`);
+    } catch (error) {
+        console.warn(`API fetch for resume ${id} failed, using mock data as a fallback.`, error);
+        const resume = MOCK_RESUMES.find(r => r.id == id);
+        if (resume) return Promise.resolve(resume);
+        return Promise.reject(new Error(`Resume with ID ${id} not found in mock data.`));
     }
+};
 
-    const completeJobs = jobs.filter(job => {
-        const hasResponsibilities = job.responsibilities && job.responsibilities.length > 0;
-        const hasQualifications = job.qualifications && job.qualifications.length > 0;
-        const skillsList = getSkillsArray(job.keywords || job.skills);
-        const hasKeywords = skillsList.length > 0;
-        return hasResponsibilities && hasQualifications && hasKeywords;
+export const fetchAllJobs = async () => {
+    try {
+        const response = await fetch(`${API_BASE}/jobs/all`);
+        return handleResponse(response, 'Failed to fetch all jobs');
+    } catch (error) {
+        console.warn("API fetch for all jobs failed, using mock data as a fallback.", error);
+        return Promise.resolve(MOCK_JOBS);
+    }
+};
+
+export const markJobAsApplied = async (jobUrn) => {
+    const response = await fetch(`${API_BASE}/jobs/${jobUrn}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ applied_on: new Date().toISOString() }),
     });
+    return handleResponse(response, 'Failed to mark job as applied');
+};
 
-    const resumeSkills = resume.hard_skills.map(normalizeSkill).filter(Boolean);
+export const getSkillsArray = (keywords) => {
+    if (!keywords) return [];
+    if (Array.isArray(keywords)) return keywords;
+    return keywords.split(',').map(k => k.trim()).filter(Boolean);
+};
 
-    const scoredJobs = completeJobs.map(job => {
-        const originalJobSkills = getSkillsArray(job.keywords || job.skills);
+export const findBestMatches = (jobs, resume) => {
+    const resumeSkills = new Set(resume.hard_skills.map(s => s.toLowerCase()));
+    if (resumeSkills.size === 0) return jobs.map(j => ({ ...j, matchScore: 0, matchedSkillsSet: new Set() }));
 
-        const jobSkillsWithOriginals = originalJobSkills.map(skill => ({
-            original: skill,
-            normalized: normalizeSkill(skill)
-        })).filter(s => s.normalized);
+    return jobs.map(job => {
+        const jobKeywords = getSkillsArray(job.keywords);
+        if (jobKeywords.length === 0) return { ...job, matchScore: 0, matchedSkillsSet: new Set() };
 
-        let totalScore = 0;
         const matchedSkillsSet = new Set();
-        const usedNormalizedJobSkills = new Set();
-
-        resumeSkills.forEach(resumeSkill => {
-            let bestMatchScore = 0;
-            let bestMatch = null;
-
-            jobSkillsWithOriginals.forEach(jobSkillInfo => {
-                if (usedNormalizedJobSkills.has(jobSkillInfo.normalized)) {
-                    return;
-                }
-
-                // ✨ UPDATED: Prioritize prefix/exact matches before using cosine similarity
-                let score = 0;
-                const normResumeSkill = resumeSkill;
-                const normJobSkill = jobSkillInfo.normalized;
-
-                if (normJobSkill.startsWith(normResumeSkill) || normResumeSkill.startsWith(normJobSkill)) {
-                    score = 1.0; // Perfect match for abbreviations like mongo/mongodb
-                } else {
-                    score = cosineSimilarity(normResumeSkill, normJobSkill);
-                }
-
-                if (score > bestMatchScore) {
-                    bestMatchScore = score;
-                    bestMatch = jobSkillInfo;
-                }
-            });
-
-            const SIMILARITY_THRESHOLD = 0.6; // Threshold remains for cosine similarity cases
-            if (bestMatch && bestMatchScore >= SIMILARITY_THRESHOLD) {
-                totalScore += bestMatchScore;
-                matchedSkillsSet.add(bestMatch.original);
-                usedNormalizedJobSkills.add(bestMatch.normalized);
+        jobKeywords.forEach(keyword => {
+            if (resumeSkills.has(keyword.toLowerCase())) {
+                matchedSkillsSet.add(keyword);
             }
         });
 
-        const matchScore = jobSkillsWithOriginals.length > 0
-            ? (totalScore / jobSkillsWithOriginals.length) * 100
-            : 0;
-
+        const matchScore = (matchedSkillsSet.size / jobKeywords.length) * 100;
         return { ...job, matchScore, matchedSkillsSet };
-    });
-
-    return scoredJobs.sort((a, b) => b.matchScore - a.matchScore);
+    }).sort((a, b) => b.matchScore - a.matchScore);
 };
