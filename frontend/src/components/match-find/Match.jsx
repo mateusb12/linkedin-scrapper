@@ -1,22 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Target, CheckCircle, BarChart2, Briefcase, MapPin, Clock, Building, Users, ChevronRight, XCircle, Globe, Award, ClipboardList, ListChecks } from 'lucide-react';
-import { findBestMatches, getSkillsArray, normalizeSkill } from './MatchLogic';
+import { findBestMatches, getSkillsArray } from './MatchLogic';
+import { fetchResumes, fetchAllJobs, fetchResumeById, markJobAsApplied } from '../../services/ResumeService.js';
 
-// Define the base URL for the API endpoint
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
-// Mock job data as a fallback
+// Mock job data as a fallback in case the API fails
 const mockJobs = [
     { applicants: 5, company: { name: "Innovatech Solutions" }, job_url: "#", location: "San Francisco, CA", posted_on: new Date().toISOString(), title: "Senior Frontend Developer", urn: "1", workplace_type: "On-site", employment_type: "Full-time", responsibilities: ["Develop new user-facing features", "Build reusable code and libraries for future use"], qualifications: ["3+ years of experience with React", "Strong proficiency in JavaScript and TypeScript"], keywords: ["React", "TypeScript", "Next.js"], easy_apply: true, applied_on: null },
     { applicants: 12, company: { name: "Auramind.ai" }, job_url: "#", location: "Goiânia, Brazil (Remote)", posted_on: new Date().toISOString(), title: "Backend Developer - Python", urn: "2", workplace_type: "Remote", employment_type: "Full-time", responsibilities: ["Design and implement RESTful APIs", "Maintain and improve database performance"], qualifications: ["Proven experience as a Python Developer", "Experience with Django or Flask frameworks"], keywords: ["Python", "Django", "back-end", "RESTful APIs"], easy_apply: true, applied_on: new Date().toISOString() },
-    { applicants: 3, company: { name: "WEX" }, job_url: "#", location: "São Paulo, Brazil (Hybrid)", posted_on: new Date().toISOString(), title: "Mid Python Developer", urn: "3", workplace_type: "Hybrid", employment_type: "Full-time", responsibilities: [], qualifications: ["Knowledge of SQL and database design"], keywords: ["Python", "SQL"], easy_apply: false, applied_on: null }, // Incomplete
-    { applicants: 25, company: { name: "DataDriven Inc." }, job_url: "#", location: "New York, NY (Remote)", posted_on: new Date().toISOString(), title: "Data Scientist", urn: "4", workplace_type: "Remote", employment_type: "Contract", responsibilities: ["Analyze large, complex data sets to identify trends"], qualifications: [], keywords: ["Python", "Pandas", "TensorFlow"], easy_apply: false, applied_on: null }, // Incomplete
+    { applicants: 3, company: { name: "WEX" }, job_url: "#", location: "São Paulo, Brazil (Hybrid)", posted_on: new Date().toISOString(), title: "Mid Python Developer", urn: "3", workplace_type: "Hybrid", employment_type: "Full-time", responsibilities: [], qualifications: ["Knowledge of SQL and database design"], keywords: ["Python", "SQL"], easy_apply: false, applied_on: null },
+    { applicants: 25, company: { name: "DataDriven Inc." }, job_url: "#", location: "New York, NY (Remote)", posted_on: new Date().toISOString(), title: "Data Scientist", urn: "4", workplace_type: "Remote", employment_type: "Contract", responsibilities: ["Analyze large, complex data sets to identify trends"], qualifications: [], keywords: ["Python", "Pandas", "TensorFlow"], easy_apply: false, applied_on: null },
 ];
 
 
 const getColorFromScore = (score) => {
     const capped = Math.min(score, 50);
-    const hue = Math.round((capped / 50) * 120);
+    const hue = Math.round((capped / 50) * 120); // 0 -> red, 50 -> green
     return `hsl(${hue}, 80%, 50%)`;
 };
 
@@ -180,55 +178,46 @@ const Match = () => {
     const [jobs, setJobs] = useState([]);
     const [matchedJobs, setMatchedJobs] = useState([]);
     const [selectedJob, setSelectedJob] = useState(null);
-    const [status, setStatus] = useState('idle');
+    const [status, setStatus] = useState('idle'); // idle, loading, matching, success, error
     const [errorMessage, setErrorMessage] = useState('');
     const [jobMetrics, setJobMetrics] = useState({ total: 0, complete: 0, incomplete: 0 });
 
+    // Effect to load the list of resumes (profiles) on initial render
     useEffect(() => {
-        const fetchResumes = async () => {
+        const loadResumes = async () => {
             try {
-                // ✨ FIX: Reverted to the original endpoint `/jobs/`
-                const response = await fetch(`${API_BASE}/jobs/`);
-                if (!response.ok) throw new Error('Failed to fetch resumes');
-                const data = await response.json();
+                const data = await fetchResumes();
                 setResumes(data);
             } catch (error) {
                 console.error(error);
-                setErrorMessage('Could not load resumes.');
+                setErrorMessage(error.message || 'Could not load resumes.');
             }
         };
-        fetchResumes();
+        loadResumes();
     }, []);
 
+    // Effect to load all available jobs on initial render
     useEffect(() => {
-        const fetchJobs = async () => {
+        const loadJobs = async () => {
             try {
-                const response = await fetch(`${API_BASE}/jobs/all`);
-                if (!response.ok) throw new Error('API request failed');
-                const data = await response.json();
+                const data = await fetchAllJobs();
                 setJobs(data);
             } catch (error) {
-                console.warn("API fetch failed, using mock jobs.", error);
+                console.warn("API fetch failed, using mock jobs as a fallback.", error);
+                setErrorMessage(error.message || 'Could not load jobs. Displaying mock data.');
                 setJobs(mockJobs);
             }
         };
-        fetchJobs();
+        loadJobs();
     }, []);
 
+    // Effect to calculate job metrics whenever the jobs list changes
     useEffect(() => {
         if (jobs.length > 0) {
-            let completeCount = 0;
             const totalCount = jobs.length;
-
-            jobs.forEach(job => {
-                const hasTitle = job.title && job.title.trim() !== '';
-                const hasLocation = job.location && job.location.trim() !== '';
-                const hasDescription = job.description_full && job.description_full.trim() !== '';
-
-                if (hasTitle && hasLocation && hasDescription) {
-                    completeCount++;
-                }
-            });
+            const completeCount = jobs.filter(job =>
+                job.title && job.location && job.description_full
+            ).length;
 
             setJobMetrics({
                 total: totalCount,
@@ -238,6 +227,7 @@ const Match = () => {
         }
     }, [jobs]);
 
+    // Callback to handle selecting a resume from the dropdown
     const handleSelectResume = useCallback(async (id) => {
         setSelectedResumeId(id);
         if (!id) {
@@ -249,21 +239,19 @@ const Match = () => {
         }
 
         setStatus('loading');
+        setErrorMessage('');
         try {
-            // ✨ FIX: Reverted to the original endpoint `/jobs/{id}`
-            const response = await fetch(`${API_BASE}/jobs/${id}`);
-            if (!response.ok) throw new Error(`Failed to fetch resume ${id}`);
-            const data = await response.json();
+            const data = await fetchResumeById(id);
             setSelectedResume(data);
             setStatus('idle');
-        } catch (error)
-        {
+        } catch (error) {
             console.error(error);
-            setErrorMessage(`Failed to load resume: ${error.message}`);
+            setErrorMessage(error.message || `Failed to load resume.`);
             setStatus('error');
         }
     }, []);
 
+    // Handler for the main "Find Matches" button
     const handleMatch = () => {
         if (!selectedResume || !selectedResume.hard_skills) {
             setErrorMessage('Please select a resume with skills to start matching.');
@@ -276,33 +264,25 @@ const Match = () => {
         setMatchedJobs([]);
         setSelectedJob(null);
 
+        // Simulate processing time for a better user experience
         setTimeout(() => {
             const sortedJobs = findBestMatches(jobs, selectedResume);
-
             setMatchedJobs(sortedJobs);
             setSelectedJob(sortedJobs.length > 0 ? sortedJobs[0] : null);
             setStatus('success');
         }, 500);
     };
 
+    // Callback to mark a job as applied
     const handleMarkAsApplied = useCallback(async (jobUrn) => {
         try {
             setErrorMessage('');
-            const response = await fetch(`${API_BASE}/jobs/${jobUrn}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ applied_on: new Date().toISOString() }),
-            });
+            const { job: updatedJobData } = await markJobAsApplied(jobUrn);
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to mark job as applied');
-            }
-
-            const { job: updatedJobData } = await response.json();
-
+            // Function to update a job in any list
             const updateJobState = (j) => (j.urn === jobUrn ? { ...j, ...updatedJobData } : j);
 
+            // Update all relevant state lists
             setJobs(prev => prev.map(updateJobState));
             setMatchedJobs(prev => prev.map(updateJobState));
 
@@ -312,10 +292,11 @@ const Match = () => {
 
         } catch (error) {
             console.error("Error marking job as applied:", error);
-            setErrorMessage(error.message);
+            setErrorMessage(error.message || 'An unexpected error occurred.');
         }
-    }, [selectedJob?.urn]);
+    }, [selectedJob?.urn]); // Dependency on selectedJob to ensure it's the latest version
 
+    // Component to render status messages in the job list panel
     const StatusIndicator = () => {
         if (status === 'idle' && matchedJobs.length === 0) {
             return (
@@ -340,8 +321,8 @@ const Match = () => {
         if (status === 'success' && matchedJobs.length === 0) {
             return (
                 <div className="p-8 text-center text-gray-500">
-                    <h3 className="text-xl font-semibold">No Complete Jobs Found</h3>
-                    <p>Try again after more jobs with full details are added.</p>
+                    <h3 className="text-xl font-semibold">No Matching Jobs Found</h3>
+                    <p>We couldn't find any jobs that match the skills in the selected resume.</p>
                 </div>
             )
         }
@@ -375,10 +356,11 @@ const Match = () => {
 
                         {jobMetrics.total > 0 && (
                             <div className="text-xs text-center text-gray-500 dark:text-gray-400 space-y-1 p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
-                                <p>Fetched <strong>{jobMetrics.total}</strong> jobs</p>
+                                <p>Analyzing <strong>{jobMetrics.total}</strong> jobs</p>
                                 <p>
-                                    <span className="text-green-600 dark:text-green-400">{jobMetrics.complete} full jobs</span>
-                                    <span className="mx-1">({jobMetrics.incomplete} incomplete)</span>
+                                    <span className="text-green-600 dark:text-green-400">{jobMetrics.complete} complete</span>
+                                    <span className="mx-1">/</span>
+                                    <span className="text-yellow-600 dark:text-yellow-400">{jobMetrics.incomplete} incomplete</span>
                                 </p>
                             </div>
                         )}
@@ -396,7 +378,7 @@ const Match = () => {
                                 {status === 'matching' ? 'Analyzing...' : 'Find Best Matches'}
                             </button>
                         </div>
-                        {errorMessage && <p className="text-sm text-red-500 dark:text-red-400 text-center">{errorMessage}</p>}
+                        {errorMessage && <p className="text-sm text-red-500 dark:text-red-400 text-center p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">{errorMessage}</p>}
                     </div>
 
                     <div className="flex-grow overflow-y-auto">
