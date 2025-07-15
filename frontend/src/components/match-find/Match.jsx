@@ -20,6 +20,12 @@ const MOCK_JOBS = [
     { applicants: 12, company: { name: "Auramind.ai", logo_url: "https://placehold.co/64x64/8b5cf6/ffffff?text=A" }, job_url: "#", location: "Goiânia, Brazil (Remote)", posted_on: "2025-07-12T12:00:00Z", title: "Backend Developer - Python", urn: "urn:li:job:2", workplace_type: "Remote", employment_type: "Full-time", responsibilities: ["Design and implement scalable and secure RESTful APIs using Python.", "Maintain and improve database performance and reliability (PostgreSQL).", "Write clean, maintainable, and well-tested code.", "Collaborate with frontend developers and product managers to deliver high-quality features."], qualifications: ["Proven experience as a Python Developer.", "Strong experience with Django or Flask frameworks.", "Solid understanding of database design, SQL, and ORMs.", "Experience with containerization (Docker) and CI/CD pipelines."], keywords: "Python,Django,Flask,PostgreSQL,Docker,Backend,RESTful APIs,SQL,CI/CD", easy_apply: true, applied_on: null, description_full: "Auramind.ai is seeking a talented Python Backend Developer to join our fully remote team. You will be responsible for building the core infrastructure that powers our AI-driven platform." },
 ];
 
+export const getColorFromScore = (score) => {
+    const capped = Math.min(Math.max(score, 0), 100);
+    const hue = Math.round((capped / 100) * 120);
+    return `hsl(${hue}, 70%, 45%)`;
+};
+
 const handleResponse = async (response, defaultErrorMsg) => {
     if (!response.ok) {
         const errorBody = await response.json().catch(() => ({ error: `HTTP error! status: ${response.status}` }));
@@ -97,12 +103,6 @@ const findBestMatches = (jobs, resume) => {
 
 // --- React Components ---
 
-const getColorFromScore = (score) => {
-    const capped = Math.min(Math.max(score, 0), 100);
-    const hue = Math.round((capped / 100) * 120);
-    return `hsl(${hue}, 70%, 45%)`;
-};
-
 const MatchedJobItem = ({ job, onSelect, isSelected }) => {
     const score = Math.round(job.matchScore || 0);
     const barColor = getColorFromScore(score);
@@ -131,6 +131,101 @@ const MatchedJobItem = ({ job, onSelect, isSelected }) => {
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mt-2 overflow-hidden">
                 <div className="h-1.5 rounded-full transition-all duration-200" style={{ width: `${score}%`, backgroundColor: barColor }} />
             </div>
+        </div>
+    );
+};
+
+const AdaptJobSection = ({ resume, job }) => {
+    const [editedSkills, setEditedSkills] = useState('');
+    const [editedExperience, setEditedExperience] = useState([]);
+
+    useEffect(() => {
+        if (resume) {
+            setEditedSkills(resume.hard_skills.join(', '));
+            setEditedExperience(JSON.parse(JSON.stringify(resume.professional_experience)));
+        }
+    }, [resume]);
+
+    const handleExperienceChange = (expIndex, detailIndex, value) => {
+        const newExperience = [...editedExperience];
+        newExperience[expIndex].details[detailIndex] = value;
+        setEditedExperience(newExperience);
+    };
+
+    const handleAdapt = () => {
+        console.log("--- ADAPTATION DATA ---");
+        console.log("Job Title:", job.title);
+        console.log("Adapted Skills:", editedSkills);
+        console.log("Adapted Experience:", editedExperience);
+        alert("Adaptation logic triggered. Check the console for details.");
+    };
+
+    const Placeholder = ({ text = "None specified" }) => (
+        <div className="flex items-center text-gray-500 dark:text-gray-400 italic">
+            <XCircle size={16} className="mr-2" />
+            <span>{text}</span>
+        </div>
+    );
+
+    if (!resume || !job) return null;
+
+    return (
+        <div className="pt-8">
+            <header className="pb-4 border-b-2 border-purple-400 dark:border-purple-600 mb-6">
+                <h2 className="text-2xl font-bold flex items-center gap-3">
+                    <Wand2 className="text-purple-500" />
+                    Adapt Resume For This Job
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    Modify your skills and experience below to better match the job requirements.
+                </p>
+            </header>
+            <div className="space-y-6">
+                <div className="p-4 border-2 border-dashed border-purple-300 dark:border-purple-800 rounded-lg bg-purple-50 dark:bg-purple-900/10">
+                    <label htmlFor="edited-skills" className="block text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">
+                        Hard Skills
+                    </label>
+                    <textarea
+                        id="edited-skills"
+                        value={editedSkills}
+                        onChange={(e) => setEditedSkills(e.target.value)}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-purple-500"
+                        rows="4"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Separate skills with a comma.</p>
+                </div>
+                <div className="p-4 border-2 border-dashed border-purple-300 dark:border-purple-800 rounded-lg bg-purple-50 dark:bg-purple-900/10">
+                    <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">Professional Experience</h3>
+                    <div className="space-y-4">
+                        {editedExperience.map((exp, expIndex) => (
+                            <div key={expIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm">
+                                <h4 className="font-bold text-gray-900 dark:text-gray-100">{exp.title}</h4>
+                                <ul className="mt-2 space-y-2">
+                                    {exp.details.map((detail, detailIndex) => (
+                                        <li key={detailIndex}>
+                      <textarea
+                          value={detail}
+                          onChange={(e) => handleExperienceChange(expIndex, detailIndex, e.target.value)}
+                          className="w-full p-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-2 focus:ring-purple-500 text-sm"
+                          rows="3"
+                      />
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+            <footer className="mt-6 pt-6 border-t dark:border-gray-700 flex justify-end">
+                <button
+                    onClick={handleAdapt}
+                    className="flex items-center gap-2 px-8 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-all shadow-lg"
+                >
+                    <Save size={20} />
+                    Adapt
+                </button>
+            </footer>
         </div>
     );
 };
@@ -209,41 +304,7 @@ const JobDetailView = ({ job, resume, onMarkAsApplied }) => {
                 <DetailSection title="Qualifications" icon={<ListChecks size={20} className="mr-2" />} items={job.qualifications} />
 
                 {/* --- Adapt Resume Section --- */}
-                <div className="pt-8">
-                    <header className="pb-4 border-b-2 border-purple-400 dark:border-purple-600 mb-6">
-                        <h2 className="text-2xl font-bold flex items-center gap-3"><Wand2 className="text-purple-500" /> Adapt Resume For This Job</h2>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Modify your skills and experience below to better match the job requirements.</p>
-                    </header>
-
-                    <div className="space-y-6">
-                        <div className="p-4 border-2 border-dashed border-purple-300 dark:border-purple-800 rounded-lg bg-purple-50 dark:bg-purple-900/10">
-                            <label htmlFor="edited-skills" className="block text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">Hard Skills</label>
-                            <textarea id="edited-skills" value={editedSkills} onChange={e => setEditedSkills(e.target.value)} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-purple-500" rows="4"></textarea>
-                            <p className="text-xs text-gray-500 mt-1">Separate skills with a comma.</p>
-                        </div>
-
-                        <div className="p-4 border-2 border-dashed border-purple-300 dark:border-purple-800 rounded-lg bg-purple-50 dark:bg-purple-900/10">
-                            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">Professional Experience</h3>
-                            <div className="space-y-4">
-                                {editedExperience.map((exp, expIndex) => (
-                                    <div key={expIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm">
-                                        <h4 className="font-bold text-gray-900 dark:text-gray-100">{exp.title}</h4>
-                                        <ul className="mt-2 space-y-2">
-                                            {exp.details.map((detail, detailIndex) => (
-                                                <li key={detailIndex}>
-                                                    <textarea value={detail} onChange={e => handleExperienceChange(expIndex, detailIndex, e.target.value)} className="w-full p-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 focus:ring-2 focus:ring-purple-500 text-sm" rows="3"></textarea>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                    <footer className="mt-6 pt-6 border-t dark:border-gray-700 flex justify-end">
-                        <button onClick={handleAdapt} className="flex items-center gap-2 px-8 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-all shadow-lg"><Save size={20} /> Adapt</button>
-                    </footer>
-                </div>
+                <AdaptJobSection resume={resume} job={job} />
             </div>
         </div>
     );
