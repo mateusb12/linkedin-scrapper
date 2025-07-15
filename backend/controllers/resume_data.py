@@ -56,13 +56,12 @@ def get_resume(resume_id):
 @resume_bp.route("/", methods=["GET"])
 def get_all_resumes():
     """
-    Fetches all resumes with their IDs and names.
-    This replaces the old '/ids' endpoint for better frontend integration.
+    Fetches all resumes with full details (id, name, hard_skills, experience, education).
     """
     session = get_db_session()
     try:
-        resumes = session.query(Resume.id, Resume.name).all()
-        resume_list = [{"id": r_id, "name": r_name} for r_id, r_name in resumes]
+        resumes = session.query(Resume).all()
+        resume_list = [resume.to_dict() for resume in resumes]
         return jsonify(resume_list), 200
 
     except Exception as e:
