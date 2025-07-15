@@ -54,6 +54,8 @@ class Job(db.Model):
     qualifications = Column(JSON, nullable=True)
     keywords = Column(JSON, nullable=True)
 
+    has_applied = Column(Boolean, default=False)
+
     # Foreign Key to link to the 'companies' table
     company_urn = Column(String, ForeignKey('companies.urn'))
 

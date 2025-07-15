@@ -3,7 +3,8 @@ import time
 import traceback
 from datetime import datetime, timedelta
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
+from sqlalchemy import inspect
 from sqlalchemy.orm import joinedload
 
 from database.database_connection import get_db_session
@@ -97,5 +98,53 @@ def insert_extra_fields():
         traceback.print_exc()
         return jsonify({"error": str(exc)}), 500
 
+    finally:
+        session.close()
+
+
+@job_data_bp.route("/<string:urn>", methods=["PATCH"])
+def update_job(urn):
+    """
+    Dynamically updates any column of a Job using SQLAlchemy introspection.
+    Excludes primary key and relationship fields like 'company'.
+    """
+    session = get_db_session()
+    try:
+        job = session.query(Job).filter_by(urn=urn).first()
+        if not job:
+            return jsonify({"error": f"Job with URN '{urn}' not found"}), 404
+
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Empty JSON payload"}), 400
+
+        mapper = inspect(Job)
+        updatable_fields = {
+            col.key for col in mapper.attrs
+            if hasattr(col, 'columns') and not col.columns[0].primary_key
+        }
+
+        updated_fields = []
+
+        for key, value in data.items():
+            if key in updatable_fields:
+                setattr(job, key, value)
+                updated_fields.append(key)
+
+        if not updated_fields:
+            return jsonify({"error": "No valid fields provided"}), 400
+
+        session.commit()
+        return jsonify({
+            "message": f"Job {urn} updated successfully",
+            "updated_fields": updated_fields,
+            "job": job.to_dict()
+        }), 200
+
+    except Exception as e:
+        session.rollback()
+        print(f"❌ Failed to update job {urn}: {e}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
     finally:
         session.close()
