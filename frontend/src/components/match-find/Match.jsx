@@ -7,10 +7,10 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 // Mock job data as a fallback
 const mockJobs = [
-    { applicants: 5, company: { name: "Innovatech Solutions" }, job_url: "#", location: "San Francisco, CA", posted_on: new Date().toISOString(), title: "Senior Frontend Developer", urn: "1", workplace_type: "On-site", employment_type: "Full-time", responsibilities: ["Develop new user-facing features", "Build reusable code and libraries for future use"], qualifications: ["3+ years of experience with React", "Strong proficiency in JavaScript and TypeScript"], keywords: ["React", "TypeScript", "Next.js"], easy_apply: true },
-    { applicants: 12, company: { name: "Auramind.ai" }, job_url: "#", location: "Goiânia, Brazil (Remote)", posted_on: new Date().toISOString(), title: "Backend Developer - Python", urn: "2", workplace_type: "Remote", employment_type: "Full-time", responsibilities: ["Design and implement RESTful APIs", "Maintain and improve database performance"], qualifications: ["Proven experience as a Python Developer", "Experience with Django or Flask frameworks"], keywords: ["Python", "Django", "back-end", "RESTful APIs"], easy_apply: true },
-    { applicants: 3, company: { name: "WEX" }, job_url: "#", location: "São Paulo, Brazil (Hybrid)", posted_on: new Date().toISOString(), title: "Mid Python Developer", urn: "3", workplace_type: "Hybrid", employment_type: "Full-time", responsibilities: [], qualifications: ["Knowledge of SQL and database design"], keywords: ["Python", "SQL"], easy_apply: false }, // Incomplete
-    { applicants: 25, company: { name: "DataDriven Inc." }, job_url: "#", location: "New York, NY (Remote)", posted_on: new Date().toISOString(), title: "Data Scientist", urn: "4", workplace_type: "Remote", employment_type: "Contract", responsibilities: ["Analyze large, complex data sets to identify trends"], qualifications: [], keywords: ["Python", "Pandas", "TensorFlow"], easy_apply: false }, // Incomplete
+    { applicants: 5, company: { name: "Innovatech Solutions" }, job_url: "#", location: "San Francisco, CA", posted_on: new Date().toISOString(), title: "Senior Frontend Developer", urn: "1", workplace_type: "On-site", employment_type: "Full-time", responsibilities: ["Develop new user-facing features", "Build reusable code and libraries for future use"], qualifications: ["3+ years of experience with React", "Strong proficiency in JavaScript and TypeScript"], keywords: ["React", "TypeScript", "Next.js"], easy_apply: true, applied_on: null },
+    { applicants: 12, company: { name: "Auramind.ai" }, job_url: "#", location: "Goiânia, Brazil (Remote)", posted_on: new Date().toISOString(), title: "Backend Developer - Python", urn: "2", workplace_type: "Remote", employment_type: "Full-time", responsibilities: ["Design and implement RESTful APIs", "Maintain and improve database performance"], qualifications: ["Proven experience as a Python Developer", "Experience with Django or Flask frameworks"], keywords: ["Python", "Django", "back-end", "RESTful APIs"], easy_apply: true, applied_on: new Date().toISOString() },
+    { applicants: 3, company: { name: "WEX" }, job_url: "#", location: "São Paulo, Brazil (Hybrid)", posted_on: new Date().toISOString(), title: "Mid Python Developer", urn: "3", workplace_type: "Hybrid", employment_type: "Full-time", responsibilities: [], qualifications: ["Knowledge of SQL and database design"], keywords: ["Python", "SQL"], easy_apply: false, applied_on: null }, // Incomplete
+    { applicants: 25, company: { name: "DataDriven Inc." }, job_url: "#", location: "New York, NY (Remote)", posted_on: new Date().toISOString(), title: "Data Scientist", urn: "4", workplace_type: "Remote", employment_type: "Contract", responsibilities: ["Analyze large, complex data sets to identify trends"], qualifications: [], keywords: ["Python", "Pandas", "TensorFlow"], easy_apply: false, applied_on: null }, // Incomplete
 ];
 
 
@@ -24,6 +24,7 @@ const getColorFromScore = (score) => {
 const MatchedJobItem = ({ job, onSelect, isSelected }) => {
     const score = Math.round(job.matchScore || 0);
     const barColor = getColorFromScore(score);
+    const isApplied = !!job.applied_on;
 
     const baseClasses = "p-4 border-l-4 cursor-pointer transition-colors duration-200";
     const selectedClasses = "bg-sky-100 dark:bg-sky-900/30 border-sky-500";
@@ -33,7 +34,10 @@ const MatchedJobItem = ({ job, onSelect, isSelected }) => {
         <div onClick={() => onSelect(job)} className={`${baseClasses} ${isSelected ? selectedClasses : unselectedClasses}`}>
             <div className="flex justify-between items-start">
                 <div>
-                    <h3 className="font-bold text-gray-800 dark:text-gray-100">{job.title}</h3>
+                    <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                        {isApplied && <CheckCircle size={14} className="text-green-500 flex-shrink-0" />}
+                        <span>{job.title}</span>
+                    </h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{job.company?.name}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{job.location}</p>
                 </div>
@@ -55,7 +59,7 @@ const MatchedJobItem = ({ job, onSelect, isSelected }) => {
     );
 };
 
-const JobDetailView = ({ job }) => {
+const JobDetailView = ({ job, onMarkAsApplied }) => {
     if (!job) {
         return (
             <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
@@ -69,6 +73,7 @@ const JobDetailView = ({ job }) => {
         return new Date(dateString).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
     };
 
+    const isApplied = !!job.applied_on;
     const jobKeywords = getSkillsArray(job.keywords);
 
     const Placeholder = ({ text = "None specified" }) => (
@@ -110,6 +115,19 @@ const JobDetailView = ({ job }) => {
                 <a href={job.job_url} target="_blank" rel="noopener noreferrer" className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition-all">
                     Apply Now
                 </a>
+                {isApplied ? (
+                    <div className="flex items-center gap-2 px-6 py-2 text-green-700 dark:text-green-400 font-semibold rounded-lg bg-green-100 dark:bg-green-900/50">
+                        <CheckCircle size={20} />
+                        Applied on {formatDate(job.applied_on)}
+                    </div>
+                ) : (
+                    <button
+                        onClick={() => onMarkAsApplied(job.urn)}
+                        className="flex items-center gap-2 px-6 py-2 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 font-semibold rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-all">
+                        <ListChecks size={20} />
+                        Mark as Applied
+                    </button>
+                )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 text-sm">
@@ -123,7 +141,6 @@ const JobDetailView = ({ job }) => {
 
             <div className="space-y-8">
                 <div>
-                    {/* ✨ FIXED: Renamed to Keywords */}
                     <h3 className="text-xl font-semibold mb-4 border-b pb-2 dark:border-gray-700 flex items-center"><ChevronRight size={20} className="mr-2" /> Required Keywords</h3>
                     {jobKeywords.length > 0 ? (
                         <div className="flex flex-wrap gap-2">
@@ -140,10 +157,8 @@ const JobDetailView = ({ job }) => {
                     ) : <Placeholder text="No keywords specified" />}
                 </div>
 
-                {/* ✨ FIXED: Display Responsibilities */}
                 <DetailSection title="Responsibilities" icon={<ClipboardList size={20} className="mr-2" />} items={job.responsibilities} />
 
-                {/* ✨ FIXED: Display Qualifications */}
                 <DetailSection title="Qualifications" icon={<ListChecks size={20} className="mr-2" />} items={job.qualifications} />
 
                 <div>
@@ -172,6 +187,7 @@ const Match = () => {
     useEffect(() => {
         const fetchResumes = async () => {
             try {
+                // ✨ FIX: Reverted to the original endpoint `/jobs/`
                 const response = await fetch(`${API_BASE}/jobs/`);
                 if (!response.ok) throw new Error('Failed to fetch resumes');
                 const data = await response.json();
@@ -234,6 +250,7 @@ const Match = () => {
 
         setStatus('loading');
         try {
+            // ✨ FIX: Reverted to the original endpoint `/jobs/{id}`
             const response = await fetch(`${API_BASE}/jobs/${id}`);
             if (!response.ok) throw new Error(`Failed to fetch resume ${id}`);
             const data = await response.json();
@@ -267,6 +284,37 @@ const Match = () => {
             setStatus('success');
         }, 500);
     };
+
+    const handleMarkAsApplied = useCallback(async (jobUrn) => {
+        try {
+            setErrorMessage('');
+            const response = await fetch(`${API_BASE}/jobs/${jobUrn}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ applied_on: new Date().toISOString() }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to mark job as applied');
+            }
+
+            const { job: updatedJobData } = await response.json();
+
+            const updateJobState = (j) => (j.urn === jobUrn ? { ...j, ...updatedJobData } : j);
+
+            setJobs(prev => prev.map(updateJobState));
+            setMatchedJobs(prev => prev.map(updateJobState));
+
+            if (selectedJob?.urn === jobUrn) {
+                setSelectedJob(prev => ({ ...prev, ...updatedJobData }));
+            }
+
+        } catch (error) {
+            console.error("Error marking job as applied:", error);
+            setErrorMessage(error.message);
+        }
+    }, [selectedJob?.urn]);
 
     const StatusIndicator = () => {
         if (status === 'idle' && matchedJobs.length === 0) {
@@ -367,7 +415,7 @@ const Match = () => {
                 </div>
 
                 <main className="flex-grow bg-white dark:bg-gray-800/50">
-                    <JobDetailView job={selectedJob} />
+                    <JobDetailView job={selectedJob} onMarkAsApplied={handleMarkAsApplied} />
                 </main>
             </div>
         </div>
