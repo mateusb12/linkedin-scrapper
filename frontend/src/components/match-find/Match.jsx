@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Target, CheckCircle, BarChart2, Briefcase, MapPin, Clock, Building, Users, ChevronRight, XCircle, Globe, Award, ClipboardList, ListChecks, Wand2, Edit, Save, ArrowLeft } from 'lucide-react';
+import { Target, BookOpen, CheckCircle, BarChart2, Briefcase, MapPin, Clock, Building, Users, ChevronRight, XCircle, Globe, Award, ClipboardList, ListChecks, Wand2, Edit, Save, ArrowLeft } from 'lucide-react';
 import {
     fetchAllJobs,
     fetchResumeById,
@@ -7,7 +7,6 @@ import {
     getColorFromScore, getSkillsArray, markJobAsApplied,
 } from "./MatchLogic.jsx";
 import {tailorResume} from "../../services/ResumeService.js";
-
 // --- Service Mocks and Logic ---
 // In a real app, this would be in separate files (e.g., services/ResumeService.js, utils/matchLogic.js)
 
@@ -150,7 +149,7 @@ const AdaptJobSection = ({ resume, job }) => {
                         <div className="space-y-3 p-4 bg-white dark:bg-gray-800/70 rounded-lg border border-purple-300 dark:border-purple-700">
                             <div>
                                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">ORIGINAL</label>
-                                <p className="text-sm text-gray-800 dark:text-gray-200 bg-gray-200 dark:bg-gray-700/50 p-2 rounded-md">{originalSkillsText}</p>
+                                <p className="text-sm text-gray-800 dark:text-gray-200 bg-gray-200 dark:bg-gray-800/90 p-2 rounded-md">{originalSkillsText}</p>
                             </div>
                             <div>
                                 <label htmlFor="edited-skills" className="block text-xs font-semibold text-purple-800 dark:text-purple-300 mb-1">SUGGESTED (EDITABLE)</label>
@@ -329,7 +328,15 @@ const JobDetailView = ({ job, resume, onMarkAsApplied }) => {
 
                 <DetailSection title="Qualifications" icon={<ListChecks size={20} className="mr-2" />} items={job.qualifications} />
 
-                {/* --- Adapt Resume Section --- */}
+                <div>
+                    <h3 className="text-xl font-semibold mb-4 border-b pb-2 dark:border-gray-700 flex items-center">
+                        <BookOpen size={20} className="mr-2" /> About the Job
+                    </h3>
+                    <div className="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-300">
+                        <p style={{ whiteSpace: 'pre-wrap' }}>{job.description_full || job.description || "No full description available."}</p>
+                    </div>
+                </div>
+
                 <AdaptJobSection resume={resume} job={job} />
             </div>
         </div>
