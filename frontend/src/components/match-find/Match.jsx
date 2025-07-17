@@ -49,13 +49,13 @@ const AdaptJobSection = ({ resume, job }) => {
     const [editedSkills, setEditedSkills] = useState('');
     const [editedExperience, setEditedExperience] = useState([]);
     const [isTailoring, setIsTailoring] = useState(false);
-    const [tailoringApplied, setTailoringApplied] = useState(false); // Tracks if AI has run
+    const [tailoringApplied, setTailoringApplied] = useState(false);
 
     useEffect(() => {
         if (resume) {
             setEditedSkills(resume.hard_skills.join(', '));
             setEditedExperience(JSON.parse(JSON.stringify(resume.professional_experience)));
-            setTailoringApplied(false); // Reset comparison view when resume changes
+            setTailoringApplied(false);
         }
     }, [resume]);
 
@@ -101,7 +101,7 @@ const AdaptJobSection = ({ resume, job }) => {
             if (tailoredData.professional_experience) {
                 setEditedExperience(tailoredData.professional_experience);
             }
-            setTailoringApplied(true); // Enable comparison view
+            setTailoringApplied(true);
 
         } catch (error) {
             console.error("Error tailoring resume:", error);
@@ -111,7 +111,6 @@ const AdaptJobSection = ({ resume, job }) => {
         }
     };
 
-
     const handleAdapt = () => {
         console.log("--- ADAPTATION DATA ---");
         console.log("Job Title:", job.title);
@@ -120,19 +119,6 @@ const AdaptJobSection = ({ resume, job }) => {
         alert("Adaptation logic triggered. Check the console for details.");
     };
 
-    const Placeholder = ({ text = "None specified" }) => (
-        <div className="flex items-center text-gray-500 dark:text-gray-400 italic">
-            <XCircle size={16} className="mr-2" />
-            <span>{text}</span>
-        </div>
-    );
-
-    if (!resume || !job) return null;
-
-    // --- Logic to determine which fields were changed for comparison view ---
-    const originalSkillsText = resume.hard_skills.join(', ');
-    const skillsChanged = tailoringApplied && editedSkills !== originalSkillsText;
-
     const getDetailChangedStatus = (expIndex, detailIndex) => {
         if (!tailoringApplied) return false;
         const originalDetail = resume.professional_experience[expIndex]?.details?.[detailIndex];
@@ -140,6 +126,10 @@ const AdaptJobSection = ({ resume, job }) => {
         return currentDetail !== originalDetail;
     };
 
+    if (!resume || !job) return null;
+
+    const originalSkillsText = resume.hard_skills.join(', ');
+    const skillsChanged = tailoringApplied && editedSkills !== originalSkillsText;
 
     return (
         <div className="pt-8">
@@ -152,17 +142,18 @@ const AdaptJobSection = ({ resume, job }) => {
                     AI suggestions are shown below the original text. You can edit the suggestions directly.
                 </p>
             </header>
+
             <div className="space-y-6">
                 <div className="p-4 border-2 border-dashed border-purple-300 dark:border-purple-800 rounded-lg bg-purple-50 dark:bg-purple-900/10">
                     <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">Hard Skills</h3>
                     {skillsChanged ? (
-                        <div className="space-y-3 p-3 bg-purple-100 dark:bg-purple-900/40 rounded-lg border border-purple-200 dark:border-purple-700">
+                        <div className="space-y-3 p-4 bg-white dark:bg-gray-800/70 rounded-lg border border-purple-300 dark:border-purple-700">
                             <div>
-                                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 tracking-wider">ORIGINAL</label>
-                                <p className="text-sm text-gray-600 dark:text-gray-400 p-2">{originalSkillsText}</p>
+                                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">ORIGINAL</label>
+                                <p className="text-sm text-gray-800 dark:text-gray-200 bg-gray-200 dark:bg-gray-700/50 p-2 rounded-md">{originalSkillsText}</p>
                             </div>
                             <div>
-                                <label htmlFor="edited-skills" className="text-xs font-bold text-purple-700 dark:text-purple-300 tracking-wider">SUGGESTED (EDITABLE)</label>
+                                <label htmlFor="edited-skills" className="block text-xs font-semibold text-purple-800 dark:text-purple-300 mb-1">SUGGESTED (EDITABLE)</label>
                                 <textarea
                                     id="edited-skills"
                                     value={editedSkills}
@@ -199,18 +190,18 @@ const AdaptJobSection = ({ resume, job }) => {
                                         return (
                                             <li key={detailIndex}>
                                                 {isChanged ? (
-                                                    <div className="space-y-2 p-3 bg-purple-100 dark:bg-purple-900/40 rounded-lg border border-purple-200 dark:border-purple-700">
+                                                    <div className="space-y-3 p-4 bg-white dark:bg-gray-800/70 rounded-lg border border-purple-300 dark:border-purple-700">
                                                         <div>
-                                                            <label className="text-xs font-bold text-gray-500 dark:text-gray-400 tracking-wider">ORIGINAL</label>
-                                                            <p className="text-sm text-gray-600 dark:text-gray-400 p-1.5">{originalDetail}</p>
+                                                            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">ORIGINAL</label>
+                                                            <p className="text-sm text-gray-800 dark:text-gray-200 bg-gray-200 dark:bg-gray-700/50 p-2 rounded-md">{originalDetail}</p>
                                                         </div>
                                                         <div>
-                                                            <label htmlFor={detailId} className="text-xs font-bold text-purple-700 dark:text-purple-300 tracking-wider">SUGGESTED (EDITABLE)</label>
+                                                            <label htmlFor={detailId} className="block text-xs font-semibold text-purple-800 dark:text-purple-300 mb-1">SUGGESTED (EDITABLE)</label>
                                                             <textarea
                                                                 id={detailId}
                                                                 value={detail}
                                                                 onChange={(e) => handleExperienceChange(expIndex, detailIndex, e.target.value)}
-                                                                className="w-full p-1.5 border border-purple-400 rounded-md bg-white dark:bg-gray-700 focus:ring-2 focus:ring-purple-500 text-sm"
+                                                                className="w-full p-2 border border-purple-400 rounded-md bg-white dark:bg-gray-700 focus:ring-2 focus:ring-purple-500 text-sm"
                                                                 rows="3"
                                                             />
                                                         </div>
@@ -233,6 +224,7 @@ const AdaptJobSection = ({ resume, job }) => {
                     </div>
                 </div>
             </div>
+
             <footer className="mt-6 pt-6 border-t dark:border-gray-700 flex justify-end gap-4">
                 <button
                     onClick={handleTailorResume}
@@ -260,6 +252,8 @@ const AdaptJobSection = ({ resume, job }) => {
         </div>
     );
 };
+
+
 
 
 const JobDetailView = ({ job, resume, onMarkAsApplied }) => {
