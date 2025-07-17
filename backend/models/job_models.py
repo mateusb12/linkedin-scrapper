@@ -54,6 +54,9 @@ class Job(db.Model):
     qualifications = Column(JSON, nullable=True)
     keywords = Column(JSON, nullable=True)
 
+    job_type = Column(String, nullable=True, default="Full-stack")
+    programming_languages = Column(JSON, nullable=True, default=[])
+
     has_applied = Column(Boolean, default=False)
 
     # Foreign Key to link to the 'companies' table

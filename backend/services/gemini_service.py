@@ -70,7 +70,9 @@ def expand_job_data(job_description: str) -> dict:
     - Responsibilities
     - Qualifications
     - Keywords
-    - Language: PTBR or EN based on the input
+    - Job type (frontend/backend/fullstack)
+    - Job languages (e.g., Python, JavaScript, C#, etc. It can be more than 1)
+    - Job description Language: PTBR or EN based on the input
     Try to respect the input language. If input language is portuguese, output should be in portuguese.
     If input language is english, output should be in english.
     Output should be in json format. Try to stick to a list of strings with short sentences
