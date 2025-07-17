@@ -6,6 +6,7 @@ import {
     fetchResumes, findBestMatches,
     getColorFromScore, getSkillsArray, markJobAsApplied,
 } from "./MatchLogic.jsx";
+import {tailorResume} from "../../services/ResumeService.js";
 
 // --- Service Mocks and Logic ---
 // In a real app, this would be in separate files (e.g., services/ResumeService.js, utils/matchLogic.js)
@@ -69,7 +70,6 @@ const AdaptJobSection = ({ resume, job }) => {
 
         setIsTailoring(true);
 
-        // Construct markdown strings for the API payload
         let resume_markdown = `# ${resume.name}\n\n## Hard Skills\n${resume.hard_skills.join(', ')}\n\n## Professional Experience\n`;
         resume.professional_experience.forEach(exp => {
             resume_markdown += `### ${exp.title} @ ${exp.company} (${exp.period})\n`;
@@ -91,24 +91,9 @@ const AdaptJobSection = ({ resume, job }) => {
             job_description += `\n## Keywords\n${getSkillsArray(job.keywords).join(', ')}`;
         }
 
-
         try {
-            const response = await fetch('/jobs/tailor', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ resume_markdown, job_description }),
-            });
+            const tailoredData = await tailorResume({ resume_markdown, job_description });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to tailor resume due to a server error.');
-            }
-
-            const tailoredData = await response.json();
-
-            // Update state with the AI-generated content
             if (tailoredData.hard_skills) {
                 setEditedSkills(tailoredData.hard_skills.join(', '));
             }

@@ -48,12 +48,17 @@ def generate_gemini_response(prompt: str) -> str:
 def structure_gemini_data(expanded_description_text: str) -> dict:
     """Extract and parse JSON from markdown-style code block inside a string."""
 
-    # Remove markdown code block markers like ```json and ```
-    json_str = re.sub(r"^```json\n|```$", "", expanded_description_text.strip(), flags=re.MULTILINE)
+    # Find the JSON block using a regular expression
+    match = re.search(r"```(json)?\s*({.*?})\s*```", expanded_description_text, re.DOTALL)
+    if match:
+        json_str = match.group(2)
+    else:
+        # If no markdown block is found, assume the whole string is JSON
+        json_str = expanded_description_text
 
     try:
-        parsed = json.loads(json_str)
-        return parsed
+        # It's a good practice to strip any whitespace that might be surrounding the JSON object
+        return json.loads(json_str.strip())
     except json.JSONDecodeError as e:
         raise ValueError(f"Failed to parse JSON: {e}")
 
@@ -125,10 +130,10 @@ def tailor_resume_for_job(resume_markdown: str, job_description: str) -> dict:
         return {"error": "Failed to get a valid response from the AI model."}
 
     try:
-        # Since we requested JSON output, we can parse it directly.
-        return json.loads(response_text)
-    except json.JSONDecodeError as e:
-        print(f"❌ Error parsing direct JSON response: {e}")
+        # Use the existing structuring function to safely parse the JSON
+        return structure_gemini_data(response_text)
+    except ValueError as e:
+        print(f"❌ Error parsing structured JSON response: {e}")
         print(f"Raw response was: {response_text}")
         return {"error": "Failed to parse the AI model's JSON response.", "raw_response": response_text}
 

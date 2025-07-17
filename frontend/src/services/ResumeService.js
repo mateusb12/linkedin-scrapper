@@ -117,3 +117,17 @@ export const markJobAsApplied = async (jobUrn) => {
     });
     return handleResponse(response, 'Failed to mark job as applied');
 };
+
+/**
+ * Sends resume and job markdown to the backend to tailor the resume using AI.
+ * @param {Object} payload - Contains `resume_markdown` and `job_description`.
+ * @returns {Promise<Object>} A promise that resolves to tailored resume data.
+ */
+export const tailorResume = async (payload) => {
+    const response = await fetch(`${API_BASE}/jobs/tailor`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    return handleResponse(response, 'Failed to tailor resume');
+};
