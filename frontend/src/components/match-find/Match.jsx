@@ -47,10 +47,12 @@ const MatchedJobItem = ({ job, onSelect, isSelected }) => {
 const AdaptJobSection = ({ resume, job }) => {
     const [editedSkills, setEditedSkills] = useState('');
     const [editedExperience, setEditedExperience] = useState([]);
+    const [isTailoring, setIsTailoring] = useState(false); // New state for loading
 
     useEffect(() => {
         if (resume) {
             setEditedSkills(resume.hard_skills.join(', '));
+            // Deep copy to avoid mutating the original prop
             setEditedExperience(JSON.parse(JSON.stringify(resume.professional_experience)));
         }
     }, [resume]);
@@ -60,6 +62,68 @@ const AdaptJobSection = ({ resume, job }) => {
         newExperience[expIndex].details[detailIndex] = value;
         setEditedExperience(newExperience);
     };
+
+    // New handler function for the "Tailor Resume" button
+    const handleTailorResume = async () => {
+        if (!resume || !job) return;
+
+        setIsTailoring(true);
+
+        // Construct markdown strings for the API payload
+        let resume_markdown = `# ${resume.name}\n\n## Hard Skills\n${resume.hard_skills.join(', ')}\n\n## Professional Experience\n`;
+        resume.professional_experience.forEach(exp => {
+            resume_markdown += `### ${exp.title} @ ${exp.company} (${exp.period})\n`;
+            (exp.details || []).forEach(detail => {
+                resume_markdown += `- ${detail}\n`;
+            });
+            resume_markdown += `\n`;
+        });
+
+        let job_description = `# ${job.title} @ ${job.company?.name}\n\n## Description\n${job.description || 'Not provided.'}\n\n## Responsibilities\n`;
+        (job.responsibilities || []).forEach(r => {
+            job_description += `- ${r}\n`;
+        });
+        job_description += `\n## Qualifications\n`;
+        (job.qualifications || []).forEach(q => {
+            job_description += `- ${q}\n`;
+        });
+        if (job.keywords) {
+            job_description += `\n## Keywords\n${getSkillsArray(job.keywords).join(', ')}`;
+        }
+
+
+        try {
+            const response = await fetch('/jobs/tailor', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ resume_markdown, job_description }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to tailor resume due to a server error.');
+            }
+
+            const tailoredData = await response.json();
+
+            // Update state with the AI-generated content
+            if (tailoredData.hard_skills) {
+                setEditedSkills(tailoredData.hard_skills.join(', '));
+            }
+            if (tailoredData.professional_experience) {
+                setEditedExperience(tailoredData.professional_experience);
+            }
+
+        } catch (error) {
+            console.error("Error tailoring resume:", error);
+            alert(`Could not tailor resume: ${error.message}`);
+        } finally {
+            setIsTailoring(false);
+        }
+    };
+
 
     const handleAdapt = () => {
         console.log("--- ADAPTATION DATA ---");
@@ -86,7 +150,7 @@ const AdaptJobSection = ({ resume, job }) => {
                     Adapt Resume For This Job
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    Modify your skills and experience below to better match the job requirements.
+                    Use the AI to automatically tailor your resume, or edit it manually below.
                 </p>
             </header>
             <div className="space-y-6">
@@ -110,7 +174,7 @@ const AdaptJobSection = ({ resume, job }) => {
                             <div key={expIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm">
                                 <h4 className="font-bold text-gray-900 dark:text-gray-100">{exp.title}</h4>
                                 <ul className="mt-2 space-y-2">
-                                    {exp.details.map((detail, detailIndex) => (
+                                    {(exp.details || []).map((detail, detailIndex) => (
                                         <li key={detailIndex}>
                       <textarea
                           value={detail}
@@ -126,18 +190,34 @@ const AdaptJobSection = ({ resume, job }) => {
                     </div>
                 </div>
             </div>
-            <footer className="mt-6 pt-6 border-t dark:border-gray-700 flex justify-end">
+            <footer className="mt-6 pt-6 border-t dark:border-gray-700 flex justify-end gap-4">
+                <button
+                    onClick={handleTailorResume}
+                    disabled={isTailoring}
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-all shadow-lg disabled:bg-gray-500 disabled:cursor-wait w-48"
+                >
+                    {isTailoring ? (
+                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    ) : (
+                        <Wand2 size={20} />
+                    )}
+                    <span>{isTailoring ? 'Tailoring...' : 'Tailor with AI'}</span>
+                </button>
                 <button
                     onClick={handleAdapt}
                     className="flex items-center gap-2 px-8 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-all shadow-lg"
                 >
                     <Save size={20} />
-                    Adapt
+                    Save Changes
                 </button>
             </footer>
         </div>
     );
 };
+
 
 const JobDetailView = ({ job, resume, onMarkAsApplied }) => {
     const [editedSkills, setEditedSkills] = useState('');
