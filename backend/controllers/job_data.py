@@ -4,7 +4,7 @@ import traceback
 from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request
-from sqlalchemy import inspect
+from sqlalchemy import inspect, or_
 from sqlalchemy.orm import joinedload
 
 from database.database_connection import get_db_session
@@ -37,6 +37,24 @@ def get_all_jobs():
         session.close()
 
 
+INCOMPLETE_JOB_CONDITION = or_(
+    Job.description_full.is_(None),
+    Job.description_full == '',
+    Job.responsibilities.is_(None),
+    Job.responsibilities == [],
+    Job.qualifications.is_(None),
+    Job.qualifications == [],
+    Job.keywords.is_(None),
+    Job.keywords == [],
+    Job.job_type.is_(None),
+    Job.job_type == '',
+    Job.programming_languages.is_(None),
+    Job.programming_languages == [],
+    Job.language.is_(None),
+    Job.language == ''
+)
+
+
 @job_data_bp.route("/keywords", methods=["PATCH"])
 def insert_extra_fields():
     session = get_db_session()
@@ -44,12 +62,12 @@ def insert_extra_fields():
     last_urn = ""
 
     try:
-        # count total once
-        total_jobs = session.query(Job) \
-            .filter(Job.description_full.isnot(None), Job.keywords.is_(None)) \
-            .count()
-        print(f"Starting keyword expansion for {total_jobs} jobs…")
+        total_jobs = session.query(Job).filter(
+            Job.description_full.isnot(None),
+            INCOMPLETE_JOB_CONDITION
+        ).count()
 
+        print(f"Starting keyword expansion for {total_jobs} jobs…")
         progress = JobConsoleProgress(total_jobs)
 
         processed = 0
@@ -59,13 +77,14 @@ def insert_extra_fields():
                 .options(joinedload(Job.company))
                 .filter(
                     Job.description_full.isnot(None),
-                    Job.keywords.is_(None),
+                    INCOMPLETE_JOB_CONDITION,
                     Job.urn > last_urn
                 )
                 .order_by(Job.urn)
                 .limit(BATCH_SIZE)
                 .all()
             )
+
             if not batch:
                 break
 
@@ -73,12 +92,14 @@ def insert_extra_fields():
                 expansion = expand_job_data(job.description_full or "")
                 if not isinstance(expansion, dict):
                     raise TypeError(
-                        f"expand_job_data returned {type(expansion).__name__}, "
-                        "expected dict-like result"
+                        f"expand_job_data returned {type(expansion).__name__}, expected dict"
                     )
+
                 job.responsibilities = expansion.get("responsibilities", [])
                 job.qualifications = expansion.get("qualifications", [])
                 job.keywords = expansion.get("keywords", [])
+                job.job_type = expansion.get("job_type", "Full-stack")
+                job.programming_languages = expansion.get("programming_languages", [])
                 job.language = expansion.get("language", "PTBR")
 
                 last_urn = job.urn
@@ -86,6 +107,17 @@ def insert_extra_fields():
                 progress(processed)
 
             session.commit()
+
+            # Optional: log if any jobs are still incomplete after processing
+            still_incomplete = (
+                session.query(Job.urn)
+                .filter(Job.urn.in_([job.urn for job in batch]))
+                .filter(INCOMPLETE_JOB_CONDITION)
+                .all()
+            )
+            for urn, in still_incomplete:
+                print(f"⚠️ Job URN {urn} still incomplete after processing.")
+
             for job in batch:
                 session.expunge(job)
 
