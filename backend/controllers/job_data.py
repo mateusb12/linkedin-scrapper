@@ -90,10 +90,15 @@ def insert_extra_fields():
 
             for job in batch:
                 expansion = expand_job_data(job.description_full or "")
-                if not isinstance(expansion, dict):
-                    raise TypeError(
-                        f"expand_job_data returned {type(expansion).__name__}, expected dict"
-                    )
+
+                # If the expansion failed, log it and skip to the next job.
+                if "error" in expansion or not isinstance(expansion, dict):
+                    print(f"⚠️ Could not expand job {job.urn}. Reason: {expansion.get('error', 'Invalid response format')}")
+                    # Update progress and last_urn to avoid getting stuck
+                    last_urn = job.urn
+                    processed += 1
+                    progress(processed)
+                    continue  # Skip this job
 
                 job.responsibilities = expansion.get("responsibilities", [])
                 job.qualifications = expansion.get("qualifications", [])

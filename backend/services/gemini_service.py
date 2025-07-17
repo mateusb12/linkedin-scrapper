@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 # ── Constants ────────────────────────────────────────────────────────────
 load_dotenv()
 API_KEY = os.getenv("GOOGLE_API_KEY")
-MODEL_ID = "gemini-2.5-flash"
+MODEL_ID = "gemini-1.5-flash"
 ENDPOINT = f"https://generativelanguage.googleapis.com/v1/models/{MODEL_ID}:generateContent?key={API_KEY}"
 HEADERS = {"Content-Type": "application/json"}
 
@@ -84,7 +84,13 @@ def expand_job_data(job_description: str) -> dict:
     if not response_text:
         return {"error": "Failed to get a valid response from the model."}
 
-    return structure_gemini_data(response_text)
+    try:
+        return structure_gemini_data(response_text)
+    except ValueError as e:
+        print(f"❌ Failed to parse JSON from AI response: {e}")
+        # Log the first 500 characters of the raw response for debugging
+        print(f"   Raw response snippet: {response_text[:500]}...")
+        return {"error": "AI response was not valid JSON.", "raw_response": response_text}
 
 
 def tailor_resume_for_job(resume_markdown: str, job_description: str) -> dict:
@@ -193,4 +199,4 @@ if __name__ == "__main__":
     """
     result = expand_job_data(JOB_DESCRIPTION)
     if result:
-        print("✅ Model response:\n", result)
+        print("✅ Model response:\n", json.dumps(result, indent=2, ensure_ascii=False))
