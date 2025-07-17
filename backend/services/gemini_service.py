@@ -80,6 +80,59 @@ def expand_job_data(job_description: str) -> dict:
     return structure_gemini_data(response_text)
 
 
+def tailor_resume_for_job(resume_markdown: str, job_description: str) -> dict:
+    """
+    Uses Gemini to tailor a resume's experience and skills to a job description.
+
+    Args:
+        resume_markdown: The original resume content in markdown format.
+        job_description: The target job description.
+
+    Returns:
+        A dictionary containing the tailored 'professional_experience' and 'hard_skills'.
+    """
+    prompt = f"""
+    You are an expert career coach and resume writer specializing in the tech industry. Your task is to tailor a resume's professional experience and skills section to perfectly match a specific job description.
+
+    **Instructions:**
+    1.  **Analyze:** Carefully read both the original resume and the job description.
+    2.  **Rewrite Experience:** Go through each bullet point in the "Professional Experience" section of the resume. Rewrite them using strong, quantifiable action verbs. Emphasize accomplishments and skills that are directly relevant to the requirements listed in the job description.
+    3.  **Generate Skills:** Based on the newly tailored experience and the job description, create a comprehensive list of "hard_skills".
+    4.  **Preserve Facts:** Ensure the rewritten experience remains truthful and is based *only* on the information provided in the original resume. Do not invent or exaggerate experiences. Maintain the original job titles, companies, and employment dates.
+    5.  **Maintain Language:** Match the output language to the input language of the job description (e.g., Portuguese for a Portuguese job description).
+
+    **Output Format:**
+    You MUST return a single, valid JSON object.
+    The JSON object must have exactly two keys:
+    - `professional_experience`: An array of objects. Each object must have a `title` (string) and `details` (an array of strings).
+    - `hard_skills`: An array of strings.
+
+    ---
+    **Job Description:**
+    ```
+    {job_description}
+    ```
+    ---
+    **Original Resume (Markdown):**
+    ```
+    {resume_markdown}
+    ```
+    ---
+    **Tailored Resume (JSON Output):**
+    """
+    response_text = generate_gemini_response(prompt)
+    if not response_text:
+        return {"error": "Failed to get a valid response from the AI model."}
+
+    try:
+        # Since we requested JSON output, we can parse it directly.
+        return json.loads(response_text)
+    except json.JSONDecodeError as e:
+        print(f"❌ Error parsing direct JSON response: {e}")
+        print(f"Raw response was: {response_text}")
+        return {"error": "Failed to parse the AI model's JSON response.", "raw_response": response_text}
+
+
 # ── Example Usage ────────────────────────────────────────────────────────
 if __name__ == "__main__":
     JOB_DESCRIPTION = """

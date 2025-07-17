@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 
 from database.database_connection import get_db_session
 from models import Resume
+from services.gemini_service import tailor_resume_for_job
 
 resume_bp = Blueprint("resumes", __name__, url_prefix="/jobs")
 
@@ -118,3 +119,38 @@ def delete_resume(resume_id):
 
     finally:
         session.close()
+
+
+@resume_bp.route("/tailor", methods=["POST"])
+def tailor_resume_endpoint():
+    """
+    Receives resume markdown and a job description, then uses the Gemini
+    service to return a tailored JSON representation of the resume.
+    """
+    # 1. Get and validate the request data
+    data = request.get_json()
+    if not data or 'resume_markdown' not in data or 'job_description' not in data:
+        return jsonify({"error": "Request must include 'resume_markdown' and 'job_description'"}), 400
+
+    resume_markdown = data.get('resume_markdown')
+    job_description = data.get('job_description')
+
+    # 2. Call the AI service to tailor the resume
+    try:
+        tailored_data = tailor_resume_for_job(
+            resume_markdown=resume_markdown,
+            job_description=job_description
+        )
+
+        if 'error' in tailored_data:
+            # The service layer encountered an issue (e.g., API or parsing error)
+            # 502 Bad Gateway is an appropriate status for an upstream error.
+            return jsonify(tailored_data), 502
+
+        # 3. Return the successfully tailored data from the service
+        return jsonify(tailored_data), 200
+
+    except Exception as e:
+        # Catch any other unexpected errors
+        print(f"An unexpected error occurred in the tailor_resume endpoint: {e}")
+        return jsonify({"error": "An internal server error occurred."}), 500
