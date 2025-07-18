@@ -100,31 +100,18 @@ def insert_extra_fields():
                     progress(processed)
                     continue  # Skip this job
 
-                job.responsibilities = expansion.get("responsibilities", [])
-                job.qualifications = expansion.get("qualifications", [])
-                job.keywords = expansion.get("keywords", [])
-                job.job_type = expansion.get("job_type", "Full-stack")
-                job.programming_languages = expansion.get("programming_languages", [])
-                job.language = expansion.get("language", "PTBR")
+                job.responsibilities = expansion.get("Responsibilities", [])
+                job.qualifications = expansion.get("Qualifications", [])
+                job.keywords = expansion.get("Keywords", [])
+                job.job_type = expansion.get("JobType", "Full-stack")
+                job.programming_languages = expansion.get("JobLanguages", [])
+                job.language = expansion.get("JobDescriptionLanguage", "PTBR")
 
                 last_urn = job.urn
                 processed += 1
                 progress(processed)
 
             session.commit()
-
-            # Optional: log if any jobs are still incomplete after processing
-            still_incomplete = (
-                session.query(Job.urn)
-                .filter(Job.urn.in_([job.urn for job in batch]))
-                .filter(INCOMPLETE_JOB_CONDITION)
-                .all()
-            )
-            for urn, in still_incomplete:
-                print(f"⚠️ Job URN {urn} still incomplete after processing.")
-
-            for job in batch:
-                session.expunge(job)
 
         print("\n✅ Extra fields inserted successfully.")
         return jsonify({"message": "Done"}), 200
