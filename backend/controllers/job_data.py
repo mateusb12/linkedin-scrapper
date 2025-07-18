@@ -78,8 +78,8 @@ def insert_extra_fields():
         ).count()
 
         print(f"🔄 Starting keyword expansion for {total_jobs} incomplete jobs...")
-        orchestrator = LLMOrchestrator()
         progress = JobConsoleProgress(total_jobs)
+        orchestrator = LLMOrchestrator(progress=progress)
         processed = 0
 
         while True:

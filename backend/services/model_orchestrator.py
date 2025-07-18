@@ -12,7 +12,8 @@ class AllLLMsFailed(RuntimeError):
 
 
 class LLMOrchestrator:
-    def __init__(self):
+    def __init__(self, progress=None):
+        self.progress = progress
         self.model_pool = [DeepSeekService(), GeminiService(), OpenRouterService()]
         self.error_log = defaultdict(lambda: deque(maxlen=10))
 
@@ -36,6 +37,8 @@ class LLMOrchestrator:
 
         for model in sorted_models:
             name = model.__class__.__name__
+            if self.progress:
+                self.progress.set_status(f"trying {name}")
             try:
                 method = getattr(model, method_name)
             except AttributeError:
@@ -51,6 +54,8 @@ class LLMOrchestrator:
                 self.error_log[name].append(0)
                 return result  # ✅ success
             except Exception as exc:
+                if self.progress:
+                    self.progress.set_status(f"{name} error: {exc.__class__.__name__}")
                 self.error_log[name].append(1)
                 last_exc = exc  # keep the last real stack‑trace
                 continue
