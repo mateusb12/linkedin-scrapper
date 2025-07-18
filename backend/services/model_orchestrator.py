@@ -2,9 +2,10 @@ from collections import defaultdict, deque
 
 import requests
 
-from services.deepseek_service import DeepSeekService
-from services.gemini_service import GeminiService
-from services.openrouter_service import OpenRouterService
+from services.llms.chatgpt_service import ChatGPTService
+from services.llms.deepseek_service import DeepSeekService
+from services.llms.gemini_service import GeminiService
+from services.llms.openrouter_service import OpenRouterService
 
 
 class AllLLMsFailed(RuntimeError):
@@ -14,7 +15,7 @@ class AllLLMsFailed(RuntimeError):
 class LLMOrchestrator:
     def __init__(self, progress=None):
         self.progress = progress
-        self.model_pool = [DeepSeekService(), GeminiService(), OpenRouterService()]
+        self.model_pool = [ChatGPTService(), DeepSeekService(), GeminiService(), OpenRouterService()]
         self.error_log = defaultdict(lambda: deque(maxlen=10))
 
     def expand_job(self, job_description: str) -> dict:

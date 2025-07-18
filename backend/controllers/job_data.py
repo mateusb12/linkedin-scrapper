@@ -57,7 +57,7 @@ INCOMPLETE_JOB_CONDITION = or_(
 @job_data_bp.route("/keywords", methods=["PATCH"])
 def insert_extra_fields():
     session = get_db_session()
-    BATCH_SIZE = 5
+    BATCH_SIZE = 3
     last_urn = ""
 
     try:
@@ -117,22 +117,28 @@ def insert_extra_fields():
                     progress(processed, urn=job.urn)
                     continue
 
+                progress.set_status(f"Expanding job {job.urn}...")
+
                 # Patch only missing fields (preserve existing ones)
                 if not job.responsibilities:
                     job.responsibilities = expansion.get("responsibilities", [])
                 if not job.qualifications:
                     job.qualifications = expansion.get("qualifications", [])
                 if not job.keywords:
-                    job.keywords = expansion.get("Keywords", [])
+                    job.keywords = expansion.get("keywords", [])
                 if not job.job_type:
-                    job.job_type = expansion.get("JobType", "Full-stack")
+                    raw_jt = expansion.get("job_type", "Full-stack")
+                    if isinstance(raw_jt, dict):
+                        lang_key = job.language.lower() if job.language else "en"
+                        job.job_type = raw_jt.get(lang_key) or raw_jt.get("en") or "Full-stack"
+                    else:
+                        job.job_type = raw_jt
+
                 if not job.programming_languages:
-                    languages = expansion["programming_languages"]
-                    if not languages:
-                        raise ValueError(
-                            f"Job {job.urn} has no programming languages in the response."
-                        )
-                    job.programming_languages = expansion["programming_languages"]
+                    for key in ("Programming languages", "programming_languages"):
+                        if key in expansion:
+                            job.programming_languages = expansion[key]
+                            break
                 if not job.language:
                     job.language = expansion.get("JobDescriptionLanguage", "PTBR")
 
@@ -140,6 +146,7 @@ def insert_extra_fields():
                 processed += 1
                 progress(processed, urn=job.urn)
 
+            progress.set_status(f"Batch finished, committing changes...")
             session.commit()
 
         print("\n✅ Extra fields inserted successfully.")
