@@ -2,17 +2,19 @@ import os
 import requests
 from typing import List, Dict
 
+
 class BaseLLMService:
     """
     Generic LLM client to handle API requests, independent of prompt logic.
     """
+
     def __init__(
-        self,
-        api_key: str,
-        endpoint: str,
-        model_id: str,
-        headers: Dict[str, str] = None,
-        timeout: int = 60
+            self,
+            api_key: str,
+            endpoint: str,
+            model_id: str,
+            headers: Dict[str, str] = None,
+            timeout: int = 60
     ):
         self.api_key = api_key
         self.endpoint = endpoint

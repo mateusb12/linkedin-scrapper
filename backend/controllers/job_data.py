@@ -100,7 +100,7 @@ def insert_extra_fields():
                 break
 
             for job in batch:
-                expansion = orchestrator.generate_response(job.description_full or "")
+                expansion = orchestrator.expand_job(job.description_full or "")
 
                 if "error" in expansion or not isinstance(expansion, dict):
                     print(f"⚠️ Could not expand job {job.urn}. Reason: {expansion.get('error', 'Invalid response format')}")
