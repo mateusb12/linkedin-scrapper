@@ -119,15 +119,20 @@ def insert_extra_fields():
 
                 # Patch only missing fields (preserve existing ones)
                 if not job.responsibilities:
-                    job.responsibilities = expansion.get("Responsibilities", [])
+                    job.responsibilities = expansion.get("responsibilities", [])
                 if not job.qualifications:
-                    job.qualifications = expansion.get("Qualifications", [])
+                    job.qualifications = expansion.get("qualifications", [])
                 if not job.keywords:
                     job.keywords = expansion.get("Keywords", [])
                 if not job.job_type:
                     job.job_type = expansion.get("JobType", "Full-stack")
                 if not job.programming_languages:
-                    job.programming_languages = expansion.get("JobLanguages", [])
+                    languages = expansion["programming_languages"]
+                    if not languages:
+                        raise ValueError(
+                            f"Job {job.urn} has no programming languages in the response."
+                        )
+                    job.programming_languages = expansion["programming_languages"]
                 if not job.language:
                     job.language = expansion.get("JobDescriptionLanguage", "PTBR")
 

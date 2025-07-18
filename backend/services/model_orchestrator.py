@@ -42,7 +42,6 @@ class LLMOrchestrator:
             try:
                 method = getattr(model, method_name)
             except AttributeError:
-                # model doesn't implement this call → count as failure
                 self.error_log[name].append(1)
                 continue
 
