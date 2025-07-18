@@ -146,6 +146,7 @@ class GeminiService:
             print(f"Raw response was: {response_text}")
             return {"error": "Failed to parse the AI model's JSON response.", "raw_response": response_text}
 
+
 # ── Example Usage ────────────────────────────────────────────────────────
 if __name__ == "__main__":
     JOB_DESCRIPTION = """
