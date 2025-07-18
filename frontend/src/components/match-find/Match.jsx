@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Target, BookOpen, CheckCircle, BarChart2, Briefcase, MapPin, Clock, Building, Users, ChevronRight, XCircle, Globe, Award, ClipboardList, ListChecks, Wand2, Edit, Save, ArrowLeft } from 'lucide-react';
+import { Code, Target, BookOpen, CheckCircle, BarChart2, Briefcase, MapPin, Clock, Building, Users, ChevronRight, XCircle, Globe, Award, ClipboardList, ListChecks, Wand2, Edit, Save, ArrowLeft } from 'lucide-react';
 import {
     fetchAllJobs,
     fetchResumeById,
@@ -312,6 +312,25 @@ const JobDetailView = ({ job, resume, onMarkAsApplied }) => {
                 {isApplied ? <div className="flex items-center gap-2 px-6 py-2 text-green-700 dark:text-green-400 font-semibold rounded-lg bg-green-100 dark:bg-green-900/50"><CheckCircle size={20} /> Applied on {formatDate(job.applied_on)}</div> : <button onClick={() => onMarkAsApplied(job.urn)} className="flex items-center gap-2 px-6 py-2 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 font-semibold rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-all"><ListChecks size={20} /> Mark as Applied</button>}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 text-sm">
+                {job.job_type && (
+                    <div className="flex items-center text-indigo-900 dark:text-indigo-100 bg-indigo-100 dark:bg-indigo-900/40 p-3 rounded-lg border-l-4 border-indigo-500 dark:border-indigo-400 shadow-sm">
+                        <Briefcase size={18} className="mr-3 text-indigo-600 dark:text-indigo-300 flex-shrink-0" />
+                        <span className="font-semibold text-sm">{job.job_type}</span>
+                    </div>
+                )}
+                {Array.isArray(job.programming_languages) && job.programming_languages.length > 0 && (
+                    <div className="flex items-center bg-violet-100 dark:bg-violet-900/40 p-3 rounded-lg border-l-4 border-violet-500 dark:border-violet-400 shadow-sm flex-wrap gap-2 text-violet-900 dark:text-violet-100">
+                        <Code size={18} className="mr-3 text-violet-700 dark:text-violet-300 flex-shrink-0" />
+                        {job.programming_languages.map((lang, index) => (
+                            <span
+                                key={index}
+                                className="bg-violet-200 dark:bg-violet-700 text-violet-900 dark:text-violet-100 px-2 py-0.5 rounded-full text-xs font-bold"
+                            >
+                {lang}
+            </span>
+                        ))}
+                    </div>
+                )}
                 <div className="flex items-center bg-gray-100 dark:bg-gray-800 p-3 rounded-lg"><MapPin size={18} className="mr-3 text-gray-500"/>{job.location}</div>
                 <div className="flex items-center bg-gray-100 dark:bg-gray-800 p-3 rounded-lg"><Briefcase size={18} className="mr-3 text-gray-500"/>{job.employment_type}</div>
                 <div className="flex items-center bg-gray-100 dark:bg-gray-800 p-3 rounded-lg"><Clock size={18} className="mr-3 text-gray-500"/>Posted: {formatDate(job.posted_on)}</div>
