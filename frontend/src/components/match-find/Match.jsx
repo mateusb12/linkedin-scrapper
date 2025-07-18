@@ -7,10 +7,33 @@ import {
     getColorFromScore, getSkillsArray, markJobAsApplied,
 } from "./MatchLogic.jsx";
 import {tailorResume} from "../../services/ResumeService.js";
+import csharp from "../../assets/skills_icons/csharp.svg"
+import python from "../../assets/skills_icons/python.svg"
+import js from "../../assets/skills_icons/javascript.svg";
+import ts from "../../assets/skills_icons/typescript.svg";
+import go from "../../assets/skills_icons/go.svg";
+import rust from "../../assets/skills_icons/rust.svg";
+import java from "../../assets/skills_icons/java.svg";
+import ruby from "../../assets/skills_icons/ruby.svg";
+import php from "../../assets/skills_icons/php.svg";
 // --- Service Mocks and Logic ---
 // In a real app, this would be in separate files (e.g., services/ResumeService.js, utils/matchLogic.js)
 
 // --- React Components ---
+
+const languageIcons = {
+    Python: <img src={python} alt="Python" className="w-4 h-4" />,
+    JavaScript: <img src={js} alt="JavaScript" className="w-4 h-4" />,
+    Typescript: <img src={ts} alt="Typescript" className="w-4 h-4" />,
+    Golang: <img src={go} alt="Go" className="w-4 h-4" />,
+    Rust: <img src={rust} alt="Rust" className="w-4 h-4" />,
+    Java: <img src={java} alt="Java" className="w-4 h-4" />,
+    "C++": <img src={csharp} alt="C++" className="w-4 h-4" />,
+    CSharp: <img src={csharp} alt="C#" className="w-4 h-4" />,
+    Ruby: <img src={ruby} alt="Ruby" className="w-4 h-4" />,
+    PHP: <img src={php} alt="PHP" className="w-4 h-4" />,
+};
+
 
 const MatchedJobItem = ({ job, onSelect, isSelected }) => {
     const score = Math.round(job.matchScore || 0);
