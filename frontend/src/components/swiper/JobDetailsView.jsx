@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Briefcase, MapPin, ExternalLink, Building, Code, Users, Award } from 'lucide-react';
 
+// --- Helper components (InfoPill, SkillBadge, etc.) are unchanged ---
+
 const InfoPill = ({ icon, text }) => (
     <div className="flex items-center gap-2 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-200 px-3 py-1 rounded-full text-sm">
         {icon}
@@ -18,51 +20,42 @@ const SkillBadge = ({ skill }) => (
 
 const HideScrollbarStyles = () => (
     <style>{`
-    /* Chrome / Safari / Opera */
-    .no-scrollbar::-webkit-scrollbar {
-      display: none;
-    }
-
-    /* Firefox */
-    .no-scrollbar {
-      scrollbar-width: none;       /* Firefox */
-      -ms-overflow-style: none;    /* IE & Edge */
-    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
   `}</style>
 );
 
 
 export const JobDetailsView = ({ job }) => {
-    // State to manage the expansion of the job description
     const [isExpanded, setIsExpanded] = useState(false);
     const TRUNCATION_LENGTH = 1000;
 
-    // Reset the expanded state whenever the job (and its ID) changes
     useEffect(() => {
         setIsExpanded(false);
-    }, [job.job_id]);
+    }, [job.urn]); // Use 'urn' as the unique identifier
 
     if (!job) return null;
 
+    // 1. De-structure using the CORRECT property names from the API
     const {
         title,
-        company_name,
+        company, // company is now an object
         location,
-        description_text,
+        description_full, // Use description_full
         employment_type,
-        required_experience_years,
-        skills_required = [],
-        soft_skills = [],
-        apply_url
+        keywords = [], // Use keywords
+        job_url, // Use job_url
+        job_type,
+        programming_languages = []
     } = job;
 
     const handleApply = () => {
-        if (apply_url) {
-            window.open(apply_url, '_blank', 'noopener,noreferrer');
+        if (job_url) { // Use job_url here
+            window.open(job_url, '_blank', 'noopener,noreferrer');
         }
     };
 
-    const description = description_text || 'No description available.';
+    const description = description_full || 'No description available.';
     const isLongDescription = description.length > TRUNCATION_LENGTH;
 
     return (
@@ -72,27 +65,27 @@ export const JobDetailsView = ({ job }) => {
                 {/* Header Section */}
                 <div className="flex items-start gap-4 mb-4">
                     <div className="bg-indigo-500 text-white p-3 rounded-lg shadow-md">
-                        <Briefcase size={28} />
+                        <img src={company?.logo_url} alt={`${company?.name} logo`} className="w-8 h-8 rounded-md object-contain" onError={(e) => e.target.style.display='none'} />
                     </div>
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{title}</h1>
                         <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400 mt-1">
                             <Building size={16} />
-                            <p>{company_name}</p>
+                            {/* 2. Access company name via company.name */}
+                            <p>{company?.name}</p>
                         </div>
                     </div>
                 </div>
 
-                {/* Pills Section */}
+                {/* Pills Section - Update to use correct properties */}
                 <div className="flex flex-wrap gap-2 mb-6">
-                    <InfoPill icon={<MapPin size={16} />} text={location} />
+                    {location && <InfoPill icon={<MapPin size={16} />} text={location} />}
                     {employment_type && <InfoPill icon={<Briefcase size={16} />} text={employment_type} />}
-                    {required_experience_years && <InfoPill icon={<Award size={16} />} text={`${required_experience_years} years exp.`} />}
                 </div>
 
                 {/* Description Section */}
                 <div className="mb-6">
-                    <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">Job Description</h2>
+                    <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">Key Responsibilities</h2>
                     <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed whitespace-pre-wrap">
                         {isLongDescription && !isExpanded
                             ? `${description.substring(0, TRUNCATION_LENGTH)}...`
@@ -108,22 +101,37 @@ export const JobDetailsView = ({ job }) => {
                     )}
                 </div>
 
-                {/* Skills Sections */}
+                {/* Skills Section */}
                 <div className="mb-4">
-                    <h3 className="text-md font-semibold text-gray-800 dark:text-gray-200 mb-3 flex items-center gap-2"><Code size={20} />Required Skills</h3>
+                    <h3 className="text-md font-semibold text-gray-800 dark:text-gray-200 mb-3 flex items-center gap-2"><Code size={20} />Skills</h3>
                     <div className="flex flex-wrap gap-2">
-                        {skills_required.length > 0 ? skills_required.map((skill, index) => (
+                        {/* 3. Map over 'keywords' instead of 'skills_required' */}
+                        {keywords.length > 0 ? keywords.map((skill, index) => (
                             <SkillBadge key={index} skill={skill} />
                         )) : <p className="text-sm text-gray-500">Not specified</p>}
                     </div>
                 </div>
 
-                {soft_skills && soft_skills.length > 0 && (
+                {/* --- THE NEW FIELDS --- */}
+                {/* These will now render correctly because the whole 'job' object is being read properly. */}
+
+                {job_type && (
                     <div className="mb-4">
-                        <h3 className="text-md font-semibold text-gray-800 dark:text-gray-200 mb-3 flex items-center gap-2"><Users size={20}/>Soft Skills</h3>
+                        <h3 className="text-md font-semibold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
+                            <Briefcase size={20} /> Job Type
+                        </h3>
+                        <SkillBadge skill={job_type} />
+                    </div>
+                )}
+
+                {programming_languages && programming_languages.length > 0 && (
+                    <div className="mb-4">
+                        <h3 className="text-md font-semibold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
+                            <Code size={20} /> Programming Languages
+                        </h3>
                         <div className="flex flex-wrap gap-2">
-                            {soft_skills.map((skill, index) => (
-                                <SkillBadge key={index} skill={skill} />
+                            {programming_languages.map((lang, index) => (
+                                <SkillBadge key={index} skill={lang} />
                             ))}
                         </div>
                     </div>

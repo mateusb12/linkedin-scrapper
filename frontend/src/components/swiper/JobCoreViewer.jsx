@@ -1,35 +1,61 @@
 // frontend/src/components/swiper/JobCoreViewer.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-
-import jobsData from './job_details_augmented.json'
+import { fetchAllJobs } from '../../services/ResumeService.js';
 import { JobListView } from "./JobListView.jsx";
 import { JobDetailsView } from "./JobDetailsView.jsx";
 
 export default function JobCoreViewer() {
-    // Set the first job as selected by default, or null if no jobs exist
-    const [selectedJob, setSelectedJob] = useState(jobsData[0] || null);
+    const [jobs, setJobs] = useState([]);
+    const [selectedJob, setSelectedJob] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        console.log("🔥 useEffect started"); // <<<<< ISSO AQUI
+
+        const loadJobs = async () => {
+            console.log("📡 Calling fetchAllJobs");
+            try {
+                const data = await fetchAllJobs();
+                console.log("✅ Data received from backend:", data);
+                setJobs(data);
+                if (data && data.length > 0) {
+                    console.log("📌 First job:", data[0]);
+                    setSelectedJob(data[0]);
+                }
+            } catch (err) {
+                console.error("❌ Error fetching jobs:", err);
+                setError(err.message);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        loadJobs();
+    }, []);
 
     const handleJobSelect = (job) => {
         setSelectedJob(job);
     };
 
+    if (isLoading) {
+        return <div className="flex items-center justify-center h-screen dark:bg-gray-900 dark:text-white">Loading jobs...</div>;
+    }
+
+    if (error) {
+        return <div className="flex items-center justify-center h-screen text-red-500 dark:bg-gray-900">Error: {error}</div>;
+    }
+
     return (
-        // Main container uses flexbox for the side-by-side layout
         <div className="flex h-screen bg-gray-100 dark:bg-gray-900 font-sans">
-
-            {/* Left Column: Job List */}
-            {/* Adjusted width to be 2/5 of the screen for a wider list */}
             <div className="w-2/5 h-full overflow-y-auto border-r border-gray-200 dark:border-gray-700">
-                <JobListView jobs={jobsData} onJobSelect={handleJobSelect} selectedJob={selectedJob} />
+                <JobListView jobs={jobs} onJobSelect={handleJobSelect} selectedJob={selectedJob} />
             </div>
-
-            {/* Right Column: Job Details */}
-            {/* Adjusted width to be 3/5 of the screen for a narrower details view */}
             <div className="w-3/5 h-full">
                 <AnimatePresence mode="wait">
                     <motion.div
-                        key={selectedJob ? selectedJob.job_id : 'no-job'}
+                        key={selectedJob ? selectedJob.urn : 'no-job'}
                         initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -20 }}

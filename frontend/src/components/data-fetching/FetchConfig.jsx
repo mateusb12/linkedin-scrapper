@@ -8,6 +8,7 @@ import { useDarkMode } from "../../hooks/useDarkMode.jsx";
 import { ConfigEditor } from "./ConfigEditor.jsx";
 import ResumeParser from "../resume/ResumeParser.jsx";
 import Match from "../match-find/Match.jsx";
+import JobCoreViewer from "../swiper/JobCoreViewer.jsx";
 
 // Helper functions moved here to be used for initial state generation
 const generateCurlCommand = (jsonString) => {
@@ -222,7 +223,7 @@ export default function JobDashboard() {
             case "fetch-jobs":
                 return <FetchJobsView />;
             case "job-listings":
-                return <JobList />;
+                return <JobList  />;
             case "resume":
                 return <ResumeParser />;
             case "match":
