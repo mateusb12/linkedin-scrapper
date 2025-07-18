@@ -6,18 +6,19 @@ Prompt templates for job data operations.
 def build_expand_job_prompt(job_description: str) -> str:
     return f"""
 You are an expert in extracting meaningful information from job descriptions.
-Please expand the following job description into a detailed JSON format with:
-- Responsibilities
-- Qualifications
-- Keywords
-- Job type
-- Programming languages
 
-Ensure output language matches the input.
+Expand the following job description into a detailed JSON object with:
+- responsibilities: List[string]
+- qualifications: List[string]
+- keywords: List[string]
+- programming_languages: List[string]
+- job_type: single string (only three options - Frontend, Backend or Full-stack)
 
-```json
+Ensure the output language matches the input.
+
+Job Description:
 {job_description}
-```"""
+"""
 
 
 def build_tailor_resume_prompt(resume_md: str, job_description: str) -> str:
