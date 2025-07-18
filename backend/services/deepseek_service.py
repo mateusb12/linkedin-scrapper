@@ -1,21 +1,25 @@
 import os
+from services.base_llm_service import BaseLLMService
 
-from dotenv import load_dotenv
-from openai import OpenAI
 
-load_dotenv()
+def build_deepseek_chat_prompt(system_msg: str, user_msg: str) -> list:
+    return [
+        {"role": "system", "content": system_msg},
+        {"role": "user", "content": user_msg}
+    ]
 
-key = os.getenv("DEEPSEEK_API_KEY")
 
-client = OpenAI(api_key=key, base_url="https://api.deepseek.com")
+class DeepSeekService(BaseLLMService):
+    def __init__(self):
+        api_key = os.getenv("DEEPSEEK_API_KEY")
+        endpoint = "https://api.deepseek.com/v1/chat/completions"
+        model_id = "deepseek-chat"
+        headers = {"Authorization": f"Bearer {api_key}"}
+        super().__init__(api_key, endpoint, model_id, headers)
 
-response = client.chat.completions.create(
-    model="deepseek-chat",
-    messages=[
-        {"role": "system", "content": "You are a helpful assistant"},
-        {"role": "user", "content": "Hello"},
-    ],
-    stream=False
-)
-
-print(response.choices[0].message.content)
+    def chat(self, system_msg: str, user_msg: str) -> str:
+        messages = build_deepseek_chat_prompt(system_msg, user_msg)
+        response = self.generate_response(messages)
+        if not response:
+            return ""
+        return response
