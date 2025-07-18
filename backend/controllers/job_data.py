@@ -114,7 +114,7 @@ def insert_extra_fields():
                     print(f"⚠️ Could not expand job {job.urn}. Reason: {expansion.get('error', 'Invalid response format')}")
                     last_urn = job.urn
                     processed += 1
-                    progress(processed)
+                    progress(processed, urn=job.urn)
                     continue
 
                 # Patch only missing fields (preserve existing ones)
@@ -133,7 +133,7 @@ def insert_extra_fields():
 
                 last_urn = job.urn
                 processed += 1
-                progress(processed)
+                progress(processed, urn=job.urn)
 
             session.commit()
 

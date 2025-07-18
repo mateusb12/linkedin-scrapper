@@ -16,7 +16,7 @@ class JobConsoleProgress:
         self.last_update = 0.0
 
     # allow `progress(idx)`
-    def __call__(self, done: int) -> None:
+    def __call__(self, done: int, urn: str = "") -> None:
         now = time.time()
         if done < self.total and (now - self.last_update) < self.min_interval:
             return                     # too soon, skip print
@@ -30,9 +30,10 @@ class JobConsoleProgress:
 
         line = (
             f"\rparsing {done}/{self.total} jobs | "
+            f"urn: {urn} | "
             f"remaining: {remaining} | "
             f"time per job: {avg_per_job:.2f}s | "
-            f"jobs/min: {60/avg_per_job:.1f} | "
+            f"jobs/min: {60 / avg_per_job:.1f} | "
             f"remaining time: {timedelta(seconds=int(remaining_sec))} | "
             f"ETA: {eta:%H:%M:%S}"
         )
