@@ -55,3 +55,31 @@ class GeminiService(BaseLLMService):
             return structure_gemini_data(response)
         except ValueError as e:
             return {"error": str(e), "raw": response}
+
+    def generate_response(self, messages: list[dict[str, str]]) -> str:
+        """
+        Overrides the base method to construct a Gemini-specific payload.
+        """
+        # Gemini uses a different payload structure
+        payload = {
+            "contents": [
+                {
+                    "parts": [{"text": msg["content"]}]
+                }
+                for msg in messages
+            ]
+        }
+        try:
+            response = requests.post(
+                self.endpoint,
+                headers=self.headers,
+                json=payload,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            data = response.json()
+            # Extract text from the Gemini-specific response structure
+            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except (requests.exceptions.RequestException, KeyError, IndexError) as e:
+            print(f"❌ Gemini request failed: {e}")
+            return ""

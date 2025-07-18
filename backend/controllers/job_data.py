@@ -9,7 +9,7 @@ from sqlalchemy.orm import joinedload
 
 from database.database_connection import get_db_session
 from models import Job
-from services.model_orchestrator import LLMOrchestrator
+from services.model_orchestrator import LLMOrchestrator, AllLLMsFailed
 from utils.metric_utils import JobConsoleProgress
 
 job_data_bp = Blueprint("jobs", __name__, url_prefix="/jobs")
@@ -100,7 +100,15 @@ def insert_extra_fields():
                 break
 
             for job in batch:
-                expansion = orchestrator.expand_job(job.description_full or "")
+                try:
+                    expansion = orchestrator.expand_job(job.description_full or "")
+                except AllLLMsFailed as exc:
+                    session.rollback()  # any partial writes for this batch
+                    print(f"❌ Stopping: {exc}")
+                    # If you want the whole Flask request to fail:
+                    return jsonify({"error": str(exc)}), 500
+                    # If you want the whole script to exit:
+                    # import sys; sys.exit(1)
 
                 if "error" in expansion or not isinstance(expansion, dict):
                     print(f"⚠️ Could not expand job {job.urn}. Reason: {expansion.get('error', 'Invalid response format')}")
