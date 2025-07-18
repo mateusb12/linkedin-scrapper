@@ -6,7 +6,7 @@ import requests
 from dotenv import load_dotenv
 
 from services.base_llm_service import BaseLLMService
-from services.job_description_example import JOB_DESCRIPTION
+from services.constants.job_description_example import JOB_DESCRIPTION
 from services.job_prompts import build_expand_job_prompt, build_tailor_resume_prompt
 
 

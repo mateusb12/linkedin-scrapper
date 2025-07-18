@@ -30,7 +30,7 @@ class ChatGPTService(BaseLLMService):
         load_dotenv()
         api_key = os.getenv("OPENAI_API_KEY")
         endpoint = "https://api.openai.com/v1/chat/completions"
-        model_id = "gpt-4o"
+        model_id = "gpt-4o-mini"
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"

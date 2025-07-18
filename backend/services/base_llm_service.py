@@ -24,6 +24,9 @@ class BaseLLMService:
 
     def generate_response(self, messages: List[Dict[str, str]]) -> str:
         payload = {"model": self.model_id, "messages": messages}
+
+        response = {}
+
         try:
             response = requests.post(
                 self.endpoint,
@@ -34,7 +37,18 @@ class BaseLLMService:
             response.raise_for_status()
             data = response.json()
             return data["choices"][0]["message"]["content"].strip()
+
+        except requests.exceptions.HTTPError as e:
+            print(f"❌ HTTP error: {e}")
+            if response is not None:
+                print("🔍 Response body:")
+                print(response.text)
+            return ""
+
         except requests.exceptions.RequestException as e:
-            # Centralized error handling
             print(f"❌ Request failed: {e}")
+            return ""
+
+        except Exception as e:
+            print(f"❌ Unexpected error: {e}")
             return ""
