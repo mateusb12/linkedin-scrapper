@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from utils.decorators import execution_time
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "@preset/job-expansion-agent"
+MODEL = "google/gemini-2.0-flash-exp:free"
 MAX_TOKENS = 1000
 
 # Static input
@@ -78,7 +78,13 @@ def expand_job(description: str) -> str:
 
     payload = {
         "model": MODEL,
-        "messages": [{"role": "user", "content": description}],
+        "messages": [
+            {"role": "system",
+             "content": "You are an assistant that extracts responsibilities, qualifications, and keywords from job "
+                        "descriptions in Markdown format with headers: # Responsibilities, # Qualifications, "
+                        "and # Keywords."},
+            {"role": "user", "content": description}
+        ],
         "max_tokens": MAX_TOKENS,
     }
 
