@@ -2,7 +2,6 @@ from flask import Blueprint, request, jsonify
 
 from database.database_connection import get_db_session
 from models import Resume
-from services.gemini_service import tailor_resume_for_job
 
 resume_bp = Blueprint("resumes", __name__, url_prefix="/jobs")
 

@@ -9,8 +9,7 @@ from sqlalchemy.orm import joinedload
 
 from database.database_connection import get_db_session
 from models import Job
-from services.gemini_service import expand_job_data
-from services.openrouter_service import expand_job, parse_response
+from services.model_orchestrator import LLMOrchestrator
 from utils.metric_utils import JobConsoleProgress
 
 job_data_bp = Blueprint("jobs", __name__, url_prefix="/jobs")
@@ -62,15 +61,27 @@ def insert_extra_fields():
     last_urn = ""
 
     try:
+        from sqlalchemy import case, desc
+
+        incompleteness_score = (
+                case((Job.responsibilities.is_(None), 1), else_=0) +
+                case((Job.qualifications.is_(None), 1), else_=0) +
+                case((Job.keywords.is_(None), 1), else_=0) +
+                case((Job.job_type.is_(None), 1), else_=0) +
+                case((Job.programming_languages.is_(None), 1), else_=0) +
+                case((Job.language.is_(None), 1), else_=0)
+        )
+
         total_jobs = session.query(Job).filter(
             Job.description_full.isnot(None),
             INCOMPLETE_JOB_CONDITION
         ).count()
 
-        print(f"Starting keyword expansion for {total_jobs} jobs…")
+        print(f"🔄 Starting keyword expansion for {total_jobs} incomplete jobs...")
+        orchestrator = LLMOrchestrator()
         progress = JobConsoleProgress(total_jobs)
-
         processed = 0
+
         while True:
             batch = (
                 session.query(Job)
@@ -80,7 +91,7 @@ def insert_extra_fields():
                     INCOMPLETE_JOB_CONDITION,
                     Job.urn > last_urn
                 )
-                .order_by(Job.urn)
+                .order_by(desc(incompleteness_score), Job.urn)
                 .limit(BATCH_SIZE)
                 .all()
             )
@@ -89,23 +100,28 @@ def insert_extra_fields():
                 break
 
             for job in batch:
-                expansion = expand_job_data(job.description_full or "")
+                expansion = orchestrator.generate_response(job.description_full or "")
 
-                # If the expansion failed, log it and skip to the next job.
                 if "error" in expansion or not isinstance(expansion, dict):
                     print(f"⚠️ Could not expand job {job.urn}. Reason: {expansion.get('error', 'Invalid response format')}")
-                    # Update progress and last_urn to avoid getting stuck
                     last_urn = job.urn
                     processed += 1
                     progress(processed)
-                    continue  # Skip this job
+                    continue
 
-                job.responsibilities = expansion.get("Responsibilities", [])
-                job.qualifications = expansion.get("Qualifications", [])
-                job.keywords = expansion.get("Keywords", [])
-                job.job_type = expansion.get("JobType", "Full-stack")
-                job.programming_languages = expansion.get("JobLanguages", [])
-                job.language = expansion.get("JobDescriptionLanguage", "PTBR")
+                # Patch only missing fields (preserve existing ones)
+                if not job.responsibilities:
+                    job.responsibilities = expansion.get("Responsibilities", [])
+                if not job.qualifications:
+                    job.qualifications = expansion.get("Qualifications", [])
+                if not job.keywords:
+                    job.keywords = expansion.get("Keywords", [])
+                if not job.job_type:
+                    job.job_type = expansion.get("JobType", "Full-stack")
+                if not job.programming_languages:
+                    job.programming_languages = expansion.get("JobLanguages", [])
+                if not job.language:
+                    job.language = expansion.get("JobDescriptionLanguage", "PTBR")
 
                 last_urn = job.urn
                 processed += 1
