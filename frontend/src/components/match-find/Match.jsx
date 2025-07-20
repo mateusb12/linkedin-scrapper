@@ -398,6 +398,8 @@ const JobDetailView = ({job, resume, onMarkAsApplied}) => {
         )
         .sort((a, b) => a.localeCompare(b));
 
+    const resumeSkillsSet = new Set((resume?.hard_skills || []).map(s => s.toLowerCase()));
+
     return (
         <div className="p-6 md:p-8 h-full overflow-y-auto">
             <div className="flex items-start mb-6">
@@ -493,7 +495,7 @@ const JobDetailView = ({job, resume, onMarkAsApplied}) => {
                         <ChevronRight size={20} className="mr-2"/> Required Keywords</h3>
                     {jobKeywords.length > 0 ?
                         <div className="flex flex-wrap gap-2">{jobKeywords.map((keyword, index) => {
-                            const isMatched = job.matchedSkillsSet?.has(keyword);
+                            const isMatched = resumeSkillsSet.has(keyword.toLowerCase());
                             return <span key={index}
                                          className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${isMatched ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'}`}>{isMatched ?
                                 <CheckCircle size={14}/> : <XCircle size={14}/>}{keyword}</span>;
