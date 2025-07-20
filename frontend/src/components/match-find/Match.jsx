@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useCallback, useMemo} from 'react';
 import {
     Code,
     Target,
@@ -533,6 +533,15 @@ const Match = () => {
     const [status, setStatus] = useState('idle');
     const [errorMessage, setErrorMessage] = useState('');
     const [jobMetrics, setJobMetrics] = useState({total: 0, complete: 0, incomplete: 0});
+    const [selectedLanguageFilter, setSelectedLanguageFilter] = useState('');
+
+    const allLanguages = useMemo(() => {
+        const langSet = new Set();
+        jobs.forEach(job => {
+            (job.programming_languages || []).forEach(lang => langSet.add(lang.toLowerCase()));
+        });
+        return Array.from(langSet).sort();
+    }, [jobs]);
 
     useEffect(() => {
         const loadInitialData = async () => {
@@ -669,15 +678,37 @@ const Match = () => {
                                     className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-sky-600 text-white font-semibold rounded-lg shadow-md hover:bg-sky-700 transition-all disabled:bg-gray-500 disabled:cursor-not-allowed">
                                 <BarChart2 size={20}/>{status === 'matching' ? 'Analyzing...' : 'Find Best Matches'}
                             </button>
+                            <div className="mt-3">
+                                <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                    Filter by Language (Optional)
+                                </label>
+                                <select
+                                    value={selectedLanguageFilter}
+                                    onChange={(e) => setSelectedLanguageFilter(e.target.value)}
+                                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-sky-500"
+                                >
+                                    <option value="">-- All Languages --</option>
+                                    {allLanguages.map(lang => (
+                                        <option key={lang} value={lang}>
+                                            {lang.charAt(0).toUpperCase() + lang.slice(1)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
                         {errorMessage &&
                             <p className="text-sm text-red-500 dark:text-red-400 text-center p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">{errorMessage}</p>}
                     </div>
                     <div className="flex-grow overflow-y-auto">
                         <StatusIndicator/>
-                        {matchedJobs.length > 0 && matchedJobs.map(job => <MatchedJobItem key={job.urn} job={job}
-                                                                                          onSelect={setSelectedJob}
-                                                                                          isSelected={selectedJob?.urn === job.urn}/>)}
+                        {matchedJobs
+                            .filter(job =>
+                                !selectedLanguageFilter ||
+                                (job.programming_languages || []).map(l => l.toLowerCase()).includes(selectedLanguageFilter)
+                            )
+                            .map(job => (
+                                <MatchedJobItem key={job.urn} job={job} onSelect={setSelectedJob} isSelected={selectedJob?.urn === job.urn} />
+                            ))}
                     </div>
                 </div>
                 <main className="flex-grow bg-white dark:bg-gray-800/50">
