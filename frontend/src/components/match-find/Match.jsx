@@ -352,7 +352,14 @@ const JobDetailView = ({job, resume, onMarkAsApplied}) => {
         day: 'numeric'
     }) : 'N/A';
     const isApplied = !!job.applied_on;
-    const jobKeywords = getSkillsArray(job.keywords);
+    const jobKeywords = getSkillsArray(job.keywords)
+        .map(skill =>
+            skill
+                .split(' ')
+                .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+                .join(' ')
+        )
+        .sort((a, b) => a.localeCompare(b));
 
     const handleExperienceChange = (expIndex, detailIndex, value) => {
         const newExperience = [...editedExperience];
@@ -381,6 +388,15 @@ const JobDetailView = ({job, resume, onMarkAsApplied}) => {
                     <li key={index}>{item}</li>)}</ul> : <Placeholder/>}
         </div>
     );
+
+    const sortedHardSkills = [...(resume?.hard_skills || [])]
+        .map(skill =>
+            skill
+                .split(' ')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                .join(' ')
+        )
+        .sort((a, b) => a.localeCompare(b));
 
     return (
         <div className="p-6 md:p-8 h-full overflow-y-auto">
@@ -450,6 +466,28 @@ const JobDetailView = ({job, resume, onMarkAsApplied}) => {
             </div>
 
             <div className="space-y-8">
+                <div className="mb-8">
+                    <h3 className="text-xl font-semibold mb-4 border-b pb-2 dark:border-gray-700 flex items-center">
+                        <ChevronRight size={20} className="mr-2"/> My Keywords
+                    </h3>
+                    {resume?.hard_skills?.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                            {sortedHardSkills.map((keyword, index) => (
+                                <span
+                                    key={index}
+                                    className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+                                >
+          <CheckCircle size={14}/> {keyword}
+        </span>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="flex items-center text-gray-500 dark:text-gray-400 italic">
+                            <XCircle size={16} className="mr-2"/> <span>No keywords found in your resume</span>
+                        </div>
+                    )}
+                </div>
+
                 <div>
                     <h3 className="text-xl font-semibold mb-4 border-b pb-2 dark:border-gray-700 flex items-center">
                         <ChevronRight size={20} className="mr-2"/> Required Keywords</h3>
