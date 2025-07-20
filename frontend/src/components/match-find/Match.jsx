@@ -43,6 +43,7 @@ import css from "../../assets/skills_icons/css.svg";
 import graphql from "../../assets/skills_icons/graphql.svg";
 import sql from "../../assets/skills_icons/sql.svg";
 import dotnet from "../../assets/skills_icons/dotnet.svg";
+import {forbiddenLanguages} from "../../data/ForbiddenLanguages.js";
 // --- Service Mocks and Logic ---
 // In a real app, this would be in separate files (e.g., services/ResumeService.js, utils/matchLogic.js)
 
@@ -535,10 +536,22 @@ const Match = () => {
     const [jobMetrics, setJobMetrics] = useState({total: 0, complete: 0, incomplete: 0});
     const [selectedLanguageFilter, setSelectedLanguageFilter] = useState('');
 
+    const forbiddenRegexes = forbiddenLanguages.map(pattern =>
+        new RegExp('^' + pattern
+                .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape all special regex chars
+                .replace(/\\\*/g, '.*') // Re-enable * wildcard after escaping
+            + '$', 'i')
+    );
+
     const allLanguages = useMemo(() => {
         const langSet = new Set();
         jobs.forEach(job => {
-            (job.programming_languages || []).forEach(lang => langSet.add(lang.toLowerCase()));
+            (job.programming_languages || []).forEach(lang => {
+                const normalized = lang.toLowerCase();
+                if (!forbiddenRegexes.some(regex => regex.test(normalized))) {
+                    langSet.add(normalized);
+                }
+            });
         });
         return Array.from(langSet).sort();
     }, [jobs]);
@@ -682,18 +695,21 @@ const Match = () => {
                                 <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
                                     Filter by Language (Optional)
                                 </label>
-                                <select
-                                    value={selectedLanguageFilter}
-                                    onChange={(e) => setSelectedLanguageFilter(e.target.value)}
-                                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-sky-500"
-                                >
-                                    <option value="">-- All Languages --</option>
-                                    {allLanguages.map(lang => (
-                                        <option key={lang} value={lang}>
-                                            {lang.charAt(0).toUpperCase() + lang.slice(1)}
-                                        </option>
-                                    ))}
-                                </select>
+                                <div className="relative">
+                                    <select
+                                        value={selectedLanguageFilter}
+                                        onChange={(e) => setSelectedLanguageFilter(e.target.value)}
+                                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-sky-500"
+                                        style={{ maxHeight: '200px', overflowY: 'auto' }}
+                                    >
+                                        <option value="">-- All Languages --</option>
+                                        {allLanguages.map(lang => (
+                                            <option key={lang} value={lang}>
+                                                {lang.charAt(0).toUpperCase() + lang.slice(1)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                         </div>
                         {errorMessage &&
