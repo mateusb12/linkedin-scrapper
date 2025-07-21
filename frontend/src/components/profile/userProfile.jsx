@@ -8,6 +8,7 @@ import {
     MapPin,
     Linkedin,
     Github,
+    Globe,
     Eye,
     EyeOff
 } from 'lucide-react';
@@ -98,6 +99,7 @@ const ProfileDetails = ({ profile, setProfile }) => {
                 <div><div className="flex items-center gap-1 pb-1"><MapPin className={`h-${iconSize} w-${iconSize}`} /> Location</div><input type="text" name="location" value={profile.location || ''} onChange={handleChange} className={inputClasses} /></div>
                 <div className="md:col-span-2"><div className="flex items-center gap-1 pb-1"><Linkedin className={`h-${iconSize} w-${iconSize}`} /> LinkedIn URL</div><input type="text" name="linkedin" value={profile.linkedin || ''} onChange={handleChange} className={inputClasses} /></div>
                 <div className="md:col-span-2"><div className="flex items-center gap-1 pb-1"><Github className={`h-${iconSize} w-${iconSize}`} /> GitHub URL</div><input type="text" name="github" value={profile.github || ''} onChange={handleChange} className={inputClasses} /></div>
+                <div className="md:col-span-2"><div className="flex items-center gap-1 pb-1"><Globe className={`h-${iconSize} w-${iconSize}`} /> Portfolio URL</div><input type="text" name="portfolio" value={profile.portfolio || ''} onChange={handleChange} className={inputClasses} /></div>
                 <div className="md:col-span-2"><DynamicInputSection title="Languages" items={profile.languages || []} setItems={(newItems) => handleArrayChange('languages', newItems)} /></div>
                 <div className="md:col-span-2"><DynamicInputSection title="Positive Keywords" items={profile.positive_keywords || []} setItems={(newItems) => handleArrayChange('positive_keywords', newItems)} /></div>
                 <div className="md:col-span-2"><DynamicInputSection title="Negative Keywords" items={profile.negative_keywords || []} setItems={(newItems) => handleArrayChange('negative_keywords', newItems)} /></div>
@@ -205,7 +207,7 @@ const UserProfile = () => {
         const fetchAndParseData = async () => {
             try {
                 // STAGE 1: Fetch the raw text from the markdown file
-                const response = await fetch('/profileDataExample.md');
+                const response = await fetch('/myProfile.md');
                 if (!response.ok) {
                     throw new Error(`Failed to fetch data: ${response.status} ${response.statusText}`);
                 }
