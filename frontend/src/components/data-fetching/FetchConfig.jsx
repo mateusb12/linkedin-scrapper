@@ -1,19 +1,12 @@
 // src/components/home/FetchConfig.jsx
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { FetchJobsView } from "./FetchJobs.jsx";
-import { Sidebar, Header } from "../home/Navbar.jsx";
-import JobList from "../home/JobList.jsx";
-import { useDarkMode } from "../../hooks/useDarkMode.jsx";
 import { ConfigEditor } from "./ConfigEditor.jsx";
-import ResumeParser from "../resume/ResumeParser.jsx";
-import Match from "../match-find/Match.jsx";
-import JobCoreViewer from "../swiper/JobCoreViewer.jsx";
+import { useDarkMode } from "../../hooks/useDarkMode.jsx";
 import {generateCurlCommand, generateFetchCommand} from "../../utils/fetchUtils.js";
 
-export default function JobDashboard() {
+export default function FetchConfig() {
     const [isDark] = useDarkMode();
-    const [activeView, setActiveView] = useState("fetch-config");
 
     // Create separate states for each config type (for Pagination)
     const [paginationJson, setPaginationJson] = useState("Loading...");
@@ -90,69 +83,35 @@ export default function JobDashboard() {
         setIndividualJobCurl(generateCurlCommand(individualJobJson));
     }, [individualJobJson]);
 
-    const handleLogout = () => console.log("Logging out...");
-
-    const renderActiveView = () => {
-        switch (activeView) {
-            case "fetch-config":
-                return (
-                    <div>
-                        <h1 className="text-3xl font-bold border-b border-gray-300 dark:border-gray-700 pb-3 text-gray-900 dark:text-gray-100">
-                            Fetch Configuration
-                        </h1>
-                        <p className="text-gray-600 dark:text-gray-400 mt-2 mb-8">
-                            Define the GET request details for fetching job data.
-                        </p>
-                        <div className="space-y-8">
-                            <ConfigEditor
-                                title="Pagination Request"
-                                subtitle="Filter: jobCollectionSlug"
-                                jsonValue={paginationJson}
-                                setJsonValue={setPaginationJson}
-                                fetchValue={paginationFetch}
-                                setFetchValue={setPaginationFetch}
-                                curlValue={paginationCurl}
-                                setCurlValue={setPaginationCurl}
-                            />
-                            <ConfigEditor
-                                title="Individual Job Request"
-                                subtitle="Filter: voyagerJobsDashJobCards"
-                                jsonValue={individualJobJson}
-                                setJsonValue={setIndividualJobJson}
-                                fetchValue={individualJobFetch}
-                                setFetchValue={setIndividualJobFetch}
-                                curlValue={individualJobCurl}
-                                setCurlValue={setIndividualJobCurl}
-                            />
-                        </div>
-                    </div>
-                );
-            case "fetch-jobs":
-                return <FetchJobsView />;
-            case "job-listings":
-                return <JobList  />;
-            case "resume":
-                return <ResumeParser />;
-            case "match":
-                return <Match />;
-            case "profile":
-                return <div>Profile</div>;
-            default:
-                return null;
-        }
-    };
-
     return (
-        <div className="flex h-screen font-sans bg-gray-100 dark:bg-gray-900">
-            <Sidebar
-                activeView={activeView}
-                setActiveView={setActiveView}
-            />
-            <div className="flex flex-col flex-1 min-w-0">
-                <Header handleLogout={handleLogout} />
-                <main className="flex-1 p-10 overflow-y-auto">
-                    {renderActiveView()}
-                </main>
+        <div>
+            <h1 className="text-3xl font-bold border-b border-gray-300 dark:border-gray-700 pb-3 text-gray-900 dark:text-gray-100">
+                Fetch Configuration
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-2 mb-8">
+                Define the GET request details for fetching job data.
+            </p>
+            <div className="space-y-8">
+                <ConfigEditor
+                    title="Pagination Request"
+                    subtitle="Filter: jobCollectionSlug"
+                    jsonValue={paginationJson}
+                    setJsonValue={setPaginationJson}
+                    fetchValue={paginationFetch}
+                    setFetchValue={setPaginationFetch}
+                    curlValue={paginationCurl}
+                    setCurlValue={setPaginationCurl}
+                />
+                <ConfigEditor
+                    title="Individual Job Request"
+                    subtitle="Filter: voyagerJobsDashJobCards"
+                    jsonValue={individualJobJson}
+                    setJsonValue={setIndividualJobJson}
+                    fetchValue={individualJobFetch}
+                    setFetchValue={setIndividualJobFetch}
+                    curlValue={individualJobCurl}
+                    setCurlValue={setIndividualJobCurl}
+                />
             </div>
         </div>
     );
