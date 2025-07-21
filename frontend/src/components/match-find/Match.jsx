@@ -557,6 +557,12 @@ const Match = () => {
     }, [jobs]);
 
     useEffect(() => {
+        if (allLanguages.includes('python')) {
+            setSelectedLanguageFilter('python');
+        }
+    }, [allLanguages]);
+
+    useEffect(() => {
         const loadInitialData = async () => {
             try {
                 const [resumesData, jobsData] = await Promise.all([fetchResumes(), fetchAllJobs()]);
