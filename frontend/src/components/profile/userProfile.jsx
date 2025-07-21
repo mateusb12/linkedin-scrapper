@@ -302,7 +302,44 @@ const ResumeSection = ({ resumes, selectedResume, setSelectedResumeId, setResume
                                         <input type="text" name="company" value={exp.company} placeholder="Company" onChange={e => handleNestedChange(e, index, 'professional_experience')} className={inputClasses} />
                                         <input type="text" name="dates" value={exp.dates} placeholder="Dates" onChange={e => handleNestedChange(e, index, 'professional_experience')} className={inputClasses} />
                                     </div>
-                                    <textarea name="description" value={exp.description} placeholder="Description..." onChange={e => handleNestedChange(e, index, 'professional_experience')} className={`${inputClasses} h-24`} />
+                                    <div className="space-y-2">
+                                        <label className={styleguide.label}>Description (Key Points)</label>
+                                        {exp.description.map((point, dIndex) => (
+                                            <div key={dIndex} className="flex items-center gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={point}
+                                                    onChange={e => {
+                                                        const newDesc = [...exp.description];
+                                                        newDesc[dIndex] = e.target.value;
+                                                        handleNestedChange({ target: { name: 'description', value: newDesc } }, index, 'professional_experience');
+                                                    }}
+                                                    className={inputClasses}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const newDesc = exp.description.filter((_, i) => i !== dIndex);
+                                                        handleNestedChange({ target: { name: 'description', value: newDesc } }, index, 'professional_experience');
+                                                    }}
+                                                    className={styleguide.iconButton.remove}
+                                                    disabled={exp.description.length <= 1}
+                                                >
+                                                    <MinusIcon />
+                                                </button>
+                                            </div>
+                                        ))}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const newDesc = [...exp.description, ''];
+                                                handleNestedChange({ target: { name: 'description', value: newDesc } }, index, 'professional_experience');
+                                            }}
+                                            className={styleguide.button.success}
+                                        >
+                                            + Add Key Point
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                             <button onClick={() => addNestedItem('professional_experience')} className={styleguide.button.success}>

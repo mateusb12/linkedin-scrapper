@@ -24,14 +24,22 @@ export const initialResumes = [
                 title: 'Senior Frontend Developer',
                 company: 'Tech Solutions Inc.',
                 dates: 'Jan 2022 - Present',
-                description: 'Led the development of a new client-facing dashboard using React, resulting in a 20% increase in user engagement. Mentored junior developers and established code review standards.'
+                description: [
+                    'Led development of a modern client dashboard using React, boosting engagement by 20%',
+                    'Mentored a team of 3 junior developers, improving code quality through regular reviews',
+                    'Implemented performance optimizations reducing bundle size by 30%'
+                ]
             },
             {
                 id: 'exp2',
                 title: 'Software Engineer',
                 company: 'Web Innovators',
                 dates: 'Jun 2019 - Dec 2021',
-                description: 'Built and maintained features for a large-scale e-commerce platform using Node.js and TypeScript. Optimized database queries, reducing page load times by 15%.'
+                description: [
+                    'Developed core features for an e-commerce platform using Node.js and TypeScript',
+                    'Improved database performance by rewriting inefficient queries, cutting load time by 15%',
+                    'Collaborated with UX designers to revamp the checkout process and increase conversion rates'
+                ]
             }
         ],
         education: [
@@ -54,7 +62,11 @@ export const initialResumes = [
                 title: 'Data Analyst',
                 company: 'Data Insights LLC',
                 dates: 'Jul 2020 - Present',
-                description: 'Analyzed user data to provide actionable insights for the marketing team, leading to a 10% improvement in campaign ROI. Created automated reports using Tableau.'
+                description: [
+                    'Performed deep-dive analysis on marketing performance, improving campaign ROI by 10%',
+                    'Built automated Tableau dashboards enabling real-time performance tracking',
+                    'Created regression and classification models to predict customer churn using scikit-learn'
+                ]
             }
         ],
         education: [
