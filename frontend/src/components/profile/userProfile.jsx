@@ -22,6 +22,7 @@ const palette = {
         card: 'bg-gray-800',
         input: 'bg-gray-700',
         nestedCard: 'bg-gray-700',
+        previewTextarea: 'bg-gray-900',
     },
     // Text colors
     text: {
@@ -35,6 +36,7 @@ const palette = {
         primary: 'border-gray-700',
         secondary: 'border-gray-900',
         focus: 'focus:border-emerald-500',
+        previewTextarea: 'border-gray-600',
     },
     // Accent & Action colors
     action: {
@@ -42,6 +44,8 @@ const palette = {
         primaryHover: 'hover:bg-blue-600',
         secondary: 'bg-slate-600',
         secondaryHover: 'hover:bg-slate-500',
+        markdown: 'bg-purple-700',
+        markdownHover: 'hover:bg-purple-800',
         success: 'bg-amber-600',
         successHover: 'hover:bg-amber-700',
         focusRing: 'focus:ring-amber-600',
@@ -60,6 +64,7 @@ const styleguide = {
         primary: `${palette.action.primary} ${palette.action.primaryHover} ${palette.text.light} font-bold py-2 px-6 rounded-md transition shadow-md`,
         secondary: `${palette.action.secondary} ${palette.action.secondaryHover} ${palette.text.light} font-bold py-2 px-4 rounded-md transition w-full md:w-auto`,
         success: `mt-2 text-sm ${palette.action.success} ${palette.action.successHover} ${palette.text.light} py-1 px-3 rounded-md transition`,
+        markdown: `${palette.action.markdown} ${palette.action.markdownHover} ${palette.text.light} font-bold py-2 px-4 rounded-md transition`,
     },
     iconButton: {
         remove: `ml-2 p-1 ${palette.text.secondary} ${palette.text.dangerHover} ${palette.state.disabled} ${palette.state.disabledTextHover} transition`,
@@ -113,11 +118,12 @@ const DynamicInputSection = ({ title, items, setItems }) => {
         if (lower.includes("positive")) return "Positive Keyword";
         if (lower.includes("negative")) return "Negative Keyword";
         if (lower.includes("language")) return "Language";
+        if (lower.includes("hard skills")) return "Skill";
         return "Item";
     };
 
     return (
-        <div className="md:col-span-2">
+        <div>
             <label className={`${styleguide.label} mb-2`}>{title}</label>
             {items.map((item, index) => (
                 <div key={index} className="flex items-center mb-2">
@@ -126,6 +132,7 @@ const DynamicInputSection = ({ title, items, setItems }) => {
                         value={item}
                         onChange={(e) => handleItemChange(index, e.target.value)}
                         className={inputClasses}
+                        placeholder={`Enter ${getLabelSuffix().toLowerCase()}`}
                     />
                     <button
                         type="button"
@@ -149,9 +156,41 @@ const DynamicInputSection = ({ title, items, setItems }) => {
     );
 };
 
+// A component to preview the generated markdown for a section
+const MarkdownPreview = ({ sectionTitle, markdownContent }) => {
+    const [isOpen, setIsOpen] = useState(false);
+
+    // Don't render the button if there's no content to preview
+    if (!markdownContent) return null;
+
+    return (
+        <div className="mt-4">
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className={styleguide.button.markdown}
+            >
+                {isOpen ? 'Hide Markdown' : 'Preview Markdown'}
+            </button>
+            {isOpen && (
+                <div className="mt-3">
+                    <label className={styleguide.label}>{sectionTitle} Markdown Preview</label>
+                    <textarea
+                        readOnly
+                        value={markdownContent}
+                        className={`${inputClasses} ${palette.bg.previewTextarea} ${palette.border.previewTextarea} font-mono text-sm`}
+                        rows={Math.max(5, markdownContent.split('\n').length + 1)}
+                        style={{ resize: 'vertical' }}
+                    />
+                </div>
+            )}
+        </div>
+    );
+};
+
+
 //=================================================================
 // 3. PROFILE DETAILS COMPONENT
-// Renders the editable fields for the main user profile.
 //=================================================================
 const ProfileDetails = ({ profile, setProfile }) => {
     const handleChange = (e) => {
@@ -168,7 +207,7 @@ const ProfileDetails = ({ profile, setProfile }) => {
         alert("Profile data saved! (Check console)");
     };
 
-    const iconSize = 5; // Tailwind spacing unit (e.g., h-5 w-5)
+    const iconSize = 5;
 
     return (
         <div className={`${palette.bg.card} p-6 rounded-lg shadow-lg`}>
@@ -210,10 +249,9 @@ const ProfileDetails = ({ profile, setProfile }) => {
                     </div>
                     <input type="text" name="github" value={profile.github} onChange={handleChange} className={inputClasses} />
                 </div>
-
-                <DynamicInputSection title="Languages" items={profile.languages || []} setItems={(newItems) => handleArrayChange('languages', newItems)} />
-                <DynamicInputSection title="Positive Keywords" items={profile.positive_keywords || []} setItems={(newItems) => handleArrayChange('positive_keywords', newItems)} />
-                <DynamicInputSection title="Negative Keywords" items={profile.negative_keywords || []} setItems={(newItems) => handleArrayChange('negative_keywords', newItems)} />
+                <div className="md:col-span-2"><DynamicInputSection title="Languages" items={profile.languages || []} setItems={(newItems) => handleArrayChange('languages', newItems)} /></div>
+                <div className="md:col-span-2"><DynamicInputSection title="Positive Keywords" items={profile.positive_keywords || []} setItems={(newItems) => handleArrayChange('positive_keywords', newItems)} /></div>
+                <div className="md:col-span-2"><DynamicInputSection title="Negative Keywords" items={profile.negative_keywords || []} setItems={(newItems) => handleArrayChange('negative_keywords', newItems)} /></div>
             </div>
             <div className={`flex justify-end mt-6 pt-6 border-t ${palette.border.primary}`}>
                 <button onClick={handleSaveProfile} className={styleguide.button.primary}>
@@ -226,10 +264,40 @@ const ProfileDetails = ({ profile, setProfile }) => {
 
 //=================================================================
 // 4. RESUME SECTION COMPONENT
-// Handles Browse and editing of multiple resumes.
 //=================================================================
 const ResumeSection = ({ resumes, selectedResume, setSelectedResumeId, setResumes }) => {
     if (!resumes || resumes.length === 0) return <p>No resumes found.</p>;
+
+    // --- MARKDOWN GENERATION LOGIC ---
+    const generateHardSkillsMarkdown = (skills) => {
+        if (!skills || skills.length === 0) return '';
+        return `## Hard Skills\n- ${skills.join(', ')}`;
+    };
+
+    const generateExperienceMarkdown = (experiences) => {
+        if (!experiences || experiences.length === 0) return '';
+        let markdown = '## Professional Experience\n';
+        experiences.forEach(exp => {
+            markdown += `\n### ${exp.title}\n`;
+            markdown += `**${exp.company}** | *${exp.dates}*\n`;
+            exp.description.forEach(point => {
+                if(point) markdown += `- ${point}\n`;
+            });
+        });
+        return markdown.trim();
+    };
+
+    const generateEducationMarkdown = (educations) => {
+        if (!educations || educations.length === 0) return '';
+        let markdown = '## Education\n';
+        educations.forEach(edu => {
+            markdown += `\n### ${edu.degree}\n`;
+            markdown += `**${edu.school}** | *${edu.dates}*\n`;
+        });
+        return markdown.trim();
+    };
+    // --- END MARKDOWN LOGIC ---
+
 
     const handleSelectChange = (e) => setSelectedResumeId(Number(e.target.value));
 
@@ -249,7 +317,7 @@ const ResumeSection = ({ resumes, selectedResume, setSelectedResumeId, setResume
 
     const addNestedItem = (section) => {
         const newItem = section === 'professional_experience'
-            ? { id: `exp_${Date.now()}`, title: '', company: '', dates: '', description: '' }
+            ? { id: `exp_${Date.now()}`, title: '', company: '', dates: '', description: [''] }
             : { id: `edu_${Date.now()}`, degree: '', school: '', dates: '' };
 
         const updatedSection = [...selectedResume[section], newItem];
@@ -283,11 +351,18 @@ const ResumeSection = ({ resumes, selectedResume, setSelectedResumeId, setResume
                             <input type="text" name="name" value={selectedResume.name} onChange={(e) => handleResumeFieldChange('name', e.target.value)} className={inputClasses} />
                         </div>
 
-                        <DynamicInputSection
-                            title="Hard Skills"
-                            items={selectedResume.hard_skills || []}
-                            setItems={(newSkills) => handleResumeFieldChange('hard_skills', newSkills)}
-                        />
+                        <div>
+                            <DynamicInputSection
+                                title="Hard Skills"
+                                items={selectedResume.hard_skills || []}
+                                setItems={(newSkills) => handleResumeFieldChange('hard_skills', newSkills)}
+                            />
+                            <MarkdownPreview
+                                sectionTitle="Hard Skills"
+                                markdownContent={generateHardSkillsMarkdown(selectedResume.hard_skills)}
+                            />
+                        </div>
+
 
                         {/* Professional Experience Section */}
                         <div className="space-y-4">
@@ -304,7 +379,7 @@ const ResumeSection = ({ resumes, selectedResume, setSelectedResumeId, setResume
                                     </div>
                                     <div className="space-y-2">
                                         <label className={styleguide.label}>Description (Key Points)</label>
-                                        {exp.description.map((point, dIndex) => (
+                                        {(exp.description || []).map((point, dIndex) => (
                                             <div key={dIndex} className="flex items-center gap-2">
                                                 <input
                                                     type="text"
@@ -332,7 +407,7 @@ const ResumeSection = ({ resumes, selectedResume, setSelectedResumeId, setResume
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                const newDesc = [...exp.description, ''];
+                                                const newDesc = [...(exp.description || []), ''];
                                                 handleNestedChange({ target: { name: 'description', value: newDesc } }, index, 'professional_experience');
                                             }}
                                             className={styleguide.button.success}
@@ -345,6 +420,10 @@ const ResumeSection = ({ resumes, selectedResume, setSelectedResumeId, setResume
                             <button onClick={() => addNestedItem('professional_experience')} className={styleguide.button.success}>
                                 + Add Experience
                             </button>
+                            <MarkdownPreview
+                                sectionTitle="Professional Experience"
+                                markdownContent={generateExperienceMarkdown(selectedResume.professional_experience)}
+                            />
                         </div>
 
                         {/* Education Section */}
@@ -365,6 +444,10 @@ const ResumeSection = ({ resumes, selectedResume, setSelectedResumeId, setResume
                             <button onClick={() => addNestedItem('education')} className={styleguide.button.success}>
                                 + Add Education
                             </button>
+                            <MarkdownPreview
+                                sectionTitle="Education"
+                                markdownContent={generateEducationMarkdown(selectedResume.education)}
+                            />
                         </div>
                     </div>
                     <div className={`flex justify-end mt-6 pt-6 border-t ${palette.border.primary}`}>
@@ -381,7 +464,6 @@ const ResumeSection = ({ resumes, selectedResume, setSelectedResumeId, setResume
 
 //=================================================================
 // 5. MAIN PROFILE COMPONENT (The Parent)
-// This ties everything together.
 //=================================================================
 const UserProfile = () => {
     const [profile, setProfile] = useState(initialProfile);
