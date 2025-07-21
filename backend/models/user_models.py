@@ -13,6 +13,7 @@ class Resume(db.Model):
     professional_experience = Column(JSON)
     education = Column(JSON)
     profile_id = Column(Integer, ForeignKey('profile.id', name='fk_resume_profile_id'), nullable=True)
+    profile = relationship("Profile", back_populates="resumes")
 
     def __repr__(self):
         return (f"<Resume(id={self.id}, hard_skills={self.hard_skills},"
