@@ -71,6 +71,7 @@ const styleguide = {
         delete: `absolute top-2 right-2 ${palette.text.secondary} ${palette.text.dangerHover} transition`,
     },
     label: `block text-sm font-medium ${palette.text.secondary} mb-1`,
+    previewTextarea: `${palette.bg.previewTextarea} ${palette.border.previewTextarea} border ${palette.text.primary} font-mono text-sm w-full rounded-md p-4 transition`,
 };
 
 // Renaming for easier integration into existing code structure
@@ -170,7 +171,7 @@ const MarkdownPreview = ({ sectionTitle, markdownContent }) => {
                 onClick={() => setIsOpen(!isOpen)}
                 className={styleguide.button.markdown}
             >
-                {isOpen ? 'Hide Markdown' : 'Preview Markdown'}
+                {isOpen ? 'Hide Markdown' : 'Preview Section Markdown'}
             </button>
             {isOpen && (
                 <div className="mt-3">
@@ -178,7 +179,7 @@ const MarkdownPreview = ({ sectionTitle, markdownContent }) => {
                     <textarea
                         readOnly
                         value={markdownContent}
-                        className={`${inputClasses} ${palette.bg.previewTextarea} ${palette.border.previewTextarea} font-mono text-sm`}
+                        className={styleguide.previewTextarea}
                         rows={Math.max(5, markdownContent.split('\n').length + 1)}
                         style={{ resize: 'vertical' }}
                     />
@@ -265,39 +266,17 @@ const ProfileDetails = ({ profile, setProfile }) => {
 //=================================================================
 // 4. RESUME SECTION COMPONENT
 //=================================================================
-const ResumeSection = ({ resumes, selectedResume, setSelectedResumeId, setResumes }) => {
+const ResumeSection = ({
+                           resumes,
+                           selectedResume,
+                           setSelectedResumeId,
+                           setResumes,
+                           generateHardSkillsMarkdown,
+                           generateExperienceMarkdown,
+                           generateEducationMarkdown,
+                           onToggleFullPreview,
+                       }) => {
     if (!resumes || resumes.length === 0) return <p>No resumes found.</p>;
-
-    // --- MARKDOWN GENERATION LOGIC ---
-    const generateHardSkillsMarkdown = (skills) => {
-        if (!skills || skills.length === 0) return '';
-        return `## Hard Skills\n- ${skills.join(', ')}`;
-    };
-
-    const generateExperienceMarkdown = (experiences) => {
-        if (!experiences || experiences.length === 0) return '';
-        let markdown = '## Professional Experience\n';
-        experiences.forEach(exp => {
-            markdown += `\n### ${exp.title}\n`;
-            markdown += `**${exp.company}** | *${exp.dates}*\n`;
-            exp.description.forEach(point => {
-                if(point) markdown += `- ${point}\n`;
-            });
-        });
-        return markdown.trim();
-    };
-
-    const generateEducationMarkdown = (educations) => {
-        if (!educations || educations.length === 0) return '';
-        let markdown = '## Education\n';
-        educations.forEach(edu => {
-            markdown += `\n### ${edu.degree}\n`;
-            markdown += `**${edu.school}** | *${edu.dates}*\n`;
-        });
-        return markdown.trim();
-    };
-    // --- END MARKDOWN LOGIC ---
-
 
     const handleSelectChange = (e) => setSelectedResumeId(Number(e.target.value));
 
@@ -450,8 +429,12 @@ const ResumeSection = ({ resumes, selectedResume, setSelectedResumeId, setResume
                             />
                         </div>
                     </div>
-                    <div className={`flex justify-end mt-6 pt-6 border-t ${palette.border.primary}`}>
-                        <button onClick={handleSaveResume} className={styleguide.button.primary}>
+                    <div className={`flex flex-col sm:flex-row justify-end items-center mt-6 pt-6 border-t ${palette.border.primary} space-y-3 sm:space-y-0 sm:space-x-4`}>
+                        <button onClick={onToggleFullPreview} className={`${styleguide.button.markdown} w-full sm:w-auto`}>
+                            {/* This is the new button */}
+                            Preview Full Resume Markdown
+                        </button>
+                        <button onClick={handleSaveResume} className={`${styleguide.button.primary} w-full sm:w-auto`}>
                             Save Resume
                         </button>
                     </div>
@@ -469,8 +452,76 @@ const UserProfile = () => {
     const [profile, setProfile] = useState(initialProfile);
     const [resumes, setResumes] = useState(initialResumes);
     const [selectedResumeId, setSelectedResumeId] = useState(initialResumes[0]?.id);
+    const [showFullPreview, setShowFullPreview] = useState(false);
+    const [fullResumeMarkdown, setFullResumeMarkdown] = useState('');
 
     const selectedResume = resumes.find(r => r.id === selectedResumeId);
+
+    // --- MARKDOWN GENERATION LOGIC ---
+    const generateProfileHeaderMarkdown = (profileData) => {
+        if (!profileData) return '';
+        const { name, email, phone, location, linkedin, github } = profileData;
+        const linkedInText = linkedin ? `[LinkedIn](${linkedin})` : '';
+        const githubText = github ? `[GitHub](${github})` : '';
+        const contacts = [location, phone, email, linkedInText, githubText].filter(Boolean).join(' | ');
+        return `# ${name || 'Your Name'}\n${contacts}`;
+    };
+
+    const generateHardSkillsMarkdown = (skills) => {
+        if (!skills || skills.filter(s => s).length === 0) return '';
+        return `## 🛠️ Hard Skills\n- ${skills.filter(s => s).join(', ')}`;
+    };
+
+    const generateExperienceMarkdown = (experiences) => {
+        if (!experiences || experiences.length === 0) return '';
+        const title = '## 💼 Professional Experience';
+        let content = '';
+        experiences.forEach(exp => {
+            if (exp.title && exp.company && exp.dates) {
+                content += `\n### ${exp.title}\n`;
+                content += `**${exp.company}** | *${exp.dates}*\n`;
+                (exp.description || []).forEach(point => {
+                    if (point) content += `- ${point}\n`;
+                });
+            }
+        });
+        return content ? `${title}\n${content.trim()}` : '';
+    };
+
+    const generateEducationMarkdown = (educations) => {
+        if (!educations || educations.length === 0) return '';
+        const title = '## 🎓 Education';
+        let content = '';
+        educations.forEach(edu => {
+            if (edu.degree && edu.school && edu.dates) {
+                content += `\n### ${edu.degree}\n`;
+                content += `**${edu.school}** | *${edu.dates}*\n`;
+            }
+        });
+        return content ? `${title}\n${content.trim()}` : '';
+    };
+
+    const generateFullResumeMarkdown = () => {
+        if (!profile || !selectedResume) return 'No profile or resume selected.';
+
+        const header = generateProfileHeaderMarkdown(profile);
+        const skills = generateHardSkillsMarkdown(selectedResume.hard_skills);
+        const experience = generateExperienceMarkdown(selectedResume.professional_experience);
+        const education = generateEducationMarkdown(selectedResume.education);
+
+        return [header, skills, experience, education]
+            .filter(Boolean) // Remove empty or null sections
+            .join('\n\n---\n\n');
+    };
+
+    const handleToggleFullPreview = () => {
+        // Always generate fresh markdown when opening
+        if (!showFullPreview) {
+            const markdown = generateFullResumeMarkdown();
+            setFullResumeMarkdown(markdown);
+        }
+        setShowFullPreview(!showFullPreview);
+    };
 
     useEffect(() => {
         console.log("Profile Data Updated:", profile);
@@ -491,7 +542,30 @@ const UserProfile = () => {
                     selectedResume={selectedResume}
                     setSelectedResumeId={setSelectedResumeId}
                     setResumes={setResumes}
+                    generateHardSkillsMarkdown={generateHardSkillsMarkdown}
+                    generateExperienceMarkdown={generateExperienceMarkdown}
+                    generateEducationMarkdown={generateEducationMarkdown}
+                    onToggleFullPreview={handleToggleFullPreview}
                 />
+
+                {/* This is the new Full Resume Preview Section */}
+                {showFullPreview && (
+                    <div className={`mt-8 ${palette.bg.card} p-6 rounded-lg shadow-lg`}>
+                        <div className={`flex justify-between items-center mb-4 pb-3 border-b ${palette.border.primary}`}>
+                            <h2 className={`text-2xl font-bold ${palette.text.light}`}>Full Resume Markdown Preview</h2>
+                            <button onClick={handleToggleFullPreview} className={styleguide.button.secondary}>
+                                Close Preview
+                            </button>
+                        </div>
+                        <textarea
+                            readOnly
+                            value={fullResumeMarkdown}
+                            className={styleguide.previewTextarea}
+                            rows={30}
+                            style={{ resize: 'vertical' }}
+                        />
+                    </div>
+                )}
             </div>
         </div>
     );
