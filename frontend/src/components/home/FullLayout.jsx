@@ -5,6 +5,7 @@ import { FetchJobsView } from "../data-fetching/FetchJobs.jsx";
 import JobList from "./JobList.jsx";
 import ResumeParser from "../resume/ResumeParser.jsx";
 import Match from "../match-find/Match.jsx";
+import UserProfile from "../resume/userProfile.jsx";
 
 export default function FullLayout() {
     const [activeView, setActiveView] = useState("fetch-config");
@@ -24,7 +25,7 @@ export default function FullLayout() {
             case "match":
                 return <Match />;
             case "profile":
-                return <div>Profile</div>;
+                return <UserProfile/>;
             default:
                 return null;
         }
