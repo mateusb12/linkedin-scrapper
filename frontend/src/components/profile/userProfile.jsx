@@ -7,6 +7,8 @@ import {
     MapPin,
     Linkedin,
     Github,
+    Eye,
+    EyeOff
 } from 'lucide-react';
 
 //=================================================================
@@ -171,7 +173,17 @@ const MarkdownPreview = ({ sectionTitle, markdownContent }) => {
                 onClick={() => setIsOpen(!isOpen)}
                 className={styleguide.button.markdown}
             >
-                {isOpen ? 'Hide Markdown' : 'Preview Section Markdown'}
+                {isOpen ? (
+                    <>
+                        <EyeOff className="inline-block w-4 h-4 mr-2" />
+                        Hide
+                    </>
+                ) : (
+                    <>
+                        <Eye className="inline-block w-4 h-4 mr-2" />
+                        Preview
+                    </>
+                )}
             </button>
             {isOpen && (
                 <div className="mt-3">
