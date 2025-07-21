@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {initialProfile, initialResumes} from "./profileDummyData.js";
+import {
+    User,
+    Mail,
+    Phone,
+    MapPin,
+    Linkedin,
+    Github,
+} from 'lucide-react';
 
 //=================================================================
 // 0. STYLES - SINGLE SOURCE OF TRUTH
@@ -25,7 +33,7 @@ const palette = {
     // Border colors
     border: {
         primary: 'border-gray-700',
-        secondary: 'border-gray-600',
+        secondary: 'border-gray-900',
         focus: 'focus:border-emerald-500',
     },
     // Accent & Action colors
@@ -160,32 +168,46 @@ const ProfileDetails = ({ profile, setProfile }) => {
         alert("Profile data saved! (Check console)");
     };
 
+    const iconSize = 5; // Tailwind spacing unit (e.g., h-5 w-5)
+
     return (
         <div className={`${palette.bg.card} p-6 rounded-lg shadow-lg`}>
             <h2 className={`text-2xl font-bold ${palette.text.light} mb-6 border-b ${palette.border.primary} pb-3`}>👤 Profile Details</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                    <label className={styleguide.label}>Name</label>
+                    <div className="flex items-center gap-1 pb-1">
+                        <User className={`h-${iconSize} w-${iconSize}`} /> Name
+                    </div>
                     <input type="text" name="name" value={profile.name} onChange={handleChange} className={inputClasses} />
                 </div>
                 <div>
-                    <label className={styleguide.label}>Email</label>
+                    <div className="flex items-center gap-1 pb-1">
+                        <Mail className={`h-${iconSize} w-${iconSize}`} /> Email
+                    </div>
                     <input type="email" name="email" value={profile.email} onChange={handleChange} className={inputClasses} />
                 </div>
                 <div>
-                    <label className={styleguide.label}>Phone</label>
+                    <div className="flex items-center gap-1 pb-1">
+                        <Phone className={`h-${iconSize} w-${iconSize}`} /> Phone
+                    </div>
                     <input type="tel" name="phone" value={profile.phone} onChange={handleChange} className={inputClasses} />
                 </div>
                 <div>
-                    <label className={styleguide.label}>Location</label>
+                    <div className="flex items-center gap-1 pb-1">
+                        <MapPin className={`h-${iconSize} w-${iconSize}`} /> Location
+                    </div>
                     <input type="text" name="location" value={profile.location} onChange={handleChange} className={inputClasses} />
                 </div>
                 <div className="md:col-span-2">
-                    <label className={styleguide.label}>LinkedIn URL</label>
+                    <div className="flex items-center gap-1 pb-1">
+                        <Linkedin className={`h-${iconSize} w-${iconSize}`} /> LinkedIn URL
+                    </div>
                     <input type="text" name="linkedin" value={profile.linkedin} onChange={handleChange} className={inputClasses} />
                 </div>
                 <div className="md:col-span-2">
-                    <label className={styleguide.label}>GitHub URL</label>
+                    <div className="flex items-center gap-1 pb-1">
+                        <Github className={`h-${iconSize} w-${iconSize}`} /> GitHub URL
+                    </div>
                     <input type="text" name="github" value={profile.github} onChange={handleChange} className={inputClasses} />
                 </div>
 
