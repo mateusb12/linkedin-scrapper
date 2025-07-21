@@ -18,25 +18,25 @@ const palette = {
     // Text colors
     text: {
         primary: 'text-gray-200',
-        secondary: 'text-gray-400', // For labels, placeholders
-        light: 'text-white',       // For buttons, headings
+        secondary: 'text-gray-400',
+        light: 'text-white',
         dangerHover: 'hover:text-red-500',
     },
     // Border colors
     border: {
-        primary: 'border-gray-700',  // For section dividers
-        secondary: 'border-gray-600', // For inputs, nested cards
-        focus: 'focus:border-blue-500',
+        primary: 'border-gray-700',
+        secondary: 'border-gray-600',
+        focus: 'focus:border-emerald-500',
     },
     // Accent & Action colors
     action: {
-        primary: 'bg-indigo-600',
-        primaryHover: 'hover:bg-indigo-700',
-        secondary: 'bg-blue-600',
-        secondaryHover: 'hover:bg-blue-700',
-        success: 'bg-green-600',
-        successHover: 'hover:bg-green-700',
-        focusRing: 'focus:ring-blue-500',
+        primary: 'bg-blue-500',
+        primaryHover: 'hover:bg-blue-600',
+        secondary: 'bg-slate-600',
+        secondaryHover: 'hover:bg-slate-500',
+        success: 'bg-amber-600',
+        successHover: 'hover:bg-amber-700',
+        focusRing: 'focus:ring-amber-600',
     },
     // State-based colors/styles
     state: {
@@ -283,7 +283,7 @@ const ResumeSection = ({ resumes, selectedResume, setSelectedResumeId, setResume
                                     <textarea name="description" value={exp.description} placeholder="Description..." onChange={e => handleNestedChange(e, index, 'professional_experience')} className={`${inputClasses} h-24`} />
                                 </div>
                             ))}
-                            <button onClick={() => addNestedItem('professional_experience')} className={styleguide.button.secondary}>
+                            <button onClick={() => addNestedItem('professional_experience')} className={styleguide.button.success}>
                                 + Add Experience
                             </button>
                         </div>
@@ -303,7 +303,7 @@ const ResumeSection = ({ resumes, selectedResume, setSelectedResumeId, setResume
                                     </div>
                                 </div>
                             ))}
-                            <button onClick={() => addNestedItem('education')} className={styleguide.button.secondary}>
+                            <button onClick={() => addNestedItem('education')} className={styleguide.button.success}>
                                 + Add Education
                             </button>
                         </div>
