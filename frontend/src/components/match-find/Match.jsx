@@ -25,8 +25,13 @@ import {
 import {
     fetchAllJobs,
     fetchResumeById,
-    fetchResumes, findBestMatches,
-    getColorFromScore, getSkillsArray, markJobAsApplied, normalizeKeyword,
+    fetchResumes,
+    findBestMatches,
+    getColorFromScore,
+    getSkillsArray,
+    markJobAsApplied,
+    markJobAsDisabled,
+    normalizeKeyword,
 } from "./MatchLogic.jsx";
 import {fetchProfiles, tailorResume} from "../../services/ResumeService.js";
 import csharp from "../../assets/skills_icons/csharp.svg"
@@ -559,6 +564,7 @@ const Match = () => {
     const [jobMetrics, setJobMetrics] = useState({total: 0, complete: 0, incomplete: 0});
     const [selectedLanguageFilter, setSelectedLanguageFilter] = useState('');
     const [selectedProfile, setSelectedProfile] = useState(null);
+    const [successMessage, setSuccessMessage] = useState('');
 
     useEffect(() => {
         const loadProfile = async () => {
@@ -686,10 +692,12 @@ const Match = () => {
             const updatedJobData = await markJobAsApplied(jobUrn);
             const updateJobState = (j) => (j.urn === jobUrn ? {...j, ...updatedJobData.job} : j);
             setJobs(prev => prev.map(updateJobState));
-            setMatchedJobs(prev => prev.map(updateJobState));
+            setMatchedJobs(prev => prev.filter(j => j.urn !== jobUrn));
             if (selectedJob?.urn === jobUrn) {
                 setSelectedJob(prev => ({...prev, ...updatedJobData.job}));
             }
+            setSuccessMessage('Job marked as disabled.');
+            setTimeout(() => setSuccessMessage(''), 3000);
         } catch (error) {
             console.error("Error marking job as applied:", error);
             setErrorMessage(error.message || 'An unexpected error occurred.');
@@ -697,12 +705,13 @@ const Match = () => {
     }, [selectedJob?.urn]);
 
     const handleMarkAsDisabled = useCallback(async (jobUrn) => {
+        console.log("Marking as disabled:", jobUrn); // ✅ Debug line
         try {
             setErrorMessage('');
             const updatedJobData = await markJobAsDisabled(jobUrn);
             const updateJobState = (j) => (j.urn === jobUrn ? {...j, ...updatedJobData.job} : j);
             setJobs(prev => prev.map(updateJobState));
-            setMatchedJobs(prev => prev.map(updateJobState));
+            setMatchedJobs(prev => prev.filter(j => j.urn !== jobUrn));
             if (selectedJob?.urn === jobUrn) {
                 setSelectedJob(prev => ({...prev, ...updatedJobData.job}));
             }
@@ -798,6 +807,12 @@ const Match = () => {
                             <p className="text-sm text-red-500 dark:text-red-400 text-center p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">{errorMessage}</p>}
                     </div>
                     <div className="flex-grow overflow-y-auto">
+                        {successMessage &&
+                            <p className="text-sm text-green-600 dark:text-green-400 text-center p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                                {successMessage}
+                            </p>
+                        }
+
                         <StatusIndicator/>
                         {matchedJobs
                             .filter(job =>
