@@ -16,7 +16,12 @@ import {
     Save,
     Award,
     ClipboardList,
-    Zap
+    Zap,
+    FileText,
+    Lightbulb,
+    GraduationCap,
+    PlusCircle,
+    Trash2
 } from 'lucide-react';
 import {
     fetchAllJobs,
@@ -185,53 +190,74 @@ const MatchedJobItem = ({job, onSelect, isSelected}) => {
     );
 };
 
-const AdaptJobSection = ({resume, job}) => {
-    const [editedSkills, setEditedSkills] = useState('');
-    const [editedExperience, setEditedExperience] = useState([]);
+const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
+    const [adaptedResume, setAdaptedResume] = useState(null);
     const [isTailoring, setIsTailoring] = useState(false);
     const [tailoringApplied, setTailoringApplied] = useState(false);
 
-    useEffect(() => {
-        if (resume) {
-            setEditedSkills(resume.hard_skills.join(', '));
-            setEditedExperience(JSON.parse(JSON.stringify(resume.professional_experience)));
-            setTailoringApplied(false);
-        }
-    }, [resume]);
+    const inputClasses = "w-full p-2 rounded-md bg-white dark:bg-gray-700 focus:ring-2 text-sm border border-gray-300 dark:border-gray-600 focus:ring-purple-500";
+    const buttonClasses = "flex items-center gap-2 text-xs px-2.5 py-1.5 bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/50 dark:hover:bg-purple-900/80 text-purple-800 dark:text-purple-200 font-semibold rounded-md transition-all";
 
-    const handleExperienceChange = (expIndex, detailIndex, value) => {
-        const newExperience = [...editedExperience];
-        newExperience[expIndex].details[detailIndex] = value;
-        setEditedExperience(newExperience);
-    };
+    useEffect(() => {
+        if (baseResume) {
+            setAdaptedResume(JSON.parse(JSON.stringify(baseResume)));
+            setTailoringApplied(false);
+        } else {
+            setAdaptedResume(null);
+        }
+    }, [baseResume]);
+
+    // --- Generic Handlers for State Updates ---
+    const handleUpdate = (updater) => setAdaptedResume(prev => updater(JSON.parse(JSON.stringify(prev))));
+    const handleSimpleChange = (field, value) => handleUpdate(draft => { draft[field] = value; return draft; });
+    const handleListChange = (listName, index, value) => handleUpdate(draft => { draft[listName][index] = value; return draft; });
+    const handleNestedChange = (listName, index, field, value) => handleUpdate(draft => { draft[listName][index][field] = value; return draft; });
+    const handleDetailChange = (listName, itemIndex, detailIndex, value) => handleUpdate(draft => { draft[listName][itemIndex].details[detailIndex] = value; return draft; });
+    const addListItem = (listName, newItem) => handleUpdate(draft => { draft[listName] = [...(draft[listName] || []), newItem]; return draft; });
+    const removeListItem = (listName, index) => handleUpdate(draft => { draft[listName].splice(index, 1); return draft; });
+    const addDetailItem = (listName, itemIndex) => handleUpdate(draft => { draft[listName][itemIndex].details.push(''); return draft; });
+    const removeDetailItem = (listName, itemIndex, detailIndex) => handleUpdate(draft => { draft[listName][itemIndex].details.splice(detailIndex, 1); return draft; });
+
 
     const handleTailorResume = async () => {
-        if (!resume || !job) return;
-
+        if (!baseResume || !job) return;
         setIsTailoring(true);
         setTailoringApplied(false);
 
-        let resume_markdown = `# ${resume.name}\n\n## Hard Skills\n${resume.hard_skills.join(', ')}\n\n## Professional Experience\n`;
-        resume.professional_experience.forEach(exp => {
-            resume_markdown += `### ${exp.title} @ ${exp.company} (${exp.period})\n`;
-            (exp.details || []).forEach(detail => {
-                resume_markdown += `- ${detail}\n`;
+        let resume_markdown = `# ${baseResume.name}\n\n## Summary\n${baseResume.summary || ''}\n\n`;
+        if (baseResume.hard_skills?.length) resume_markdown += `## Hard Skills\n${baseResume.hard_skills.join(', ')}\n\n`;
+        if (baseResume.professional_experience?.length) {
+            resume_markdown += '## Professional Experience\n';
+            baseResume.professional_experience.forEach(exp => {
+                resume_markdown += `### ${exp.title} @ ${exp.company} (${exp.dates})\n`;
+                (exp.details || []).forEach(detail => { resume_markdown += `- ${detail}\n`; });
+                resume_markdown += '\n';
             });
-            resume_markdown += `\n`;
-        });
+        }
+        if (baseResume.projects?.length) {
+            resume_markdown += '## Projects\n';
+            baseResume.projects.forEach(proj => {
+                resume_markdown += `### ${proj.title}\n`;
+                (proj.details || []).forEach(detail => { resume_markdown += `- ${detail}\n`; });
+                resume_markdown += '\n';
+            });
+        }
 
         let job_description = `# ${job.title} @ ${job.company?.name}\n\n## Description\n${job.description || 'Not provided.'}\n\n## Responsibilities\n`;
         (job.responsibilities || []).forEach(r => { job_description += `- ${r}\n`; });
         job_description += `\n## Qualifications\n`;
         (job.qualifications || []).forEach(q => { job_description += `- ${q}\n`; });
-        if (job.keywords) {
-            job_description += `\n## Keywords\n${getSkillsArray(job.keywords).join(', ')}`;
-        }
+        if (job.keywords) job_description += `\n## Keywords\n${getSkillsArray(job.keywords).join(', ')}`;
 
         try {
-            const tailoredData = await tailorResume({resume_markdown, job_description});
-            if (tailoredData.hard_skills) setEditedSkills(tailoredData.hard_skills.join(', '));
-            if (tailoredData.professional_experience) setEditedExperience(tailoredData.professional_experience);
+            const tailoredData = await tailorResume({ resume_markdown, job_description });
+            setAdaptedResume(prev => ({
+                ...JSON.parse(JSON.stringify(prev)), // Deep copy of current state
+                summary: tailoredData.summary !== undefined ? tailoredData.summary : prev.summary,
+                hard_skills: tailoredData.hard_skills !== undefined ? tailoredData.hard_skills : prev.hard_skills,
+                professional_experience: tailoredData.professional_experience !== undefined ? tailoredData.professional_experience : prev.professional_experience,
+                projects: tailoredData.projects !== undefined ? tailoredData.projects : prev.projects,
+            }));
             setTailoringApplied(true);
         } catch (error) {
             console.error("Error tailoring resume:", error);
@@ -241,93 +267,126 @@ const AdaptJobSection = ({resume, job}) => {
         }
     };
 
-    const handleAdapt = () => {
-        console.log("--- ADAPTATION DATA ---", {
-            jobTitle: job.title,
-            adaptedSkills: editedSkills,
-            adaptedExperience: editedExperience
-        });
-        alert("Adaptation logic triggered. Check the console for details.");
+    const handleSaveChanges = () => {
+        console.log("--- ADAPTED RESUME DATA ---", adaptedResume);
+        alert("Adapted resume data saved to console. A new resume could be created from this data.");
     };
 
-    if (!resume || !job) return null;
+    if (!adaptedResume || !job) return null;
 
-    const originalSkillsText = resume.hard_skills.join(', ');
-    const skillsChanged = tailoringApplied && editedSkills !== originalSkillsText;
+    const SectionWrapper = ({ title, icon, onAdd, children }) => (
+        <div className="p-4 border-2 border-dashed border-purple-300 dark:border-purple-800 rounded-lg bg-purple-50 dark:bg-purple-900/10">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">{icon} {title}</h3>
+                {onAdd && <button onClick={onAdd} className={buttonClasses}><PlusCircle size={14}/> Add {title.slice(0, -1)}</button>}
+            </div>
+            <div className="space-y-4">{children}</div>
+        </div>
+    );
 
     return (
         <div className="pt-8">
-            <header className="pb-4 border-b-2 border-purple-400 dark:border-purple-600 mb-6">
+            <header className="pb-4 border-b-2 border-purple-400 dark:border-purple-600 mb-6 space-y-4">
                 <h2 className="text-2xl font-bold flex items-center gap-3">
                     <Wand2 className="text-purple-500"/> Adapt Resume For This Job
                 </h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    AI suggestions are shown below the original text. You can edit the suggestions directly.
-                </p>
+                <div>
+                    <label htmlFor="adapt-resume-select" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Select a base resume to adapt:</label>
+                    <select id="adapt-resume-select" value={baseResume.id} onChange={(e) => onSelectResume(e.target.value)} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500">
+                        {allResumes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    </select>
+                </div>
             </header>
 
             <div className="space-y-6">
-                <div className="p-4 border-2 border-dashed border-purple-300 dark:border-purple-800 rounded-lg bg-purple-50 dark:bg-purple-900/10">
-                    <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">Hard Skills</h3>
-                    <EditableSuggestion
-                        id="edited-skills"
-                        label="SUGGESTED (EDITABLE)"
-                        original={originalSkillsText}
-                        suggested={editedSkills}
-                        onChange={(e) => setEditedSkills(e.target.value)}
-                        isChanged={skillsChanged}
-                        rows={4}
-                    />
-                    <p className="text-xs text-gray-500 mt-2">Separate skills with a comma.</p>
-                </div>
+                <SectionWrapper title="Summary" icon={<FileText size={20}/>}>
+                    <EditableSuggestion id="summary" label="SUGGESTED (EDITABLE)" original={baseResume.summary || ''} suggested={adaptedResume.summary || ''}
+                                        onChange={(e) => handleSimpleChange('summary', e.target.value)}
+                                        isChanged={tailoringApplied && adaptedResume.summary !== baseResume.summary} rows={5} />
+                </SectionWrapper>
 
-                <div className="p-4 border-2 border-dashed border-purple-300 dark:border-purple-800 rounded-lg bg-purple-50 dark:bg-purple-900/10">
-                    <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">Professional Experience</h3>
-                    <div className="space-y-4">
-                        {editedExperience.map((exp, expIndex) => (
-                            <div key={expIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm">
-                                <h4 className="font-bold text-gray-900 dark:text-gray-100">{exp.title}</h4>
-                                <ul className="mt-2 space-y-3">
-                                    {(exp.details || []).map((detail, detailIndex) => (
-                                        <li key={detailIndex}>
-                                            <EditableSuggestion
-                                                id={`detail-${expIndex}-${detailIndex}`}
-                                                label="SUGGESTED (EDITABLE)"
-                                                original={resume.professional_experience[expIndex]?.details?.[detailIndex] || ''}
-                                                suggested={detail}
-                                                onChange={(e) => handleExperienceChange(expIndex, detailIndex, e.target.value)}
-                                                isChanged={tailoringApplied && detail !== resume.professional_experience[expIndex]?.details?.[detailIndex]}
-                                            />
-                                        </li>
-                                    ))}
-                                </ul>
+                <SectionWrapper title="Hard Skills" icon={<Zap size={20}/>} onAdd={() => addListItem('hard_skills', '')}>
+                    {(adaptedResume.hard_skills || []).map((skill, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                            <input type="text" value={skill} onChange={(e) => handleListChange('hard_skills', index, e.target.value)} className={inputClasses} placeholder="Enter skill" />
+                            <button onClick={() => removeListItem('hard_skills', index)} className="text-red-500 hover:text-red-700 p-1"><Trash2 size={16}/></button>
+                        </div>
+                    ))}
+                </SectionWrapper>
+
+                <SectionWrapper title="Professional Experience" icon={<Briefcase size={20}/>} onAdd={() => addListItem('professional_experience', { title: '', company: '', dates: '', details: [''] })}>
+                    {(adaptedResume.professional_experience || []).map((exp, expIndex) => (
+                        <div key={expIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700">
+                            <button onClick={() => removeListItem('professional_experience', expIndex)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2 size={18}/></button>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                                <input type="text" value={exp.title} onChange={e => handleNestedChange('professional_experience', expIndex, 'title', e.target.value)} placeholder="Job Title" className={inputClasses} />
+                                <input type="text" value={exp.company} onChange={e => handleNestedChange('professional_experience', expIndex, 'company', e.target.value)} placeholder="Company" className={inputClasses} />
+                                <input type="text" value={exp.dates} onChange={e => handleNestedChange('professional_experience', expIndex, 'dates', e.target.value)} placeholder="Dates (e.g., 2021-Present)" className={inputClasses} />
                             </div>
-                        ))}
-                    </div>
-                </div>
+                            <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Key Points:</label>
+                            <div className="space-y-2">
+                                {(exp.details || []).map((detail, detailIndex) => (
+                                    <div key={detailIndex} className="flex items-center gap-2">
+                                        <textarea value={detail} onChange={e => handleDetailChange('professional_experience', expIndex, detailIndex, e.target.value)} className={`${inputClasses} text-sm`} rows="2" placeholder="Accomplishment or responsibility..."/>
+                                        <button onClick={() => removeDetailItem('professional_experience', expIndex, detailIndex)} className="text-red-500 hover:text-red-700 p-1 self-center"><Trash2 size={16}/></button>
+                                    </div>
+                                ))}
+                                <button onClick={() => addDetailItem('professional_experience', expIndex)} className={buttonClasses}><PlusCircle size={14}/> Add Key Point</button>
+                            </div>
+                        </div>
+                    ))}
+                </SectionWrapper>
+
+                <SectionWrapper title="Projects" icon={<Lightbulb size={20}/>} onAdd={() => addListItem('projects', { title: '', link: '', details: [''] })}>
+                    {(adaptedResume.projects || []).map((proj, projIndex) => (
+                        <div key={projIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700">
+                            <button onClick={() => removeListItem('projects', projIndex)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2 size={18}/></button>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                                <input type="text" value={proj.title} onChange={e => handleNestedChange('projects', projIndex, 'title', e.target.value)} placeholder="Project Title" className={inputClasses} />
+                                <input type="text" value={proj.link} onChange={e => handleNestedChange('projects', projIndex, 'link', e.target.value)} placeholder="Project URL" className={inputClasses} />
+                            </div>
+                            <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Description:</label>
+                            <div className="space-y-2">
+                                {(proj.details || []).map((detail, detailIndex) => (
+                                    <div key={detailIndex} className="flex items-center gap-2">
+                                        <textarea value={detail} onChange={e => handleDetailChange('projects', projIndex, detailIndex, e.target.value)} className={`${inputClasses} text-sm`} rows="2" placeholder="Feature or technology used..."/>
+                                        <button onClick={() => removeDetailItem('projects', projIndex, detailIndex)} className="text-red-500 hover:text-red-700 p-1 self-center"><Trash2 size={16}/></button>
+                                    </div>
+                                ))}
+                                <button onClick={() => addDetailItem('projects', projIndex)} className={buttonClasses}><PlusCircle size={14}/> Add Detail</button>
+                            </div>
+                        </div>
+                    ))}
+                </SectionWrapper>
+
+                <SectionWrapper title="Education" icon={<GraduationCap size={20}/>} onAdd={() => addListItem('education', { degree: '', school: '', dates: '' })}>
+                    {(adaptedResume.education || []).map((edu, eduIndex) => (
+                        <div key={eduIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700">
+                            <button onClick={() => removeListItem('education', eduIndex)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2 size={18}/></button>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <input type="text" value={edu.degree} onChange={e => handleNestedChange('education', eduIndex, 'degree', e.target.value)} placeholder="Degree/Certificate" className={inputClasses} />
+                                <input type="text" value={edu.school} onChange={e => handleNestedChange('education', eduIndex, 'school', e.target.value)} placeholder="School/Institution" className={inputClasses} />
+                                <input type="text" value={edu.dates} onChange={e => handleNestedChange('education', eduIndex, 'dates', e.target.value)} placeholder="Dates" className={inputClasses} />
+                            </div>
+                        </div>
+                    ))}
+                </SectionWrapper>
             </div>
 
-            <footer className="mt-6 pt-6 border-t dark:border-gray-700 flex justify-end gap-4">
-                <button
-                    onClick={handleTailorResume}
-                    disabled={isTailoring}
-                    className="flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-all shadow-lg disabled:bg-gray-500 disabled:cursor-wait w-48"
-                >
+            <footer className="mt-8 pt-6 border-t dark:border-gray-700 flex justify-end gap-4">
+                <button onClick={handleTailorResume} disabled={isTailoring} className="flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-all shadow-lg disabled:bg-gray-500 disabled:cursor-wait w-48">
                     {isTailoring ? <Spinner/> : <Wand2 size={20}/>}
                     <span>{isTailoring ? 'Tailoring...' : 'Tailor with AI'}</span>
                 </button>
-                <button
-                    onClick={handleAdapt}
-                    className="flex items-center gap-2 px-8 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-all shadow-lg"
-                >
-                    <Save size={20}/> Save Changes
+                <button onClick={handleSaveChanges} className="flex items-center gap-2 px-8 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-all shadow-lg">
+                    <Save size={20}/> Save Adapted Resume
                 </button>
             </footer>
         </div>
     );
 };
 
-const JobDetailView = ({job, resume, profile, onMarkAsApplied, onMarkAsDisabled}) => {
+const JobDetailView = ({job, resume, allResumes, onSelectResume, profile, onMarkAsApplied, onMarkAsDisabled}) => {
     if (!job || !resume) {
         return <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400"><p>Select a job
             to see the details</p></div>;
@@ -450,7 +509,7 @@ const JobDetailView = ({job, resume, profile, onMarkAsApplied, onMarkAsDisabled}
                     </div>
                 </div>
 
-                <AdaptJobSection resume={resume} job={job}/>
+                <AdaptJobSection baseResume={resume} job={job} allResumes={allResumes} onSelectResume={onSelectResume} />
             </div>
         </div>
     );
@@ -511,7 +570,10 @@ const Match = () => {
                 const [resumesData, jobsData] = await Promise.all([fetchResumes(), fetchAllJobs()]);
                 setResumes(resumesData);
                 setJobs(jobsData);
-                if (resumesData.length > 0) handleSelectResume(resumesData[0].id);
+                if (resumesData.length > 0) {
+                    // Automatically select the first resume
+                    handleSelectResume(resumesData[0].id);
+                }
             } catch (error) {
                 setErrorMessage(error.message || 'Could not load initial data.');
                 setStatus('error');
@@ -529,22 +591,23 @@ const Match = () => {
     }, [jobs]);
 
     const handleSelectResume = useCallback(async (id) => {
-        setSelectedResumeId(id);
-        if (!id) {
+        const newId = (typeof id === 'string' && id.includes('.')) ? parseFloat(id) : parseInt(id, 10);
+        setSelectedResumeId(newId);
+        if (!newId) {
             setSelectedResume(null);
-            setMatchedJobs([]);
-            setSelectedJob(null);
             setStatus('idle');
             return;
         }
         setStatus('loading');
         setErrorMessage('');
         try {
-            setSelectedResume(await fetchResumeById(id));
+            const resume = await fetchResumeById(newId);
+            setSelectedResume(resume);
             setStatus('idle');
         } catch (error) {
             setErrorMessage(error.message || `Failed to load resume.`);
             setStatus('error');
+            setSelectedResume(null); // Clear resume on error
         }
     }, []);
 
@@ -669,7 +732,7 @@ const Match = () => {
                     </div>
                 </aside>
                 <main className="flex-grow bg-white dark:bg-gray-800/50">
-                    <JobDetailView job={selectedJob} resume={selectedResume} profile={selectedProfile} onMarkAsApplied={handleMarkAsApplied} onMarkAsDisabled={handleMarkAsDisabled} />
+                    <JobDetailView job={selectedJob} resume={selectedResume} allResumes={resumes} onSelectResume={handleSelectResume} profile={selectedProfile} onMarkAsApplied={handleMarkAsApplied} onMarkAsDisabled={handleMarkAsDisabled} />
                 </main>
             </div>
         </div>
