@@ -49,7 +49,7 @@ const DynamicInputSection = ({ title, items, setItems }) => {
     return (
         <div>
             <label className={`${styleguide.label} mb-2`}>{title}</label>
-            {items.map((item, index) => (
+            {[...items].sort((a, b) => a.localeCompare(b)).map((item, index) => (
                 <div key={index} className="flex items-center mb-2">
                     <input type="text" value={item} onChange={(e) => handleItemChange(index, e.target.value)} className={inputClasses} placeholder={`Enter ${getLabelSuffix().toLowerCase()}`} />
                     <button type="button" onClick={() => handleRemoveItem(index)} className={styleguide.iconButton.remove} disabled={items.length <= 1}><MinusIcon /></button>

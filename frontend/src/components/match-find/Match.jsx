@@ -27,7 +27,7 @@ import {
     fetchResumes, findBestMatches,
     getColorFromScore, getSkillsArray, markJobAsApplied,
 } from "./MatchLogic.jsx";
-import {tailorResume} from "../../services/ResumeService.js";
+import {fetchProfiles, tailorResume} from "../../services/ResumeService.js";
 import csharp from "../../assets/skills_icons/csharp.svg"
 import python from "../../assets/skills_icons/python.svg"
 import js from "../../assets/skills_icons/javascript.svg";
@@ -331,7 +331,7 @@ const AdaptJobSection = ({resume, job}) => {
 };
 
 
-const JobDetailView = ({job, resume, onMarkAsApplied}) => {
+const JobDetailView = ({job, resume, profile, onMarkAsApplied}) => {
     const [editedSkills, setEditedSkills] = useState('');
     const [editedExperience, setEditedExperience] = useState([]);
 
@@ -473,20 +473,22 @@ const JobDetailView = ({job, resume, onMarkAsApplied}) => {
                     <h3 className="text-xl font-semibold mb-4 border-b pb-2 dark:border-gray-700 flex items-center">
                         <ChevronRight size={20} className="mr-2"/> My Keywords
                     </h3>
-                    {resume?.hard_skills?.length > 0 ? (
+                    {profile?.positive_keywords?.length > 0 ? (
                         <div className="flex flex-wrap gap-2">
-                            {sortedHardSkills.map((keyword, index) => (
-                                <span
-                                    key={index}
-                                    className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
-                                >
-          <CheckCircle size={14}/> {keyword}
-        </span>
-                            ))}
+                            {[...profile.positive_keywords]
+                                .sort((a, b) => a.localeCompare(b))
+                                .map((keyword, index) => (
+                                    <span
+                                        key={index}
+                                        className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+                                    >
+                    <CheckCircle size={14}/> {keyword}
+                </span>
+                                ))}
                         </div>
                     ) : (
                         <div className="flex items-center text-gray-500 dark:text-gray-400 italic">
-                            <XCircle size={16} className="mr-2"/> <span>No keywords found in your resume</span>
+                            <XCircle size={16} className="mr-2"/> <span>No keywords found in your profile</span>
                         </div>
                     )}
                 </div>
@@ -535,6 +537,22 @@ const Match = () => {
     const [errorMessage, setErrorMessage] = useState('');
     const [jobMetrics, setJobMetrics] = useState({total: 0, complete: 0, incomplete: 0});
     const [selectedLanguageFilter, setSelectedLanguageFilter] = useState('');
+    const [selectedProfile, setSelectedProfile] = useState(null);
+
+    useEffect(() => {
+        const loadProfile = async () => {
+            try {
+                const profiles = await fetchProfiles();
+                if (profiles.length > 0) {
+                    setSelectedProfile(profiles[0]); // or find based on ID if needed
+                }
+            } catch (error) {
+                console.error('Failed to fetch profile:', error);
+            }
+        };
+
+        loadProfile();
+    }, []);
 
     const forbiddenRegexes = forbiddenLanguages.map(pattern =>
         new RegExp('^' + pattern
@@ -737,6 +755,7 @@ const Match = () => {
                     <JobDetailView
                         job={selectedJob}
                         resume={selectedResume}
+                        profile={selectedProfile}
                         onMarkAsApplied={handleMarkAsApplied}
                     />
                 </main>
