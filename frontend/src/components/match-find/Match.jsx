@@ -200,7 +200,21 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
 
     useEffect(() => {
         if (baseResume) {
-            setAdaptedResume(JSON.parse(JSON.stringify(baseResume)));
+            const mappedResume = JSON.parse(JSON.stringify(baseResume));
+
+            // FIX: Map 'description' from fetched data to 'details' used internally in this component
+            if (mappedResume.professional_experience) {
+                mappedResume.professional_experience.forEach(exp => {
+                    exp.details = exp.description || [];
+                });
+            }
+            if (mappedResume.projects) {
+                mappedResume.projects.forEach(proj => {
+                    proj.details = proj.description || [];
+                });
+            }
+
+            setAdaptedResume(mappedResume);
             setTailoringApplied(false);
         } else {
             setAdaptedResume(null);
@@ -225,12 +239,13 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
         setTailoringApplied(false);
 
         let resume_markdown = `# ${baseResume.name}\n\n## Summary\n${baseResume.summary || ''}\n\n`;
-        if (baseResume.hard_skills?.length) resume_markdown += `## Hard Skills\n${baseResume.hard_skills.join(', ')}\n\n`;
+        // FIX: Removed Hard Skills from AI context as requested
         if (baseResume.professional_experience?.length) {
             resume_markdown += '## Professional Experience\n';
+            // Note: We use `description` from the original resume data for the AI context
             baseResume.professional_experience.forEach(exp => {
                 resume_markdown += `### ${exp.title} @ ${exp.company} (${exp.dates})\n`;
-                (exp.details || []).forEach(detail => { resume_markdown += `- ${detail}\n`; });
+                (exp.description || []).forEach(detail => { resume_markdown += `- ${detail}\n`; });
                 resume_markdown += '\n';
             });
         }
@@ -238,7 +253,7 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
             resume_markdown += '## Projects\n';
             baseResume.projects.forEach(proj => {
                 resume_markdown += `### ${proj.title}\n`;
-                (proj.details || []).forEach(detail => { resume_markdown += `- ${detail}\n`; });
+                (proj.description || []).forEach(detail => { resume_markdown += `- ${detail}\n`; });
                 resume_markdown += '\n';
             });
         }
@@ -268,6 +283,8 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
     };
 
     const handleSaveChanges = () => {
+        // Here you would add logic to save the `adaptedResume` object,
+        // potentially mapping `details` back to `description` before saving.
         console.log("--- ADAPTED RESUME DATA ---", adaptedResume);
         alert("Adapted resume data saved to console. A new resume could be created from this data.");
     };
@@ -328,7 +345,7 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
                                 {(exp.details || []).map((detail, detailIndex) => (
                                     <div key={detailIndex} className="flex items-center gap-2">
                                         <textarea value={detail} onChange={e => handleDetailChange('professional_experience', expIndex, detailIndex, e.target.value)} className={`${inputClasses} text-sm`} rows="2" placeholder="Accomplishment or responsibility..."/>
-                                        <button onClick={() => removeDetailItem('professional_experience', expIndex, detailIndex)} className="text-red-500 hover:text-red-700 p-1 self-center"><Trash2 size={16}/></button>
+                                        <button onClick={() => removeDetailItem('professional_experience', expIndex, detailIndex)} className="text-red-500 hover:text-red-700 p-1 self-center" disabled={(exp.details || []).length <= 1}><Trash2 size={16}/></button>
                                     </div>
                                 ))}
                                 <button onClick={() => addDetailItem('professional_experience', expIndex)} className={buttonClasses}><PlusCircle size={14}/> Add Key Point</button>
@@ -350,7 +367,7 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
                                 {(proj.details || []).map((detail, detailIndex) => (
                                     <div key={detailIndex} className="flex items-center gap-2">
                                         <textarea value={detail} onChange={e => handleDetailChange('projects', projIndex, detailIndex, e.target.value)} className={`${inputClasses} text-sm`} rows="2" placeholder="Feature or technology used..."/>
-                                        <button onClick={() => removeDetailItem('projects', projIndex, detailIndex)} className="text-red-500 hover:text-red-700 p-1 self-center"><Trash2 size={16}/></button>
+                                        <button onClick={() => removeDetailItem('projects', projIndex, detailIndex)} className="text-red-500 hover:text-red-700 p-1 self-center" disabled={(proj.details || []).length <= 1}><Trash2 size={16}/></button>
                                     </div>
                                 ))}
                                 <button onClick={() => addDetailItem('projects', projIndex)} className={buttonClasses}><PlusCircle size={14}/> Add Detail</button>
