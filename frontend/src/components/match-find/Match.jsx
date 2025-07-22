@@ -86,8 +86,15 @@ const Spinner = ({ className = 'h-5 w-5 text-white' }) => (
     </svg>
 );
 
-const EditableSuggestion = ({ original, suggested, onChange, isChanged, id, label, rows = 3 }) => {
-    const commonTextareaClasses = "w-full p-2 rounded-md bg-white dark:bg-gray-700 focus:ring-2 text-sm";
+const EditableSuggestion = ({ original, suggested, onChange, isChanged, id, label, rows = 3, highlight = false }) => {
+    const baseTextarea = "w-full p-2 rounded-md focus:ring-2 text-sm";
+    const borderHighlight = highlight
+        ? "border-yellow-400 dark:border-yellow-300"
+        : "border-gray-300 dark:border-gray-600";
+    const bgHighlight = highlight
+        ? "bg-yellow-100 dark:bg-yellow-700/30"
+        : "bg-white dark:bg-gray-700";
+    const fullHighlight = `${borderHighlight} ${bgHighlight}`;
 
     if (!isChanged) {
         return (
@@ -95,7 +102,7 @@ const EditableSuggestion = ({ original, suggested, onChange, isChanged, id, labe
                 id={id}
                 value={suggested}
                 onChange={onChange}
-                className={`${commonTextareaClasses} border border-gray-300 dark:border-gray-600 focus:ring-purple-500`}
+                className={`${baseTextarea} ${fullHighlight} focus:ring-yellow-400 dark:focus:ring-yellow-300`}
                 rows={rows}
             />
         );
@@ -115,7 +122,7 @@ const EditableSuggestion = ({ original, suggested, onChange, isChanged, id, labe
                     id={id}
                     value={suggested}
                     onChange={onChange}
-                    className={`${commonTextareaClasses} border border-purple-400 focus:ring-purple-500`}
+                    className={`${baseTextarea} ${fullHighlight} focus:ring-yellow-400 dark:focus:ring-yellow-300`}
                     rows={rows}
                 />
             </div>
@@ -317,9 +324,16 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
 
             <div className="space-y-6">
                 <SectionWrapper title="Summary" icon={<FileText size={20}/>}>
-                    <EditableSuggestion id="summary" label="SUGGESTED (EDITABLE)" original={baseResume.summary || ''} suggested={adaptedResume.summary || ''}
-                                        onChange={(e) => handleSimpleChange('summary', e.target.value)}
-                                        isChanged={tailoringApplied && adaptedResume.summary !== baseResume.summary} rows={5} />
+                    <EditableSuggestion
+                        id="summary"
+                        label="SUGGESTED (EDITABLE)"
+                        original={baseResume.summary || ''}
+                        suggested={adaptedResume.summary || ''}
+                        onChange={(e) => handleSimpleChange('summary', e.target.value)}
+                        isChanged={tailoringApplied && adaptedResume.summary !== baseResume.summary}
+                        highlight={true}
+                        rows={5}
+                    />
                 </SectionWrapper>
 
                 <SectionWrapper title="Hard Skills" icon={<Zap size={20}/>} onAdd={() => addListItem('hard_skills', '')}>
@@ -344,7 +358,13 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
                             <div className="space-y-2">
                                 {(exp.details || []).map((detail, detailIndex) => (
                                     <div key={detailIndex} className="flex items-center gap-2">
-                                        <textarea value={detail} onChange={e => handleDetailChange('professional_experience', expIndex, detailIndex, e.target.value)} className={`${inputClasses} text-sm`} rows="2" placeholder="Accomplishment or responsibility..."/>
+                                        <textarea
+                                            value={detail}
+                                            onChange={e => handleDetailChange('professional_experience', expIndex, detailIndex, e.target.value)}
+                                            className={`${inputClasses} text-sm border-yellow-300 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/10`}
+                                            rows="2"
+                                            placeholder="Accomplishment or responsibility..."
+                                        />
                                         <button onClick={() => removeDetailItem('professional_experience', expIndex, detailIndex)} className="text-red-500 hover:text-red-700 p-1 self-center" disabled={(exp.details || []).length <= 1}><Trash2 size={16}/></button>
                                     </div>
                                 ))}
@@ -362,11 +382,17 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
                                 <input type="text" value={proj.title} onChange={e => handleNestedChange('projects', projIndex, 'title', e.target.value)} placeholder="Project Title" className={inputClasses} />
                                 <input type="text" value={proj.link} onChange={e => handleNestedChange('projects', projIndex, 'link', e.target.value)} placeholder="Project URL" className={inputClasses} />
                             </div>
-                            <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Description:</label>
+                            <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Key points:</label>
                             <div className="space-y-2">
                                 {(proj.details || []).map((detail, detailIndex) => (
                                     <div key={detailIndex} className="flex items-center gap-2">
-                                        <textarea value={detail} onChange={e => handleDetailChange('projects', projIndex, detailIndex, e.target.value)} className={`${inputClasses} text-sm`} rows="2" placeholder="Feature or technology used..."/>
+                                        <textarea
+                                            value={detail}
+                                            onChange={e => handleDetailChange('projects', projIndex, detailIndex, e.target.value)}
+                                            className={`${inputClasses} text-sm border-yellow-300 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/10`}
+                                            rows="2"
+                                            placeholder="Feature or technology used..."
+                                        />
                                         <button onClick={() => removeDetailItem('projects', projIndex, detailIndex)} className="text-red-500 hover:text-red-700 p-1 self-center" disabled={(proj.details || []).length <= 1}><Trash2 size={16}/></button>
                                     </div>
                                 ))}
