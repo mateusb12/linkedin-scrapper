@@ -19,7 +19,8 @@ import {
     Wand2,
     Edit,
     Save,
-    ArrowLeft
+    ArrowLeft,
+    Zap
 } from 'lucide-react';
 import {
     fetchAllJobs,
@@ -89,8 +90,11 @@ const MatchedJobItem = ({job, onSelect, isSelected}) => {
             <div className="flex justify-between items-start">
                 <div>
                     <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                        {isApplied && <CheckCircle size={14} className="text-green-500 flex-shrink-0"/>}
+                        {isApplied && <CheckCircle size={14} className="text-green-500 flex-shrink-0" />}
                         <span>{job.title}</span>
+                        {job.easy_apply && (
+                            <Zap size={14} className="text-yellow-500 flex-shrink-0" title="Easy Apply" />
+                        )}
                     </h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{job.company?.name}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{job.location}</p>
