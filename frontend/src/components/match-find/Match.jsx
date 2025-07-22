@@ -636,8 +636,9 @@ const Match = () => {
     }, []);
 
     const handleMatch = () => {
-        if (!selectedResume || !selectedResume.hard_skills) {
-            setErrorMessage('Please select a resume with skills to start matching.');
+        // Check for profile keywords instead of resume skills
+        if (!selectedProfile || !selectedProfile.positive_keywords || selectedProfile.positive_keywords.length === 0) {
+            setErrorMessage('Please ensure your profile has positive keywords to start matching.');
             setStatus('error');
             return;
         }
@@ -655,7 +656,8 @@ const Match = () => {
                 return jobKeywords.every(kw => !normalizedNegatives.has(kw));
             });
 
-            const sortedJobs = findBestMatches(filteredJobs, selectedResume);
+            // Pass the selectedProfile to the matching function
+            const sortedJobs = findBestMatches(filteredJobs, selectedProfile);
             setMatchedJobs(sortedJobs);
             setSelectedJob(sortedJobs.length > 0 ? sortedJobs[0] : null);
             setStatus('success');
