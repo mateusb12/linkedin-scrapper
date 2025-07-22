@@ -108,3 +108,24 @@ def delete_profile(profile_id):
         return jsonify({"error": str(e)}), 500
     finally:
         session.close()
+
+
+@profile_bp.route("/search", methods=["GET"])
+def search_profiles_by_name():
+    session = get_db_session()
+    try:
+        name_query = request.args.get("name")
+        if not name_query:
+            return jsonify({"error": "Missing 'name' query parameter"}), 400
+
+        # Case-insensitive search using ILIKE (if using PostgreSQL) or LIKE for others
+        profiles = session.query(Profile).filter(Profile.name.ilike(f"%{name_query}%")).all()
+
+        if not profiles:
+            return jsonify({"message": "No profiles found matching the name"}), 404
+
+        return jsonify([p.to_dict() for p in profiles]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()

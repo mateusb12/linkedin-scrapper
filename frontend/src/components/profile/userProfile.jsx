@@ -323,13 +323,13 @@ const UserProfile = () => {
 
     // --- SAVE HANDLERS (using service calls) ---
     const handleSaveProfile = async () => {
-        if (!profile || !profile.id) {
-            alert('Profile data is incomplete or missing an ID.');
+        if (!profile || !profile.name) {
+            alert('Profile must have a name to be saved.');
             return;
         }
         try {
-            const updatedProfile = await ResumeService.updateProfile(profile.id, profile);
-            setProfile(updatedProfile);
+            const savedProfile = await ResumeService.saveProfile(profile);
+            setProfile(savedProfile); // Update state with saved data (especially to get new ID on creation)
             alert('Profile saved successfully! ✅');
         } catch (error) {
             console.error('Failed to save profile:', error);
