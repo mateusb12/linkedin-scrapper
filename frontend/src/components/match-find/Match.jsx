@@ -424,12 +424,22 @@ const JobDetailView = ({job, resume, profile, onMarkAsApplied}) => {
                 <a href={job.job_url} target="_blank" rel="noopener noreferrer"
                    className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition-all">Apply
                     Now</a>
-                {isApplied ? <div
-                        className="flex items-center gap-2 px-6 py-2 text-green-700 dark:text-green-400 font-semibold rounded-lg bg-green-100 dark:bg-green-900/50">
-                        <CheckCircle size={20}/> Applied on {formatDate(job.applied_on)}</div> :
-                    <button onClick={() => onMarkAsApplied(job.urn)}
-                            className="flex items-center gap-2 px-6 py-2 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 font-semibold rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-all">
-                        <ListChecks size={20}/> Mark as Applied</button>}
+                {isApplied ? (
+                    <div className="flex items-center gap-2 px-6 py-2 text-green-700 dark:text-green-400 font-semibold rounded-lg bg-green-100 dark:bg-green-900/50">
+                        <CheckCircle size={20}/> Applied on {formatDate(job.applied_on)}
+                    </div>
+                ) : (
+                    <div className="flex gap-2">
+                        <button onClick={() => onMarkAsApplied(job.urn)}
+                                className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 font-semibold rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-all">
+                            <ListChecks size={20}/> Mark as Applied
+                        </button>
+                        <button onClick={() => onMarkAsDisabled(job.urn)}
+                                className="flex items-center gap-2 px-4 py-2 bg-red-200 text-red-900 dark:bg-red-900 dark:text-red-300 font-semibold rounded-lg hover:bg-red-300 dark:hover:bg-red-800 transition-all">
+                            <XCircle size={20}/> Mark as Disabled
+                        </button>
+                    </div>
+                )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 text-sm">
                 {job.job_type && (

@@ -111,7 +111,8 @@ def insert_extra_fields():
                     # import sys; sys.exit(1)
 
                 if "error" in expansion or not isinstance(expansion, dict):
-                    print(f"⚠️ Could not expand job {job.urn}. Reason: {expansion.get('error', 'Invalid response format')}")
+                    print(
+                        f"⚠️ Could not expand job {job.urn}. Reason: {expansion.get('error', 'Invalid response format')}")
                     last_urn = job.urn
                     processed += 1
                     progress(processed, urn=job.urn)
@@ -204,6 +205,33 @@ def update_job(urn):
     except Exception as e:
         session.rollback()
         print(f"❌ Failed to update job {urn}: {e}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
+
+
+@job_data_bp.route("/<string:urn>", methods=["POST"])
+def mark_job_as_disabled(urn):
+    """
+    Marks a job as disabled by setting the 'disabled' field to True.
+    """
+    session = get_db_session()
+    try:
+        job = session.query(Job).filter_by(urn=urn).first()
+        if not job:
+            return jsonify({"error": f"Job with URN '{urn}' not found"}), 404
+
+        job.disabled = True
+        session.commit()
+        return jsonify({
+            "message": f"Job {urn} marked as disabled",
+            "job": job.to_dict()
+        }), 200
+
+    except Exception as e:
+        session.rollback()
+        print(f"❌ Failed to disable job {urn}: {e}")
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
     finally:
