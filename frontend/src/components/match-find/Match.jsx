@@ -647,7 +647,16 @@ const Match = () => {
         setMatchedJobs([]);
         setSelectedJob(null);
         setTimeout(() => {
-            const sortedJobs = findBestMatches(jobs, selectedResume);
+            const normalizedNegatives = new Set(
+                (selectedProfile?.negative_keywords || []).map(normalizeKeyword)
+            );
+
+            const filteredJobs = jobs.filter(job => {
+                const jobKeywords = getSkillsArray(job.keywords).map(normalizeKeyword);
+                return jobKeywords.every(kw => !normalizedNegatives.has(kw));
+            });
+
+            const sortedJobs = findBestMatches(filteredJobs, selectedResume);
             setMatchedJobs(sortedJobs);
             setSelectedJob(sortedJobs.length > 0 ? sortedJobs[0] : null);
             setStatus('success');
@@ -743,6 +752,14 @@ const Match = () => {
                                     </select>
                                 </div>
                             </div>
+                            {matchedJobs.length > 0 && (
+                                <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 text-center">
+                                    Showing <strong>{matchedJobs.filter(job =>
+                                    !selectedLanguageFilter ||
+                                    (job.programming_languages || []).map(l => l.toLowerCase()).includes(selectedLanguageFilter)
+                                ).length}</strong> of <strong>{jobMetrics.total}</strong> jobs
+                                </p>
+                            )}
                         </div>
                         {errorMessage &&
                             <p className="text-sm text-red-500 dark:text-red-400 text-center p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">{errorMessage}</p>}
