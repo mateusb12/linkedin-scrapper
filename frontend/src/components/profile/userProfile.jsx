@@ -142,7 +142,25 @@ const ResumeSection = ({
                        }) => {
     if (!resumes || resumes.length === 0) return (
         <div className={`${palette.bg.card} p-6 rounded-lg shadow-lg mt-8 text-center ${palette.text.secondary}`}>
-            No resumes loaded or found.
+            <p className="mb-4">No resumes loaded or found.</p>
+            <button
+                className={styleguide.button.primary}
+                onClick={() => {
+                    const newResume = {
+                        id: Date.now(),
+                        name: 'Untitled Resume',
+                        summary: '',
+                        hard_skills: [],
+                        professional_experience: [],
+                        education: [],
+                        projects: [],
+                    };
+                    setResumes([newResume]);
+                    setSelectedResumeId(newResume.id);
+                }}
+            >
+                + Create New Resume
+            </button>
         </div>
     );
 
@@ -338,14 +356,36 @@ const UserProfile = () => {
     };
 
     const handleSaveResume = async () => {
-        if (!selectedResume || !selectedResume.id) {
-            alert('No resume selected or data is incomplete.');
+        if (!selectedResume || !selectedResume.name) {
+            alert('Resume must have a name to be saved.');
             return;
         }
+
         try {
-            const updatedResume = await ResumeService.updateResume(selectedResume.id, selectedResume);
-            setResumes(resumes.map(r => r.id === updatedResume.id ? updatedResume : r));
-            alert(`Resume "${updatedResume.name}" saved successfully! ✅`);
+            // 1. Try to find an existing resume by name
+            let existingResume;
+            try {
+                existingResume = await ResumeService.searchResumeByName(selectedResume.name);
+            } catch (_) {
+                existingResume = null; // Treat 404 as not found
+            }
+
+            let savedResume;
+            if (existingResume && existingResume.id) {
+                // 2a. Resume exists → update it
+                savedResume = await ResumeService.updateResume(existingResume.id, {
+                    ...selectedResume,
+                    id: existingResume.id, // Ensure correct ID
+                });
+            } else {
+                // 2b. Resume not found → create it
+                savedResume = await ResumeService.createResume(selectedResume);
+            }
+
+            // 3. Update local state
+            setResumes(resumes.map(r => r.id === selectedResume.id ? savedResume : r));
+            alert(`Resume "${savedResume.name}" saved successfully! ✅`);
+
         } catch (error) {
             console.error('Failed to save resume:', error);
             alert(`Error saving resume: ${error.message} ❌`);

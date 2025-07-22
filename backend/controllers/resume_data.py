@@ -18,9 +18,12 @@ def create_resume():
 
         resume = Resume(
             name=name,
+            summary=data.get("summary"),
             hard_skills=data.get("hard_skills", []),
             professional_experience=data.get("professional_experience", []),
-            education=data.get("education", [])
+            education=data.get("education", []),
+            projects=data.get("projects", []),
+            profile_id=data.get("profile_id")
         )
 
         session.add(resume)
@@ -118,6 +121,29 @@ def delete_resume(resume_id):
 
     except Exception as e:
         session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        session.close()
+
+
+@resume_bp.route("/search", methods=["GET"])
+def get_resume_by_name():
+    session = get_db_session()
+    try:
+        name = request.args.get("name")
+        if not name:
+            return jsonify({"error": "Query parameter 'name' is required"}), 400
+
+        # Case-insensitive search
+        resume = session.query(Resume).filter(Resume.name.ilike(f"%{name}%")).first()
+
+        if not resume:
+            return jsonify({"error": "Resume not found"}), 404
+
+        return jsonify(resume.to_dict()), 200
+
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
     finally:

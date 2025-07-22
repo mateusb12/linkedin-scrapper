@@ -64,6 +64,11 @@ export const tailorResume = async (payload) => {
     return handleResponse(response, 'Failed to tailor resume');
 };
 
+export const searchResumeByName = async (name) => {
+    const response = await fetch(`${API_BASE}/jobs/search?name=${encodeURIComponent(name)}`);
+    return handleResponse(response, `Failed to search resume by name: ${name}`);
+};
+
 // ---------------- PROFILE FUNCTIONS ---------------- //
 
 export const fetchProfiles = async () => {
