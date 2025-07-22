@@ -44,33 +44,34 @@ import graphql from "../../assets/skills_icons/graphql.svg";
 import sql from "../../assets/skills_icons/sql.svg";
 import dotnet from "../../assets/skills_icons/dotnet.svg";
 import {forbiddenLanguages} from "../../data/ForbiddenLanguages.js";
+import {normalizeKeyword} from "../../utils/resumeUtils.js";
 // --- Service Mocks and Logic ---
 // In a real app, this would be in separate files (e.g., services/ResumeService.js, utils/matchLogic.js)
 
 // --- React Components ---
 
 const languageIcons = {
-    python: <img src={python} alt="Python" className="w-6 h-6" />,
-    javascript: <img src={js} alt="JavaScript" className="w-6 h-6" />,
-    typescript: <img src={ts} alt="Typescript" className="w-6 h-6" />,
-    golang: <img src={go} alt="Go" className="w-6 h-6" />,
-    rust: <img src={rust} alt="Rust" className="w-6 h-6" />,
-    java: <img src={java} alt="Java" className="w-6 h-6" />,
-    csharp: <img src={csharp} alt="C#" className="w-6 h-6" />,
-    "c#": <img src={csharp} alt="C#" className="w-6 h-6" />,
-    dotnet: <img src={dotnet} alt=".NET" className="w-6 h-6" />,
-    ".NET Framework": <img src={dotnet} alt=".NET Framework" className="w-6 h-6" />,
-    ".NET Core": <img src={dotnet} alt=".NET Framework" className="w-6 h-6" />,
-    ".NET": <img src={dotnet} alt=".NET" className="w-6 h-6" />,
-    ruby: <img src={ruby} alt="Ruby" className="w-6 h-6" />,
-    php: <img src={php} alt="PHP" className="w-6 h-6" />,
-    nodejs: <img src={nodejs} alt="Node.js" className="w-6 h-6" />,
-    node: <img src={nodejs} alt="Node.js" className="w-6 h-6" />,
-    "node.js": <img src={nodejs} alt="Node.js" className="w-6 h-6" />,
-    html: <img src={html} alt="HTML" className="w-6 h-6" />,
-    css: <img src={css} alt="CSS" className="w-6 h-6" />,
-    graphql: <img src={graphql} alt="GraphQL" className="w-6 h-6" />,
-    sql: <img src={sql} alt="SQL" className="w-6 h-6" />,
+    python: <img src={python} alt="Python" className="w-6 h-6"/>,
+    javascript: <img src={js} alt="JavaScript" className="w-6 h-6"/>,
+    typescript: <img src={ts} alt="Typescript" className="w-6 h-6"/>,
+    golang: <img src={go} alt="Go" className="w-6 h-6"/>,
+    rust: <img src={rust} alt="Rust" className="w-6 h-6"/>,
+    java: <img src={java} alt="Java" className="w-6 h-6"/>,
+    csharp: <img src={csharp} alt="C#" className="w-6 h-6"/>,
+    "c#": <img src={csharp} alt="C#" className="w-6 h-6"/>,
+    dotnet: <img src={dotnet} alt=".NET" className="w-6 h-6"/>,
+    ".NET Framework": <img src={dotnet} alt=".NET Framework" className="w-6 h-6"/>,
+    ".NET Core": <img src={dotnet} alt=".NET Framework" className="w-6 h-6"/>,
+    ".NET": <img src={dotnet} alt=".NET" className="w-6 h-6"/>,
+    ruby: <img src={ruby} alt="Ruby" className="w-6 h-6"/>,
+    php: <img src={php} alt="PHP" className="w-6 h-6"/>,
+    nodejs: <img src={nodejs} alt="Node.js" className="w-6 h-6"/>,
+    node: <img src={nodejs} alt="Node.js" className="w-6 h-6"/>,
+    "node.js": <img src={nodejs} alt="Node.js" className="w-6 h-6"/>,
+    html: <img src={html} alt="HTML" className="w-6 h-6"/>,
+    css: <img src={css} alt="CSS" className="w-6 h-6"/>,
+    graphql: <img src={graphql} alt="GraphQL" className="w-6 h-6"/>,
+    sql: <img src={sql} alt="SQL" className="w-6 h-6"/>,
 };
 
 
@@ -399,7 +400,8 @@ const JobDetailView = ({job, resume, profile, onMarkAsApplied}) => {
         )
         .sort((a, b) => a.localeCompare(b));
 
-    const resumeSkillsSet = new Set((resume?.hard_skills || []).map(s => s.toLowerCase()));
+    // MODIFICATION: Use profile keywords for matching instead of resume skills
+    const userSkillsSet = new Set((profile?.positive_keywords || []).map(normalizeKeyword));
 
     return (
         <div className="p-6 md:p-8 h-full overflow-y-auto">
@@ -440,7 +442,7 @@ const JobDetailView = ({job, resume, profile, onMarkAsApplied}) => {
                         <Code size={18} className="mr-3 text-violet-700 dark:text-violet-300 flex-shrink-0"/>
                         {job.programming_languages.map((lang, index) => {
                             const iconKey = lang.trim().toLowerCase();
-                            const icon = languageIcons[iconKey] || <Code className="w-6 h-6" />;
+                            const icon = languageIcons[iconKey] || <Code className="w-6 h-6"/>;
                             return (
                                 <span
                                     key={index}
@@ -497,12 +499,18 @@ const JobDetailView = ({job, resume, profile, onMarkAsApplied}) => {
                     <h3 className="text-xl font-semibold mb-4 border-b pb-2 dark:border-gray-700 flex items-center">
                         <ChevronRight size={20} className="mr-2"/> Required Keywords</h3>
                     {jobKeywords.length > 0 ?
-                        <div className="flex flex-wrap gap-2">{jobKeywords.map((keyword, index) => {
-                            const isMatched = resumeSkillsSet.has(keyword.toLowerCase());
-                            return <span key={index}
-                                         className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${isMatched ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'}`}>{isMatched ?
-                                <CheckCircle size={14}/> : <XCircle size={14}/>}{keyword}</span>;
-                        })}</div> : <Placeholder text="No keywords specified"/>}
+                        <div className="flex flex-wrap gap-2">
+                            {jobKeywords.map((keyword, index) => {
+                                // MODIFICATION: Check is now against userSkillsSet
+                                const isMatched = userSkillsSet.has(normalizeKeyword(keyword));
+                                return (
+                                    <span key={index}
+                                          className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${isMatched ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'}`}>
+            {isMatched ? <CheckCircle size={14}/> : <XCircle size={14}/>} {keyword}
+        </span>
+                                );
+                            })}
+                        </div> : <Placeholder text="No keywords specified"/>}
                 </div>
 
                 <DetailSection title="Responsibilities" icon={<ClipboardList size={20} className="mr-2"/>}
@@ -724,7 +732,7 @@ const Match = () => {
                                         value={selectedLanguageFilter}
                                         onChange={(e) => setSelectedLanguageFilter(e.target.value)}
                                         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-sky-500"
-                                        style={{ maxHeight: '200px', overflowY: 'auto' }}
+                                        style={{maxHeight: '200px', overflowY: 'auto'}}
                                     >
                                         <option value="">-- All Languages --</option>
                                         {allLanguages.map(lang => (
@@ -747,7 +755,8 @@ const Match = () => {
                                 (job.programming_languages || []).map(l => l.toLowerCase()).includes(selectedLanguageFilter)
                             )
                             .map(job => (
-                                <MatchedJobItem key={job.urn} job={job} onSelect={setSelectedJob} isSelected={selectedJob?.urn === job.urn} />
+                                <MatchedJobItem key={job.urn} job={job} onSelect={setSelectedJob}
+                                                isSelected={selectedJob?.urn === job.urn}/>
                             ))}
                     </div>
                 </div>

@@ -121,3 +121,5 @@ export const reconstructMarkdown = (data) => {
 
     return markdown;
 };
+
+export const normalizeKeyword = (str) => str.toLowerCase().trim();
