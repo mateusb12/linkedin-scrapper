@@ -51,6 +51,7 @@ import graphql from "../../assets/skills_icons/graphql.svg";
 import sql from "../../assets/skills_icons/sql.svg";
 import dotnet from "../../assets/skills_icons/dotnet.svg";
 import {forbiddenLanguages} from "../../data/ForbiddenLanguages.js";
+import {generateFullResumeMarkdown} from "../../utils/markdownUtils.js";
 
 // --- Reusable UI Components ---
 
@@ -197,10 +198,14 @@ const MatchedJobItem = ({job, onSelect, isSelected}) => {
     );
 };
 
-const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
+const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume, profile }) => {
     const [adaptedResume, setAdaptedResume] = useState(null);
     const [isTailoring, setIsTailoring] = useState(false);
     const [tailoringApplied, setTailoringApplied] = useState(false);
+    // New state for markdown preview
+    const [showFullPreview, setShowFullPreview] = useState(false);
+    const [fullResumeMarkdown, setFullResumeMarkdown] = useState('');
+
 
     const inputClasses = "w-full p-2 rounded-md bg-white dark:bg-gray-700 focus:ring-2 text-sm border border-gray-300 dark:border-gray-600 focus:ring-purple-500";
     const buttonClasses = "flex items-center gap-2 text-xs px-2.5 py-1.5 bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/50 dark:hover:bg-purple-900/80 text-purple-800 dark:text-purple-200 font-semibold rounded-md transition-all";
@@ -208,19 +213,12 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
     useEffect(() => {
         if (baseResume) {
             const mappedResume = JSON.parse(JSON.stringify(baseResume));
-
-            // FIX: Map 'description' from fetched data to 'details' used internally in this component
             if (mappedResume.professional_experience) {
-                mappedResume.professional_experience.forEach(exp => {
-                    exp.details = exp.description || [];
-                });
+                mappedResume.professional_experience.forEach(exp => { exp.details = exp.description || []; });
             }
             if (mappedResume.projects) {
-                mappedResume.projects.forEach(proj => {
-                    proj.details = proj.description || [];
-                });
+                mappedResume.projects.forEach(proj => { proj.details = proj.description || []; });
             }
-
             setAdaptedResume(mappedResume);
             setTailoringApplied(false);
         } else {
@@ -244,12 +242,9 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
         if (!baseResume || !job) return;
         setIsTailoring(true);
         setTailoringApplied(false);
-
         let resume_markdown = `# ${baseResume.name}\n\n## Summary\n${baseResume.summary || ''}\n\n`;
-        // FIX: Removed Hard Skills from AI context as requested
         if (baseResume.professional_experience?.length) {
             resume_markdown += '## Professional Experience\n';
-            // Note: We use `description` from the original resume data for the AI context
             baseResume.professional_experience.forEach(exp => {
                 resume_markdown += `### ${exp.title} @ ${exp.company} (${exp.dates})\n`;
                 (exp.description || []).forEach(detail => { resume_markdown += `- ${detail}\n`; });
@@ -264,17 +259,15 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
                 resume_markdown += '\n';
             });
         }
-
         let job_description = `# ${job.title} @ ${job.company?.name}\n\n## Description\n${job.description || 'Not provided.'}\n\n## Responsibilities\n`;
         (job.responsibilities || []).forEach(r => { job_description += `- ${r}\n`; });
         job_description += `\n## Qualifications\n`;
         (job.qualifications || []).forEach(q => { job_description += `- ${q}\n`; });
         if (job.keywords) job_description += `\n## Keywords\n${getSkillsArray(job.keywords).join(', ')}`;
-
         try {
             const tailoredData = await tailorResume({ resume_markdown, job_description });
             setAdaptedResume(prev => ({
-                ...JSON.parse(JSON.stringify(prev)), // Deep copy of current state
+                ...JSON.parse(JSON.stringify(prev)),
                 summary: tailoredData.summary !== undefined ? tailoredData.summary : prev.summary,
                 hard_skills: tailoredData.hard_skills !== undefined ? tailoredData.hard_skills : prev.hard_skills,
                 professional_experience: tailoredData.professional_experience !== undefined ? tailoredData.professional_experience : prev.professional_experience,
@@ -290,10 +283,16 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
     };
 
     const handleSaveChanges = () => {
-        // Here you would add logic to save the `adaptedResume` object,
-        // potentially mapping `details` back to `description` before saving.
         console.log("--- ADAPTED RESUME DATA ---", adaptedResume);
         alert("Adapted resume data saved to console. A new resume could be created from this data.");
+    };
+
+    const handleToggleFullPreview = () => {
+        if (!showFullPreview) {
+            const markdown = generateFullResumeMarkdown(profile, adaptedResume);
+            setFullResumeMarkdown(markdown);
+        }
+        setShowFullPreview(!showFullPreview);
     };
 
     if (!adaptedResume || !job) return null;
@@ -311,9 +310,7 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
     return (
         <div className="pt-8">
             <header className="pb-4 border-b-2 border-purple-400 dark:border-purple-600 mb-6 space-y-4">
-                <h2 className="text-2xl font-bold flex items-center gap-3">
-                    <Wand2 className="text-purple-500"/> Adapt Resume For This Job
-                </h2>
+                <h2 className="text-2xl font-bold flex items-center gap-3"><Wand2 className="text-purple-500"/> Adapt Resume For This Job</h2>
                 <div>
                     <label htmlFor="adapt-resume-select" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Select a base resume to adapt:</label>
                     <select id="adapt-resume-select" value={baseResume.id} onChange={(e) => onSelectResume(e.target.value)} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500">
@@ -323,108 +320,65 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume }) => {
             </header>
 
             <div className="space-y-6">
+                {/* Summary, Skills, Experience, Projects, Education sections remain unchanged... */}
                 <SectionWrapper title="Summary" icon={<FileText size={20}/>}>
-                    <EditableSuggestion
-                        id="summary"
-                        label="SUGGESTED (EDITABLE)"
-                        original={baseResume.summary || ''}
-                        suggested={adaptedResume.summary || ''}
-                        onChange={(e) => handleSimpleChange('summary', e.target.value)}
-                        isChanged={tailoringApplied && adaptedResume.summary !== baseResume.summary}
-                        highlight={true}
-                        rows={5}
-                    />
+                    <EditableSuggestion id="summary" label="SUGGESTED (EDITABLE)" original={baseResume.summary || ''} suggested={adaptedResume.summary || ''} onChange={(e) => handleSimpleChange('summary', e.target.value)} isChanged={tailoringApplied && adaptedResume.summary !== baseResume.summary} highlight={true} rows={5} />
                 </SectionWrapper>
-
                 <SectionWrapper title="Hard Skills" icon={<Zap size={20}/>} onAdd={() => addListItem('hard_skills', '')}>
-                    {(adaptedResume.hard_skills || []).map((skill, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                            <input type="text" value={skill} onChange={(e) => handleListChange('hard_skills', index, e.target.value)} className={inputClasses} placeholder="Enter skill" />
-                            <button onClick={() => removeListItem('hard_skills', index)} className="text-red-500 hover:text-red-700 p-1"><Trash2 size={16}/></button>
-                        </div>
-                    ))}
+                    {(adaptedResume.hard_skills || []).map((skill, index) => ( <div key={index} className="flex items-center gap-2"><input type="text" value={skill} onChange={(e) => handleListChange('hard_skills', index, e.target.value)} className={inputClasses} placeholder="Enter skill" /> <button onClick={() => removeListItem('hard_skills', index)} className="text-red-500 hover:text-red-700 p-1"><Trash2 size={16}/></button> </div> ))}
                 </SectionWrapper>
-
                 <SectionWrapper title="Professional Experience" icon={<Briefcase size={20}/>} onAdd={() => addListItem('professional_experience', { title: '', company: '', dates: '', details: [''] })}>
-                    {(adaptedResume.professional_experience || []).map((exp, expIndex) => (
-                        <div key={expIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700">
-                            <button onClick={() => removeListItem('professional_experience', expIndex)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2 size={18}/></button>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                                <input type="text" value={exp.title} onChange={e => handleNestedChange('professional_experience', expIndex, 'title', e.target.value)} placeholder="Job Title" className={inputClasses} />
-                                <input type="text" value={exp.company} onChange={e => handleNestedChange('professional_experience', expIndex, 'company', e.target.value)} placeholder="Company" className={inputClasses} />
-                                <input type="text" value={exp.dates} onChange={e => handleNestedChange('professional_experience', expIndex, 'dates', e.target.value)} placeholder="Dates (e.g., 2021-Present)" className={inputClasses} />
-                            </div>
-                            <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Key Points:</label>
-                            <div className="space-y-2">
-                                {(exp.details || []).map((detail, detailIndex) => (
-                                    <div key={detailIndex} className="flex items-center gap-2">
-                                        <textarea
-                                            value={detail}
-                                            onChange={e => handleDetailChange('professional_experience', expIndex, detailIndex, e.target.value)}
-                                            className={`${inputClasses} text-sm border-yellow-300 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/10`}
-                                            rows="2"
-                                            placeholder="Accomplishment or responsibility..."
-                                        />
-                                        <button onClick={() => removeDetailItem('professional_experience', expIndex, detailIndex)} className="text-red-500 hover:text-red-700 p-1 self-center" disabled={(exp.details || []).length <= 1}><Trash2 size={16}/></button>
-                                    </div>
-                                ))}
-                                <button onClick={() => addDetailItem('professional_experience', expIndex)} className={buttonClasses}><PlusCircle size={14}/> Add Key Point</button>
-                            </div>
-                        </div>
-                    ))}
+                    {(adaptedResume.professional_experience || []).map((exp, expIndex) => ( <div key={expIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700"> <button onClick={() => removeListItem('professional_experience', expIndex)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2 size={18}/></button> <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3"> <input type="text" value={exp.title} onChange={e => handleNestedChange('professional_experience', expIndex, 'title', e.target.value)} placeholder="Job Title" className={inputClasses} /> <input type="text" value={exp.company} onChange={e => handleNestedChange('professional_experience', expIndex, 'company', e.target.value)} placeholder="Company" className={inputClasses} /> <input type="text" value={exp.dates} onChange={e => handleNestedChange('professional_experience', expIndex, 'dates', e.target.value)} placeholder="Dates (e.g., 2021-Present)" className={inputClasses} /> </div> <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Key Points:</label> <div className="space-y-2"> {(exp.details || []).map((detail, detailIndex) => ( <div key={detailIndex} className="flex items-center gap-2"> <textarea value={detail} onChange={e => handleDetailChange('professional_experience', expIndex, detailIndex, e.target.value)} className={`${inputClasses} text-sm border-yellow-300 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/10`} rows="2" placeholder="Accomplishment or responsibility..." /> <button onClick={() => removeDetailItem('professional_experience', expIndex, detailIndex)} className="text-red-500 hover:text-red-700 p-1 self-center" disabled={(exp.details || []).length <= 1}><Trash2 size={16}/></button> </div> ))} <button onClick={() => addDetailItem('professional_experience', expIndex)} className={buttonClasses}><PlusCircle size={14}/> Add Key Point</button> </div> </div> ))}
                 </SectionWrapper>
-
                 <SectionWrapper title="Projects" icon={<Lightbulb size={20}/>} onAdd={() => addListItem('projects', { title: '', link: '', details: [''] })}>
-                    {(adaptedResume.projects || []).map((proj, projIndex) => (
-                        <div key={projIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700">
-                            <button onClick={() => removeListItem('projects', projIndex)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2 size={18}/></button>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                                <input type="text" value={proj.title} onChange={e => handleNestedChange('projects', projIndex, 'title', e.target.value)} placeholder="Project Title" className={inputClasses} />
-                                <input type="text" value={proj.link} onChange={e => handleNestedChange('projects', projIndex, 'link', e.target.value)} placeholder="Project URL" className={inputClasses} />
-                            </div>
-                            <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Key points:</label>
-                            <div className="space-y-2">
-                                {(proj.details || []).map((detail, detailIndex) => (
-                                    <div key={detailIndex} className="flex items-center gap-2">
-                                        <textarea
-                                            value={detail}
-                                            onChange={e => handleDetailChange('projects', projIndex, detailIndex, e.target.value)}
-                                            className={`${inputClasses} text-sm border-yellow-300 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/10`}
-                                            rows="2"
-                                            placeholder="Feature or technology used..."
-                                        />
-                                        <button onClick={() => removeDetailItem('projects', projIndex, detailIndex)} className="text-red-500 hover:text-red-700 p-1 self-center" disabled={(proj.details || []).length <= 1}><Trash2 size={16}/></button>
-                                    </div>
-                                ))}
-                                <button onClick={() => addDetailItem('projects', projIndex)} className={buttonClasses}><PlusCircle size={14}/> Add Detail</button>
-                            </div>
-                        </div>
-                    ))}
+                    {(adaptedResume.projects || []).map((proj, projIndex) => ( <div key={projIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700"> <button onClick={() => removeListItem('projects', projIndex)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2 size={18}/></button> <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3"> <input type="text" value={proj.title} onChange={e => handleNestedChange('projects', projIndex, 'title', e.target.value)} placeholder="Project Title" className={inputClasses} /> <input type="text" value={proj.link} onChange={e => handleNestedChange('projects', projIndex, 'link', e.target.value)} placeholder="Project URL" className={inputClasses} /> </div> <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Key points:</label> <div className="space-y-2"> {(proj.details || []).map((detail, detailIndex) => ( <div key={detailIndex} className="flex items-center gap-2"> <textarea value={detail} onChange={e => handleDetailChange('projects', projIndex, detailIndex, e.target.value)} className={`${inputClasses} text-sm border-yellow-300 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/10`} rows="2" placeholder="Feature or technology used..." /> <button onClick={() => removeDetailItem('projects', projIndex, detailIndex)} className="text-red-500 hover:text-red-700 p-1 self-center" disabled={(proj.details || []).length <= 1}><Trash2 size={16}/></button> </div> ))} <button onClick={() => addDetailItem('projects', projIndex)} className={buttonClasses}><PlusCircle size={14}/> Add Detail</button> </div> </div> ))}
                 </SectionWrapper>
-
                 <SectionWrapper title="Education" icon={<GraduationCap size={20}/>} onAdd={() => addListItem('education', { degree: '', school: '', dates: '' })}>
-                    {(adaptedResume.education || []).map((edu, eduIndex) => (
-                        <div key={eduIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700">
-                            <button onClick={() => removeListItem('education', eduIndex)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2 size={18}/></button>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                <input type="text" value={edu.degree} onChange={e => handleNestedChange('education', eduIndex, 'degree', e.target.value)} placeholder="Degree/Certificate" className={inputClasses} />
-                                <input type="text" value={edu.school} onChange={e => handleNestedChange('education', eduIndex, 'school', e.target.value)} placeholder="School/Institution" className={inputClasses} />
-                                <input type="text" value={edu.dates} onChange={e => handleNestedChange('education', eduIndex, 'dates', e.target.value)} placeholder="Dates" className={inputClasses} />
-                            </div>
-                        </div>
-                    ))}
+                    {(adaptedResume.education || []).map((edu, eduIndex) => ( <div key={eduIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700"> <button onClick={() => removeListItem('education', eduIndex)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2 size={18}/></button> <div className="grid grid-cols-1 md:grid-cols-3 gap-3"> <input type="text" value={edu.degree} onChange={e => handleNestedChange('education', eduIndex, 'degree', e.target.value)} placeholder="Degree/Certificate" className={inputClasses} /> <input type="text" value={edu.school} onChange={e => handleNestedChange('education', eduIndex, 'school', e.target.value)} placeholder="School/Institution" className={inputClasses} /> <input type="text" value={edu.dates} onChange={e => handleNestedChange('education', eduIndex, 'dates', e.target.value)} placeholder="Dates" className={inputClasses} /> </div> </div> ))}
                 </SectionWrapper>
             </div>
 
-            <footer className="mt-8 pt-6 border-t dark:border-gray-700 flex justify-end gap-4">
-                <button onClick={handleTailorResume} disabled={isTailoring} className="flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-all shadow-lg disabled:bg-gray-500 disabled:cursor-wait w-48">
+            <footer className="mt-8 pt-6 border-t dark:border-gray-700 flex flex-wrap justify-end items-center gap-4">
+                <button
+                    onClick={handleToggleFullPreview}
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-all shadow-lg w-full sm:w-auto"
+                >
+                    <FileText size={20}/>
+                    <span>Preview Full Resume</span>
+                </button>
+                <button
+                    onClick={handleTailorResume}
+                    disabled={isTailoring}
+                    className="flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-all shadow-lg disabled:bg-gray-500 disabled:cursor-wait w-full sm:w-auto"
+                >
                     {isTailoring ? <Spinner/> : <Wand2 size={20}/>}
                     <span>{isTailoring ? 'Tailoring...' : 'Tailor with AI'}</span>
                 </button>
-                <button onClick={handleSaveChanges} className="flex items-center gap-2 px-8 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-all shadow-lg">
+                <button
+                    onClick={handleSaveChanges}
+                    className="flex items-center justify-center gap-2 px-8 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-all shadow-lg w-full sm:w-auto"
+                >
                     <Save size={20}/> Save Adapted Resume
                 </button>
             </footer>
+
+            {showFullPreview && (
+                <div className="fixed inset-0 bg-black bg-opacity-80 flex justify-center items-center z-50 p-4" onClick={handleToggleFullPreview}>
+                    <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow-2xl w-full max-w-4xl h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-600 flex-shrink-0">
+                            <h2 className="text-xl font-bold text-white">Full Resume Markdown Preview</h2>
+                            <button onClick={handleToggleFullPreview} className="text-gray-400 hover:text-white p-2 rounded-full transition-colors">
+                                <XCircle size={24}/>
+                            </button>
+                        </div>
+                        <textarea
+                            readOnly
+                            value={fullResumeMarkdown}
+                            className="bg-gray-900 border border-gray-700 text-gray-200 font-mono text-sm w-full h-full rounded-md p-4 flex-grow resize-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -552,7 +506,13 @@ const JobDetailView = ({job, resume, allResumes, onSelectResume, profile, onMark
                     </div>
                 </div>
 
-                <AdaptJobSection baseResume={resume} job={job} allResumes={allResumes} onSelectResume={onSelectResume} />
+                <AdaptJobSection
+                    baseResume={resume}
+                    job={job}
+                    allResumes={allResumes}
+                    onSelectResume={onSelectResume}
+                    profile={profile}
+                />
             </div>
         </div>
     );
