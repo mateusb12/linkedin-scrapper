@@ -25,7 +25,7 @@ import {
     fetchAllJobs,
     fetchResumeById,
     fetchResumes, findBestMatches,
-    getColorFromScore, getSkillsArray, markJobAsApplied,
+    getColorFromScore, getSkillsArray, markJobAsApplied, normalizeKeyword,
 } from "./MatchLogic.jsx";
 import {fetchProfiles, tailorResume} from "../../services/ResumeService.js";
 import csharp from "../../assets/skills_icons/csharp.svg"
@@ -44,7 +44,6 @@ import graphql from "../../assets/skills_icons/graphql.svg";
 import sql from "../../assets/skills_icons/sql.svg";
 import dotnet from "../../assets/skills_icons/dotnet.svg";
 import {forbiddenLanguages} from "../../data/ForbiddenLanguages.js";
-import {normalizeKeyword} from "../../utils/resumeUtils.js";
 // --- Service Mocks and Logic ---
 // In a real app, this would be in separate files (e.g., services/ResumeService.js, utils/matchLogic.js)
 

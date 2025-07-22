@@ -75,21 +75,33 @@ export const getSkillsArray = (keywords) => {
     return keywords.split(',').map(k => k.trim()).filter(Boolean);
 };
 
-export const findBestMatches = (jobs, resume) => {
-    const resumeSkills = new Set(resume.hard_skills.map(s => s.toLowerCase()));
-    if (resumeSkills.size === 0) return jobs.map(j => ({ ...j, matchScore: 0, matchedSkillsSet: new Set() }));
+export const normalizeKeyword = (str) => str.toLowerCase().trim();
+
+export const findBestMatches = (jobs, profile) => {
+    // Use positive_keywords from the profile for matching.
+    const userKeywords = new Set((profile?.positive_keywords || []).map(normalizeKeyword));
+
+    // If the user has no keywords, all scores are 0.
+    if (userKeywords.size === 0) {
+        return jobs.map(j => ({ ...j, matchScore: 0, matchedSkillsSet: new Set() }));
+    }
 
     return jobs.map(job => {
         const jobKeywords = getSkillsArray(job.keywords);
-        if (jobKeywords.length === 0) return { ...job, matchScore: 0, matchedSkillsSet: new Set() };
+        // If the job has no keywords, its score is 0.
+        if (jobKeywords.length === 0) {
+            return { ...job, matchScore: 0, matchedSkillsSet: new Set() };
+        }
 
         const matchedSkillsSet = new Set();
         jobKeywords.forEach(keyword => {
-            if (resumeSkills.has(keyword.toLowerCase())) {
+            // Check if the normalized job keyword exists in the user's keyword set.
+            if (userKeywords.has(normalizeKeyword(keyword))) {
                 matchedSkillsSet.add(keyword);
             }
         });
 
+        // Calculate score as the percentage of required keywords that the user has.
         const matchScore = (matchedSkillsSet.size / jobKeywords.length) * 100;
         return { ...job, matchScore, matchedSkillsSet };
     }).sort((a, b) => b.matchScore - a.matchScore);
