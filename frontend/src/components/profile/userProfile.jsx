@@ -134,35 +134,96 @@ const ProfileDetails = ({ profile, setProfile, selectedResume, handleEducationCh
 //=================================================================
 // 4. RESUME SECTION COMPONENT (UPDATED)
 //=================================================================
-const ResumeSection = ({ resumes, selectedResume, setSelectedResumeId, setResumes, generateHardSkillsMarkdown, generateExperienceMarkdown, onToggleFullPreview, }) => {
-    if (!resumes || resumes.length === 0) return <div className={`${palette.bg.card} p-6 rounded-lg shadow-lg mt-8 text-center ${palette.text.secondary}`}>No resumes loaded or found.</div>;
+const ResumeSection = ({
+                           resumes,
+                           selectedResume,
+                           setSelectedResumeId,
+                           setResumes,
+                           generateHardSkillsMarkdown,
+                           generateExperienceMarkdown,
+                           generateProjectsMarkdown,
+                           onToggleFullPreview,
+                       }) => {
+    if (!resumes || resumes.length === 0) return (
+        <div className={`${palette.bg.card} p-6 rounded-lg shadow-lg mt-8 text-center ${palette.text.secondary}`}>
+            No resumes loaded or found.
+        </div>
+    );
 
     const handleSelectChange = (e) => setSelectedResumeId(Number(e.target.value));
-    const handleResumeFieldChange = (fieldName, value) => { const updatedResumes = resumes.map(r => r.id === selectedResume.id ? { ...r, [fieldName]: value } : r); setResumes(updatedResumes); };
-    const handleNestedChange = (e, index, section) => { const { name, value } = e.target; const updatedSection = [...selectedResume[section]]; updatedSection[index] = { ...updatedSection[index], [name]: value }; handleResumeFieldChange(section, updatedSection); };
-    const addNestedItem = (section) => {
-        const newItem = section === 'professional_experience' ? { id: `exp_${Date.now()}`, title: '', company: '', dates: '', description: [''] } : { id: `edu_${Date.now()}`, degree: '', school: '', dates: '' };
-        const updatedSection = [...selectedResume[section], newItem]; handleResumeFieldChange(section, updatedSection);
+    const handleResumeFieldChange = (fieldName, value) => {
+        const updatedResumes = resumes.map(r =>
+            r.id === selectedResume.id ? { ...r, [fieldName]: value } : r
+        );
+        setResumes(updatedResumes);
     };
-    const removeNestedItem = (index, section) => { const updatedSection = selectedResume[section].filter((_, i) => i !== index); handleResumeFieldChange(section, updatedSection); };
-    const handleSaveResume = () => { console.log("Saving Current Resume:", selectedResume); alert(`Resume "${selectedResume.name}" saved! (Check console)`); };
+    const handleNestedChange = (e, index, section) => {
+        const { name, value } = e.target;
+        const updatedSection = [...selectedResume[section]];
+        updatedSection[index] = { ...updatedSection[index], [name]: value };
+        handleResumeFieldChange(section, updatedSection);
+    };
+    const addNestedItem = (section) => {
+        let newItem;
+        if (section === 'professional_experience') {
+            newItem = { id: `exp_${Date.now()}`, title: '', company: '', dates: '', description: [''] };
+        } else if (section === 'education') {
+            newItem = { id: `edu_${Date.now()}`, degree: '', school: '', dates: '' };
+        } else if (section === 'projects') {
+            newItem = { id: `proj_${Date.now()}`, title: '', link: '', description: [''] };
+        }
+        const updatedSection = [...(selectedResume[section] || []), newItem];
+        handleResumeFieldChange(section, updatedSection);
+    };
+    const removeNestedItem = (index, section) => {
+        const updatedSection = selectedResume[section].filter((_, i) => i !== index);
+        handleResumeFieldChange(section, updatedSection);
+    };
+    const handleSaveResume = () => {
+        console.log("Saving Current Resume:", selectedResume);
+        alert(`Resume "${selectedResume.name}" saved! (Check console)`);
+    };
 
     return (
         <div className={`${palette.bg.card} p-6 rounded-lg shadow-lg mt-8`}>
             <div className={`flex flex-col md:flex-row justify-between md:items-center mb-6 border-b ${palette.border.primary} pb-3`}>
                 <h2 className={`text-2xl font-bold ${palette.text.light} mb-3 md:mb-0`}>📄 Resumes</h2>
-                <select onChange={handleSelectChange} value={selectedResume?.id || ''} className={`${inputClasses} md:max-w-xs`}>{resumes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
+                <select onChange={handleSelectChange} value={selectedResume?.id || ''} className={`${inputClasses} md:max-w-xs`}>
+                    {resumes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
             </div>
             {selectedResume && (
                 <div>
                     <div className="space-y-6">
-                        <div><label className={styleguide.label}>Resume Name</label><input type="text" name="name" value={selectedResume.name} onChange={(e) => handleResumeFieldChange('name', e.target.value)} className={inputClasses} /></div>
-                        <div><DynamicInputSection title="Hard Skills" items={selectedResume.hard_skills || []} setItems={(newSkills) => handleResumeFieldChange('hard_skills', newSkills)} /><MarkdownPreview sectionTitle="Hard Skills" markdownContent={generateHardSkillsMarkdown(selectedResume.hard_skills)} /></div>
+                        <div>
+                            <label className={styleguide.label}>Resume Name</label>
+                            <input
+                                type="text"
+                                name="name"
+                                value={selectedResume.name}
+                                onChange={(e) => handleResumeFieldChange('name', e.target.value)}
+                                className={inputClasses}
+                            />
+                        </div>
+
+                        {/* Hard Skills */}
+                        <div>
+                            <DynamicInputSection
+                                title="Hard Skills"
+                                items={selectedResume.hard_skills || []}
+                                setItems={(newSkills) => handleResumeFieldChange('hard_skills', newSkills)}
+                            />
+                            <MarkdownPreview sectionTitle="Hard Skills" markdownContent={generateHardSkillsMarkdown(selectedResume.hard_skills)} />
+                        </div>
+
+                        {/* Professional Experience */}
                         <div className="space-y-4">
                             <h3 className={`text-xl font-semibold ${palette.text.primary} pt-4 border-t ${palette.border.primary}`}>Professional Experience</h3>
                             {selectedResume.professional_experience.map((exp, index) => (
                                 <div key={exp.id} className={`${palette.bg.nestedCard} p-4 rounded-md border ${palette.border.secondary} relative`}>
-                                    <button onClick={() => removeNestedItem(index, 'professional_experience')} className={styleguide.iconButton.delete}><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg></button>
+                                    <button onClick={() => removeNestedItem(index, 'professional_experience')} className={styleguide.iconButton.delete}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
+                                    </button>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
                                         <input type="text" name="title" value={exp.title} placeholder="Title" onChange={e => handleNestedChange(e, index, 'professional_experience')} className={inputClasses} />
                                         <input type="text" name="company" value={exp.company} placeholder="Company" onChange={e => handleNestedChange(e, index, 'professional_experience')} className={inputClasses} />
@@ -172,19 +233,67 @@ const ResumeSection = ({ resumes, selectedResume, setSelectedResumeId, setResume
                                         <label className={styleguide.label}>Description (Key Points)</label>
                                         {(exp.description || []).map((point, dIndex) => (
                                             <div key={dIndex} className="flex items-center gap-2">
-                                                <input type="text" value={point} onChange={e => { const newDesc = [...exp.description]; newDesc[dIndex] = e.target.value; handleNestedChange({ target: { name: 'description', value: newDesc } }, index, 'professional_experience'); }} className={inputClasses} />
-                                                <button type="button" onClick={() => { const newDesc = exp.description.filter((_, i) => i !== dIndex); handleNestedChange({ target: { name: 'description', value: newDesc } }, index, 'professional_experience'); }} className={styleguide.iconButton.remove} disabled={exp.description.length <= 1}><MinusIcon /></button>
+                                                <input type="text" value={point} onChange={e => {
+                                                    const newDesc = [...exp.description];
+                                                    newDesc[dIndex] = e.target.value;
+                                                    handleNestedChange({ target: { name: 'description', value: newDesc } }, index, 'professional_experience');
+                                                }} className={inputClasses} />
+                                                <button type="button" onClick={() => {
+                                                    const newDesc = exp.description.filter((_, i) => i !== dIndex);
+                                                    handleNestedChange({ target: { name: 'description', value: newDesc } }, index, 'professional_experience');
+                                                }} className={styleguide.iconButton.remove} disabled={exp.description.length <= 1}><MinusIcon /></button>
                                             </div>
                                         ))}
-                                        <button type="button" onClick={() => { const newDesc = [...(exp.description || []), '']; handleNestedChange({ target: { name: 'description', value: newDesc } }, index, 'professional_experience'); }} className={styleguide.button.success}>+ Add Key Point</button>
+                                        <button type="button" onClick={() => {
+                                            const newDesc = [...(exp.description || []), ''];
+                                            handleNestedChange({ target: { name: 'description', value: newDesc } }, index, 'professional_experience');
+                                        }} className={styleguide.button.success}>+ Add Key Point</button>
                                     </div>
                                 </div>
                             ))}
                             <button onClick={() => addNestedItem('professional_experience')} className={styleguide.button.success}>+ Add Experience</button>
                             <MarkdownPreview sectionTitle="Professional Experience" markdownContent={generateExperienceMarkdown(selectedResume.professional_experience)} />
                         </div>
-                        {/* Education Section Removed From Here */}
+
+                        {/* Projects */}
+                        <div className="space-y-4">
+                            <h3 className={`text-xl font-semibold ${palette.text.primary} pt-4 border-t ${palette.border.primary}`}>Projects</h3>
+                            {(selectedResume.projects || []).map((proj, index) => (
+                                <div key={proj.id || index} className={`${palette.bg.nestedCard} p-4 rounded-md border ${palette.border.secondary} relative`}>
+                                    <button onClick={() => removeNestedItem(index, 'projects')} className={styleguide.iconButton.delete}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
+                                    </button>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                                        <input type="text" name="title" value={proj.title} placeholder="Title" onChange={e => handleNestedChange(e, index, 'projects')} className={inputClasses} />
+                                        <input type="text" name="link" value={proj.link} placeholder="Link" onChange={e => handleNestedChange(e, index, 'projects')} className={inputClasses} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className={styleguide.label}>Description (Key Points)</label>
+                                        {(proj.description || []).map((point, dIndex) => (
+                                            <div key={dIndex} className="flex items-center gap-2">
+                                                <input type="text" value={point} onChange={e => {
+                                                    const newDesc = [...proj.description];
+                                                    newDesc[dIndex] = e.target.value;
+                                                    handleNestedChange({ target: { name: 'description', value: newDesc } }, index, 'projects');
+                                                }} className={inputClasses} />
+                                                <button type="button" onClick={() => {
+                                                    const newDesc = proj.description.filter((_, i) => i !== dIndex);
+                                                    handleNestedChange({ target: { name: 'description', value: newDesc } }, index, 'projects');
+                                                }} className={styleguide.iconButton.remove} disabled={proj.description.length <= 1}><MinusIcon /></button>
+                                            </div>
+                                        ))}
+                                        <button type="button" onClick={() => {
+                                            const newDesc = [...(proj.description || []), ''];
+                                            handleNestedChange({ target: { name: 'description', value: newDesc } }, index, 'projects');
+                                        }} className={styleguide.button.success}>+ Add Key Point</button>
+                                    </div>
+                                </div>
+                            ))}
+                            <button onClick={() => addNestedItem('projects')} className={styleguide.button.success}>+ Add Project</button>
+                            <MarkdownPreview sectionTitle="Projects" markdownContent={generateProjectsMarkdown(selectedResume.projects)} />
+                        </div>
                     </div>
+
                     <div className={`flex flex-col sm:flex-row justify-end items-center mt-6 pt-6 border-t ${palette.border.primary} space-y-3 sm:space-y-0 sm:space-x-4`}>
                         <button onClick={onToggleFullPreview} className={`${styleguide.button.markdown} w-full sm:w-auto`}>Preview Full Resume Markdown</button>
                         <button onClick={handleSaveResume} className={`${styleguide.button.primary} w-full sm:w-auto`}>Save Resume</button>
@@ -326,13 +435,25 @@ const UserProfile = () => {
         }).filter(Boolean).join('\n\n');
         return content ? `## 🎓 Education\n\n${content}` : '';
     };
+    const generateProjectsMarkdown = (projects) => {
+        if (!projects || projects.length === 0) return '';
+        let content = projects.map(project => {
+            if (!project.title || !project.link) return '';
+            let projStr = `### [${project.title}](${project.link})`;
+            const points = (project.description || []).filter(Boolean).map(p => `- ${p}`).join('\n');
+            if (points) projStr += `\n${points}`;
+            return projStr;
+        }).filter(Boolean).join('\n\n');
+        return content ? `## 🧪 Projects\n\n${content}` : '';
+    };
     const generateFullResumeMarkdown = () => {
         if (!profile || !selectedResume) return 'No profile or resume selected.';
         const header = generateProfileHeaderMarkdown(profile);
         const skills = generateHardSkillsMarkdown(selectedResume.hard_skills);
         const experience = generateExperienceMarkdown(selectedResume.professional_experience);
         const education = generateEducationMarkdown(selectedResume.education);
-        return [header, skills, experience, education].filter(Boolean).join('\n\n---\n\n');
+        const projects = generateProjectsMarkdown(selectedResume.projects);
+        return [header, skills, experience, education, projects].filter(Boolean).join('\n\n---\n\n');
     };
     const handleToggleFullPreview = () => {
         if (!showFullPreview) {
@@ -382,6 +503,7 @@ const UserProfile = () => {
                     setResumes={setResumes}
                     generateHardSkillsMarkdown={generateHardSkillsMarkdown}
                     generateExperienceMarkdown={generateExperienceMarkdown}
+                    generateProjectsMarkdown={generateProjectsMarkdown}
                     onToggleFullPreview={handleToggleFullPreview}
                 />
                 {showFullPreview && (
