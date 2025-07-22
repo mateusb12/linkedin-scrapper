@@ -211,7 +211,7 @@ def update_job(urn):
         session.close()
 
 
-@job_data_bp.route("/<string:urn>", methods=["POST"])
+@job_data_bp.route("/<string:urn>", methods=["PATCH"])
 def mark_job_as_disabled(urn):
     """
     Marks a job as disabled by setting the 'disabled' field to True.

@@ -335,7 +335,7 @@ const AdaptJobSection = ({resume, job}) => {
 };
 
 
-const JobDetailView = ({job, resume, profile, onMarkAsApplied}) => {
+const JobDetailView = ({job, resume, profile, onMarkAsApplied, onMarkAsDisabled}) => {
     const [editedSkills, setEditedSkills] = useState('');
     const [editedExperience, setEditedExperience] = useState([]);
 
@@ -666,6 +666,8 @@ const Match = () => {
             );
 
             const filteredJobs = jobs.filter(job => {
+                if (job.disabled === true) return false;
+
                 const jobKeywords = getSkillsArray(job.keywords).map(normalizeKeyword);
                 return jobKeywords.every(kw => !normalizedNegatives.has(kw));
             });
@@ -690,6 +692,22 @@ const Match = () => {
             }
         } catch (error) {
             console.error("Error marking job as applied:", error);
+            setErrorMessage(error.message || 'An unexpected error occurred.');
+        }
+    }, [selectedJob?.urn]);
+
+    const handleMarkAsDisabled = useCallback(async (jobUrn) => {
+        try {
+            setErrorMessage('');
+            const updatedJobData = await markJobAsDisabled(jobUrn);
+            const updateJobState = (j) => (j.urn === jobUrn ? {...j, ...updatedJobData.job} : j);
+            setJobs(prev => prev.map(updateJobState));
+            setMatchedJobs(prev => prev.map(updateJobState));
+            if (selectedJob?.urn === jobUrn) {
+                setSelectedJob(prev => ({...prev, ...updatedJobData.job}));
+            }
+        } catch (error) {
+            console.error("Error marking job as disabled:", error);
             setErrorMessage(error.message || 'An unexpected error occurred.');
         }
     }, [selectedJob?.urn]);
@@ -798,6 +816,7 @@ const Match = () => {
                         resume={selectedResume}
                         profile={selectedProfile}
                         onMarkAsApplied={handleMarkAsApplied}
+                        onMarkAsDisabled={handleMarkAsDisabled}
                     />
                 </main>
             </div>
