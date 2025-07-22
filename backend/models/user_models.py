@@ -60,5 +60,11 @@ class Profile(db.Model):
             "email": self.email,
             "phone": self.phone,
             "location": self.location,
+            "linkedin": self.linkedin,
+            "github": self.github,
+            "portfolio": self.portfolio,
+            "languages": self.languages,
+            "positive_keywords": self.positive_keywords,
+            "negative_keywords": self.negative_keywords,
             "resumes": [resume.name for resume in self.resumes]
         }
