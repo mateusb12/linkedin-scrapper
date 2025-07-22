@@ -1,6 +1,8 @@
 import os
 import sys
 
+from controllers.profile_controller import profile_bp
+
 project_root = os.path.dirname(os.path.abspath(__file__))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -35,6 +37,7 @@ migrate = Migrate(app, db)
 app.register_blueprint(fetch_jobs_bp)
 app.register_blueprint(job_data_bp)
 app.register_blueprint(resume_bp)
+app.register_blueprint(profile_bp)
 
 
 # --- Routes ---

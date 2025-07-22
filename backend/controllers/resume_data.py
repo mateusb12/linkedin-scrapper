@@ -81,15 +81,19 @@ def update_resume(resume_id):
         if not resume:
             return jsonify({"error": "Resume not found"}), 404
 
-        # Update fields if they are present in the request
         resume.name = data.get("name", resume.name)
+        resume.summary = data.get("summary", resume.summary)
         resume.hard_skills = data.get("hard_skills", resume.hard_skills)
         resume.professional_experience = data.get("professional_experience", resume.professional_experience)
         resume.education = data.get("education", resume.education)
+        resume.projects = data.get("projects", resume.projects)
 
         session.commit()
 
-        return jsonify({"message": f"Resume '{resume.name}' updated successfully"}), 200
+        return jsonify({
+            "message": f"Resume '{resume.name}' updated successfully",
+            "resume": resume.to_dict()
+        }), 200
 
     except Exception as e:
         session.rollback()
