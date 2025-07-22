@@ -90,6 +90,7 @@ class Job(db.Model):
             "job_type": self.job_type or "Full-stack",
             "programming_languages": self.programming_languages or [],
             "keywords": self.keywords or [],
+            "disabled": self.disabled,
         }
         if include_company and self.company is not None:
             data["company"] = self.company.to_dict(include_jobs=False)

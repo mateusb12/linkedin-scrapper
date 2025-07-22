@@ -24,7 +24,9 @@ def get_all_jobs():
     try:
         print("Attempting to query the database for all jobs...")
         jobs = (
-            session.query(Job).options(joinedload(Job.company)).all()
+            session.query(Job)
+            .options(joinedload(Job.company))
+            .all()
         )
         print(f"Fetched {len(jobs)} jobs from the database.")
         return jsonify([job.to_dict() for job in jobs]), 200
