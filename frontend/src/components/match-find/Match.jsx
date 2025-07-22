@@ -343,8 +343,8 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume, profile 
                     onClick={handleToggleFullPreview}
                     className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-all shadow-lg w-full sm:w-auto"
                 >
-                    <FileText size={20}/>
-                    <span>Preview Full Resume</span>
+                    {showFullPreview ? <XCircle size={20} /> : <FileText size={20} />}
+                    <span>{showFullPreview ? 'Hide Preview' : 'Preview Full Resume'}</span>
                 </button>
                 <button
                     onClick={handleTailorResume}
@@ -363,18 +363,19 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume, profile 
             </footer>
 
             {showFullPreview && (
-                <div className="fixed inset-0 bg-black bg-opacity-80 flex justify-center items-center z-50 p-4" onClick={handleToggleFullPreview}>
-                    <div className="bg-gray-800 p-4 sm:p-6 rounded-xl shadow-2xl w-full max-w-4xl h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-600 flex-shrink-0">
-                            <h2 className="text-xl font-bold text-white">Full Resume Markdown Preview</h2>
-                            <button onClick={handleToggleFullPreview} className="text-gray-400 hover:text-white p-2 rounded-full transition-colors">
+                <div className="mt-8 pt-6 border-t dark:border-gray-700">
+                    <div className="bg-gray-50 dark:bg-gray-900/50 p-4 sm:p-6 rounded-xl shadow-lg w-full flex flex-col border dark:border-gray-700">
+                        <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-300 dark:border-gray-600 flex-shrink-0">
+                            <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Full Resume Markdown Preview</h2>
+                            <button onClick={handleToggleFullPreview} className="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white p-2 rounded-full transition-colors">
                                 <XCircle size={24}/>
                             </button>
                         </div>
                         <textarea
                             readOnly
                             value={fullResumeMarkdown}
-                            className="bg-gray-900 border border-gray-700 text-gray-200 font-mono text-sm w-full h-full rounded-md p-4 flex-grow resize-none focus:ring-2 focus:ring-indigo-500"
+                            className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 font-mono text-sm w-full rounded-md p-4 resize-none focus:ring-2 focus:ring-indigo-500"
+                            style={{height: '60vh'}}
                         />
                     </div>
                 </div>
@@ -382,6 +383,7 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume, profile 
         </div>
     );
 };
+
 
 const JobDetailView = ({job, resume, allResumes, onSelectResume, profile, onMarkAsApplied, onMarkAsDisabled}) => {
     if (!job || !resume) {
