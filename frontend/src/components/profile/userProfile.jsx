@@ -49,7 +49,7 @@ const DynamicInputSection = ({ title, items, setItems }) => {
     return (
         <div>
             <label className={`${styleguide.label} mb-2`}>{title}</label>
-            {[...items].sort((a, b) => a.localeCompare(b)).map((item, index) => (
+            {items.map((item, index) => (
                 <div key={index} className="flex items-center mb-2">
                     <input type="text" value={item} onChange={(e) => handleItemChange(index, e.target.value)} className={inputClasses} placeholder={`Enter ${getLabelSuffix().toLowerCase()}`} />
                     <button type="button" onClick={() => handleRemoveItem(index)} className={styleguide.iconButton.remove} disabled={items.length <= 1}><MinusIcon /></button>
@@ -276,7 +276,13 @@ const UserProfile = () => {
                 ]);
 
                 if (profilesData && profilesData.length > 0) {
-                    setProfile(profilesData[0]);
+                    const sortedProfile = {
+                        ...profilesData[0],
+                        languages: [...(profilesData[0].languages || [])].sort(),
+                        positive_keywords: [...(profilesData[0].positive_keywords || [])].sort(),
+                        negative_keywords: [...(profilesData[0].negative_keywords || [])].sort(),
+                    };
+                    setProfile(sortedProfile);
                 } else {
                     console.warn("No profiles were found from the API.");
                     setProfile({});
@@ -323,7 +329,12 @@ const UserProfile = () => {
                     education: (resume.education || []).map((edu, index) => ({ ...edu, id: `edu_${resume.id}_${index}` })),
                 }));
 
-            setProfile(profileData);
+            setProfile({
+                ...profileData,
+                languages: [...(profileData.languages || [])].sort(),
+                positive_keywords: [...(profileData.positive_keywords || [])].sort(),
+                negative_keywords: [...(profileData.negative_keywords || [])].sort(),
+            });
             setResumes(parsedResumes);
             if (parsedResumes.length > 0) setSelectedResumeId(parsedResumes[0].id);
 
