@@ -206,6 +206,18 @@ const ResumeSection = ({
                             />
                         </div>
 
+                        {/* Summary Text Area */}
+                        <div>
+                            <label className={styleguide.label}>Summary</label>
+                            <textarea
+                                name="summary"
+                                value={selectedResume.summary || ''}
+                                onChange={(e) => handleResumeFieldChange('summary', e.target.value)}
+                                className={inputClasses}
+                                rows="5"
+                            />
+                        </div>
+
                         {/* Hard Skills */}
                         <div>
                             <DynamicInputSection
@@ -305,7 +317,7 @@ const ResumeSection = ({
 };
 
 //=================================================================
-// 5. MAIN PROFILE COMPONENT (The Parent) - UPDATED
+// 5. MAIN PROFILE COMPONENT (The Parent) - UPDATED FOR DEBUGGING
 //=================================================================
 const UserProfile = () => {
     // Set initial state to be empty/null until data is loaded
@@ -325,20 +337,41 @@ const UserProfile = () => {
     useEffect(() => {
         const fetchAndParseData = async () => {
             try {
-                // STAGE 1: Fetch the raw text from the markdown file
-                const response = await fetch('/myProfile.md');
+                // =================================================================
+                // 1. ADD CACHE-BUSTING to the fetch URL. This ensures you always
+                //    get a fresh copy of the file and not a cached one.
+                // =================================================================
+                const cacheBuster = `?_=${new Date().getTime()}`;
+                const response = await fetch(`/myProfile.md${cacheBuster}`);
+
                 if (!response.ok) {
                     throw new Error(`Failed to fetch data: ${response.status} ${response.statusText}`);
                 }
                 const markdownText = await response.text();
-                console.log("✅ STAGE 1: Fetched raw markdown text:", markdownText);
 
-                // STAGE 2: Parse with gray-matter
+                // =================================================================
+                // 2. ENHANCED LOGGING: Check this log output in your browser console.
+                //    Does the text here EXACTLY match the corrected file?
+                // =================================================================
+                console.log("-------------------------------------------");
+                console.log("DEBUG STAGE 1: Raw text from myProfile.md");
+                console.log(markdownText);
+                console.log("-------------------------------------------");
+
                 const { data: profileData, content: resumesString } = matter(markdownText);
                 console.log("✅ STAGE 2: Parsed profile data (from front-matter):", profileData);
-                console.log("✅ STAGE 3: Remaining content for resume parsing:", resumesString);
 
-                // STAGE 4: Parse the resume string with js-yaml
+
+                // =================================================================
+                // 3. ENHANCED LOGGING: This is the most important debug step. We will
+                //    log the exact string just before the YAML parser tries to read it.
+                // =================================================================
+                console.log("-------------------------------------------------");
+                console.log("DEBUG STAGE 3: String being sent to YAML parser");
+                console.log(resumesString);
+                console.log("-------------------------------------------------");
+
+
                 const rawParsedResumes = yaml.loadAll(resumesString);
                 console.log("✅ STAGE 4: Raw data parsed by js-yaml:", rawParsedResumes);
 
@@ -365,8 +398,11 @@ const UserProfile = () => {
                 }
 
             } catch (err) {
+                // =================================================================
+                // 4. ENHANCED LOGGING: The error object contains the snippet that failed.
+                // =================================================================
                 console.error("💥 ERROR during data fetching or parsing:", err);
-                setError(err.message);
+                setError(`[${err.name}] ${err.reason} - Check console for the problematic snippet.`);
             } finally {
                 setLoading(false);
             }
