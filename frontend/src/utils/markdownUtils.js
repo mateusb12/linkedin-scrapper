@@ -73,3 +73,69 @@ export const generateFullResumeMarkdown = (profile, resume) => {
 
     return [header, summary, skills, experience, education, projects].filter(Boolean).join('\n\n---\n\n');
 };
+
+export const parseMarkdownToResume = (markdown) => {
+    const resume = {
+        summary: '',
+        professional_experience: [],
+        projects: []
+        // Add other sections like 'hard_skills' if your AI returns them
+    };
+
+    if (!markdown) return resume;
+
+    // --- Parse Summary ---
+    const summaryMatch = markdown.match(/## Summary\n([\s\S]*?)(?=\n## |$)/);
+    if (summaryMatch && summaryMatch[1]) {
+        resume.summary = summaryMatch[1].trim();
+    }
+
+    // --- Parse Professional Experience ---
+    const expBlockMatch = markdown.match(/## Professional Experience\n([\s\S]*?)(?=\n## |$)/);
+    if (expBlockMatch && expBlockMatch[1]) {
+        const experienceBlock = expBlockMatch[1];
+        // Regex to capture each job entry
+        const experienceEntries = experienceBlock.split('### ').slice(1);
+
+        experienceEntries.forEach(entry => {
+            const lines = entry.trim().split('\n');
+            const titleLine = lines.shift() || '';
+            const details = lines.map(line => line.replace(/^- /, '').trim()).filter(Boolean);
+
+            // Regex to capture Title, Company, and Dates from the title line
+            const titleMatch = titleLine.match(/(.*) @ (.*) \((.*)\)/);
+
+            if (titleMatch) {
+                resume.professional_experience.push({
+                    title: titleMatch[1].trim(),
+                    company: titleMatch[2].trim(),
+                    dates: titleMatch[3].trim(),
+                    details: details, // In your component, this maps to 'description'
+                    description: details,
+                });
+            }
+        });
+    }
+
+    // --- Parse Projects (if needed) ---
+    const projBlockMatch = markdown.match(/## Projects\n([\s\S]*?)(?=\n## |$)/);
+    if (projBlockMatch && projBlockMatch[1]) {
+        const projectBlock = projBlockMatch[1];
+        const projectEntries = projectBlock.split('### ').slice(1);
+
+        projectEntries.forEach(entry => {
+            const lines = entry.trim().split('\n');
+            const title = lines.shift() || '';
+            const details = lines.map(line => line.replace(/^- /, '').trim()).filter(Boolean);
+
+            resume.projects.push({
+                title: title.trim(),
+                details: details,
+                description: details,
+                link: '' // The parser can't guess the link, so it's left empty
+            });
+        });
+    }
+
+    return resume;
+};
