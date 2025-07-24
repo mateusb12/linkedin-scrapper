@@ -53,6 +53,7 @@ import {forbiddenLanguages} from "../../data/ForbiddenLanguages.js";
 import {generateFullResumeMarkdown} from "../../utils/markdownUtils.js";
 import {fetchProfiles} from "../../services/profileService.js";
 import {getMatchScore} from "../../services/jobService.js";
+import {tailorResume} from "../../services/resumeService.js";
 
 // --- Reusable UI Components ---
 
@@ -268,14 +269,29 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume, profile 
         (job.qualifications || []).forEach(q => { job_description += `- ${q}\n`; });
         if (job.keywords) job_description += `\n## Keywords\n${getSkillsArray(job.keywords).join(', ')}`;
         try {
-            const tailoredData = await tailorResume({ resume_markdown, job_description });
-            setAdaptedResume(prev => ({
-                ...JSON.parse(JSON.stringify(prev)),
-                summary: tailoredData.summary !== undefined ? tailoredData.summary : prev.summary,
-                hard_skills: tailoredData.hard_skills !== undefined ? tailoredData.hard_skills : prev.hard_skills,
-                professional_experience: tailoredData.professional_experience !== undefined ? tailoredData.professional_experience : prev.professional_experience,
-                projects: tailoredData.projects !== undefined ? tailoredData.projects : prev.projects,
-            }));
+            const raw_resume = resume_markdown;
+            const raw_job_description = job_description;
+            const extracted_job_keywords = getSkillsArray(job.keywords || []);
+            const extracted_resume_keywords = getSkillsArray(baseResume.hard_skills || []);
+            const current_cosine_similarity = matchScore ? matchScore / 100 : 0.0;
+
+            const tailoredData = await tailorResume({
+                raw_job_description,
+                raw_resume,
+                extracted_job_keywords,
+                extracted_resume_keywords,
+                current_cosine_similarity,
+            });
+            setFullResumeMarkdown(tailoredData.markdown); // if you want to preview
+            alert("✅ Received tailored markdown (see console)");
+            console.log("✂ Tailored Markdown:", tailoredData.markdown);
+            // setAdaptedResume(prev => ({
+            //     ...JSON.parse(JSON.stringify(prev)),
+            //     summary: tailoredData.summary !== undefined ? tailoredData.summary : prev.summary,
+            //     hard_skills: tailoredData.hard_skills !== undefined ? tailoredData.hard_skills : prev.hard_skills,
+            //     professional_experience: tailoredData.professional_experience !== undefined ? tailoredData.professional_experience : prev.professional_experience,
+            //     projects: tailoredData.projects !== undefined ? tailoredData.projects : prev.projects,
+            // }));
             setTailoringApplied(true);
         } catch (error) {
             console.error("Error tailoring resume:", error);

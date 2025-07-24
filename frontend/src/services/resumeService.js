@@ -36,11 +36,28 @@ export const deleteResume = async (id) => {
 };
 
 export const tailorResume = async (payload) => {
+    const requiredKeys = [
+        'raw_job_description',
+        'raw_resume',
+        'extracted_job_keywords',
+        'extracted_resume_keywords',
+        'current_cosine_similarity'
+    ];
+
+    const missingKeys = requiredKeys.filter((key) => !(key in payload));
+
+    if (missingKeys.length > 0) {
+        throw new Error(
+            `Invalid payload for tailorResume. Missing keys: ${missingKeys.join(', ')}`
+        );
+    }
+
     const response = await fetch(`${API_BASE}/jobs/tailor`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
     });
+
     return handleResponse(response, 'Failed to tailor resume');
 };
 
