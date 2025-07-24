@@ -56,6 +56,12 @@ class OpenRouterService(BaseLLMService):
         except ValueError as e:
             return {"error": str(e), "raw": response}
 
+    def run_prompt(self, prompt: str) -> dict:
+        response = self.generate_response([{"role": "user", "content": prompt}])
+        if not response:
+            return {"error": "No response from model."}
+        return {"markdown": response.strip()}
+
 
 # ── Example Usage ────────────────────────────────────────────────────────
 if __name__ == "__main__":

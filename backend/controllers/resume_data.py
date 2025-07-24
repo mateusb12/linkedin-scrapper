@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify
 from database.database_connection import get_db_session
 from models import Resume
 from services.job_prompts import build_tailor_resume_prompt
+from services.model_orchestrator import LLMOrchestrator
 
 resume_bp = Blueprint("resumes", __name__, url_prefix="/jobs")
 
@@ -171,13 +172,16 @@ def tailor_resume_endpoint():
 
     # 2. Call the AI service to tailor the resume
     try:
-        tailored_data = build_tailor_resume_prompt(
+        orchestrator = LLMOrchestrator()
+        prompt = build_tailor_resume_prompt(
             raw_job_description=raw_job_description,
             raw_resume=raw_resume,
             extracted_job_keywords=extracted_job_keywords,
             extracted_resume_keywords=extracted_resume_keywords,
             current_cosine_similarity=current_cosine_similarity
         )
+
+        tailored_data = orchestrator.run_prompt(prompt)
 
         if 'error' in tailored_data:
             # The service layer encountered an issue (e.g., API or parsing error)

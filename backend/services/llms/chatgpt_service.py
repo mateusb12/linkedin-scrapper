@@ -47,15 +47,11 @@ class ChatGPTService(BaseLLMService):
         except ValueError as e:
             return {"error": str(e), "raw": response}
 
-    def tailor_resume_for_job(self, resume_md: str, job_description: str) -> dict:
-        prompt = build_tailor_resume_prompt(resume_md, job_description)
+    def run_prompt(self, prompt: str) -> dict:
         response = self.generate_response([{"role": "user", "content": prompt}])
         if not response:
             return {"error": "No response from model."}
-        try:
-            return structure_chatgpt_data(response)
-        except ValueError as e:
-            return {"error": str(e), "raw": response}
+        return {"markdown": response.strip()}
 
     def chat(self, system_msg: str, user_msg: str) -> str:
         messages = [

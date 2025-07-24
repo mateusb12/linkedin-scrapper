@@ -83,3 +83,9 @@ class GeminiService(BaseLLMService):
         except (requests.exceptions.RequestException, KeyError, IndexError) as e:
             print(f"❌ Gemini request failed: {e}")
             return ""
+
+    def run_prompt(self, prompt: str) -> dict:
+        response = self.generate_response([{"role": "user", "content": prompt}])
+        if not response:
+            return {"error": "No response from model."}
+        return {"markdown": response.strip()}

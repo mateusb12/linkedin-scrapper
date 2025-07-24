@@ -22,8 +22,10 @@ class LLMOrchestrator:
         return self._invoke("expand_job_data", job_description)
 
     def tailor_resume(self, resume_md: str, job_description: str) -> dict:
-        # tailor_resume_for_job unified across services
         return self._invoke("tailor_resume_for_job", resume_md, job_description)
+
+    def run_prompt(self, prompt: str) -> dict:
+        return self._invoke("run_prompt", prompt)
 
     def chat(self, system_msg: str, user_msg: str) -> str:
         # Use DeepSeekService for generic chat
@@ -44,12 +46,18 @@ class LLMOrchestrator:
                 method = getattr(model, method_name)
             except AttributeError:
                 self.error_log[name].append(1)
+                print(f"❌ {name} does not support method {method_name}")
+                if self.progress:
+                    self.progress.set_status(f"{name} missing {method_name}")
                 continue
 
             try:
                 result = method(*args)
                 if not result or (isinstance(result, dict) and "error" in result):
                     self.error_log[name].append(1)
+                    if self.progress:
+                        self.progress.set_status(f"{name} returned error")
+                    print(f"❌ {name} returned error: {result}")
                     continue
                 self.error_log[name].append(0)
                 return result  # ✅ success

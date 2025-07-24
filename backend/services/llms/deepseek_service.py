@@ -61,3 +61,9 @@ class DeepSeekService(BaseLLMService):
         ]
         response = self.generate_response(messages)
         return response or ""
+
+    def run_prompt(self, prompt: str) -> dict:
+        response = self.generate_response([{"role": "user", "content": prompt}])
+        if not response:
+            return {"error": "No response from model."}
+        return {"markdown": response.strip()}
