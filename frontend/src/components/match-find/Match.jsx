@@ -52,6 +52,7 @@ import dotnet from "../../assets/skills_icons/dotnet.svg";
 import {forbiddenLanguages} from "../../data/ForbiddenLanguages.js";
 import {generateFullResumeMarkdown} from "../../utils/markdownUtils.js";
 import {fetchProfiles} from "../../services/profileService.js";
+import {getMatchScore} from "../../services/jobService.js";
 
 // --- Reusable UI Components ---
 
@@ -205,6 +206,8 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume, profile 
     // New state for markdown preview
     const [showFullPreview, setShowFullPreview] = useState(false);
     const [fullResumeMarkdown, setFullResumeMarkdown] = useState('');
+    const [matchScore, setMatchScore] = useState(null);
+    const [matchScoreError, setMatchScoreError] = useState(null);
 
 
     const inputClasses = "w-full p-2 rounded-md bg-white dark:bg-gray-700 focus:ring-2 text-sm border border-gray-300 dark:border-gray-600 focus:ring-purple-500";
@@ -287,12 +290,34 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume, profile 
         alert("Adapted resume data saved to console. A new resume could be created from this data.");
     };
 
-    const handleToggleFullPreview = () => {
+    const handleToggleFullPreview = async () => {
         if (!showFullPreview) {
+            console.log("🔍 job_description (raw):", job.description || job.description_full || '');
+            console.log("🔍 resume (raw):", generateFullResumeMarkdown(profile, adaptedResume));
             const markdown = generateFullResumeMarkdown(profile, adaptedResume);
             setFullResumeMarkdown(markdown);
+
+            const jobText = `# ${job.title || ''} @ ${job.company?.name || ''}\n\n${job.description || ''}\n\n## Responsibilities\n${(job.responsibilities || []).join('\n')}\n\n## Qualifications\n${(job.qualifications || []).join('\n')}`;
+
+            if (!markdown.trim() || !jobText.trim()) {
+                setMatchScoreError("❌ Resume or job description is empty");
+                setMatchScore(null);
+                return;
+            }
+
+            try {
+                const { match_score } = await getMatchScore(jobText, markdown);
+                setMatchScore(Math.round(match_score * 100));
+                setMatchScoreError(null);
+            } catch (err) {
+                console.error("⚠ Match score API error:", err);
+                setMatchScore(null);
+                setMatchScoreError(
+                    `Error code ${err.status || '???'} - ${err.message || 'unknown'}`
+                );
+            }
         }
-        setShowFullPreview(!showFullPreview);
+        setShowFullPreview(prev => !prev);
     };
 
     if (!adaptedResume || !job) return null;
@@ -367,7 +392,7 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume, profile 
                     (profile?.positive_keywords || []).map(normalizeKeyword).includes(normalizeKeyword(kw))
                 ) || [];
 
-                const score = Math.round((matchedKeywords.length / (job.keywords?.length || 1)) * 100);
+                const score = matchScore ?? 0;
                 const barColor = getColorFromScore(score);
 
                 return (
@@ -386,14 +411,25 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume, profile 
                                     <div className="flex items-center justify-between mb-2">
                                         <div className="text-lg font-semibold text-gray-800 dark:text-gray-200">Match Score</div>
                                         <div className="text-right">
-                                            <div className="font-bold text-lg" style={{ color: barColor }}>{score}%</div>
-                                            <div className="text-xs text-gray-500 dark:text-gray-400">Match</div>
+                                            {matchScoreError ? (
+                                                <div className="text-xs text-red-500 dark:text-red-400">⚠ {matchScoreError}</div>
+                                            ) : (
+                                                <>
+                                                    <div className="font-bold text-lg" style={{ color: getColorFromScore(matchScore ?? 0) }}>
+                                                        {matchScore !== null ? `${matchScore}%` : '...'}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">Match</div>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
                                         <div
                                             className="h-2 rounded-full transition-all duration-200"
-                                            style={{ width: `${score}%`, backgroundColor: barColor }}
+                                            style={{
+                                                width: matchScore !== null ? `${matchScore}%` : '0%',
+                                                backgroundColor: matchScoreError ? 'transparent' : getColorFromScore(matchScore ?? 0),
+                                            }}
                                         />
                                     </div>
                                 </div>

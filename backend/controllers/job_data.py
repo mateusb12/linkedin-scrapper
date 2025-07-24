@@ -248,9 +248,17 @@ def compute_match_score():
     """
     try:
         request_body = request.get_json()
-        resume = request_body.get("resume_text", "")
-        job = request_body.get("job_text", "")
+        resume = request_body.get("resume", "") or request_body.get("resume_text", "")
+        job = request_body.get("job_description", "") or request_body.get("job_text", "")
+
+        if not resume.strip():
+            raise ValueError("❌ resume field is empty.")
+        if not job.strip():
+            raise ValueError("❌ job_description field is empty.")
+
         score = embedding_calculator.compute_similarity(resume_text=resume, job_text=job)
         return jsonify({"match_score": score}), 200
+
     except Exception as e:
+        print("⚠️ Error in match-score route:", str(e))
         return jsonify({"error": str(e)}), 500
