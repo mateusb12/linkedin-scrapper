@@ -241,16 +241,16 @@ def mark_job_as_disabled(urn):
         session.close()
 
 
-@job_data_bp.route("/embeddings", methods=["GET"])
-def get_job_embeddings():
+@job_data_bp.route("/match-score", methods=["POST"])
+def compute_match_score():
     """
-    Fetches all jobs and their embeddings from the database.
+    Computes similarity score between resume and job description using embeddings.
     """
-    request_body = request.get_json()
-    job_description = request_body.get("job_description", "")
-    resume = request_body.get("resume", "")
-    embedding_calculator.compute_similarity(resume_text=resume, job_text=job_description)
-    return jsonify({
-        "message": "Embeddings computed successfully",
-        "similarity_score": embedding_calculator.compute_similarity(resume_text=resume, job_text=job_description)
-    }), 200
+    try:
+        request_body = request.get_json()
+        resume = request_body.get("resume_text", "")
+        job = request_body.get("job_text", "")
+        score = embedding_calculator.compute_similarity(resume_text=resume, job_text=job)
+        return jsonify({"match_score": score}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

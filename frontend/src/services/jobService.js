@@ -22,3 +22,16 @@ export const markJobAsDisabled = async (jobUrn) => {
     });
     return handleResponse(response, 'Failed to mark job as disabled');
 };
+
+export const getMatchScore = async (jobText, resumeText) => {
+    const payload = {
+        job_text: jobText,
+        resume_text: resumeText
+    };
+    const response = await fetch(`${API_BASE}/jobs/match-score`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    return handleResponse(response, 'Failed to fetch match score');
+};
