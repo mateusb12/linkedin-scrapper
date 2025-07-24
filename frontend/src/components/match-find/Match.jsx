@@ -209,10 +209,37 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume, profile 
     const [fullResumeMarkdown, setFullResumeMarkdown] = useState('');
     const [matchScore, setMatchScore] = useState(null);
     const [matchScoreError, setMatchScoreError] = useState(null);
+    const [isCalculatingScore, setIsCalculatingScore] = useState(false);
 
 
     const inputClasses = "w-full p-2 rounded-md bg-white dark:bg-gray-700 focus:ring-2 text-sm border border-gray-300 dark:border-gray-600 focus:ring-purple-500";
     const buttonClasses = "flex items-center gap-2 text-xs px-2.5 py-1.5 bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/50 dark:hover:bg-purple-900/80 text-purple-800 dark:text-purple-200 font-semibold rounded-md transition-all";
+
+    const handleCalculateScore = async () => {
+        const markdown = generateFullResumeMarkdown(profile, adaptedResume);
+        const jobText = `# ${job.title || ''} @ ${job.company?.name || ''}\n\n${job.description || ''}\n\n## Responsibilities\n${(job.responsibilities || []).join('\n')}\n\n## Qualifications\n${(job.qualifications || []).join('\n')}`;
+
+        if (!markdown.trim() || !jobText.trim()) {
+            setMatchScoreError("❌ Resume or job description is empty");
+            setMatchScore(null);
+            return;
+        }
+
+        try {
+            setIsCalculatingScore(true);
+            const { match_score } = await getMatchScore(jobText, markdown);
+            setMatchScore(Math.round(match_score * 100));
+            setMatchScoreError(null);
+        } catch (err) {
+            console.error("⚠ Match score API error:", err);
+            setMatchScore(null);
+            setMatchScoreError(
+                `Error code ${err.status || '???'} - ${err.message || 'unknown'}`
+            );
+        } finally {
+            setIsCalculatingScore(false);
+        }
+    };
 
     useEffect(() => {
         if (baseResume) {
@@ -437,9 +464,25 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume, profile 
                         <div className="bg-gray-50 dark:bg-gray-900/50 p-4 sm:p-6 rounded-xl shadow-lg w-full flex flex-col border dark:border-gray-700">
                             <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-300 dark:border-gray-600 flex-shrink-0">
                                 <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Full Resume Markdown Preview</h2>
-                                <button onClick={handleToggleFullPreview} className="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white p-2 rounded-full transition-colors">
-                                    <XCircle size={24}/>
-                                </button>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={handleCalculateScore}
+                                        disabled={isCalculatingScore}
+                                        className="px-4 py-1.5 bg-yellow-400 hover:bg-yellow-500 text-black font-semibold text-xs rounded-md disabled:cursor-wait disabled:opacity-50 transition-all"
+                                    >
+                                        {isCalculatingScore ? (
+                                            <div className="flex items-center gap-2">
+                                                <Spinner className="w-4 h-4 text-black" />
+                                                Calculating...
+                                            </div>
+                                        ) : (
+                                            "Calculate Score"
+                                        )}
+                                    </button>
+                                    <button onClick={handleToggleFullPreview} className="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white p-2 rounded-full transition-colors">
+                                        <XCircle size={24}/>
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Match Score Bar (Centered with % width) */}
