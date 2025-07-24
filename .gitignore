@@ -27,3 +27,4 @@
 /backend/repomix-backend.md
 /backend/.env
 /frontend/public/myProfile.md
+/backend/services/embeddings/cache.json

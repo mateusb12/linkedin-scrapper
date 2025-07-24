@@ -41,6 +41,10 @@ def get_userdata_path() -> Path:
     return Path(get_root_folder_path(), 'userdata')
 
 
+def get_embeddings_folder_path() -> Path:
+    return Path(get_source_folder_path(), 'services', 'embeddings')
+
+
 def main():
     folder = get_scrapper_folder_path()
     print(folder)
