@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 
 from database.database_connection import get_db_session
 from models import Resume
+from services.job_prompts import build_tailor_resume_prompt
 
 resume_bp = Blueprint("resumes", __name__, url_prefix="/jobs")
 
@@ -158,17 +159,24 @@ def tailor_resume_endpoint():
     """
     # 1. Get and validate the request data
     data = request.get_json()
-    if not data or 'resume_markdown' not in data or 'job_description' not in data:
-        return jsonify({"error": "Request must include 'resume_markdown' and 'job_description'"}), 400
+    required_params = ["raw_job_description", "raw_resume", "extracted_job_keywords", "extracted_resume_keywords", "current_cosine_similarity"]
+    if not data or not all(param in data for param in required_params):
+        return jsonify({"error": f"Request must include {required_params}"}), 400
 
-    resume_markdown = data.get('resume_markdown')
-    job_description = data.get('job_description')
+    raw_job_description = data.get('raw_job_description')
+    raw_resume = data.get('raw_resume')
+    extracted_job_keywords = data.get('extracted_job_keywords', [])
+    extracted_resume_keywords = data.get('extracted_resume_keywords', [])
+    current_cosine_similarity = data.get('current_cosine_similarity', 0.0)
 
     # 2. Call the AI service to tailor the resume
     try:
-        tailored_data = tailor_resume_for_job(
-            resume_markdown=resume_markdown,
-            job_description=job_description
+        tailored_data = build_tailor_resume_prompt(
+            raw_job_description=raw_job_description,
+            raw_resume=raw_resume,
+            extracted_job_keywords=extracted_job_keywords,
+            extracted_resume_keywords=extracted_resume_keywords,
+            current_cosine_similarity=current_cosine_similarity
         )
 
         if 'error' in tailored_data:

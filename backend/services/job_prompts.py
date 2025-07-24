@@ -21,19 +21,46 @@ Job Description:
 """
 
 
-def build_tailor_resume_prompt(resume_md: str, job_description: str) -> str:
+def build_tailor_resume_prompt(
+        raw_job_description: str,
+        raw_resume: str,
+        extracted_job_keywords: list[str],
+        extracted_resume_keywords: list[str],
+        current_cosine_similarity: float
+) -> str:
     return f"""
-You are a career coach specializing in technical resumes.
+You are an expert resume editor and talent acquisition specialist. Your task is to revise the following resume so that it aligns as closely as possible with the provided job description and extracted job keywords, in order to maximize the cosine similarity between the resume and the job keywords.
 
-**Job Description:**
-```{job_description}```
-**Original Resume (Markdown):**
-```{resume_md}```
+Instructions:
+- Carefully review the job description and the list of extracted job keywords.
+- Update the candidate's resume by:
+  - Emphasizing and naturally incorporating relevant skills, experiences, and keywords from the job description and keyword list.
+  - Where appropriate, naturally weave the extracted job keywords into the resume content.
+  - Rewriting, adding, or removing resume content as needed to better match the job requirements.
+  - Maintaining a natural, professional tone and avoiding keyword stuffing.
+  - Where possible, use quantifiable achievements and action verbs.
+  - The current cosine similarity score is {current_cosine_similarity:.4f}. Revise the resume to further increase this score.
+- ONLY output the improved updated resume. Do not include any explanations, commentary, or formatting outside of the resume itself.
 
-Tailor the "Professional Experience" and generate a list of "hard_skills".
-Output EXACTLY one JSON object with keys:
-- professional_experience: [{title: string, details: [string] }]
-- hard_skills: [string]
-```json
+Job Description:
+```md
+{raw_job_description}
+```
 
+Extracted Job Keywords:
+```md
+{', '.join(extracted_job_keywords)}
+```
+
+Original Resume:
+```md
+{raw_resume}
+```
+
+Extracted Resume Keywords:
+```md
+{', '.join(extracted_resume_keywords)}
+```
+
+NOTE: ONLY OUTPUT THE IMPROVED UPDATED RESUME IN MARKDOWN FORMAT.
 """
