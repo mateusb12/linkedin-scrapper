@@ -12,6 +12,9 @@ import {
     generateHardSkillsMarkdown,
     generateProfileHeaderMarkdown, generateProjectsMarkdown
 } from "../../utils/markdownUtils.js";
+import {fetchProfiles, saveProfile} from "../../services/profileService.js";
+import {fetchResumes} from "../match-find/MatchLogic.jsx";
+import {createResume, deleteResume, searchResumeByName, updateResume} from "../../services/resumeService.js";
 
 //=================================================================
 // 0. STYLES - SINGLE SOURCE OF TRUTH (No changes)
@@ -139,6 +142,7 @@ const ResumeSection = ({
                            setSelectedResumeId,
                            setResumes,
                            onSave,
+                           onDelete,
                            generateHardSkillsMarkdown,
                            generateExperienceMarkdown,
                            generateProjectsMarkdown,
@@ -245,6 +249,7 @@ const ResumeSection = ({
                     </div>
                     <div className={`flex flex-col sm:flex-row justify-end items-center mt-6 pt-6 border-t ${palette.border.primary} space-y-3 sm:space-y-0 sm:space-x-4`}>
                         <button onClick={onToggleFullPreview} className={`${styleguide.button.markdown} w-full sm:w-auto`}>Preview Full Resume Markdown</button>
+                        <button onClick={() => window.confirm(`Delete "${selectedResume.name}"?`) && onDelete()} className="border border-red-600 text-red-500 hover:text-white hover:bg-red-600 font-bold py-2 px-4 rounded-md transition w-full sm:w-auto">Delete Resume</button>
                         <button onClick={onSave} className={`${styleguide.button.primary} w-full sm:w-auto`}>Save Resume</button>
                     </div>
                 </div>
@@ -275,8 +280,8 @@ const UserProfile = () => {
             try {
                 // Fetch profiles and resumes in parallel
                 const [profilesData, resumesData] = await Promise.all([
-                    ResumeService.fetchProfiles(),
-                    ResumeService.fetchResumes()
+                    fetchProfiles(),
+                    fetchResumes()
                 ]);
 
                 if (profilesData && profilesData.length > 0) {
@@ -361,7 +366,7 @@ const UserProfile = () => {
             return;
         }
         try {
-            const savedProfile = await ResumeService.saveProfile(profile);
+            const savedProfile = await saveProfile(profile);
             setProfile(savedProfile); // Update state with saved data (especially to get new ID on creation)
             alert('Profile saved successfully! ✅');
         } catch (error) {
@@ -380,7 +385,7 @@ const UserProfile = () => {
             // 1. Try to find an existing resume by name
             let existingResume;
             try {
-                existingResume = await ResumeService.searchResumeByName(selectedResume.name);
+                existingResume = await searchResumeByName(selectedResume.name);
             } catch (_) {
                 existingResume = null; // Treat 404 as not found
             }
@@ -388,13 +393,13 @@ const UserProfile = () => {
             let savedResume;
             if (existingResume && existingResume.id) {
                 // 2a. Resume exists → update it
-                savedResume = await ResumeService.updateResume(existingResume.id, {
+                savedResume = await updateResume(existingResume.id, {
                     ...selectedResume,
                     id: existingResume.id, // Ensure correct ID
                 });
             } else {
                 // 2b. Resume not found → create it
-                savedResume = await ResumeService.createResume(selectedResume);
+                savedResume = await createResume(selectedResume);
             }
 
             // 3. Update local state
@@ -404,6 +409,32 @@ const UserProfile = () => {
         } catch (error) {
             console.error('Failed to save resume:', error);
             alert(`Error saving resume: ${error.message} ❌`);
+        }
+    };
+
+    const handleDeleteResume = async () => {
+        if (!selectedResume || !selectedResume.id) {
+            alert("No resume selected.");
+            return;
+        }
+
+        if (!window.confirm(`Are you sure you want to delete resume "${selectedResume.name}"?`)) {
+            return;
+        }
+
+        try {
+            await deleteResume(selectedResume.id);
+            const updated = resumes.filter(r => r.id !== selectedResume.id);
+            setResumes(updated);
+            if (updated.length > 0) {
+                setSelectedResumeId(updated[0].id);
+            } else {
+                setSelectedResumeId(null);
+            }
+            alert('Resume deleted successfully! ✅');
+        } catch (err) {
+            console.error("Error deleting resume:", err);
+            alert(`Failed to delete resume: ${err.message}`);
         }
     };
 
@@ -473,7 +504,7 @@ const UserProfile = () => {
                 </div>
 
                 <ProfileDetails profile={profile} setProfile={setProfile} onSave={handleSaveProfile} selectedResume={selectedResume} handleEducationChange={handleEducationChange} addEducationItem={addEducationItem} removeEducationItem={removeEducationItem} />
-                <ResumeSection resumes={resumes} selectedResume={selectedResume} setSelectedResumeId={setSelectedResumeId} setResumes={setResumes} onSave={handleSaveResume} generateHardSkillsMarkdown={generateHardSkillsMarkdown} generateExperienceMarkdown={generateExperienceMarkdown} generateProjectsMarkdown={generateProjectsMarkdown} onToggleFullPreview={handleToggleFullPreview} />
+                <ResumeSection resumes={resumes} selectedResume={selectedResume} setSelectedResumeId={setSelectedResumeId} setResumes={setResumes} onSave={handleSaveResume} onDelete={handleDeleteResume} generateHardSkillsMarkdown={generateHardSkillsMarkdown} generateExperienceMarkdown={generateExperienceMarkdown} generateProjectsMarkdown={generateProjectsMarkdown} onToggleFullPreview={handleToggleFullPreview} />
 
                 {showFullPreview && (
                     <div className={`mt-8 ${palette.bg.card} p-6 rounded-lg shadow-lg`}>
