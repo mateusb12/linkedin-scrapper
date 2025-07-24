@@ -34,7 +34,6 @@ import {
     markJobAsDisabled,
     normalizeKeyword,
 } from "./MatchLogic.jsx";
-import {fetchProfiles, tailorResume} from "../../services/ResumeService.js";
 import csharp from "../../assets/skills_icons/csharp.svg"
 import python from "../../assets/skills_icons/python.svg"
 import js from "../../assets/skills_icons/javascript.svg";
@@ -52,6 +51,7 @@ import sql from "../../assets/skills_icons/sql.svg";
 import dotnet from "../../assets/skills_icons/dotnet.svg";
 import {forbiddenLanguages} from "../../data/ForbiddenLanguages.js";
 import {generateFullResumeMarkdown} from "../../utils/markdownUtils.js";
+import {fetchProfiles} from "../../services/profileService.js";
 
 // --- Reusable UI Components ---
 

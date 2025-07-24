@@ -1,9 +1,9 @@
 // frontend/src/components/swiper/JobCoreViewer.jsx
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { fetchAllJobs } from '../../services/ResumeService.js';
 import { JobListView } from "./JobListView.jsx";
 import { JobDetailsView } from "./JobDetailsView.jsx";
+import {fetchAllJobs} from "../../services/jobService.js";
 
 export default function JobCoreViewer() {
     const [jobs, setJobs] = useState([]);

@@ -6,8 +6,6 @@ import {
 import matter from 'gray-matter';
 import yaml from 'js-yaml';
 
-// Import the service functions
-import * as ResumeService from '../../services/ResumeService';
 import {
     generateEducationMarkdown,
     generateExperienceMarkdown,
