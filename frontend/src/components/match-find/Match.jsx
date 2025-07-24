@@ -362,24 +362,54 @@ const AdaptJobSection = ({ baseResume, job, allResumes, onSelectResume, profile 
                 </button>
             </footer>
 
-            {showFullPreview && (
-                <div className="mt-8 pt-6 border-t dark:border-gray-700">
-                    <div className="bg-gray-50 dark:bg-gray-900/50 p-4 sm:p-6 rounded-xl shadow-lg w-full flex flex-col border dark:border-gray-700">
-                        <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-300 dark:border-gray-600 flex-shrink-0">
-                            <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Full Resume Markdown Preview</h2>
-                            <button onClick={handleToggleFullPreview} className="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white p-2 rounded-full transition-colors">
-                                <XCircle size={24}/>
-                            </button>
+            {showFullPreview && (() => {
+                const matchedKeywords = job.keywords?.filter(kw =>
+                    (profile?.positive_keywords || []).map(normalizeKeyword).includes(normalizeKeyword(kw))
+                ) || [];
+
+                const score = Math.round((matchedKeywords.length / (job.keywords?.length || 1)) * 100);
+                const barColor = getColorFromScore(score);
+
+                return (
+                    <div className="mt-8 pt-6 border-t dark:border-gray-700">
+                        <div className="bg-gray-50 dark:bg-gray-900/50 p-4 sm:p-6 rounded-xl shadow-lg w-full flex flex-col border dark:border-gray-700">
+                            <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-300 dark:border-gray-600 flex-shrink-0">
+                                <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Full Resume Markdown Preview</h2>
+                                <button onClick={handleToggleFullPreview} className="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white p-2 rounded-full transition-colors">
+                                    <XCircle size={24}/>
+                                </button>
+                            </div>
+
+                            {/* Match Score Bar (Centered with % width) */}
+                            <div className="w-full flex justify-center">
+                                <div className="w-[85%]">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="text-lg font-semibold text-gray-800 dark:text-gray-200">Match Score</div>
+                                        <div className="text-right">
+                                            <div className="font-bold text-lg" style={{ color: barColor }}>{score}%</div>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">Match</div>
+                                        </div>
+                                    </div>
+                                    <div className="bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                                        <div
+                                            className="h-2 rounded-full transition-all duration-200"
+                                            style={{ width: `${score}%`, backgroundColor: barColor }}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Markdown Preview */}
+                            <textarea
+                                readOnly
+                                value={fullResumeMarkdown}
+                                className="mt-6 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 font-mono text-sm w-full rounded-md p-4 resize-none focus:ring-2 focus:ring-indigo-500"
+                                style={{ height: '60vh' }}
+                            />
                         </div>
-                        <textarea
-                            readOnly
-                            value={fullResumeMarkdown}
-                            className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 font-mono text-sm w-full rounded-md p-4 resize-none focus:ring-2 focus:ring-indigo-500"
-                            style={{height: '60vh'}}
-                        />
                     </div>
-                </div>
-            )}
+                );
+            })()}
         </div>
     );
 };
