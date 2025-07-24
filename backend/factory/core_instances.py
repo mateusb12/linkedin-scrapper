@@ -1,0 +1,3 @@
+from services.embeddings.openai_embeddings import EmbeddingSimilarityCalculator
+
+embedding_calculator = EmbeddingSimilarityCalculator()

@@ -8,6 +8,7 @@ from sqlalchemy import inspect, or_
 from sqlalchemy.orm import joinedload
 
 from database.database_connection import get_db_session
+from factory.core_instances import embedding_calculator
 from models import Job
 from services.model_orchestrator import LLMOrchestrator, AllLLMsFailed
 from utils.metric_utils import JobConsoleProgress
@@ -238,3 +239,18 @@ def mark_job_as_disabled(urn):
         return jsonify({"error": str(e)}), 500
     finally:
         session.close()
+
+
+@job_data_bp.route("/embeddings", methods=["GET"])
+def get_job_embeddings():
+    """
+    Fetches all jobs and their embeddings from the database.
+    """
+    request_body = request.get_json()
+    job_description = request_body.get("job_description", "")
+    resume = request_body.get("resume", "")
+    embedding_calculator.compute_similarity(resume_text=resume, job_text=job_description)
+    return jsonify({
+        "message": "Embeddings computed successfully",
+        "similarity_score": embedding_calculator.compute_similarity(resume_text=resume, job_text=job_description)
+    }), 200
