@@ -2,7 +2,7 @@
 
 export const generateProfileHeaderMarkdown = (profileData) => {
     if (!profileData) return '';
-    const { name, email, phone, location, linkedin, github } = profileData;
+    const {name, email, phone, location, linkedin, github} = profileData;
     const linkedInText = linkedin ? `[LinkedIn](${linkedin})` : '';
     const githubText = github ? `[GitHub](${github})` : '';
     const contacts = [location, phone, email, linkedInText, githubText].filter(Boolean).join(' | ');
@@ -13,6 +13,13 @@ export const generateHardSkillsMarkdown = (skills) => {
     if (!skills || skills.filter(s => s).length === 0) return '';
     return `## 🛠️ Hard Skills\n- ${skills.filter(s => s).join(', ')}`;
 };
+
+export function extractSummary(markdown) {
+    const match = markdown.match(
+        /##\s*(?:🎯\s*)?Summary\s*\n([\s\S]*?)(?:\n-{3,}|^\s*##|\n##)/m
+    );
+    return match ? match[1].trim() : '';
+}
 
 export const generateExperienceMarkdown = (experiences) => {
     if (!experiences || experiences.length === 0) return '';
@@ -84,8 +91,10 @@ export const parseMarkdownToResume = (markdown) => {
 
     if (!markdown) return resume;
 
+    resume.summary = extractSummary(markdown);
+
     // --- Parse Summary ---
-    const summaryMatch = markdown.match(/## Summary\n([\s\S]*?)(?=\n## |$)/);
+    const summaryMatch = markdown.match(/##\s*(?:🎯\s*)?Summary\s*\n([\s\S]*?)(?:\n-{3,}|^\s*##|\n##)/m);
     if (summaryMatch && summaryMatch[1]) {
         resume.summary = summaryMatch[1].trim();
     }

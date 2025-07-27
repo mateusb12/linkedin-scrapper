@@ -153,7 +153,7 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
             const parsedResume = parseMarkdownToResume(tailoredData.markdown);
             setAdaptedResume(prev => {
                 const newResume = JSON.parse(JSON.stringify(prev));
-                if (parsedResume.summary) newResume.summary = parsedResume.summary;
+                newResume.summary = parsedResume.summary || extractSummary(tailoredData.markdown) || newResume.summary;
                 if (parsedResume.professional_experience.length > 0) newResume.professional_experience = parsedResume.professional_experience;
                 if (parsedResume.projects.length > 0) newResume.projects = parsedResume.projects;
                 return newResume;
