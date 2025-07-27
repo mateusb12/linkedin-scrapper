@@ -149,6 +149,8 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
                 extracted_resume_keywords: getSkillsArray(baseResume.hard_skills || []),
                 current_cosine_similarity: matchScore ? matchScore / 100 : 0.0,
             });
+            console.log('--- RAW MARKDOWN FROM AI ---\n', tailoredData.markdown);
+            console.log('--- PARSED OUTPUT ---\n', parseMarkdownToResume(tailoredData.markdown));
             setFullResumeMarkdown(tailoredData.markdown);
             const parsedResume = parseMarkdownToResume(tailoredData.markdown);
             setAdaptedResume(prev => {

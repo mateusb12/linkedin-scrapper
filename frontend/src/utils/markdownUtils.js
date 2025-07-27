@@ -85,63 +85,88 @@ export const parseMarkdownToResume = (markdown) => {
     const resume = {
         summary: '',
         professional_experience: [],
-        projects: []
-        // Add other sections like 'hard_skills' if your AI returns them
+        projects: [],
+        // Extend if needed: hard_skills, education, etc.
     };
 
     if (!markdown) return resume;
 
-    resume.summary = extractSummary(markdown);
-
     // --- Parse Summary ---
-    const summaryMatch = markdown.match(/##\s*(?:🎯\s*)?Summary\s*\n([\s\S]*?)(?:\n-{3,}|^\s*##|\n##)/m);
+    const summaryMatch = markdown.match(
+        /##\s*(?:🎯\s*)?Summary\s*\r?\n([\s\S]*?)(?=\r?\n-{3,}|\r?\n##|\r?\n$)/m
+    );
     if (summaryMatch && summaryMatch[1]) {
         resume.summary = summaryMatch[1].trim();
     }
 
     // --- Parse Professional Experience ---
-    const expBlockMatch = markdown.match(/## Professional Experience\n([\s\S]*?)(?=\n## |$)/);
+    const expBlockMatch = markdown.match(
+        /##\s*(?:💼\s*)?Professional Experience\r?\n([\s\S]*?)(?=\r?\n## |\r?\n$)/i
+    );
+
     if (expBlockMatch && expBlockMatch[1]) {
-        const experienceBlock = expBlockMatch[1];
-        // Regex to capture each job entry
-        const experienceEntries = experienceBlock.split('### ').slice(1);
+        const experienceEntries = expBlockMatch[1]
+            .split(/\r?\n###\s+/)
+            .filter(Boolean);
 
         experienceEntries.forEach(entry => {
-            const lines = entry.trim().split('\n');
-            const titleLine = lines.shift() || '';
-            const details = lines.map(line => line.replace(/^- /, '').trim()).filter(Boolean);
+            const lines = entry.trim().replace(/\r/g, '').split('\n');
 
-            // Regex to capture Title, Company, and Dates from the title line
-            const titleMatch = titleLine.match(/(.*) @ (.*) \((.*)\)/);
+            // 1. Try to extract title
+            const title = lines.shift()?.trim() || '';
 
-            if (titleMatch) {
+            // 2. Handle metadata line
+            let metaLine = '';
+            if (/^\*\*.*\*\*\s*\|/.test(title)) {
+                metaLine = title; // case where title and meta are on the same line
+            } else {
+                metaLine = lines.shift()?.trim() || '';
+            }
+
+            const metaMatch = metaLine.match(/\*\*(.+?)\*\*\s*\|\s*\*(.+?)\*/);
+            const details = lines
+                .map(l => l.replace(/^- /, '').trim())
+                .filter(Boolean);
+
+            if (metaMatch) {
                 resume.professional_experience.push({
-                    title: titleMatch[1].trim(),
-                    company: titleMatch[2].trim(),
-                    dates: titleMatch[3].trim(),
-                    details: details, // In your component, this maps to 'description'
+                    title,
+                    company: metaMatch[1].trim(),
+                    dates: metaMatch[2].trim(),
+                    details,
                     description: details,
                 });
             }
         });
     }
 
-    // --- Parse Projects (if needed) ---
-    const projBlockMatch = markdown.match(/## Projects\n([\s\S]*?)(?=\n## |$)/);
+    // --- Parse Projects ---
+    const projBlockMatch = markdown.match(
+        /##\s*(?:🧪\s*)?Projects\r?\n([\s\S]*?)(?=\r?\n## |\r?\n$)/i
+    );
+
     if (projBlockMatch && projBlockMatch[1]) {
-        const projectBlock = projBlockMatch[1];
-        const projectEntries = projectBlock.split('### ').slice(1);
+        const projectEntries = projBlockMatch[1]
+            .split(/\r?\n###\s+/)
+            .filter(Boolean);
 
         projectEntries.forEach(entry => {
-            const lines = entry.trim().split('\n');
-            const title = lines.shift() || '';
-            const details = lines.map(line => line.replace(/^- /, '').trim()).filter(Boolean);
+            const lines = entry.trim().replace(/\r/g, '').split('\n');
+
+            const titleLine = lines.shift()?.trim() || '';
+            const linkMatch = titleLine.match(/\[([^\]]+)]\(([^)]+)\)/);
+            const title = linkMatch ? linkMatch[1] : titleLine;
+            const link = linkMatch ? linkMatch[2] : '';
+
+            const details = lines
+                .map(l => l.replace(/^- /, '').trim())
+                .filter(Boolean);
 
             resume.projects.push({
-                title: title.trim(),
-                details: details,
+                title,
+                link,
+                details,
                 description: details,
-                link: '' // The parser can't guess the link, so it's left empty
             });
         });
     }
