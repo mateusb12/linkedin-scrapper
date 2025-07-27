@@ -1,17 +1,17 @@
 import {API_BASE, handleResponse} from './config';
 
 export const fetchResumes = async () => {
-    const response = await fetch(`${API_BASE}/jobs/`);
+    const response = await fetch(`${API_BASE}/resumes/`);
     return handleResponse(response, 'Failed to fetch resumes');
 };
 
 export const fetchResumeById = async (id) => {
-    const response = await fetch(`${API_BASE}/jobs/${id}`);
+    const response = await fetch(`${API_BASE}/resumes/${id}`);
     return handleResponse(response, `Failed to fetch resume with ID ${id}`);
 };
 
 export const createResume = async (payload) => {
-    const response = await fetch(`${API_BASE}/jobs/`, {
+    const response = await fetch(`${API_BASE}/resumes/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -20,7 +20,7 @@ export const createResume = async (payload) => {
 };
 
 export const updateResume = async (id, payload) => {
-    const response = await fetch(`${API_BASE}/jobs/${id}`, {
+    const response = await fetch(`${API_BASE}/resumes/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -29,7 +29,7 @@ export const updateResume = async (id, payload) => {
 };
 
 export const deleteResume = async (id) => {
-    const response = await fetch(`${API_BASE}/jobs/${id}`, {
+    const response = await fetch(`${API_BASE}/resumes/${id}`, {
         method: 'DELETE'
     });
     return handleResponse(response, 'Failed to delete resume');
@@ -52,7 +52,7 @@ export const tailorResume = async (payload) => {
         );
     }
 
-    const response = await fetch(`${API_BASE}/jobs/tailor`, {
+    const response = await fetch(`${API_BASE}/resumes/tailor`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -62,6 +62,6 @@ export const tailorResume = async (payload) => {
 };
 
 export const searchResumeByName = async (name) => {
-    const response = await fetch(`${API_BASE}/jobs/search?name=${encodeURIComponent(name)}`);
+    const response = await fetch(`${API_BASE}/resumes/search?name=${encodeURIComponent(name)}`);
     return handleResponse(response, `Failed to search resume by name: ${name}`);
 };

@@ -15,7 +15,7 @@ export const markJobAsApplied = async (jobUrn) => {
 };
 
 export const markJobAsDisabled = async (jobUrn) => {
-    const response = await fetch(`${API_BASE}/jobs/${jobUrn}`, {
+    const response = await fetch(`${API_BASE}/jobs/${jobUrn}/disable`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ disabled: true }),

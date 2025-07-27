@@ -13,7 +13,7 @@ import {
     generateProfileHeaderMarkdown, generateProjectsMarkdown
 } from "../../utils/markdownUtils.js";
 import {fetchProfiles, saveProfile} from "../../services/profileService.js";
-import {fetchResumes} from "../match-find/MatchLogic.jsx";
+import {fetchAllResumes} from "../match-find/MatchLogic.jsx";
 import {createResume, deleteResume, searchResumeByName, updateResume} from "../../services/resumeService.js";
 
 //=================================================================
@@ -281,7 +281,7 @@ const UserProfile = () => {
                 // Fetch profiles and resumes in parallel
                 const [profilesData, resumesData] = await Promise.all([
                     fetchProfiles(),
-                    fetchResumes()
+                    fetchAllResumes()
                 ]);
 
                 if (profilesData && profilesData.length > 0) {

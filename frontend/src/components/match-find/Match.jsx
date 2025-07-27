@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     fetchAllJobs,
     fetchResumeById,
-    fetchResumes,
+    fetchAllResumes,
     findBestMatches,
     getSkillsArray,
     markJobAsApplied,
@@ -46,23 +46,6 @@ const Match = () => {
     ), []);
 
     useEffect(() => {
-        const loadInitialData = async () => {
-            try {
-                const [resumesData, jobsData] = await Promise.all([fetchResumes(), fetchAllJobs()]);
-                setResumes(resumesData);
-                setJobs(jobsData);
-                if (resumesData.length > 0) {
-                    handleSelectResume(resumesData[0].id);
-                }
-            } catch (error) {
-                setErrorMessage(error.message || 'Could not load initial data.');
-                setStatus('error');
-            }
-        };
-        loadInitialData();
-    }, []);
-
-    useEffect(() => {
         if (jobs.length > 0) {
             const totalCount = jobs.length;
             const completeCount = jobs.filter(j => j.title && j.location).length;
@@ -70,25 +53,42 @@ const Match = () => {
         }
     }, [jobs]);
 
-    const handleSelectResume = useCallback(async (id) => {
+    const handleSelectResume = useCallback((id) => {
         const newId = (typeof id === 'string' && id.includes('.')) ? parseFloat(id) : parseInt(id, 10);
+
+        // - REMOVE the 'loading' status and API call
+        // + ADD a simple find operation on the resumes array
+
+        const resumeToSelect = resumes.find(r => r.id === newId);
+
         setSelectedResumeId(newId);
-        if (!newId) {
+
+        if (resumeToSelect) {
+            setSelectedResume(resumeToSelect);
+        } else {
             setSelectedResume(null);
-            setStatus('idle');
-            return;
+            setErrorMessage(`Could not find resume with ID: ${newId}`);
         }
-        setStatus('loading');
-        setErrorMessage('');
-        try {
-            const resume = await fetchResumeById(newId);
-            setSelectedResume(resume);
-            setStatus('idle');
-        } catch (error) {
-            setErrorMessage(error.message || `Failed to load resume.`);
-            setStatus('error');
-            setSelectedResume(null);
-        }
+    }, [resumes]);
+
+    useEffect(() => {
+        const loadInitialData = async () => {
+            try {
+                // `resumesData` now contains ALL the details for every resume
+                const [resumesData, jobsData] = await Promise.all([fetchAllResumes(), fetchAllJobs()]);
+                setResumes(resumesData);
+                setJobs(jobsData);
+                if (resumesData.length > 0) {
+                    const first = resumesData[0];
+                    setSelectedResumeId(first.id);
+                    setSelectedResume(first);
+                }
+            } catch (error) {
+                setErrorMessage(error.message || 'Could not load initial data.');
+                setStatus('error');
+            }
+        };
+        loadInitialData();
     }, []);
 
     const handleMatch = () => {

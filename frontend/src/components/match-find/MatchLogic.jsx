@@ -132,8 +132,8 @@ const fetchWithFallback = async (url, defaultErrorMsg, fallbackData) => {
     }
 };
 
-export const fetchResumes = () =>
-    fetchWithFallback(`${API_BASE}/jobs/`, 'Failed to fetch resumes', MOCK_RESUMES);
+export const fetchAllResumes = () =>
+    fetchWithFallback(`${API_BASE}/resumes/`, 'Failed to fetch resumes', MOCK_RESUMES);
 
 export const fetchAllJobs = () =>
     fetchWithFallback(`${API_BASE}/jobs/all`, 'Failed to fetch all jobs', MOCK_JOBS);

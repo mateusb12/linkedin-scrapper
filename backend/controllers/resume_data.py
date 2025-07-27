@@ -5,7 +5,7 @@ from models import Resume
 from services.job_prompts import build_tailor_resume_prompt
 from services.model_orchestrator import LLMOrchestrator
 
-resume_bp = Blueprint("resumes", __name__, url_prefix="/jobs")
+resume_bp = Blueprint("resumes", __name__, url_prefix="/resumes")
 
 
 @resume_bp.route("/", methods=["POST"])

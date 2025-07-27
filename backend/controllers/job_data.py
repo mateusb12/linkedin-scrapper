@@ -16,6 +16,7 @@ from utils.metric_utils import JobConsoleProgress
 job_data_bp = Blueprint("jobs", __name__, url_prefix="/jobs")
 
 
+@job_data_bp.route("/", methods=["GET"])
 @job_data_bp.route("/all", methods=["GET"])
 def get_all_jobs():
     """
@@ -214,7 +215,7 @@ def update_job(urn):
         session.close()
 
 
-@job_data_bp.route("/<string:urn>", methods=["PATCH"])
+@job_data_bp.route("/<string:urn>/disable", methods=["PATCH"])
 def mark_job_as_disabled(urn):
     """
     Marks a job as disabled by setting the 'disabled' field to True.
