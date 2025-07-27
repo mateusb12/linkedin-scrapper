@@ -87,9 +87,34 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
 
     useEffect(() => {
         if (baseResume) {
+            // 1. Fix missing details for original (base) resume so comparisons work
+            if (baseResume.professional_experience) {
+                baseResume.professional_experience.forEach(exp => {
+                    exp.details = exp.details || exp.description || [];
+                });
+            }
+
+            if (baseResume.projects) {
+                baseResume.projects.forEach(proj => {
+                    proj.details = proj.details || proj.description || [];
+                });
+            }
+
+            // 2. Clone and normalize for the adapted version
             const mappedResume = JSON.parse(JSON.stringify(baseResume));
-            if (mappedResume.professional_experience) mappedResume.professional_experience.forEach(exp => exp.details = exp.details || exp.description || []);
-            if (mappedResume.projects) mappedResume.projects.forEach(proj => proj.details = proj.details || proj.description || []);
+
+            if (mappedResume.professional_experience) {
+                mappedResume.professional_experience.forEach(exp => {
+                    exp.details = exp.details || exp.description || [];
+                });
+            }
+
+            if (mappedResume.projects) {
+                mappedResume.projects.forEach(proj => {
+                    proj.details = proj.details || proj.description || [];
+                });
+            }
+
             setAdaptedResume(mappedResume);
             setTailoringApplied(false);
         } else {
