@@ -104,13 +104,21 @@ export const generateFullResumeMarkdown = (profile, resume, headings) => {
     return [header, summary, skills, experience, education, projects].filter(Boolean).join('\n\n---\n\n');
 };
 
-const escape = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const headingToPattern = (heading) => {
-    const textOnly = heading.replace(/^##\s*(?:[^\w\s])?\s*/, '');
-    return escape(textOnly).replace(/\s+/g, '\\s+');
+const escapeRegex = (str) => {
+    if (!str) return '';
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 };
 
-export const parseMarkdownToResume = (markdown, headings) => {
+function headingAlternatives(primary, fallbacks = []) {
+    const all = new Set(
+        [primary, ...fallbacks].filter(Boolean).map(h => h.trim())
+    );
+    return Array.from(all)
+        .map(h => h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .join('|');
+}
+
+export const parseMarkdownToResume = (markdown, headings = {}) => {
     const resume = {
         summary: '',
         professional_experience: [],
@@ -120,38 +128,52 @@ export const parseMarkdownToResume = (markdown, headings) => {
 
     if (!markdown) return resume;
 
-    const SUMMARY_HEADING  = headingToPattern(headings.summary);
-    const EXP_HEADING      = headingToPattern(headings.professional_experience);
-    const PROJ_HEADING     = headingToPattern(headings.projects);
+    // Accept multiple heading possibilities for robustness
+    const SUMMARY_HEADING = headingAlternatives(
+        headings.summary,
+        ['Resumo', 'Sumário', 'Summary']
+    );
+    const EXP_HEADING = headingAlternatives(
+        headings.professional_experience,
+        ['Experiência Profissional', 'Professional Experience', 'Experiência']
+    );
+    const PROJ_HEADING = headingAlternatives(
+        headings.projects,
+        ['Projetos', 'Projects']
+    );
 
     // --- Parse Summary ---
     const summaryMatch = markdown.match(
-        new RegExp(`##\\s*(?:🎯\\s*)?${SUMMARY_HEADING}\\s*\\r?\\n([\\s\\S]*?)(?=\\r?\\n-{3,}|\\r?\\n##|\\r?\\n$)`, 'mi')
+        new RegExp(
+            `##\\s*(?:🎯\\s*)?(${SUMMARY_HEADING})\\s*\\r?\\n([\\s\\S]*?)(?=\\r?\\n-{3,}|\\r?\\n##|\\r?\\n$)`,
+            'mi'
+        )
     );
-    if (summaryMatch && summaryMatch[1]) {
-        resume.summary = summaryMatch[1].trim();
+    if (summaryMatch && summaryMatch[2]) {
+        resume.summary = summaryMatch[2].trim();
     }
 
     // --- Parse Professional Experience ---
     const expBlockMatch = markdown.match(
-        new RegExp(`##\\s*(?:💼\\s*)?${EXP_HEADING}\\s*\\r?\\n([\\s\\S]*?)(?=\\r?\\n##|\\r?\\n$)`, 'i')
+        new RegExp(
+            `##\\s*(?:💼\\s*)?(${EXP_HEADING})\\s*\\r?\\n([\\s\\S]*?)(?=\\r?\\n##|\\r?\\n$)`,
+            'i'
+        )
     );
 
-    if (expBlockMatch && expBlockMatch[1]) {
-        const experienceEntries = expBlockMatch[1]
+    if (expBlockMatch && expBlockMatch[2]) {
+        const experienceEntries = expBlockMatch[2]
             .split(/\r?\n###\s+/)
             .filter(Boolean);
 
         experienceEntries.forEach(entry => {
             const lines = entry.trim().replace(/\r/g, '').split('\n');
 
-            // 1. Try to extract title
             const title = lines.shift()?.trim() || '';
 
-            // 2. Handle metadata line
             let metaLine = '';
             if (/^\*\*.*\*\*\s*\|/.test(title)) {
-                metaLine = title; // case where title and meta are on the same line
+                metaLine = title;
             } else {
                 metaLine = lines.shift()?.trim() || '';
             }
@@ -175,11 +197,14 @@ export const parseMarkdownToResume = (markdown, headings) => {
 
     // --- Parse Projects ---
     const projBlockMatch = markdown.match(
-        new RegExp(`##\\s*(?:💡\\s*)?${PROJ_HEADING}\\s*\\r?\\n([\\s\\S]*?)(?=\\r?\\n##|\\r?\\n$)`, 'i')
+        new RegExp(
+            `##\\s*(?:💡\\s*)?(${PROJ_HEADING})\\s*\\r?\\n([\\s\\S]*?)(?=\\r?\\n##|\\r?\\n$)`,
+            'i'
+        )
     );
 
-    if (projBlockMatch && projBlockMatch[1]) {
-        const projectEntries = projBlockMatch[1]
+    if (projBlockMatch && projBlockMatch[2]) {
+        const projectEntries = projBlockMatch[2]
             .split(/\r?\n###\s+/)
             .filter(Boolean);
 
