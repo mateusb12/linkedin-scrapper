@@ -154,11 +154,13 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
         if (!baseResume || !job) return;
         setIsTailoring(true);
         setTailoringApplied(false);
+
         let job_description = `# ${job.title} @ ${job.company?.name}\n\n## Description\n${job.description || 'Not provided.'}\n\n## Responsibilities\n`;
         (job.responsibilities || []).forEach(r => { job_description += `- ${r}\n`; });
         job_description += `\n## Qualifications\n`;
         (job.qualifications || []).forEach(q => { job_description += `- ${q}\n`; });
         if (job.keywords) job_description += `\n## Keywords\n${getSkillsArray(job.keywords).join(', ')}`;
+
         try {
             const tailoredData = await tailorResume({
                 raw_job_description: job_description,
@@ -167,37 +169,63 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
                 extracted_resume_keywords: getSkillsArray(baseResume.hard_skills || []),
                 current_cosine_similarity: matchScore ? matchScore / 100 : 0.0,
             });
+
             console.log('--- RAW MARKDOWN FROM AI ---\n', tailoredData.markdown);
-            console.log('--- PARSED OUTPUT ---\n', parseMarkdownToResume(tailoredData.markdown, headings));
+            const aiParsedResume = parseMarkdownToResume(tailoredData.markdown);
+            console.log('--- PARSED OUTPUT ---\n', aiParsedResume);
 
-            const parsedResume = parseMarkdownToResume(tailoredData.markdown, headings);
-
-            if (isParsedResumeEmpty(parsedResume)) {
-                console.error("⚠️ Parsed output is empty or invalid", parsedResume);
-                throw new Error("❌ AI returned an empty or invalid resume. Please retry or adjust the job description.");
+            if (isParsedResumeEmpty(aiParsedResume)) {
+                console.error("⚠️ Parsed output is empty or invalid", aiParsedResume);
+                throw new Error("❌ AI returned an empty or invalid resume. Please retry.");
             }
 
-            // 1. Create the new, updated resume object from the parsed data
-            const newAdaptedResume = JSON.parse(JSON.stringify(adaptedResume)); // Start with a copy of the current state
-            newAdaptedResume.summary = parsedResume.summary || extractSummary(tailoredData.markdown) || newAdaptedResume.summary;
-            if (parsedResume.professional_experience && parsedResume.professional_experience.length > 0) {
-                newAdaptedResume.professional_experience = parsedResume.professional_experience;
-            }
-            if (parsedResume.projects && parsedResume.projects.length > 0) {
-                newAdaptedResume.projects = parsedResume.projects;
+            // --- SMART MERGE LOGIC ---
+            const newAdaptedResume = JSON.parse(JSON.stringify(baseResume));
+
+            if (aiParsedResume.summary) {
+                newAdaptedResume.summary = aiParsedResume.summary;
             }
 
-            // 2. Set the component's main resume state
+            if (aiParsedResume.hard_skills?.length > 0) {
+                newAdaptedResume.hard_skills = aiParsedResume.hard_skills;
+            }
+
+            if (aiParsedResume.professional_experience?.length > 0) {
+                const originalExpMap = new Map(
+                    baseResume.professional_experience.map(exp => [
+                        `${exp.title?.toLowerCase().trim()}@${exp.company?.toLowerCase().trim()}`,
+                        exp
+                    ])
+                );
+
+                newAdaptedResume.professional_experience = aiParsedResume.professional_experience.map(aiExp => {
+                    const key = `${aiExp.title?.toLowerCase().trim()}@${aiExp.company?.toLowerCase().trim()}`;
+                    const originalExp = originalExpMap.get(key);
+                    return {
+                        ...aiExp,
+                        dates: originalExp?.dates || aiExp.dates,
+                    };
+                });
+            }
+
+            if (aiParsedResume.projects?.length > 0) {
+                const originalProjMap = new Map(
+                    baseResume.projects.map(p => [p.title?.toLowerCase().trim(), p])
+                );
+
+                newAdaptedResume.projects = aiParsedResume.projects.map(aiProj => {
+                    const originalProj = originalProjMap.get(aiProj.title?.toLowerCase().trim());
+                    return {
+                        ...aiProj,
+                        link: originalProj?.link || aiProj.link,
+                    };
+                });
+            }
+
             setAdaptedResume(newAdaptedResume);
-
-            // 3. Generate new markdown from the updated data using your language-aware headings
-            const newMarkdown = generateFullResumeMarkdown(profile, newAdaptedResume, headings);
-
-            // 4. Set this newly generated markdown for the preview
-            setFullResumeMarkdown(newMarkdown);
-
             setTailoringApplied(true);
             alert("✅ Resume tailored successfully!");
+
         } catch (error) {
             console.error("Error tailoring resume:", error);
             alert(`Could not tailor resume: ${error.message}`);

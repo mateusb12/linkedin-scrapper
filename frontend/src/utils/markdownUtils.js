@@ -1,5 +1,9 @@
 // --- MARKDOWN GENERATION HELPERS (Adapted from UserProfile) ---
 
+import { remark } from 'remark';
+import remarkParse from 'remark-parse';
+import {unified} from "unified";
+
 export const generateProfileHeaderMarkdown = (profileData) => {
     if (!profileData) return '';
     const {name, email, phone, location, linkedin, github} = profileData;
@@ -104,151 +108,105 @@ export const generateFullResumeMarkdown = (profile, resume, headings) => {
     return [header, summary, skills, experience, education, projects].filter(Boolean).join('\n\n---\n\n');
 };
 
-const escapeRegex = (str) => {
-    if (!str) return '';
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const getNodeText = (node) => {
+    if (node.type === 'text') {
+        return node.value;
+    }
+    if (node.children) {
+        return node.children.map(getNodeText).join('');
+    }
+    return '';
 };
 
-function headingAlternatives(primary, fallbacks = []) {
-    const all = new Set(
-        [primary, ...fallbacks].filter(Boolean).map(h => h.trim())
-    );
-    return Array.from(all)
-        .map(h => h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-        .join('|');
-}
+export const parseMarkdownToResume = (markdown) => {
+    const sanitizedMarkdown = markdown
+        .replace(/^```md\s*/, '') // remove opening triple backticks + optional language
+        .replace(/```$/, '');     // remove closing triple backticks
 
-export const parseMarkdownToResume = (markdown, headings = {}) => {
+    const tree = remark().parse(sanitizedMarkdown);
+
     const resume = {
         summary: '',
+        hard_skills: [], // Changed from 'skills'
         professional_experience: [],
+        education: [],
         projects: [],
-        // Extend if needed: hard_skills, education, etc.
     };
 
-    if (!markdown) return resume;
+    let currentSectionKey = null;
+    let currentItem = null;
 
-    // Accept multiple heading possibilities for robustness
-    const SUMMARY_HEADING = headingAlternatives(
-        headings.summary,
-        ['Resumo', 'Sumário', 'Summary']
-    );
-    const EXP_HEADING = headingAlternatives(
-        headings.professional_experience,
-        ['Experiência Profissional', 'Professional Experience', 'Experiência']
-    );
-    const PROJ_HEADING = headingAlternatives(
-        headings.projects,
-        ['Projetos', 'Projects']
-    );
+    tree.children.forEach(node => {
+        // Detect a new top-level section (H2 headings)
+        if (node.type === 'heading' && node.depth === 2) {
+            currentItem = null; // Reset any in-progress item
+            const headingText = getNodeText(node).toLowerCase();
 
-    // --- Parse Summary ---
-    const summaryMatch = markdown.match(
-        new RegExp(
-            `##\\s*(?:🎯\\s*)?(${SUMMARY_HEADING})\\s*\\r?\\n([\\s\\S]*?)(?=\\r?\\n-{3,}|\\r?\\n##|\\r?\\n$)`,
-            'mi'
-        )
-    );
-    if (summaryMatch && summaryMatch[2]) {
-        const detectedSummary = summaryMatch[2].trim();
-        console.log('Detected Summary:', detectedSummary);
-        resume.summary = detectedSummary;
-    }
+            if (headingText.includes('summary') || headingText.includes('resumo')) currentSectionKey = 'summary';
+            else if (headingText.includes('skills') || headingText.includes('habilidades')) currentSectionKey = 'hard_skills';
+            else if (headingText.includes('professional experience') || headingText.includes('experiência profissional')) currentSectionKey = 'professional_experience';
+            else if (headingText.includes('education') || headingText.includes('formação')) currentSectionKey = 'education';
+            else if (headingText.includes('projects') || headingText.includes('projetos')) currentSectionKey = 'projects';
+            else currentSectionKey = null;
+            return;
+        }
 
-    // --- Parse Professional Experience ---
-    const experienceRegex = new RegExp(
-        // 1) Start matching at a level-3 markdown header.
-        '### .+\\n' +
+        if (!currentSectionKey) return;
 
-        // 2) Lazily capture all subsequent characters, including newlines.
-        '[\\s\\S]*?' +
+        switch (currentSectionKey) {
+            case 'summary':
+                if (node.type === 'paragraph') {
+                    resume.summary = (resume.summary ? resume.summary + '\n' : '') + getNodeText(node);
+                }
+                break;
 
-        // 3) Stop matching right before the next experience (another '###')
-        //    or before the horizontal rule ('---') that ends the section.
-        //    This is a positive lookahead, so it doesn't consume the characters.
-        '(?=\\n###|\\n---)',
+            case 'hard_skills':
+                if (node.type === 'list') {
+                    const skillsText = getNodeText(node);
+                    // Handle both comma-separated and list-item separated skills
+                    const newSkills = skillsText.split(/,|-/).map(skill => skill.trim()).filter(Boolean);
+                    resume.hard_skills = [...resume.hard_skills, ...newSkills];
+                }
+                break;
 
-        // Use the 'g' flag to find ALL matches, not just the first one.
-        'g'
-    );
+            case 'professional_experience':
+                if (node.type === 'heading' && node.depth === 3) {
+                    currentItem = { title: getNodeText(node), company: '', dates: '', details: [] };
+                    resume.professional_experience.push(currentItem);
+                } else if (currentItem && node.type === 'paragraph') {
+                    // Be more robust to missing dates
+                    const parts = getNodeText(node).split('|').map(s => s.replace(/\*/g, '').trim());
+                    currentItem.company = parts[0] || '';
+                    currentItem.dates = parts[1] || '';
+                } else if (currentItem && node.type === 'list') {
+                    currentItem.details = node.children.map(listItem => getNodeText(listItem));
+                }
+                break;
 
-    const expBlockMatch = markdown.match(experienceRegex);
+            case 'education':
+                if (node.type === 'heading' && node.depth === 3) {
+                    currentItem = { degree: getNodeText(node), school: '', dates: '' };
+                    resume.education.push(currentItem);
+                } else if (currentItem && node.type === 'paragraph') {
+                    const parts = getNodeText(node).split('|').map(s => s.replace(/\*/g, '').trim());
+                    currentItem.school = parts[0] || '';
+                    currentItem.dates = parts[1] || '';
+                }
+                break;
 
-    if (expBlockMatch && expBlockMatch[2]) {
-        // 1. Grab that entire block and trim
-        const entriesBlock = expBlockMatch[2].trim();
-
-        // 2. Split on EACH "### " so you get one chunk per job
-        const experienceEntries = entriesBlock
-            .split(/###\s+/)
-            .filter(chunk => chunk.trim().length > 0);
-
-        console.log(`Found ${experienceEntries.length} experience entries`); // → 3
-
-        // 3. Parse each one exactly as before
-        experienceEntries.forEach(entry => {
-            const lines = entry.trim().replace(/\r/g, '').split('\n');
-            const title = lines.shift().trim();
-
-            let metaLine = '';
-            if (/^\*\*.*\*\*\s*\|/.test(title)) {
-                metaLine = title;
-            } else {
-                metaLine = lines.shift().trim();
-            }
-
-            const metaMatch = metaLine.match(/\*\*(.+?)\*\*\s*\|\s*\*(.+?)\*/);
-            const details = lines
-                .map(l => l.replace(/^- /, '').trim())
-                .filter(Boolean);
-
-            if (metaMatch) {
-                resume.professional_experience.push({
-                    title,
-                    company: metaMatch[1].trim(),
-                    dates:  metaMatch[2].trim(),
-                    details,
-                    description: details
-                });
-            }
-        });
-    }
-
-    // --- Parse Projects ---
-    const projBlockMatch = markdown.match(
-        new RegExp(
-            `##\\s*(?:💡\\s*)?(${PROJ_HEADING})\\s*\\r?\\n([\\s\\S]*?)(?=\\r?\\n##|\\r?\\n$)`,
-            'i'
-        )
-    );
-
-    if (projBlockMatch && projBlockMatch[2]) {
-        const projectEntries = projBlockMatch[2]
-            .split(/\r?\n###\s+/)
-            .filter(Boolean);
-
-        projectEntries.forEach(entry => {
-            const lines = entry.trim().replace(/\r/g, '').split('\n');
-
-            const titleLine = lines.shift()?.trim() || '';
-            const linkMatch = titleLine.match(/\[([^\]]+)]\(([^)]+)\)/);
-            const title = linkMatch ? linkMatch[1] : titleLine;
-            const link = linkMatch ? linkMatch[2] : '';
-
-            const details = lines
-                .map(l => l.replace(/^- /, '').trim())
-                .filter(Boolean);
-
-            const projectContent = {
-                title,
-                link,
-                details,
-                description: details,
-            };
-
-            resume.projects.push(projectContent);
-        });
-    }
+            case 'projects':
+                if (node.type === 'heading' && node.depth === 3) {
+                    const linkNode = node.children.find(child => child.type === 'link');
+                    const title = linkNode ? linkNode.children[0].value : getNodeText(node);
+                    const url = linkNode ? linkNode.url : '';
+                    currentItem = { title: title, link: url, details: [] };
+                    resume.projects.push(currentItem);
+                } else if (currentItem && node.type === 'list') {
+                    currentItem.details = node.children.map(listItem => getNodeText(listItem));
+                }
+                break;
+        }
+    });
 
     return resume;
 };
