@@ -105,9 +105,10 @@ export const generateFullResumeMarkdown = (profile, resume, headings) => {
 };
 
 const escape = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const headingToPattern = h =>
-    escape(h.replace(/^##\s*/, '').replace(/^./, '')) // drop "## " but keep emoji if present
-        .replace(/\\s+/g, '\\s+'); // normalise spaces
+const headingToPattern = (heading) => {
+    const textOnly = heading.replace(/^##\s*(?:[^\w\s])?\s*/, '');
+    return escape(textOnly).replace(/\s+/g, '\\s+');
+};
 
 export const parseMarkdownToResume = (markdown, headings) => {
     const resume = {
