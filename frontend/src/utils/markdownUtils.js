@@ -150,32 +150,51 @@ export const parseMarkdownToResume = (markdown, headings = {}) => {
         )
     );
     if (summaryMatch && summaryMatch[2]) {
-        resume.summary = summaryMatch[2].trim();
+        const detectedSummary = summaryMatch[2].trim();
+        console.log('Detected Summary:', detectedSummary);
+        resume.summary = detectedSummary;
     }
 
     // --- Parse Professional Experience ---
-    const expBlockMatch = markdown.match(
-        new RegExp(
-            `##\\s*(?:💼\\s*)?(${EXP_HEADING})\\s*\\r?\\n([\\s\\S]*?)(?=\\r?\\n##|\\r?\\n$)`,
-            'i'
-        )
+    const experienceRegex = new RegExp(
+        // 1) Start matching at a level-3 markdown header.
+        '### .+\\n' +
+
+        // 2) Lazily capture all subsequent characters, including newlines.
+        '[\\s\\S]*?' +
+
+        // 3) Stop matching right before the next experience (another '###')
+        //    or before the horizontal rule ('---') that ends the section.
+        //    This is a positive lookahead, so it doesn't consume the characters.
+        '(?=\\n###|\\n---)',
+
+        // Use the 'g' flag to find ALL matches, not just the first one.
+        'g'
     );
 
-    if (expBlockMatch && expBlockMatch[2]) {
-        const experienceEntries = expBlockMatch[2]
-            .split(/\r?\n###\s+/)
-            .filter(Boolean);
+    const expBlockMatch = markdown.match(experienceRegex);
 
+    if (expBlockMatch && expBlockMatch[2]) {
+        // 1. Grab that entire block and trim
+        const entriesBlock = expBlockMatch[2].trim();
+
+        // 2. Split on EACH "### " so you get one chunk per job
+        const experienceEntries = entriesBlock
+            .split(/###\s+/)
+            .filter(chunk => chunk.trim().length > 0);
+
+        console.log(`Found ${experienceEntries.length} experience entries`); // → 3
+
+        // 3. Parse each one exactly as before
         experienceEntries.forEach(entry => {
             const lines = entry.trim().replace(/\r/g, '').split('\n');
-
-            const title = lines.shift()?.trim() || '';
+            const title = lines.shift().trim();
 
             let metaLine = '';
             if (/^\*\*.*\*\*\s*\|/.test(title)) {
                 metaLine = title;
             } else {
-                metaLine = lines.shift()?.trim() || '';
+                metaLine = lines.shift().trim();
             }
 
             const metaMatch = metaLine.match(/\*\*(.+?)\*\*\s*\|\s*\*(.+?)\*/);
@@ -187,9 +206,9 @@ export const parseMarkdownToResume = (markdown, headings = {}) => {
                 resume.professional_experience.push({
                     title,
                     company: metaMatch[1].trim(),
-                    dates: metaMatch[2].trim(),
+                    dates:  metaMatch[2].trim(),
                     details,
-                    description: details,
+                    description: details
                 });
             }
         });
@@ -220,12 +239,14 @@ export const parseMarkdownToResume = (markdown, headings = {}) => {
                 .map(l => l.replace(/^- /, '').trim())
                 .filter(Boolean);
 
-            resume.projects.push({
+            const projectContent = {
                 title,
                 link,
                 details,
                 description: details,
-            });
+            };
+
+            resume.projects.push(projectContent);
         });
     }
 
