@@ -60,6 +60,23 @@ export const generateProjectsMarkdown = (projects, heading) => {
         : '';
 };
 
+export const markdownHeadings = {
+    en: {
+        summary: "## 🎯 Summary",
+        hard_skills: "## 🛠️ Hard Skills",
+        professional_experience: "## 💼 Professional Experience",
+        projects: "## 💡 Projects",
+        education: "## 🎓 Education",
+    },
+    pt: {
+        summary: "## 🎯 Resumo",
+        hard_skills: "## 🛠️ Habilidades",
+        professional_experience: "## 💼 Experiência Profissional",
+        projects: "## 💡 Projetos",
+        education: "## 🎓 Formação",
+    }
+};
+
 export const generateFullResumeMarkdown = (profile, resume, headings) => {
     if (!profile || !resume) return 'No profile or resume data available to generate markdown.';
 
@@ -87,7 +104,12 @@ export const generateFullResumeMarkdown = (profile, resume, headings) => {
     return [header, summary, skills, experience, education, projects].filter(Boolean).join('\n\n---\n\n');
 };
 
-export const parseMarkdownToResume = (markdown) => {
+const escape = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const headingToPattern = h =>
+    escape(h.replace(/^##\s*/, '').replace(/^./, '')) // drop "## " but keep emoji if present
+        .replace(/\\s+/g, '\\s+'); // normalise spaces
+
+export const parseMarkdownToResume = (markdown, headings) => {
     const resume = {
         summary: '',
         professional_experience: [],
@@ -97,9 +119,13 @@ export const parseMarkdownToResume = (markdown) => {
 
     if (!markdown) return resume;
 
+    const SUMMARY_HEADING  = headingToPattern(headings.summary);
+    const EXP_HEADING      = headingToPattern(headings.professional_experience);
+    const PROJ_HEADING     = headingToPattern(headings.projects);
+
     // --- Parse Summary ---
     const summaryMatch = markdown.match(
-        /##\s*(?:🎯\s*)?Summary\s*\r?\n([\s\S]*?)(?=\r?\n-{3,}|\r?\n##|\r?\n$)/m
+        new RegExp(`##\\s*(?:🎯\\s*)?${SUMMARY_HEADING}\\s*\\r?\\n([\\s\\S]*?)(?=\\r?\\n-{3,}|\\r?\\n##|\\r?\\n$)`, 'mi')
     );
     if (summaryMatch && summaryMatch[1]) {
         resume.summary = summaryMatch[1].trim();
@@ -107,7 +133,7 @@ export const parseMarkdownToResume = (markdown) => {
 
     // --- Parse Professional Experience ---
     const expBlockMatch = markdown.match(
-        /##\s*(?:💼\s*)?Professional Experience\r?\n([\s\S]*?)(?=\r?\n## |\r?\n$)/i
+        new RegExp(`##\\s*(?:💼\\s*)?${EXP_HEADING}\\s*\\r?\\n([\\s\\S]*?)(?=\\r?\\n##|\\r?\\n$)`, 'i')
     );
 
     if (expBlockMatch && expBlockMatch[1]) {
@@ -148,7 +174,7 @@ export const parseMarkdownToResume = (markdown) => {
 
     // --- Parse Projects ---
     const projBlockMatch = markdown.match(
-        /##\s*(?:🧪\s*)?Projects\r?\n([\s\S]*?)(?=\r?\n## |\r?\n$)/i
+        new RegExp(`##\\s*(?:💡\\s*)?${PROJ_HEADING}\\s*\\r?\\n([\\s\\S]*?)(?=\\r?\\n##|\\r?\\n$)`, 'i')
     );
 
     if (projBlockMatch && projBlockMatch[1]) {

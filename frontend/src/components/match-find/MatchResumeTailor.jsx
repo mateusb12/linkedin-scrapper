@@ -18,7 +18,7 @@ import { getColorFromScore, getSkillsArray, normalizeKeyword } from "./MatchLogi
 import {
     extractSummary,
     generateFullResumeMarkdown,
-    isParsedResumeEmpty,
+    isParsedResumeEmpty, markdownHeadings,
     parseMarkdownToResume
 } from "../../utils/markdownUtils.js";
 import { getMatchScore } from "../../services/jobService.js";
@@ -68,22 +68,7 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
     const [matchScoreError, setMatchScoreError] = useState(null);
     const [isCalculatingScore, setIsCalculatingScore] = useState(false);
 
-    const markdownHeadings = {
-        en: {
-            summary: "## 🎯 Summary",
-            hard_skills: "## 🛠️ Hard Skills",
-            professional_experience: "## 💼 Professional Experience",
-            projects: "## 💡 Projects",
-            education: "## 🎓 Education",
-        },
-        pt: {
-            summary: "## 🎯 Resumo",
-            hard_skills: "## 🛠️ Habilidades",
-            professional_experience: "## 💼 Experiência Profissional",
-            projects: "## 💡 Projetos",
-            education: "## 🎓 Formação",
-        }
-    };
+
     const headings = markdownHeadings[language];
     const getTitle = md => {
         const parts = md.split(' ');
@@ -183,9 +168,9 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
                 current_cosine_similarity: matchScore ? matchScore / 100 : 0.0,
             });
             console.log('--- RAW MARKDOWN FROM AI ---\n', tailoredData.markdown);
-            console.log('--- PARSED OUTPUT ---\n', parseMarkdownToResume(tailoredData.markdown));
+            console.log('--- PARSED OUTPUT ---\n', parseMarkdownToResume(tailoredData.markdown, headings));
 
-            const parsedResume = parseMarkdownToResume(tailoredData.markdown);
+            const parsedResume = parseMarkdownToResume(tailoredData.markdown, headings);
 
             if (isParsedResumeEmpty(parsedResume)) {
                 console.error("⚠️ Parsed output is empty or invalid", parsedResume);
