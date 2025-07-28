@@ -23,11 +23,14 @@ class Resume(db.Model):
                 f" professional_experience={self.professional_experience}, education={self.education})>")
 
     def to_dict(self):
+        hard_skills = self.hard_skills
+        if self.profile and self.profile.positive_keywords:
+            hard_skills = self.profile.positive_keywords
         return {
             "id": self.id,
             "name": self.name,
             "summary": self.summary,
-            "hard_skills": self.hard_skills,
+            "hard_skills": hard_skills,
             "professional_experience": self.professional_experience,
             "education": self.education,
             "projects": self.projects

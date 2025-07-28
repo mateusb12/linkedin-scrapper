@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 
 from database.database_connection import get_db_session
 from models import Resume
+from models.user_models import Profile
 from services.job_prompts import build_tailor_resume_prompt
 from services.model_orchestrator import LLMOrchestrator
 
@@ -61,13 +62,26 @@ def get_resume(resume_id):
 @resume_bp.route("/", methods=["GET"])
 def get_all_resumes():
     """
-    Fetches all resumes with full details (id, name, hard_skills, experience, education).
+    Fetch all resumes and overwrite hard_skills with the first profile's positive_keywords.
     """
     session = get_db_session()
     try:
         resumes = session.query(Resume).all()
-        resume_list = [resume.to_dict() for resume in resumes]
-        return jsonify(resume_list), 200
+        profiles = session.query(Profile).all()
+
+        # If you have at least one profile, grab its keywords
+        default_keywords = []
+        if profiles:
+            default_keywords = profiles[0].positive_keywords or []
+
+        result = []
+        for resume in resumes:
+            data = resume.to_dict()
+            # overwrite unconditionally
+            data["hard_skills"] = default_keywords
+            result.append(data)
+
+        return jsonify(result), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
