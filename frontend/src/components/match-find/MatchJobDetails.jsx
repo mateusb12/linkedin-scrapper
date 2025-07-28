@@ -30,6 +30,8 @@ import css from "../../assets/skills_icons/css.svg";
 import graphql from "../../assets/skills_icons/graphql.svg";
 import sql from "../../assets/skills_icons/sql.svg";
 import dotnet from "../../assets/skills_icons/dotnet.svg";
+import usa from "../../assets/skills_icons/usa.svg";
+import brazil from "../../assets/skills_icons/brazil.svg";
 
 const languageIcons = {
     python: <img src={python} alt="Python" className="w-6 h-6" />,
@@ -53,6 +55,16 @@ const languageIcons = {
     css: <img src={css} alt="CSS" className="w-6 h-6" />,
     graphql: <img src={graphql} alt="GraphQL" className="w-6 h-6" />,
     sql: <img src={sql} alt="SQL" className="w-6 h-6" />,
+};
+
+const getLanguageFlagIcon = (lang) => {
+    if (!lang) return null;
+    const normalized = lang.toUpperCase();
+    const flagSize = 8;
+    const className = `w-${flagSize} h-${flagSize} inline-block mr-1`;
+    if (normalized === "PTBR") return <img src={brazil} alt="BR" className={className} />;
+    if (normalized === "EN") return <img src={usa} alt="EN" className={className} />;
+    return null;
 };
 
 const JobMetaItem = ({ icon, color, children }) => {
@@ -98,7 +110,9 @@ const CoreJobDetails = ({ job, profile, onMarkAsApplied, onMarkAsDisabled }) => 
                      onError={(e) => { e.target.onerror = null; e.target.src = `https://placehold.co/64x64/e2e8f0/4a5568?text=${job.company?.name?.charAt(0) || '?'}`; }} />
                 <div>
                     <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{job.title}</h2>
-                    <p className="text-lg text-gray-700 dark:text-gray-300">{job.company?.name}</p>
+                    <p className="text-lg text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                        {getLanguageFlagIcon(job.language)} {job.company?.name}
+                    </p>
                 </div>
             </header>
 
