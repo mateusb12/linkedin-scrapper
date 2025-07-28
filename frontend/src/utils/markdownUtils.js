@@ -1,3 +1,5 @@
+// frontend/src/utils/markdownUtils.js
+
 // --- MARKDOWN GENERATION HELPERS (Adapted from UserProfile) ---
 
 import { remark } from 'remark';
@@ -15,7 +17,9 @@ export const generateProfileHeaderMarkdown = (profileData) => {
 
 export const generateHardSkillsMarkdown = (skills, heading) => {
     if (!skills || skills.filter(s => s).length === 0) return '';
-    return `${heading}\n- ${skills.filter(s => s).join(', ')}`;
+    // Create a proper markdown list by mapping each skill to a new line with a hyphen.
+    const skillList = skills.filter(s => s).map(skill => `- ${skill}`).join('\n');
+    return `${heading}\n${skillList}`;
 };
 
 export function extractSummary(markdown) {
@@ -161,11 +165,17 @@ export const parseMarkdownToResume = (markdown) => {
                 break;
 
             case 'hard_skills':
-                if (node.type === 'list') {
-                    const skillsText = getNodeText(node);
-                    // Handle both comma-separated and list-item separated skills
-                    const newSkills = skillsText.split(/,|-/).map(skill => skill.trim()).filter(Boolean);
-                    resume.hard_skills = [...resume.hard_skills, ...newSkills];
+                if (node.type === 'list' && node.children) {
+                    // CORRECTED LOGIC:
+                    // 1. Iterate over each list item ('<li>') to avoid mashing text together.
+                    // 2. Split items that might be comma-separated (e.g., "- Python, Go, Java").
+                    // 3. Use flatMap to create a single clean array of skills.
+                    const skillsFromList = node.children.flatMap(listItem => {
+                        const text = getNodeText(listItem);
+                        return text.split(',').map(skill => skill.trim());
+                    });
+                    // 4. Filter out any empty strings and add to the resume object.
+                    resume.hard_skills.push(...skillsFromList.filter(Boolean));
                 }
                 break;
 
