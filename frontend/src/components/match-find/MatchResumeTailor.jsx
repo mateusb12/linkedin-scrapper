@@ -18,6 +18,8 @@ import { getColorFromScore, getSkillsArray, normalizeKeyword } from "./MatchLogi
 import { generateFullResumeMarkdown, parseMarkdownToResume } from "../../utils/markdownUtils.js";
 import { getMatchScore } from "../../services/jobService.js";
 import { tailorResume } from "../../services/resumeService.js";
+import usa from "../../assets/skills_icons/usa.svg";
+import brazil from "../../assets/skills_icons/brazil.svg";
 
 const Spinner = ({ className = 'h-5 w-5 text-white' }) => (
     <svg className={`animate-spin ${className}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -51,6 +53,7 @@ const EditableSuggestion = ({ original, suggested, onChange, isChanged, id, labe
 };
 
 const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profile }) => {
+    const [language, setLanguage] = useState('en');
     const [adaptedResume, setAdaptedResume] = useState(null);
     const [isTailoring, setIsTailoring] = useState(false);
     const [tailoringApplied, setTailoringApplied] = useState(false);
@@ -60,11 +63,34 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
     const [matchScoreError, setMatchScoreError] = useState(null);
     const [isCalculatingScore, setIsCalculatingScore] = useState(false);
 
+    const markdownHeadings = {
+        en: {
+            summary: "## 🎯 Summary",
+            hard_skills: "## 🛠️ Hard Skills",
+            professional_experience: "## 💼 Professional Experience",
+            projects: "## 💡 Projects",
+            education: "## 🎓 Education",
+        },
+        pt: {
+            summary: "## 🎯 Resumo",
+            hard_skills: "## 🛠️ Habilidades",
+            professional_experience: "## 💼 Experiência Profissional",
+            projects: "## 💡 Projetos",
+            education: "## 🎓 Formação",
+        }
+    };
+    const headings = markdownHeadings[language];
+    const getTitle = md => {
+        const parts = md.split(' ');
+        return parts.slice(2).join(' ');
+    };
+
+
     const inputClasses = "w-full p-2 rounded-md bg-white dark:bg-gray-700 focus:ring-2 text-sm border border-gray-300 dark:border-gray-600 focus:ring-purple-500";
     const buttonClasses = "flex items-center gap-2 text-xs px-2.5 py-1.5 bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/50 dark:hover:bg-purple-900/80 text-purple-800 dark:text-purple-200 font-semibold rounded-md transition-all";
 
     const handleCalculateScore = async () => {
-        const markdown = generateFullResumeMarkdown(profile, adaptedResume);
+        const markdown = generateFullResumeMarkdown(profile, adaptedResume, headings);
         const jobText = `# ${job.title || ''} @ ${job.company?.name || ''}\n\n${job.description || ''}\n\n## Responsibilities\n${(job.responsibilities || []).join('\n')}\n\n## Qualifications\n${(job.qualifications || []).join('\n')}`;
         if (!markdown.trim() || !jobText.trim()) {
             setMatchScoreError("❌ Resume or job description is empty");
@@ -84,6 +110,8 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
             setIsCalculatingScore(false);
         }
     };
+
+
 
     useEffect(() => {
         if (baseResume) {
@@ -144,22 +172,35 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
         try {
             const tailoredData = await tailorResume({
                 raw_job_description: job_description,
-                raw_resume: generateFullResumeMarkdown(profile, baseResume),
+                raw_resume: generateFullResumeMarkdown(profile, baseResume, headings),
                 extracted_job_keywords: getSkillsArray(job.keywords || []),
                 extracted_resume_keywords: getSkillsArray(baseResume.hard_skills || []),
                 current_cosine_similarity: matchScore ? matchScore / 100 : 0.0,
             });
             console.log('--- RAW MARKDOWN FROM AI ---\n', tailoredData.markdown);
             console.log('--- PARSED OUTPUT ---\n', parseMarkdownToResume(tailoredData.markdown));
-            setFullResumeMarkdown(tailoredData.markdown);
+
             const parsedResume = parseMarkdownToResume(tailoredData.markdown);
-            setAdaptedResume(prev => {
-                const newResume = JSON.parse(JSON.stringify(prev));
-                newResume.summary = parsedResume.summary || extractSummary(tailoredData.markdown) || newResume.summary;
-                if (parsedResume.professional_experience.length > 0) newResume.professional_experience = parsedResume.professional_experience;
-                if (parsedResume.projects.length > 0) newResume.projects = parsedResume.projects;
-                return newResume;
-            });
+
+            // 1. Create the new, updated resume object from the parsed data
+            const newAdaptedResume = JSON.parse(JSON.stringify(adaptedResume)); // Start with a copy of the current state
+            newAdaptedResume.summary = parsedResume.summary || extractSummary(tailoredData.markdown) || newAdaptedResume.summary;
+            if (parsedResume.professional_experience && parsedResume.professional_experience.length > 0) {
+                newAdaptedResume.professional_experience = parsedResume.professional_experience;
+            }
+            if (parsedResume.projects && parsedResume.projects.length > 0) {
+                newAdaptedResume.projects = parsedResume.projects;
+            }
+
+            // 2. Set the component's main resume state
+            setAdaptedResume(newAdaptedResume);
+
+            // 3. Generate new markdown from the updated data using your language-aware headings
+            const newMarkdown = generateFullResumeMarkdown(profile, newAdaptedResume, headings);
+
+            // 4. Set this newly generated markdown for the preview
+            setFullResumeMarkdown(newMarkdown);
+
             setTailoringApplied(true);
             alert("✅ Resume tailored successfully!");
         } catch (error) {
@@ -175,14 +216,23 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
         alert("Adapted resume data saved to console. A new resume could be created from this data.");
     };
 
-    const handleToggleFullPreview = async () => {
-        if (!showFullPreview) {
-            const markdown = generateFullResumeMarkdown(profile, adaptedResume);
-            setFullResumeMarkdown(markdown);
-            await handleCalculateScore();
-        }
+    const handleToggleFullPreview = () => {
         setShowFullPreview(prev => !prev);
     };
+
+    useEffect(() => {
+        if (showFullPreview) {
+            const newMarkdown = generateFullResumeMarkdown(profile, adaptedResume, headings);
+            setFullResumeMarkdown(newMarkdown);
+        }
+    }, [language, adaptedResume, showFullPreview, headings, profile]);
+
+    useEffect(() => {
+        if (showFullPreview && fullResumeMarkdown) {
+            handleCalculateScore();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fullResumeMarkdown]);
 
     if (!adaptedResume || !job) return null;
 
@@ -199,29 +249,50 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
     return (
         <div className="pt-8">
             <header className="pb-4 border-b-2 border-purple-400 dark:border-purple-600 mb-6 space-y-4">
-                <h2 className="text-2xl font-bold flex items-center gap-3"><Wand2 className="text-purple-500" /> Adapt Resume For This Job</h2>
                 <div>
-                    <label htmlFor="adapt-resume-select" className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Select a base resume to adapt:</label>
-                    <select id="adapt-resume-select" value={baseResume.id} onChange={(e) => onSelectResume(e.target.value)} className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500">
-                        {allResumes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                    </select>
+                    <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        Select a base resume to adapt:
+                    </label>
+                    <div className="flex items-center gap-4">
+                        <select
+                            id="adapt-resume-select"
+                            value={baseResume.id}
+                            onChange={(e) => onSelectResume(e.target.value)}
+                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 w-auto"
+                        >
+                            {allResumes.map((r) => (
+                                <option key={r.id} value={r.id}>
+                                    {r.name}
+                                </option>
+                            ))}
+                        </select>
+
+                        <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-full">
+                            <button onClick={() => setLanguage('en')} className={`p-1 rounded-full transition-all ${language === 'en' ? 'ring-2 ring-purple-500' : 'opacity-60 hover:opacity-100'}`}>
+                                <img src={usa} alt="USA Flag" className="w-6 h-6 rounded-full" />
+                            </button>
+                            <button onClick={() => setLanguage('pt')} className={`p-1 rounded-full transition-all ${language === 'pt' ? 'ring-2 ring-purple-500' : 'opacity-60 hover:opacity-100'}`}>
+                                <img src={brazil} alt="Brazil Flag" className="w-6 h-6 rounded-full" />
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </header>
 
             <div className="space-y-6">
-                <SectionWrapper title="Summary" icon={<FileText size={20} />}>
+                <SectionWrapper title={getTitle(headings.summary)} icon={<FileText size={20} />}>
                     <EditableSuggestion id="summary" label="EDITABLE / SUGGESTED" original={baseResume.summary || ''} suggested={adaptedResume.summary || ''} onChange={(e) => handleSimpleChange('summary', e.target.value)} isChanged={tailoringApplied} highlight={tailoringApplied} rows={5} />
                 </SectionWrapper>
-                <SectionWrapper title="Hard Skills" icon={<Zap size={20} />} onAdd={() => addListItem('hard_skills', '')}>
+                <SectionWrapper title={getTitle(headings.hard_skills)} icon={<Zap size={20} />} onAdd={() => addListItem('hard_skills', '')}>
                     {(adaptedResume.hard_skills || []).map((skill, index) => ( <div key={index} className="flex items-center gap-2"><input type="text" value={skill} onChange={(e) => handleListChange('hard_skills', index, e.target.value)} className={inputClasses} placeholder="Enter skill" /> <button onClick={() => removeListItem('hard_skills', index)} className="text-red-500 hover:text-red-700 p-1"><Trash2 size={16}/></button> </div> ))}
                 </SectionWrapper>
-                <SectionWrapper title="Professional Experience" icon={<Briefcase size={20} />} onAdd={() => addListItem('professional_experience', { title: '', company: '', dates: '', details: [''] })}>
+                <SectionWrapper title={getTitle(headings.professional_experience)} icon={<Briefcase size={20} />} onAdd={() => addListItem('professional_experience', { title: '', company: '', dates: '', details: [''] })}>
                     {(adaptedResume.professional_experience || []).map((exp, expIndex) => ( <div key={expIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700"> <button onClick={() => removeListItem('professional_experience', expIndex)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2 size={18}/></button> <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3"> <input type="text" value={exp.title} onChange={e => handleNestedChange('professional_experience', expIndex, 'title', e.target.value)} placeholder="Job Title" className={inputClasses} /> <input type="text" value={exp.company} onChange={e => handleNestedChange('professional_experience', expIndex, 'company', e.target.value)} placeholder="Company" className={inputClasses} /> <input type="text" value={exp.dates} onChange={e => handleNestedChange('professional_experience', expIndex, 'dates', e.target.value)} placeholder="Dates" className={inputClasses} /> </div> <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Key Points:</label> <div className="space-y-2"> {(exp.details || []).map((detail, detailIndex) => ( <div key={detailIndex} className="flex items-center gap-2"> <EditableSuggestion id={`exp-${expIndex}-detail-${detailIndex}`} label="EDITABLE / SUGGESTED" original={baseResume.professional_experience[expIndex]?.details?.[detailIndex] || ''} suggested={detail} onChange={e => handleDetailChange('professional_experience', expIndex, detailIndex, e.target.value)} isChanged={tailoringApplied} highlight={tailoringApplied} rows={2} /> <button onClick={() => removeDetailItem('professional_experience', expIndex, detailIndex)} className="text-red-500 hover:text-red-700 p-1 self-center" disabled={(exp.details || []).length <= 1}><Trash2 size={16}/></button> </div> ))} <button onClick={() => addDetailItem('professional_experience', expIndex)} className={buttonClasses}><PlusCircle size={14}/> Add Key Point</button> </div> </div> ))}
                 </SectionWrapper>
-                <SectionWrapper title="Projects" icon={<Lightbulb size={20} />} onAdd={() => addListItem('projects', { title: '', link: '', details: [''] })}>
+                <SectionWrapper title={getTitle(headings.projects)} icon={<Lightbulb size={20} />} onAdd={() => addListItem('projects', { title: '', link: '', details: [''] })}>
                     {(adaptedResume.projects || []).map((proj, projIndex) => ( <div key={projIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700"> <button onClick={() => removeListItem('projects', projIndex)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2 size={18}/></button> <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3"> <input type="text" value={proj.title} onChange={e => handleNestedChange('projects', projIndex, 'title', e.target.value)} placeholder="Project Title" className={inputClasses} /> <input type="text" value={proj.link} onChange={e => handleNestedChange('projects', projIndex, 'link', e.target.value)} placeholder="Project URL" className={inputClasses} /> </div> <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Key points:</label> <div className="space-y-2"> {(proj.details || []).map((detail, detailIndex) => ( <div key={detailIndex} className="flex items-center gap-2"> <EditableSuggestion id={`proj-${projIndex}-detail-${detailIndex}`} label="EDITABLE / SUGGESTED" original={baseResume.projects[projIndex]?.details?.[detailIndex] || ''} suggested={detail} onChange={e => handleDetailChange('projects', projIndex, detailIndex, e.target.value)} isChanged={tailoringApplied} highlight={tailoringApplied} rows={2} /> <button onClick={() => removeDetailItem('projects', projIndex, detailIndex)} className="text-red-500 hover:text-red-700 p-1 self-center" disabled={(proj.details || []).length <= 1}><Trash2 size={16}/></button> </div> ))} <button onClick={() => addDetailItem('projects', projIndex)} className={buttonClasses}><PlusCircle size={14}/> Add Detail</button> </div> </div> ))}
                 </SectionWrapper>
-                <SectionWrapper title="Education" icon={<GraduationCap size={20} />} onAdd={() => addListItem('education', { degree: '', school: '', dates: '' })}>
+                <SectionWrapper title={getTitle(headings.education)} icon={<GraduationCap size={20} />} onAdd={() => addListItem('education', { degree: '', school: '', dates: '' })}>
                     {(adaptedResume.education || []).map((edu, eduIndex) => ( <div key={eduIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700"> <button onClick={() => removeListItem('education', eduIndex)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2 size={18}/></button> <div className="grid grid-cols-1 md:grid-cols-3 gap-3"> <input type="text" value={edu.degree} onChange={e => handleNestedChange('education', eduIndex, 'degree', e.target.value)} placeholder="Degree/Certificate" className={inputClasses} /> <input type="text" value={edu.school} onChange={e => handleNestedChange('education', eduIndex, 'school', e.target.value)} placeholder="School/Institution" className={inputClasses} /> <input type="text" value={edu.dates} onChange={e => handleNestedChange('education', eduIndex, 'dates', e.target.value)} placeholder="Dates" className={inputClasses} /> </div> </div> ))}
                 </SectionWrapper>
             </div>

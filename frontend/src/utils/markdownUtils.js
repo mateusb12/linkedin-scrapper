@@ -9,9 +9,9 @@ export const generateProfileHeaderMarkdown = (profileData) => {
     return `# ${name || 'Your Name'}\n${contacts}`;
 };
 
-export const generateHardSkillsMarkdown = (skills) => {
+export const generateHardSkillsMarkdown = (skills, heading) => {
     if (!skills || skills.filter(s => s).length === 0) return '';
-    return `## 🛠️ Hard Skills\n- ${skills.filter(s => s).join(', ')}`;
+    return `${heading}\n- ${skills.filter(s => s).join(', ')}`;
 };
 
 export function extractSummary(markdown) {
@@ -21,7 +21,7 @@ export function extractSummary(markdown) {
     return match ? match[1].trim() : '';
 }
 
-export const generateExperienceMarkdown = (experiences) => {
+export const generateExperienceMarkdown = (experiences, heading) => {
     if (!experiences || experiences.length === 0) return '';
     let content = experiences.map(exp => {
         if (!exp.title || !exp.company || !exp.dates) return '';
@@ -30,19 +30,23 @@ export const generateExperienceMarkdown = (experiences) => {
         if (points) expStr += `\n${points}`;
         return expStr;
     }).filter(Boolean).join('\n\n');
-    return content ? `## 💼 Professional Experience\n\n${content}` : '';
+    return content
+        ? `${heading}\n\n${content}`
+        : '';
 };
 
-export const generateEducationMarkdown = (educations) => {
+export const generateEducationMarkdown = (educations, heading) => {
     if (!educations || educations.length === 0) return '';
     let content = educations.map(edu => {
         if (!edu.degree || !edu.school || !edu.dates) return '';
         return `### ${edu.degree}\n**${edu.school}** | *${edu.dates}*`;
     }).filter(Boolean).join('\n\n');
-    return content ? `## 🎓 Education\n\n${content}` : '';
+    return content
+        ? `${heading}\n\n${content}`
+        : '';
 };
 
-export const generateProjectsMarkdown = (projects) => {
+export const generateProjectsMarkdown = (projects, heading) => {
     if (!projects || projects.length === 0) return '';
     let content = projects.map(project => {
         if (!project.title || !project.link) return '';
@@ -51,10 +55,12 @@ export const generateProjectsMarkdown = (projects) => {
         if (points) projStr += `\n${points}`;
         return projStr;
     }).filter(Boolean).join('\n\n');
-    return content ? `## 🧪 Projects\n\n${content}` : '';
+    return content
+        ? `${heading}\n\n${content}`
+        : '';
 };
 
-export const generateFullResumeMarkdown = (profile, resume) => {
+export const generateFullResumeMarkdown = (profile, resume, headings) => {
     if (!profile || !resume) return 'No profile or resume data available to generate markdown.';
 
     // Create a temporary resume object with field names expected by generators (e.g., 'description').
@@ -72,11 +78,11 @@ export const generateFullResumeMarkdown = (profile, resume) => {
     };
 
     const header = generateProfileHeaderMarkdown(profile);
-    const summary = resumeForMarkdown.summary ? `## 🎯 Summary\n\n${resumeForMarkdown.summary}` : '';
-    const skills = generateHardSkillsMarkdown(resumeForMarkdown.hard_skills);
-    const experience = generateExperienceMarkdown(resumeForMarkdown.professional_experience);
-    const education = generateEducationMarkdown(resumeForMarkdown.education);
-    const projects = generateProjectsMarkdown(resumeForMarkdown.projects);
+    const summary   = resumeForMarkdown.summary ? `${headings.summary}\n\n${resumeForMarkdown.summary}` : '';
+    const skills    = generateHardSkillsMarkdown(resumeForMarkdown.hard_skills, headings.hard_skills);
+    const experience= generateExperienceMarkdown(resumeForMarkdown.professional_experience, headings.professional_experience);
+    const education = generateEducationMarkdown(resumeForMarkdown.education, headings.education);
+    const projects  = generateProjectsMarkdown(resumeForMarkdown.projects, headings.projects);
 
     return [header, summary, skills, experience, education, projects].filter(Boolean).join('\n\n---\n\n');
 };
