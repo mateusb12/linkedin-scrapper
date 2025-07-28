@@ -14,9 +14,8 @@ import {
     PlusCircle,
     Trash2
 } from 'lucide-react';
-import { getColorFromScore, getSkillsArray, normalizeKeyword } from "./MatchLogic.jsx";
+import { getSkillsArray } from "./MatchLogic.jsx";
 import {
-    extractSummary,
     generateFullResumeMarkdown,
     isParsedResumeEmpty, markdownHeadings,
     parseMarkdownToResume
@@ -25,6 +24,7 @@ import { getMatchScore } from "../../services/jobService.js";
 import { tailorResume } from "../../services/resumeService.js";
 import usa from "../../assets/skills_icons/usa.svg";
 import brazil from "../../assets/skills_icons/brazil.svg";
+import MatchPdfGeneration from "./MatchPdfGeneration.jsx"; // Import the new component
 
 const Spinner = ({ className = 'h-5 w-5 text-white' }) => (
     <svg className={`animate-spin ${className}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -105,7 +105,6 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
 
     useEffect(() => {
         if (baseResume) {
-            // 1. Fix missing details for original (base) resume so comparisons work
             if (baseResume.professional_experience) {
                 baseResume.professional_experience.forEach(exp => {
                     exp.details = exp.details || exp.description || [];
@@ -118,7 +117,6 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
                 });
             }
 
-            // 2. Clone and normalize for the adapted version
             const mappedResume = JSON.parse(JSON.stringify(baseResume));
 
             if (mappedResume.professional_experience) {
@@ -179,7 +177,6 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
                 throw new Error("❌ AI returned an empty or invalid resume. Please retry.");
             }
 
-            // --- SMART MERGE LOGIC ---
             const newAdaptedResume = JSON.parse(JSON.stringify(baseResume));
 
             if (aiParsedResume.summary) {
@@ -326,29 +323,16 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
                 <button onClick={handleSaveChanges} className="flex items-center justify-center gap-2 px-8 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-all shadow-lg w-full sm:w-auto"> <Save size={20}/> Save Adapted Resume </button>
             </footer>
 
-            {showFullPreview && <div className="mt-8 pt-6 border-t dark:border-gray-700">
-                <div className="bg-gray-50 dark:bg-gray-900/50 p-4 sm:p-6 rounded-xl shadow-lg w-full flex flex-col border dark:border-gray-700">
-                    <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-300 dark:border-gray-600 flex-shrink-0">
-                        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Full Resume Markdown Preview</h2>
-                        <div className="flex items-center gap-3">
-                            <button onClick={handleCalculateScore} disabled={isCalculatingScore} className="px-4 py-1.5 bg-yellow-400 hover:bg-yellow-500 text-black font-semibold text-xs rounded-md disabled:cursor-wait disabled:opacity-50 transition-all"> {isCalculatingScore ? (<div className="flex items-center gap-2"><Spinner className="w-4 h-4 text-black" />Calculating...</div>) : ("Calculate Score")} </button>
-                            <button onClick={handleToggleFullPreview} className="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white p-2 rounded-full transition-colors"><XCircle size={24}/></button>
-                        </div>
-                    </div>
-                    <div className="w-full flex justify-center">
-                        <div className="w-[85%]">
-                            <div className="flex items-center justify-between mb-2">
-                                <div className="text-lg font-semibold text-gray-800 dark:text-gray-200">Match Score</div>
-                                <div className="text-right"> {matchScoreError ? (<div className="text-xs text-red-500 dark:text-red-400">⚠ {matchScoreError}</div>) : (<><div className="font-bold text-lg" style={{ color: getColorFromScore(matchScore ?? 0) }}>{matchScore !== null ? `${matchScore}%` : '...'}</div><div className="text-xs text-gray-500 dark:text-gray-400">Match</div></>)} </div>
-                            </div>
-                            <div className="bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
-                                <div className="h-2 rounded-full transition-all duration-200" style={{ width: matchScore !== null ? `${matchScore}%` : '0%', backgroundColor: matchScoreError ? 'transparent' : getColorFromScore(matchScore ?? 0), }} />
-                            </div>
-                        </div>
-                    </div>
-                    <textarea readOnly value={fullResumeMarkdown} className="mt-6 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 font-mono text-sm w-full rounded-md p-4 resize-none focus:ring-2 focus:ring-indigo-500" style={{ height: '60vh' }} />
-                </div>
-            </div>}
+            {showFullPreview && (
+                <MatchPdfGeneration
+                    fullResumeMarkdown={fullResumeMarkdown}
+                    matchScore={matchScore}
+                    matchScoreError={matchScoreError}
+                    isCalculatingScore={isCalculatingScore}
+                    onCalculateScore={handleCalculateScore}
+                    onClosePreview={handleToggleFullPreview}
+                />
+            )}
         </div>
     );
 };
