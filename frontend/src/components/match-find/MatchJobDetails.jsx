@@ -12,6 +12,7 @@ import {
     XCircle,
     ListChecks,
     ClipboardList,
+    Users
 } from 'lucide-react';
 import { getSkillsArray, normalizeKeyword } from "./MatchLogic.jsx";
 import csharp from "../../assets/skills_icons/csharp.svg";
@@ -59,6 +60,7 @@ const JobMetaItem = ({ icon, color, children }) => {
     const colorSchemes = {
         indigo: { container: 'bg-indigo-100 dark:bg-indigo-900/40 border-l-4 border-indigo-500 dark:border-indigo-400 text-indigo-900 dark:text-indigo-100', icon: 'text-indigo-600 dark:text-indigo-300', },
         violet: { container: 'bg-violet-100 dark:bg-violet-900/40 border-l-4 border-violet-500 dark:border-violet-400 text-violet-900 dark:text-violet-100 flex-wrap gap-2', icon: 'text-violet-700 dark:text-violet-300', },
+        amber: { container: 'bg-amber-100 dark:bg-amber-900/40 border-l-4 border-amber-500 dark:border-amber-400 text-amber-900 dark:text-amber-100', icon: 'text-amber-600 dark:text-amber-300',},
         default: { container: 'bg-gray-100 dark:bg-gray-800', icon: 'text-gray-500', }
     };
     const scheme = color ? colorSchemes[color] : colorSchemes.default;
@@ -121,6 +123,11 @@ const CoreJobDetails = ({ job, profile, onMarkAsApplied, onMarkAsDisabled }) => 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 text-sm">
                 {job.job_type && <JobMetaItem icon={<Briefcase />} color="indigo">{job.job_type}</JobMetaItem>}
                 {job.programming_languages?.length > 0 && (<JobMetaItem icon={<Code />} color="violet">{job.programming_languages.map((lang) => (<span key={lang} className="flex items-center gap-2 bg-violet-200 dark:bg-violet-700 text-violet-900 dark:text-violet-100 px-3 py-1 rounded-full text-sm font-bold">{languageIcons[lang.trim().toLowerCase()] || <Code className="w-6 h-6" />}{lang}</span>))}</JobMetaItem>)}
+                {job.applicants > 0 && (
+                    <JobMetaItem icon={<Users />} color="amber">
+                        {job.applicants} applicant{job.applicants === 1 ? '' : 's'}
+                    </JobMetaItem>
+                )}
                 <JobMetaItem icon={<MapPin />}>{job.location}</JobMetaItem>
                 <JobMetaItem icon={<Briefcase />}>{job.employment_type}</JobMetaItem>
                 <JobMetaItem icon={<Clock />}>Posted: {formatDate(job.posted_on)}</JobMetaItem>
