@@ -179,3 +179,11 @@ export const parseMarkdownToResume = (markdown) => {
 
     return resume;
 };
+
+export const isParsedResumeEmpty = (parsed) => {
+    if (!parsed) return true;
+    const isEmptySummary = !parsed.summary || parsed.summary.trim() === '';
+    const isEmptyProjects = !parsed.projects || parsed.projects.length === 0;
+    const isEmptyExperience = !parsed.professional_experience || parsed.professional_experience.length === 0;
+    return isEmptySummary && isEmptyProjects && isEmptyExperience;
+};

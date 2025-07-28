@@ -15,7 +15,12 @@ import {
     Trash2
 } from 'lucide-react';
 import { getColorFromScore, getSkillsArray, normalizeKeyword } from "./MatchLogic.jsx";
-import { generateFullResumeMarkdown, parseMarkdownToResume } from "../../utils/markdownUtils.js";
+import {
+    extractSummary,
+    generateFullResumeMarkdown,
+    isParsedResumeEmpty,
+    parseMarkdownToResume
+} from "../../utils/markdownUtils.js";
 import { getMatchScore } from "../../services/jobService.js";
 import { tailorResume } from "../../services/resumeService.js";
 import usa from "../../assets/skills_icons/usa.svg";
@@ -181,6 +186,11 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
             console.log('--- PARSED OUTPUT ---\n', parseMarkdownToResume(tailoredData.markdown));
 
             const parsedResume = parseMarkdownToResume(tailoredData.markdown);
+
+            if (isParsedResumeEmpty(parsedResume)) {
+                console.error("⚠️ Parsed output is empty or invalid", parsedResume);
+                throw new Error("❌ AI returned an empty or invalid resume. Please retry or adjust the job description.");
+            }
 
             // 1. Create the new, updated resume object from the parsed data
             const newAdaptedResume = JSON.parse(JSON.stringify(adaptedResume)); // Start with a copy of the current state
