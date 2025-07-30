@@ -1,5 +1,5 @@
-// frontend/src/components/match-find/MatchResumeTailor.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import toast, { Toaster } from 'react-hot-toast'; // ✨ 1. Import toast
 import {
     Briefcase,
     XCircle,
@@ -24,7 +24,7 @@ import { getMatchScore } from "../../services/jobService.js";
 import { tailorResume } from "../../services/resumeService.js";
 import usa from "../../assets/skills_icons/usa.svg";
 import brazil from "../../assets/skills_icons/brazil.svg";
-import MatchPdfGeneration from "./MatchPdfGeneration.jsx"; // Import the new component
+import MatchPdfGeneration from "./MatchPdfGeneration.jsx";
 
 const Spinner = ({ className = 'h-5 w-5 text-white' }) => (
     <svg className={`animate-spin ${className}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -67,8 +67,8 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
     const [matchScore, setMatchScore] = useState(null);
     const [matchScoreError, setMatchScoreError] = useState(null);
     const [isCalculatingScore, setIsCalculatingScore] = useState(false);
+    const scoreCache = useRef(new Map());
 
-    // This effect syncs the language selection with the current job's language.
     useEffect(() => {
         if (job?.language?.toUpperCase() === 'PTBR') {
             setLanguage('pt');
@@ -83,23 +83,36 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
         return parts.slice(2).join(' ');
     };
 
-
     const inputClasses = "w-full p-2 rounded-md bg-white dark:bg-gray-700 focus:ring-2 text-sm border border-gray-300 dark:border-gray-600 focus:ring-purple-500";
     const buttonClasses = "flex items-center gap-2 text-xs px-2.5 py-1.5 bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/50 dark:hover:bg-purple-900/80 text-purple-800 dark:text-purple-200 font-semibold rounded-md transition-all";
 
-    const handleCalculateScore = async () => {
+    const handleCalculateScore = useCallback(async () => {
         const markdown = generateFullResumeMarkdown(profile, adaptedResume, headings);
         const jobText = `# ${job.title || ''} @ ${job.company?.name || ''}\n\n${job.description || ''}\n\n## Responsibilities\n${(job.responsibilities || []).join('\n')}\n\n## Qualifications\n${(job.qualifications || []).join('\n')}`;
+
+        const cacheKey = jobText + '|||' + markdown;
+
+        if (scoreCache.current.has(cacheKey)) {
+            setMatchScore(scoreCache.current.get(cacheKey));
+            setMatchScoreError(null);
+            setIsCalculatingScore(false);
+            return;
+        }
+
         if (!markdown.trim() || !jobText.trim()) {
             setMatchScoreError("❌ Resume or job description is empty");
             setMatchScore(null);
             return;
         }
+
         try {
             setIsCalculatingScore(true);
             const { match_score } = await getMatchScore(jobText, markdown);
-            setMatchScore(Math.round(match_score * 100));
+            const newScore = Math.round(match_score * 100);
+
+            setMatchScore(newScore);
             setMatchScoreError(null);
+            scoreCache.current.set(cacheKey, newScore);
         } catch (err) {
             console.error("⚠ Match score API error:", err);
             setMatchScore(null);
@@ -107,9 +120,7 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
         } finally {
             setIsCalculatingScore(false);
         }
-    };
-
-
+    }, [adaptedResume, headings, job, profile]);
 
     useEffect(() => {
         if (baseResume) {
@@ -229,11 +240,14 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
 
             setAdaptedResume(newAdaptedResume);
             setTailoringApplied(true);
-            alert("✅ Resume tailored successfully!");
+            toast.success('✨ Resume tailored successfully!'); // ✨ 3. Replaced alert with toast.success
 
         } catch (error) {
             console.error("Error tailoring resume:", error);
-            alert(`Could not tailor resume: ${error.message}`);
+            // ✨ 3. Replaced alert with toast.error
+            toast.error(`Could not tailor resume: ${error.message}`, {
+                duration: 5000,
+            });
         } finally {
             setIsTailoring(false);
         }
@@ -241,7 +255,10 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
 
     const handleSaveChanges = () => {
         console.log("--- ADAPTED RESUME DATA ---", adaptedResume);
-        alert("Adapted resume data saved to console. A new resume could be created from this data.");
+        // ✨ 3. Replaced alert with toast.success
+        toast.success("Adapted resume data saved to console.", {
+            icon: '💾',
+        });
     };
 
     const handleToggleFullPreview = () => {
@@ -256,11 +273,10 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
     }, [language, adaptedResume, showFullPreview, headings, profile]);
 
     useEffect(() => {
-        if (showFullPreview && fullResumeMarkdown) {
+        if (showFullPreview) {
             handleCalculateScore();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [fullResumeMarkdown]);
+    }, [showFullPreview, handleCalculateScore]);
 
     if (!adaptedResume || !job) return null;
 
@@ -276,6 +292,19 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
 
     return (
         <div className="pt-8">
+            {/* ✨ 2. Add Toaster component here */}
+            <Toaster
+                position="top-center"
+                reverseOrder={false}
+                toastOptions={{
+                    className: '',
+                    style: {
+                        background: '#333',
+                        color: '#fff',
+                    },
+                }}
+            />
+
             <header className="pb-4 border-b-2 border-purple-400 dark:border-purple-600 mb-6 space-y-4">
                 <div>
                     <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
@@ -308,6 +337,7 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
             </header>
 
             <div className="space-y-6">
+                {/* ... rest of your JSX remains unchanged ... */}
                 <SectionWrapper title={getTitle(headings.summary)} icon={<FileText size={20} />}>
                     <EditableSuggestion id="summary" label="EDITABLE / SUGGESTED" original={baseResume.summary || ''} suggested={adaptedResume.summary || ''} onChange={(e) => handleSimpleChange('summary', e.target.value)} isChanged={tailoringApplied} highlight={tailoringApplied} rows={5} />
                 </SectionWrapper>
