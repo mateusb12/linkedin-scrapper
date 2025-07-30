@@ -1,4 +1,4 @@
-// frontend/src/components/match-find/AdaptResumeSection.jsx
+// frontend/src/components/match-find/MatchResumeTailor.jsx
 import React, { useState, useEffect } from 'react';
 import {
     Briefcase,
@@ -68,6 +68,14 @@ const AdaptResumeSection = ({ baseResume, job, allResumes, onSelectResume, profi
     const [matchScoreError, setMatchScoreError] = useState(null);
     const [isCalculatingScore, setIsCalculatingScore] = useState(false);
 
+    // This effect syncs the language selection with the current job's language.
+    useEffect(() => {
+        if (job?.language?.toUpperCase() === 'PTBR') {
+            setLanguage('pt');
+        } else {
+            setLanguage('en');
+        }
+    }, [job]);
 
     const headings = markdownHeadings[language];
     const getTitle = md => {
