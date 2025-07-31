@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { XCircle } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { getColorFromScore } from './MatchLogic.jsx';
+import usa from "../../assets/skills_icons/usa.svg";
+import brazil from "../../assets/skills_icons/brazil.svg";
 
 const mdToBlocks = (md = '') => {
     const lines = md.replace(/\r\n?/g, '\n').split('\n');
@@ -71,6 +73,8 @@ const MatchPdfGeneration = ({
                                 isCalculatingScore,
                                 onCalculateScore,
                                 onClosePreview,
+                                resumeLanguage,
+                                resumeName
                             }) => {
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
@@ -184,7 +188,17 @@ const MatchPdfGeneration = ({
             <div className="bg-gray-50 dark:bg-gray-900/50 p-4 sm:p-6 rounded-xl shadow-lg w-full flex flex-col border dark:border-gray-700">
                 {/* header */}
                 <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-300 dark:border-gray-600 flex-shrink-0">
-                    <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Full Resume Markdown Preview</h2>
+                    <div className="mb-2">
+                        <h2 className="text-xl font-bold text-white">Full Resume Markdown Preview</h2>
+                        <div className="flex items-center gap-2 mt-1 text-xl text-gray-400 italic">
+                            <img
+                                src={resumeLanguage === 'pt' ? brazil : usa}
+                                alt="Flag"
+                                className="w-7 h-7 rounded-full"
+                            />
+                            <span>{resumeName}</span>
+                        </div>
+                    </div>
                     <div className="flex items-center gap-3">
                         <button
                             onClick={onCalculateScore}
