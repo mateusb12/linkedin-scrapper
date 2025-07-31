@@ -121,3 +121,25 @@ export const reconstructMarkdown = (data) => {
 
     return markdown;
 };
+
+export const educationTranslationMap = {
+    // Bachelor's Degrees
+    "Bachelor in Computer Science": "Bacharelado em Ciência da Computação",
+    "Bachelor of Science in Computer Science": "Bacharelado em Ciência da Computação",
+    "Bachelor's Degree in Computer Science": "Bacharelado em Ciência da Computação",
+    "Bachelor of Engineering in Software Engineering": "Bacharelado em Engenharia de Software",
+    "Bachelor in Information Systems": "Bacharelado em Sistemas de Informação",
+
+    // Technologist Degrees (Common in Brazil)
+    "Technologist in Systems Analysis and Development": "Tecnólogo em Análise e Desenvolvimento de Sistemas",
+
+    // Master's Degrees
+    "Master of Science in Computer Science": "Mestrado em Ciência da Computação",
+    "Master in Data Science": "Mestrado em Ciência de Dados",
+
+    // Others
+    "Postgraduate in Software Engineering": "Pós-graduação em Engenharia de Software",
+    "Full Stack Web Development Bootcamp": "Bootcamp de Desenvolvimento Web Full Stack",
+
+    "Erasmus Computer Science": "Intercâmbio em Ciência da Computação",
+};

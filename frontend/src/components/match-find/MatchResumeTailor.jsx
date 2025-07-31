@@ -25,6 +25,9 @@ import {tailorResume} from "../../services/resumeService.js";
 import usa from "../../assets/skills_icons/usa.svg";
 import brazil from "../../assets/skills_icons/brazil.svg";
 import MatchPdfGeneration from "./MatchPdfGeneration.jsx";
+import {educationTranslationMap} from "../../utils/resumeUtils.js";
+
+
 
 const Spinner = ({className = 'h-5 w-5 text-white'}) => (
     <svg className={`animate-spin ${className}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -129,40 +132,43 @@ const AdaptResumeSection = ({baseResume, job, allResumes, onSelectResume, profil
         }
     }, [adaptedResume, headings, job, profile]);
 
+    // --- MODIFIED: useEffect for resume processing and translation ---
+    // This hook now depends on `baseResume` and `language`. It creates a copy of the
+    // base resume and applies education translation if the language is 'pt'.
     useEffect(() => {
-        if (baseResume) {
-            if (baseResume.professional_experience) {
-                baseResume.professional_experience.forEach(exp => {
-                    exp.details = exp.details || exp.description || [];
-                });
-            }
-
-            if (baseResume.projects) {
-                baseResume.projects.forEach(proj => {
-                    proj.details = proj.details || proj.description || [];
-                });
-            }
-
-            const mappedResume = JSON.parse(JSON.stringify(baseResume));
-
-            if (mappedResume.professional_experience) {
-                mappedResume.professional_experience.forEach(exp => {
-                    exp.details = exp.details || exp.description || [];
-                });
-            }
-
-            if (mappedResume.projects) {
-                mappedResume.projects.forEach(proj => {
-                    proj.details = proj.details || proj.description || [];
-                });
-            }
-
-            setAdaptedResume(mappedResume);
-            setTailoringApplied(false);
-        } else {
+        if (!baseResume) {
             setAdaptedResume(null);
+            return;
         }
-    }, [baseResume]);
+
+        const newAdaptedResume = JSON.parse(JSON.stringify(baseResume));
+
+        if (newAdaptedResume.professional_experience) {
+            newAdaptedResume.professional_experience.forEach(exp => {
+                exp.details = exp.details || exp.description || [];
+            });
+        }
+        if (newAdaptedResume.projects) {
+            newAdaptedResume.projects.forEach(proj => {
+                proj.details = proj.details || proj.description || [];
+            });
+        }
+
+        // Translate education section if language is Portuguese
+        if (language === 'pt' && newAdaptedResume.education) {
+            newAdaptedResume.education.forEach(edu => {
+                const originalDegree = edu.degree.trim();
+                const translatedDegree = educationTranslationMap[originalDegree];
+                if (translatedDegree) {
+                    edu.degree = translatedDegree;
+                }
+            });
+        }
+
+        setAdaptedResume(newAdaptedResume);
+        setTailoringApplied(false);
+    }, [baseResume, language]); // Depend on both base resume and language
+    // --- END: MODIFIED useEffect ---
 
     const handleUpdate = (updater) => setAdaptedResume(prev => updater(JSON.parse(JSON.stringify(prev))));
     const handleSimpleChange = (field, value) => handleUpdate(draft => {
