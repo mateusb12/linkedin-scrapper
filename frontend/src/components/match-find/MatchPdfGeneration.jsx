@@ -5,7 +5,13 @@ import { getColorFromScore } from './MatchLogic.jsx';
 import usa from "../../assets/skills_icons/usa.svg";
 import brazil from "../../assets/skills_icons/brazil.svg";
 
-// <<< START: Corrected mdToBlocks parser
+// <<< START: New translation map for contact labels
+const contactLabels = {
+    en: { phone: "Phone Number", email: "Email", location: "Location" },
+    pt: { phone: "Telefone", email: "Email", location: "Localização" }
+};
+// <<< END: New translation map
+
 const mdToBlocks = (md = '') => {
     const lines = md.replace(/\r\n?/g, '\n').split('\n');
     const blocks = [];
@@ -18,21 +24,19 @@ const mdToBlocks = (md = '') => {
         }
 
         // --- THIS IS THE FIX ---
-        // Special handler for the single line of contact info (Line 1)
+        // Enhanced handler for the contact info line. It now identifies each part.
         if (idx === 1 && line.includes('|')) {
             const parts = line.split('|').map(s => s.trim());
             parts.forEach(part => {
-                // Check if a part is a markdown link, e.g., "[GitHub](url)"
                 const linkMatch = part.match(/^\[([^\]]+)]\(([^\)]+)\)$/);
                 if (linkMatch) {
-                    blocks.push({
-                        type: 'li-link',
-                        label: linkMatch[1],
-                        url: linkMatch[2],
-                    });
-                } else {
-                    // Otherwise, treat it as a regular text list item
-                    blocks.push({ type: 'li', text: part });
+                    blocks.push({ type: 'li-link', label: linkMatch[1], url: linkMatch[2] });
+                } else if (part.includes('@')) {
+                    blocks.push({ type: 'li-contact', contactType: 'email', value: part });
+                } else if (part.match(/\+?\d/)) { // Simple check for a digit, likely a phone number
+                    blocks.push({ type: 'li-contact', contactType: 'phone', value: part });
+                } else if (part) { // If it's not empty, assume it's the location
+                    blocks.push({ type: 'li-contact', contactType: 'location', value: part });
                 }
             });
             return; // End processing for this line
@@ -49,7 +53,6 @@ const mdToBlocks = (md = '') => {
             return;
         }
 
-        // Handler for all other list items
         const liMatch = line.match(/^\s*[-*\u2013]\s+(.*)$/);
         if (liMatch) {
             blocks.push({
@@ -59,19 +62,16 @@ const mdToBlocks = (md = '') => {
             return;
         }
 
-        // Horizontal rule handler
         if (line.match(/^(---|___|\*\*\*)$/)) {
-            blocks.push({ type: 'br' }); // Treat as a simple line break for spacing
+            blocks.push({ type: 'br' });
             return;
         }
 
-        // Default to a paragraph for any other line
         blocks.push({ type: 'p', text: line });
     });
 
     return blocks;
 };
-// <<< END: Corrected mdToBlocks parser
 
 const Spinner = ({ className = 'h-5 w-5 text-white' }) => (
     <svg className={`animate-spin ${className}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -134,11 +134,8 @@ const MatchPdfGeneration = ({
                         const lineHeight = isH1 ? SPACING.h1Line : SPACING.h2Line;
                         pdf.setFont('helvetica', 'bold');
                         pdf.setFontSize(fontSize);
-
-                        // <<< FIX: Clean unsupported characters (like emojis) from the heading text
                         const cleanedText = b.text.replace(/[^\u0000-\u00FF]/g, '').trim();
                         const lines = pdf.splitTextToSize(cleanedText.replace(/\[([^\]]+)]\(([^)]+)\)/g, '$1'), 170);
-
                         for (const [index, ln] of lines.entries()) {
                             pdf.text(ln, marginX, y);
                             newLine(index === lines.length - 1 ? lineHeight + SPACING.afterHeading : lineHeight);
@@ -150,7 +147,7 @@ const MatchPdfGeneration = ({
                         const bullet = '– ';
                         const separator = ' - ';
                         const prettify = (lbl) => {
-                            if (/^linkedin$/i.test(lbl)) return 'LinkedIn Profile';
+                            if (/^linkedin$/i.test(lbl)) return 'LinkedIn';
                             if (/^github$/i.test(lbl)) return 'GitHub';
                             return lbl;
                         };
@@ -164,15 +161,34 @@ const MatchPdfGeneration = ({
                         newLine(SPACING.bullet);
                         break;
                     }
+                    // <<< START: New renderer for contact list items
+                    case 'li-contact': {
+                        pdf.setFontSize(10);
+                        const bullet = '– ';
+                        const separator = ': ';
+
+                        // Use resumeLanguage prop to get the right translations
+                        const labels = contactLabels[resumeLanguage] || contactLabels.en;
+                        const labelText = labels[b.contactType];
+
+                        const boldPart = bullet + labelText;
+                        pdf.setFont('helvetica', 'bold');
+                        pdf.text(boldPart, marginX, y);
+
+                        const labelWidth = pdf.getTextWidth(boldPart);
+                        pdf.setFont('helvetica', 'normal');
+                        pdf.text(separator + b.value, marginX + labelWidth, y);
+
+                        newLine(SPACING.bullet);
+                        break;
+                    }
+                    // <<< END: New renderer
                     case 'li': {
                         pdf.setFont('helvetica', 'normal');
                         pdf.setFontSize(10);
                         const bullet = '– ';
-
-                        // <<< FIX: Clean unsupported characters from list item text
                         const cleanedText = b.text.replace(/[^\u0000-\u00FF]/g, '').trim();
                         const lines = pdf.splitTextToSize(cleanedText, 165);
-
                         for (const [idx, ln] of lines.entries()) {
                             pdf.text(idx === 0 ? bullet + ln : ln, marginX + (idx === 0 ? 0 : 3), y);
                             newLine(SPACING.bullet);
@@ -182,12 +198,9 @@ const MatchPdfGeneration = ({
                     case 'p': {
                         pdf.setFont('helvetica', 'normal');
                         pdf.setFontSize(10);
-
-                        // <<< FIX: Clean unsupported characters from paragraph text
                         const cleanedText = b.text.replace(/[^\u0000-\u00FF]/g, '').trim();
                         const final_text = cleanedText.replace(/\[([^\]]+)]\(([^)]+)\)/g, '$1: $2').replace(/[*_~`]/g, '');
                         const lines = pdf.splitTextToSize(final_text, 170);
-
                         for (const ln of lines) {
                             pdf.text(ln, marginX, y);
                             newLine(SPACING.line);

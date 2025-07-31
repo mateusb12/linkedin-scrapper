@@ -294,12 +294,15 @@ const AdaptResumeSection = ({baseResume, job, allResumes, onSelectResume, profil
         }
     };
 
-    const handleSaveChanges = () => {
-        console.log("--- ADAPTED RESUME DATA ---", adaptedResume);
-        // ✨ 3. Replaced alert with toast.success
-        toast.success("Adapted resume data saved to console.", {
-            icon: '💾',
-        });
+    const handleCopyMarkdown = async () => {
+        try {
+            const markdown = generateFullResumeMarkdown(profile, adaptedResume, headings);
+            await navigator.clipboard.writeText(markdown);
+            toast.success("✅ Adapted resume markdown copied to clipboard!");
+        } catch (err) {
+            console.error("Clipboard copy failed:", err);
+            toast.error("❌ Failed to copy markdown to clipboard.");
+        }
     };
 
     const handleToggleFullPreview = () => {
@@ -537,9 +540,9 @@ const AdaptResumeSection = ({baseResume, job, allResumes, onSelectResume, profil
                         className="flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-all shadow-lg disabled:bg-gray-500 disabled:cursor-wait w-full sm:w-auto"> {isTailoring ?
                     <Spinner/> : <Wand2 size={20}/>} <span>{isTailoring ? 'Tailoring...' : 'Tailor with AI'}</span>
                 </button>
-                <button onClick={handleSaveChanges}
+                <button onClick={handleCopyMarkdown}
                         className="flex items-center justify-center gap-2 px-8 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-all shadow-lg w-full sm:w-auto">
-                    <Save size={20}/> Save Adapted Resume
+                    <Save size={20}/> Copy Adapted Resume Markdown
                 </button>
             </footer>
 
