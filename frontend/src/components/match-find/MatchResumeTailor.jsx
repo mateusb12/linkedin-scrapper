@@ -181,39 +181,82 @@ const AdaptResumeSection = ({baseResume, job, allResumes, onSelectResume, profil
         setTailoringApplied(false);
     }, [baseResume, language]);
 
-    const handleUpdate = (updater) => setAdaptedResume(prev => updater(JSON.parse(JSON.stringify(prev))));
-    const handleSimpleChange = (field, value) => handleUpdate(draft => {
-        draft[field] = value;
-        return draft;
-    });
-    const handleListChange = (listName, index, value) => handleUpdate(draft => {
-        draft[listName][index] = value;
-        return draft;
-    });
-    const handleNestedChange = (listName, index, field, value) => handleUpdate(draft => {
-        draft[listName][index][field] = value;
-        return draft;
-    });
-    const handleDetailChange = (listName, itemIndex, detailIndex, value) => handleUpdate(draft => {
-        draft[listName][itemIndex].details[detailIndex] = value;
-        return draft;
-    });
-    const addListItem = (listName, newItem) => handleUpdate(draft => {
-        draft[listName] = [...(draft[listName] || []), newItem];
-        return draft;
-    });
-    const removeListItem = (listName, index) => handleUpdate(draft => {
-        draft[listName].splice(index, 1);
-        return draft;
-    });
-    const addDetailItem = (listName, itemIndex) => handleUpdate(draft => {
-        draft[listName][itemIndex].details.push('');
-        return draft;
-    });
-    const removeDetailItem = (listName, itemIndex, detailIndex) => handleUpdate(draft => {
-        draft[listName][itemIndex].details.splice(detailIndex, 1);
-        return draft;
-    });
+    // --- CORRECTED STATE UPDATE HANDLERS ---
+    const handleSimpleChange = (field, value) => {
+        setAdaptedResume(prev => ({
+            ...prev,
+            [field]: value
+        }));
+    };
+
+    const handleListChange = (listName, index, value) => {
+        setAdaptedResume(prev => ({
+            ...prev,
+            [listName]: prev[listName].map((item, i) => (i === index ? value : item))
+        }));
+    };
+
+    const handleNestedChange = (listName, index, field, value) => {
+        setAdaptedResume(prev => ({
+            ...prev,
+            [listName]: prev[listName].map((item, i) =>
+                i === index ? { ...item, [field]: value } : item
+            )
+        }));
+    };
+
+    const handleDetailChange = (listName, itemIndex, detailIndex, value) => {
+        setAdaptedResume(prev => ({
+            ...prev,
+            [listName]: prev[listName].map((item, i) => {
+                if (i !== itemIndex) return item;
+                return {
+                    ...item,
+                    details: item.details.map((detail, j) =>
+                        j === detailIndex ? value : detail
+                    )
+                };
+            })
+        }));
+    };
+
+    const addListItem = (listName, newItem) => {
+        setAdaptedResume(prev => ({
+            ...prev,
+            [listName]: [...(prev[listName] || []), newItem]
+        }));
+    };
+
+    const removeListItem = (listName, index) => {
+        setAdaptedResume(prev => ({
+            ...prev,
+            [listName]: prev[listName].filter((_, i) => i !== index)
+        }));
+    };
+
+    const addDetailItem = (listName, itemIndex) => {
+        setAdaptedResume(prev => ({
+            ...prev,
+            [listName]: prev[listName].map((item, i) => {
+                if (i !== itemIndex) return item;
+                return { ...item, details: [...item.details, ''] };
+            })
+        }));
+    };
+
+    const removeDetailItem = (listName, itemIndex, detailIndex) => {
+        setAdaptedResume(prev => ({
+            ...prev,
+            [listName]: prev[listName].map((item, i) => {
+                if (i !== itemIndex) return item;
+                return {
+                    ...item,
+                    details: item.details.filter((_, j) => j !== detailIndex)
+                };
+            })
+        }));
+    };
+    // --- END OF CORRECTED HANDLERS ---
 
     const handleTailorResume = async () => {
         if (!baseResume || !job) return;
