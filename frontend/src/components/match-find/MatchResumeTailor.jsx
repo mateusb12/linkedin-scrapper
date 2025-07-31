@@ -553,6 +553,7 @@ const AdaptResumeSection = ({baseResume, job, allResumes, onSelectResume, profil
                     onClosePreview={handleToggleFullPreview}
                     resumeLanguage={language}
                     resumeName={baseResume.name}
+                    jobTitle={job.title}
                 />
             )}
         </div>

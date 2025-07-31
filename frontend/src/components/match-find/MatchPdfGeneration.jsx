@@ -74,7 +74,8 @@ const MatchPdfGeneration = ({
                                 onCalculateScore,
                                 onClosePreview,
                                 resumeLanguage,
-                                resumeName
+                                resumeName,
+                                jobTitle
                             }) => {
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
@@ -175,7 +176,17 @@ const MatchPdfGeneration = ({
                 }
             });
 
-            pdf.save('resume-content.pdf');
+            try {
+                const safeJob = (jobTitle || 'job').replace(/[^a-z0-9]/gi, '_');
+                const fileName = `${resumeName || 'resume'}-${safeJob}.pdf`;
+                pdf.save(fileName);
+            } catch (err) {
+                console.error('❌ Error saving PDF file:', err);
+                toast.error("Failed to save the PDF. Please try again.", {
+                    icon: '❌',
+                    duration: 5000,
+                });
+            }
         } catch (err) {
             console.error('Error generating PDF:', err);
         } finally {
