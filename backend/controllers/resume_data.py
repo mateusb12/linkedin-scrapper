@@ -186,6 +186,7 @@ def tailor_resume_endpoint():
 
     # 2. Call the AI service to tailor the resume
     try:
+        print("Started resume tailor process...")
         orchestrator = LLMOrchestrator()
         prompt = build_tailor_resume_prompt(
             raw_job_description=raw_job_description,

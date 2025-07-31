@@ -1,12 +1,10 @@
 import React, {useState, useEffect, useCallback, useRef} from 'react';
-import toast, {Toaster} from 'react-hot-toast'; // ✨ 1. Import toast
+import toast, {Toaster} from 'react-hot-toast';
 import {
     Briefcase,
     XCircle,
-    ListChecks,
     Wand2,
     Save,
-    ClipboardList,
     Zap,
     FileText,
     Lightbulb,
@@ -27,6 +25,24 @@ import brazil from "../../assets/skills_icons/brazil.svg";
 import MatchPdfGeneration from "./MatchPdfGeneration.jsx";
 import {educationTranslationMap} from "../../utils/resumeUtils.js";
 
+// --- LOGGING ---
+// Set this to true to download a .txt log file every time the AI tailoring runs.
+const GENERATE_LOG_FILE = false;
+
+// Logging utility to download debug data as a .txt file
+const downloadLogFile = (logData) => {
+    const blob = new Blob([logData], {type: 'text/plain'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    link.download = `debug_log_${timestamp}.txt`;
+    link.href = url;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+};
+// --- END LOGGING ---
 
 
 const Spinner = ({className = 'h-5 w-5 text-white'}) => (
@@ -132,9 +148,6 @@ const AdaptResumeSection = ({baseResume, job, allResumes, onSelectResume, profil
         }
     }, [adaptedResume, headings, job, profile]);
 
-    // --- MODIFIED: useEffect for resume processing and translation ---
-    // This hook now depends on `baseResume` and `language`. It creates a copy of the
-    // base resume and applies education translation if the language is 'pt'.
     useEffect(() => {
         if (!baseResume) {
             setAdaptedResume(null);
@@ -154,7 +167,6 @@ const AdaptResumeSection = ({baseResume, job, allResumes, onSelectResume, profil
             });
         }
 
-        // Translate education section if language is Portuguese
         if (language === 'pt' && newAdaptedResume.education) {
             newAdaptedResume.education.forEach(edu => {
                 const originalDegree = edu.degree.trim();
@@ -167,8 +179,7 @@ const AdaptResumeSection = ({baseResume, job, allResumes, onSelectResume, profil
 
         setAdaptedResume(newAdaptedResume);
         setTailoringApplied(false);
-    }, [baseResume, language]); // Depend on both base resume and language
-    // --- END: MODIFIED useEffect ---
+    }, [baseResume, language]);
 
     const handleUpdate = (updater) => setAdaptedResume(prev => updater(JSON.parse(JSON.stringify(prev))));
     const handleSimpleChange = (field, value) => handleUpdate(draft => {
@@ -228,9 +239,7 @@ const AdaptResumeSection = ({baseResume, job, allResumes, onSelectResume, profil
                 current_cosine_similarity: matchScore ? matchScore / 100 : 0.0,
             });
 
-            console.log('--- RAW MARKDOWN FROM AI ---\n', tailoredData.markdown);
             const aiParsedResume = parseMarkdownToResume(tailoredData.markdown);
-            console.log('--- PARSED OUTPUT ---\n', aiParsedResume);
 
             if (isParsedResumeEmpty(aiParsedResume)) {
                 console.error("⚠️ Parsed output is empty or invalid", aiParsedResume);
@@ -239,29 +248,17 @@ const AdaptResumeSection = ({baseResume, job, allResumes, onSelectResume, profil
 
             const newAdaptedResume = JSON.parse(JSON.stringify(baseResume));
 
-            if (aiParsedResume.summary) {
-                newAdaptedResume.summary = aiParsedResume.summary;
-            }
-
-            if (aiParsedResume.hard_skills?.length > 0) {
-                newAdaptedResume.hard_skills = aiParsedResume.hard_skills;
-            }
+            if (aiParsedResume.summary) newAdaptedResume.summary = aiParsedResume.summary;
+            if (aiParsedResume.hard_skills?.length > 0) newAdaptedResume.hard_skills = aiParsedResume.hard_skills;
 
             if (aiParsedResume.professional_experience?.length > 0) {
                 const originalExpMap = new Map(
-                    baseResume.professional_experience.map(exp => [
-                        `${exp.title?.toLowerCase().trim()}@${exp.company?.toLowerCase().trim()}`,
-                        exp
-                    ])
+                    baseResume.professional_experience.map(exp => [`${exp.title?.toLowerCase().trim()}@${exp.company?.toLowerCase().trim()}`, exp])
                 );
-
                 newAdaptedResume.professional_experience = aiParsedResume.professional_experience.map(aiExp => {
                     const key = `${aiExp.title?.toLowerCase().trim()}@${aiExp.company?.toLowerCase().trim()}`;
                     const originalExp = originalExpMap.get(key);
-                    return {
-                        ...aiExp,
-                        dates: originalExp?.dates || aiExp.dates,
-                    };
+                    return {...aiExp, dates: originalExp?.dates || aiExp.dates};
                 });
             }
 
@@ -269,26 +266,35 @@ const AdaptResumeSection = ({baseResume, job, allResumes, onSelectResume, profil
                 const originalProjMap = new Map(
                     baseResume.projects.map(p => [p.title?.toLowerCase().trim(), p])
                 );
-
                 newAdaptedResume.projects = aiParsedResume.projects.map(aiProj => {
                     const originalProj = originalProjMap.get(aiProj.title?.toLowerCase().trim());
-                    return {
-                        ...aiProj,
-                        link: originalProj?.link || aiProj.link,
-                    };
+                    return {...aiProj, link: originalProj?.link || aiProj.link};
                 });
             }
 
+            // --- LOGGING ---
+            if (GENERATE_LOG_FILE) {
+                let logContent = `============ AI TAILORING DEBUG LOG ============\n\n`;
+                logContent += `TIMESTAMP: ${new Date().toLocaleString('en-US', { timeZone: 'America/Fortaleza' })}\n\n`;
+                logContent += `============ 1. BASE RESUME (Original State) ============\n`;
+                logContent += JSON.stringify(baseResume, null, 2);
+                logContent += `\n\n============ 2. RAW MARKDOWN FROM AI ============\n`;
+                logContent += tailoredData.markdown;
+                logContent += `\n\n============ 3. PARSED RESUME FROM AI ============\n`;
+                logContent += JSON.stringify(aiParsedResume, null, 2);
+                logContent += `\n\n============ 4. FINAL ADAPTED RESUME (To be set in state) ============\n`;
+                logContent += JSON.stringify(newAdaptedResume, null, 2);
+                downloadLogFile(logContent);
+            }
+            // --- END LOGGING ---
+
             setAdaptedResume(newAdaptedResume);
             setTailoringApplied(true);
-            toast.success('✨ Resume tailored successfully!'); // ✨ 3. Replaced alert with toast.success
+            toast.success('✨ Resume tailored successfully!');
 
         } catch (error) {
             console.error("Error tailoring resume:", error);
-            // ✨ 3. Replaced alert with toast.error
-            toast.error(`Could not tailor resume: ${error.message}`, {
-                duration: 5000,
-            });
+            toast.error(`Could not tailor resume: ${error.message}`, {duration: 5000});
         } finally {
             setIsTailoring(false);
         }
@@ -305,46 +311,31 @@ const AdaptResumeSection = ({baseResume, job, allResumes, onSelectResume, profil
         }
     };
 
-    const handleToggleFullPreview = () => {
-        setShowFullPreview(prev => !prev);
-    };
+    const handleToggleFullPreview = () => setShowFullPreview(prev => !prev);
 
     useEffect(() => {
         if (showFullPreview) {
-            const newMarkdown = generateFullResumeMarkdown(profile, adaptedResume, headings);
-            setFullResumeMarkdown(newMarkdown);
+            setFullResumeMarkdown(generateFullResumeMarkdown(profile, adaptedResume, headings));
         }
     }, [language, adaptedResume, showFullPreview, headings, profile]);
 
     useEffect(() => {
-        // This effect will now run whenever `allResumes` or `job` changes.
         if (allResumes?.length > 0) {
-            // It always selects the first resume in the reverse-alphabetically sorted list as the default.
             const sorted = [...allResumes].sort((a, b) => b.name.localeCompare(a.name));
-
-            // Find a better default based on the job language, if possible
             const jobLang = job?.language?.toUpperCase();
             let defaultResume = null;
-
             if (jobLang === 'PTBR') {
                 defaultResume = allResumes.find(r => r.name.toUpperCase().includes('PTBR'));
             } else {
                 defaultResume = allResumes.find(r => r.name.toUpperCase().includes('ENGLISH'));
             }
-
-            // If a language-specific resume isn't found, use the first one from the sorted list.
             const defaultId = defaultResume ? defaultResume.id : sorted[0]?.id;
-
-            if (defaultId) {
-                onSelectResume(defaultId);
-            }
+            if (defaultId) onSelectResume(defaultId);
         }
     }, [allResumes, job, onSelectResume]);
 
     useEffect(() => {
-        if (showFullPreview) {
-            handleCalculateScore();
-        }
+        if (showFullPreview) handleCalculateScore();
     }, [showFullPreview, handleCalculateScore]);
 
     if (!adaptedResume || !job) return null;
@@ -364,18 +355,7 @@ const AdaptResumeSection = ({baseResume, job, allResumes, onSelectResume, profil
 
     return (
         <div className="pt-8">
-            {/* ✨ 2. Add Toaster component here */}
-            <Toaster
-                position="top-center"
-                reverseOrder={false}
-                toastOptions={{
-                    className: '',
-                    style: {
-                        background: '#333',
-                        color: '#fff',
-                    },
-                }}
-            />
+            <Toaster position="top-center" reverseOrder={false} toastOptions={{style: {background: '#333', color: '#fff'}}}/>
 
             <header className="pb-4 border-b-2 border-purple-400 dark:border-purple-600 mb-6 space-y-4">
                 <div>
@@ -390,21 +370,14 @@ const AdaptResumeSection = ({baseResume, job, allResumes, onSelectResume, profil
                             className="p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-purple-500 w-auto"
                         >
                             {[...allResumes]
-                                .sort((a, b) => b.name.localeCompare(a.name)) // Reverse alphabetical order
-                                .map((r) => (
-                                    <option key={r.id} value={r.id}>
-                                        {r.name}
-                                    </option>
-                                ))}
+                                .sort((a, b) => b.name.localeCompare(a.name))
+                                .map((r) => (<option key={r.id} value={r.id}>{r.name}</option>))}
                         </select>
-
                         <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-full">
-                            <button onClick={() => setLanguage('en')}
-                                    className={`p-1 rounded-full transition-all ${language === 'en' ? 'ring-2 ring-purple-500' : 'opacity-60 hover:opacity-100'}`}>
+                            <button onClick={() => setLanguage('en')} className={`p-1 rounded-full transition-all ${language === 'en' ? 'ring-2 ring-purple-500' : 'opacity-60 hover:opacity-100'}`}>
                                 <img src={usa} alt="USA Flag" className="w-6 h-6 rounded-full"/>
                             </button>
-                            <button onClick={() => setLanguage('pt')}
-                                    className={`p-1 rounded-full transition-all ${language === 'pt' ? 'ring-2 ring-purple-500' : 'opacity-60 hover:opacity-100'}`}>
+                            <button onClick={() => setLanguage('pt')} className={`p-1 rounded-full transition-all ${language === 'pt' ? 'ring-2 ring-purple-500' : 'opacity-60 hover:opacity-100'}`}>
                                 <img src={brazil} alt="Brazil Flag" className="w-6 h-6 rounded-full"/>
                             </button>
                         </div>
@@ -413,135 +386,95 @@ const AdaptResumeSection = ({baseResume, job, allResumes, onSelectResume, profil
             </header>
 
             <div className="space-y-6">
-                {/* ... rest of your JSX remains unchanged ... */}
                 <SectionWrapper title={getTitle(headings.summary)} icon={<FileText size={20}/>}>
                     <EditableSuggestion id="summary" label="EDITABLE / SUGGESTED" original={baseResume.summary || ''}
                                         suggested={adaptedResume.summary || ''}
                                         onChange={(e) => handleSimpleChange('summary', e.target.value)}
                                         isChanged={tailoringApplied} highlight={tailoringApplied} rows={5}/>
                 </SectionWrapper>
-                <SectionWrapper title={getTitle(headings.hard_skills)} icon={<Zap size={20}/>}
-                                onAdd={() => addListItem('hard_skills', '')}>
+                <SectionWrapper title={getTitle(headings.hard_skills)} icon={<Zap size={20}/>} onAdd={() => addListItem('hard_skills', '')}>
                     {(adaptedResume.hard_skills || []).map((skill, index) => (
-                        <div key={index} className="flex items-center gap-2"><input type="text" value={skill}
-                                                                                    onChange={(e) => handleListChange('hard_skills', index, e.target.value)}
-                                                                                    className={inputClasses}
-                                                                                    placeholder="Enter skill"/>
-                            <button onClick={() => removeListItem('hard_skills', index)}
-                                    className="text-red-500 hover:text-red-700 p-1"><Trash2 size={16}/></button>
+                        <div key={index} className="flex items-center gap-2">
+                            <input type="text" value={skill} onChange={(e) => handleListChange('hard_skills', index, e.target.value)} className={inputClasses} placeholder="Enter skill"/>
+                            <button onClick={() => removeListItem('hard_skills', index)} className="text-red-500 hover:text-red-700 p-1"><Trash2 size={16}/></button>
                         </div>))}
                 </SectionWrapper>
-                <SectionWrapper title={getTitle(headings.professional_experience)} icon={<Briefcase size={20}/>}
-                                onAdd={() => addListItem('professional_experience', {
-                                    title: '',
-                                    company: '',
-                                    dates: '',
-                                    details: ['']
-                                })}>
-                    {(adaptedResume.professional_experience || []).map((exp, expIndex) => (<div key={expIndex}
-                                                                                                className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700">
-                        <button onClick={() => removeListItem('professional_experience', expIndex)}
-                                className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2
-                            size={18}/></button>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3"><input type="text" value={exp.title}
-                                                                                           onChange={e => handleNestedChange('professional_experience', expIndex, 'title', e.target.value)}
-                                                                                           placeholder="Job Title"
-                                                                                           className={inputClasses}/>
-                            <input type="text" value={exp.company}
-                                   onChange={e => handleNestedChange('professional_experience', expIndex, 'company', e.target.value)}
-                                   placeholder="Company" className={inputClasses}/> <input type="text" value={exp.dates}
-                                                                                           onChange={e => handleNestedChange('professional_experience', expIndex, 'dates', e.target.value)}
-                                                                                           placeholder="Dates"
-                                                                                           className={inputClasses}/>
-                        </div>
-                        <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Key
-                            Points:</label>
-                        <div className="space-y-2"> {(exp.details || []).map((detail, detailIndex) => (
-                            <div key={detailIndex} className="flex items-center gap-2"><EditableSuggestion
-                                id={`exp-${expIndex}-detail-${detailIndex}`} label="EDITABLE / SUGGESTED"
-                                original={baseResume.professional_experience[expIndex]?.details?.[detailIndex] || ''}
-                                suggested={detail}
-                                onChange={e => handleDetailChange('professional_experience', expIndex, detailIndex, e.target.value)}
-                                isChanged={tailoringApplied} highlight={tailoringApplied} rows={2}/>
-                                <button
-                                    onClick={() => removeDetailItem('professional_experience', expIndex, detailIndex)}
-                                    className="text-red-500 hover:text-red-700 p-1 self-center"
-                                    disabled={(exp.details || []).length <= 1}><Trash2 size={16}/></button>
-                            </div>))}
-                            <button onClick={() => addDetailItem('professional_experience', expIndex)}
-                                    className={buttonClasses}><PlusCircle size={14}/> Add Key Point
-                            </button>
-                        </div>
-                    </div>))}
+                <SectionWrapper title={getTitle(headings.professional_experience)} icon={<Briefcase size={20}/>} onAdd={() => addListItem('professional_experience', {title: '', company: '', dates: '', details: ['']})}>
+                    {(adaptedResume.professional_experience || []).map((exp, expIndex) => {
+                        const originalExperience = baseResume.professional_experience.find(
+                            oExp => oExp.title?.toLowerCase().trim() === exp.title?.toLowerCase().trim() &&
+                                oExp.company?.toLowerCase().trim() === exp.company?.toLowerCase().trim()
+                        );
+                        return (<div key={expIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700">
+                            <button onClick={() => removeListItem('professional_experience', expIndex)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2 size={18}/></button>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                                <input type="text" value={exp.title} onChange={e => handleNestedChange('professional_experience', expIndex, 'title', e.target.value)} placeholder="Job Title" className={inputClasses}/>
+                                <input type="text" value={exp.company} onChange={e => handleNestedChange('professional_experience', expIndex, 'company', e.target.value)} placeholder="Company" className={inputClasses}/>
+                                <input type="text" value={exp.dates} onChange={e => handleNestedChange('professional_experience', expIndex, 'dates', e.target.value)} placeholder="Dates" className={inputClasses}/>
+                            </div>
+                            <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Key Points:</label>
+                            <div className="space-y-2">{(exp.details || []).map((detail, detailIndex) => (
+                                <div key={detailIndex} className="flex items-center gap-2">
+                                    <EditableSuggestion id={`exp-${expIndex}-detail-${detailIndex}`} label="EDITABLE / SUGGESTED"
+                                                        original={originalExperience?.description?.[detailIndex] || ''}
+                                                        suggested={detail}
+                                                        onChange={e => handleDetailChange('professional_experience', expIndex, detailIndex, e.target.value)}
+                                                        isChanged={tailoringApplied} highlight={tailoringApplied} rows={2}/>
+                                    <button onClick={() => removeDetailItem('professional_experience', expIndex, detailIndex)} className="text-red-500 hover:text-red-700 p-1 self-center" disabled={(exp.details || []).length <= 1}><Trash2 size={16}/></button>
+                                </div>))}
+                                <button onClick={() => addDetailItem('professional_experience', expIndex)} className={buttonClasses}><PlusCircle size={14}/> Add Key Point</button>
+                            </div>
+                        </div>)
+                    })}
                 </SectionWrapper>
-                <SectionWrapper title={getTitle(headings.projects)} icon={<Lightbulb size={20}/>}
-                                onAdd={() => addListItem('projects', {title: '', link: '', details: ['']})}>
-                    {(adaptedResume.projects || []).map((proj, projIndex) => (<div key={projIndex}
-                                                                                   className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700">
-                        <button onClick={() => removeListItem('projects', projIndex)}
-                                className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2
-                            size={18}/></button>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3"><input type="text"
-                                                                                           value={proj.title}
-                                                                                           onChange={e => handleNestedChange('projects', projIndex, 'title', e.target.value)}
-                                                                                           placeholder="Project Title"
-                                                                                           className={inputClasses}/>
-                            <input type="text" value={proj.link}
-                                   onChange={e => handleNestedChange('projects', projIndex, 'link', e.target.value)}
-                                   placeholder="Project URL" className={inputClasses}/></div>
-                        <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Key
-                            points:</label>
-                        <div className="space-y-2"> {(proj.details || []).map((detail, detailIndex) => (
-                            <div key={detailIndex} className="flex items-center gap-2"><EditableSuggestion
-                                id={`proj-${projIndex}-detail-${detailIndex}`} label="EDITABLE / SUGGESTED"
-                                original={baseResume.projects[projIndex]?.details?.[detailIndex] || ''}
-                                suggested={detail}
-                                onChange={e => handleDetailChange('projects', projIndex, detailIndex, e.target.value)}
-                                isChanged={tailoringApplied} highlight={tailoringApplied} rows={2}/>
-                                <button onClick={() => removeDetailItem('projects', projIndex, detailIndex)}
-                                        className="text-red-500 hover:text-red-700 p-1 self-center"
-                                        disabled={(proj.details || []).length <= 1}><Trash2 size={16}/></button>
-                            </div>))}
-                            <button onClick={() => addDetailItem('projects', projIndex)} className={buttonClasses}>
-                                <PlusCircle size={14}/> Add Detail
-                            </button>
-                        </div>
-                    </div>))}
+                <SectionWrapper title={getTitle(headings.projects)} icon={<Lightbulb size={20}/>} onAdd={() => addListItem('projects', {title: '', link: '', details: ['']})}>
+                    {(adaptedResume.projects || []).map((proj, projIndex) => {
+                        const originalProject = baseResume.projects.find(
+                            oProj => oProj.title?.toLowerCase().trim() === proj.title?.toLowerCase().trim()
+                        );
+                        return (<div key={projIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700">
+                            <button onClick={() => removeListItem('projects', projIndex)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2 size={18}/></button>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                                <input type="text" value={proj.title} onChange={e => handleNestedChange('projects', projIndex, 'title', e.target.value)} placeholder="Project Title" className={inputClasses}/>
+                                <input type="text" value={proj.link} onChange={e => handleNestedChange('projects', projIndex, 'link', e.target.value)} placeholder="Project URL" className={inputClasses}/>
+                            </div>
+                            <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Key points:</label>
+                            <div className="space-y-2">{(proj.details || []).map((detail, detailIndex) => (
+                                <div key={detailIndex} className="flex items-center gap-2">
+                                    <EditableSuggestion id={`proj-${projIndex}-detail-${detailIndex}`} label="EDITABLE / SUGGESTED"
+                                                        original={originalProject?.description?.[detailIndex] || ''}
+                                                        suggested={detail}
+                                                        onChange={e => handleDetailChange('projects', projIndex, detailIndex, e.target.value)}
+                                                        isChanged={tailoringApplied} highlight={tailoringApplied} rows={2}/>
+                                    <button onClick={() => removeDetailItem('projects', projIndex, detailIndex)} className="text-red-500 hover:text-red-700 p-1 self-center" disabled={(proj.details || []).length <= 1}><Trash2 size={16}/></button>
+                                </div>))}
+                                <button onClick={() => addDetailItem('projects', projIndex)} className={buttonClasses}><PlusCircle size={14}/> Add Detail</button>
+                            </div>
+                        </div>)
+                    })}
                 </SectionWrapper>
-                <SectionWrapper title={getTitle(headings.education)} icon={<GraduationCap size={20}/>}
-                                onAdd={() => addListItem('education', {degree: '', school: '', dates: ''})}>
-                    {(adaptedResume.education || []).map((edu, eduIndex) => (<div key={eduIndex}
-                                                                                  className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700">
-                        <button onClick={() => removeListItem('education', eduIndex)}
-                                className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2
-                            size={18}/></button>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3"><input type="text" value={edu.degree}
-                                                                                      onChange={e => handleNestedChange('education', eduIndex, 'degree', e.target.value)}
-                                                                                      placeholder="Degree/Certificate"
-                                                                                      className={inputClasses}/> <input
-                            type="text" value={edu.school}
-                            onChange={e => handleNestedChange('education', eduIndex, 'school', e.target.value)}
-                            placeholder="School/Institution" className={inputClasses}/> <input type="text"
-                                                                                               value={edu.dates}
-                                                                                               onChange={e => handleNestedChange('education', eduIndex, 'dates', e.target.value)}
-                                                                                               placeholder="Dates"
-                                                                                               className={inputClasses}/>
+                <SectionWrapper title={getTitle(headings.education)} icon={<GraduationCap size={20}/>} onAdd={() => addListItem('education', {degree: '', school: '', dates: ''})}>
+                    {(adaptedResume.education || []).map((edu, eduIndex) => (<div key={eduIndex} className="bg-white dark:bg-gray-800/50 p-4 rounded-lg shadow-sm relative border border-gray-200 dark:border-gray-700">
+                        <button onClick={() => removeListItem('education', eduIndex)} className="absolute top-2 right-2 text-red-500 hover:text-red-700 p-1"><Trash2 size={18}/></button>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <input type="text" value={edu.degree} onChange={e => handleNestedChange('education', eduIndex, 'degree', e.target.value)} placeholder="Degree/Certificate" className={inputClasses}/>
+                            <input type="text" value={edu.school} onChange={e => handleNestedChange('education', eduIndex, 'school', e.target.value)} placeholder="School/Institution" className={inputClasses}/>
+                            <input type="text" value={edu.dates} onChange={e => handleNestedChange('education', eduIndex, 'dates', e.target.value)} placeholder="Dates" className={inputClasses}/>
                         </div>
                     </div>))}
                 </SectionWrapper>
             </div>
 
             <footer className="mt-8 pt-6 border-t dark:border-gray-700 flex flex-wrap justify-end items-center gap-4">
-                <button onClick={handleToggleFullPreview}
-                        className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-all shadow-lg w-full sm:w-auto"> {showFullPreview ?
-                    <XCircle size={20}/> : <FileText size={20}/>}
-                    <span>{showFullPreview ? 'Hide Preview' : 'Preview Full Resume'}</span></button>
-                <button onClick={handleTailorResume} disabled={isTailoring}
-                        className="flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-all shadow-lg disabled:bg-gray-500 disabled:cursor-wait w-full sm:w-auto"> {isTailoring ?
-                    <Spinner/> : <Wand2 size={20}/>} <span>{isTailoring ? 'Tailoring...' : 'Tailor with AI'}</span>
+                <button onClick={handleToggleFullPreview} className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-all shadow-lg w-full sm:w-auto">
+                    {showFullPreview ? <XCircle size={20}/> : <FileText size={20}/>}
+                    <span>{showFullPreview ? 'Hide Preview' : 'Preview Full Resume'}</span>
                 </button>
-                <button onClick={handleCopyMarkdown}
-                        className="flex items-center justify-center gap-2 px-8 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-all shadow-lg w-full sm:w-auto">
+                <button onClick={handleTailorResume} disabled={isTailoring} className="flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-all shadow-lg disabled:bg-gray-500 disabled:cursor-wait w-full sm:w-auto">
+                    {isTailoring ? <Spinner/> : <Wand2 size={20}/>}
+                    <span>{isTailoring ? 'Tailoring...' : 'Tailor with AI'}</span>
+                </button>
+                <button onClick={handleCopyMarkdown} className="flex items-center justify-center gap-2 px-8 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-all shadow-lg w-full sm:w-auto">
                     <Save size={20}/> Copy Adapted Resume Markdown
                 </button>
             </footer>
