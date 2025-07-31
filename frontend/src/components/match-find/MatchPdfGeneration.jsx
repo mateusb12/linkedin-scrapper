@@ -5,6 +5,7 @@ import { getColorFromScore } from './MatchLogic.jsx';
 import usa from "../../assets/skills_icons/usa.svg";
 import brazil from "../../assets/skills_icons/brazil.svg";
 
+// <<< START: Corrected mdToBlocks parser
 const mdToBlocks = (md = '') => {
     const lines = md.replace(/\r\n?/g, '\n').split('\n');
     const blocks = [];
@@ -16,48 +17,61 @@ const mdToBlocks = (md = '') => {
             return;
         }
 
-        // Detect contact line (after name, before ---)
-        if (
-            idx === 1 &&
-            line.includes('|') &&
-            line.includes('@')
-        ) {
+        // --- THIS IS THE FIX ---
+        // Special handler for the single line of contact info (Line 1)
+        if (idx === 1 && line.includes('|')) {
             const parts = line.split('|').map(s => s.trim());
-            parts.forEach(p => {
-                blocks.push({ type: 'li', text: p.replace(/[^\u0000-\u00FF]/g, '') });
+            parts.forEach(part => {
+                // Check if a part is a markdown link, e.g., "[GitHub](url)"
+                const linkMatch = part.match(/^\[([^\]]+)]\(([^\)]+)\)$/);
+                if (linkMatch) {
+                    blocks.push({
+                        type: 'li-link',
+                        label: linkMatch[1],
+                        url: linkMatch[2],
+                    });
+                } else {
+                    // Otherwise, treat it as a regular text list item
+                    blocks.push({ type: 'li', text: part });
+                }
             });
-            return;
+            return; // End processing for this line
         }
+        // --- END OF THE FIX ---
 
         const hMatch = line.match(/^(#{1,6})\s+(.*)$/);
         if (hMatch) {
             blocks.push({
                 type: 'h',
                 level: hMatch[1].length,
-                text: hMatch[2].replace(/[^\u0000-\u00FF]/g, ''),
+                text: hMatch[2],
             });
             return;
         }
 
-        const liMatch = line.match(/^\s*[-*]\s+(.*)$/);
+        // Handler for all other list items
+        const liMatch = line.match(/^\s*[-*\u2013]\s+(.*)$/);
         if (liMatch) {
             blocks.push({
                 type: 'li',
-                text: liMatch[1].replace(/[^\u0000-\u00FF]/g, ''),
+                text: liMatch[1],
             });
             return;
         }
 
-        const cleaned = line
-            .replace(/\[([^\]]+)]\([^\)]+\)/g, '$1')
-            .replace(/[*_~`]/g, '')
-            .replace(/[^\u0000-\u00FF]/g, '');
+        // Horizontal rule handler
+        if (line.match(/^(---|___|\*\*\*)$/)) {
+            blocks.push({ type: 'br' }); // Treat as a simple line break for spacing
+            return;
+        }
 
-        blocks.push({ type: 'p', text: cleaned });
+        // Default to a paragraph for any other line
+        blocks.push({ type: 'p', text: line });
     });
 
     return blocks;
 };
+// <<< END: Corrected mdToBlocks parser
 
 const Spinner = ({ className = 'h-5 w-5 text-white' }) => (
     <svg className={`animate-spin ${className}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -79,18 +93,14 @@ const MatchPdfGeneration = ({
                             }) => {
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
-    // --- FIX START ---
-
     const SPACING = {
-        line: 5,         // Line height for paragraphs (10pt font)
-        bullet: 5,       // Line height for list items (10pt font)
-        br: 3,           // Height of a blank line
-        h1Line: 6,       // Line height for H1 headings (14pt font) in mm
-        h2Line: 5,       // Line height for H2 headings (12pt font) in mm
-        afterHeading: 1, // Extra visual gap after a heading block in mm
+        line: 5,
+        bullet: 5,
+        br: 3,
+        h1Line: 6,
+        h2Line: 5,
+        afterHeading: 1,
     };
-
-    // --- FIX END ---
 
     const handleDownloadPdf = () => {
         if (!fullResumeMarkdown) return;
@@ -101,8 +111,8 @@ const MatchPdfGeneration = ({
             const marginX = 20;
             const marginY = 20;
             const pageH = pdf.internal.pageSize.getHeight();
-
             let y = marginY;
+
             const newLine = (delta) => {
                 y += delta;
                 if (y > pageH - marginY) {
@@ -111,61 +121,77 @@ const MatchPdfGeneration = ({
                 }
             };
 
-            mdToBlocks(fullResumeMarkdown).forEach((b) => {
-                switch (b.type) {
-                    // --- FIX START ---
-                    case 'h': {
-                        // Add a bit of space before major headings for better separation
-                        if (y > marginY + 5) { // but not at the top of a page
-                            newLine(3);
-                        }
+            const blocks = mdToBlocks(fullResumeMarkdown);
 
+            for (const b of blocks) {
+                if (!b || !b.type) continue;
+
+                switch (b.type) {
+                    case 'h': {
+                        if (y > marginY + 5) newLine(3);
                         const isH1 = b.level === 1;
                         const fontSize = isH1 ? 14 : 12;
                         const lineHeight = isH1 ? SPACING.h1Line : SPACING.h2Line;
-
                         pdf.setFont('helvetica', 'bold');
                         pdf.setFontSize(fontSize);
-                        const lines = pdf.splitTextToSize(b.text, 170);
 
-                        lines.forEach((ln, index) => {
+                        // <<< FIX: Clean unsupported characters (like emojis) from the heading text
+                        const cleanedText = b.text.replace(/[^\u0000-\u00FF]/g, '').trim();
+                        const lines = pdf.splitTextToSize(cleanedText.replace(/\[([^\]]+)]\(([^)]+)\)/g, '$1'), 170);
+
+                        for (const [index, ln] of lines.entries()) {
                             pdf.text(ln, marginX, y);
-
-                            // For multi-line headings, add space between lines.
-                            // After the final line, add the line's height PLUS the desired gap.
-                            if (index === lines.length - 1) {
-                                newLine(lineHeight + SPACING.afterHeading);
-                            } else {
-                                newLine(lineHeight);
-                            }
-                        });
+                            newLine(index === lines.length - 1 ? lineHeight + SPACING.afterHeading : lineHeight);
+                        }
                         break;
                     }
-                    // --- FIX END ---
+                    case 'li-link': {
+                        pdf.setFontSize(10);
+                        const bullet = '– ';
+                        const separator = ' - ';
+                        const prettify = (lbl) => {
+                            if (/^linkedin$/i.test(lbl)) return 'LinkedIn Profile';
+                            if (/^github$/i.test(lbl)) return 'GitHub';
+                            return lbl;
+                        };
+                        const displayLabel = prettify(b.label);
+                        const boldText = bullet + displayLabel;
+                        pdf.setFont('helvetica', 'bold');
+                        pdf.text(boldText, marginX, y);
+                        const urlX = marginX + pdf.getTextWidth(boldText);
+                        pdf.setFont('helvetica', 'normal');
+                        pdf.text(separator + b.url, urlX, y);
+                        newLine(SPACING.bullet);
+                        break;
+                    }
                     case 'li': {
                         pdf.setFont('helvetica', 'normal');
                         pdf.setFontSize(10);
                         const bullet = '– ';
-                        // Indent all lines of a list item consistently
-                        const lines = pdf.splitTextToSize(b.text, 165); // a bit less width for text
-                        lines.forEach((ln, idx) => {
-                            if (idx === 0) {
-                                pdf.text(bullet + ln, marginX, y);
-                            } else {
-                                pdf.text(ln, marginX + 3, y); // Indent subsequent lines
-                            }
+
+                        // <<< FIX: Clean unsupported characters from list item text
+                        const cleanedText = b.text.replace(/[^\u0000-\u00FF]/g, '').trim();
+                        const lines = pdf.splitTextToSize(cleanedText, 165);
+
+                        for (const [idx, ln] of lines.entries()) {
+                            pdf.text(idx === 0 ? bullet + ln : ln, marginX + (idx === 0 ? 0 : 3), y);
                             newLine(SPACING.bullet);
-                        });
+                        }
                         break;
                     }
                     case 'p': {
                         pdf.setFont('helvetica', 'normal');
                         pdf.setFontSize(10);
-                        const lines = pdf.splitTextToSize(b.text, 170);
-                        lines.forEach((ln) => {
+
+                        // <<< FIX: Clean unsupported characters from paragraph text
+                        const cleanedText = b.text.replace(/[^\u0000-\u00FF]/g, '').trim();
+                        const final_text = cleanedText.replace(/\[([^\]]+)]\(([^)]+)\)/g, '$1: $2').replace(/[*_~`]/g, '');
+                        const lines = pdf.splitTextToSize(final_text, 170);
+
+                        for (const ln of lines) {
                             pdf.text(ln, marginX, y);
                             newLine(SPACING.line);
-                        });
+                        }
                         break;
                     }
                     case 'br':
@@ -174,7 +200,7 @@ const MatchPdfGeneration = ({
                     default:
                         break;
                 }
-            });
+            }
 
             try {
                 const safeJob = (jobTitle || 'job').replace(/[^a-z0-9]/gi, '_');
@@ -182,10 +208,6 @@ const MatchPdfGeneration = ({
                 pdf.save(fileName);
             } catch (err) {
                 console.error('❌ Error saving PDF file:', err);
-                toast.error("Failed to save the PDF. Please try again.", {
-                    icon: '❌',
-                    duration: 5000,
-                });
             }
         } catch (err) {
             console.error('Error generating PDF:', err);
