@@ -62,10 +62,11 @@ INCOMPLETE_JOB_CONDITION = or_(
 def insert_extra_fields():
     session = get_db_session()
     BATCH_SIZE = 3
-    last_urn = ""
+    last_urn = None  # None to indicate first iteration (no pagination yet)
 
     try:
         from sqlalchemy import case, desc
+        from sqlalchemy.orm import joinedload
 
         incompleteness_score = (
                 case((Job.responsibilities.is_(None), 1), else_=0) +
@@ -87,15 +88,21 @@ def insert_extra_fields():
         processed = 0
 
         while True:
-            batch = (
+            query = (
                 session.query(Job)
                 .options(joinedload(Job.company))
                 .filter(
                     Job.description_full.isnot(None),
-                    INCOMPLETE_JOB_CONDITION,
-                    Job.urn > last_urn
+                    INCOMPLETE_JOB_CONDITION
                 )
-                .order_by(desc(incompleteness_score), Job.urn)
+            )
+
+            if last_urn:
+                query = query.filter(Job.urn < last_urn)  # paginate from newest to oldest
+
+            batch = (
+                query
+                .order_by(desc(Job.urn))  # fetch newest jobs first
                 .limit(BATCH_SIZE)
                 .all()
             )
@@ -107,16 +114,12 @@ def insert_extra_fields():
                 try:
                     expansion = orchestrator.expand_job(job.description_full or "")
                 except AllLLMsFailed as exc:
-                    session.rollback()  # any partial writes for this batch
+                    session.rollback()
                     print(f"❌ Stopping: {exc}")
-                    # If you want the whole Flask request to fail:
                     return jsonify({"error": str(exc)}), 500
-                    # If you want the whole script to exit:
-                    # import sys; sys.exit(1)
 
                 if "error" in expansion or not isinstance(expansion, dict):
-                    print(
-                        f"⚠️ Could not expand job {job.urn}. Reason: {expansion.get('error', 'Invalid response format')}")
+                    print(f"⚠️ Could not expand job {job.urn}. Reason: {expansion.get('error', 'Invalid response format')}")
                     last_urn = job.urn
                     processed += 1
                     progress(processed, urn=job.urn)
@@ -124,7 +127,6 @@ def insert_extra_fields():
 
                 progress.set_status(f"Expanding job {job.urn}...")
 
-                # Patch only missing fields (preserve existing ones)
                 if not job.responsibilities:
                     job.responsibilities = expansion.get("responsibilities", [])
                 if not job.qualifications:
@@ -138,7 +140,6 @@ def insert_extra_fields():
                         job.job_type = raw_jt.get(lang_key) or raw_jt.get("en") or "Full-stack"
                     else:
                         job.job_type = raw_jt
-
                 if not job.programming_languages:
                     for key in ("Programming languages", "programming_languages"):
                         if key in expansion:

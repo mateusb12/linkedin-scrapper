@@ -48,8 +48,19 @@ const Match = () => {
     useEffect(() => {
         if (jobs.length > 0) {
             const totalCount = jobs.length;
-            const completeCount = jobs.filter(j => j.title && j.location).length;
-            setJobMetrics({ total: totalCount, complete: completeCount, incomplete: totalCount - completeCount });
+            const completeCount = jobs.filter(j =>
+                j.responsibilities &&
+                j.qualifications &&
+                j.keywords &&
+                j.responsibilities.length > 0 &&
+                Object.keys(j.qualifications).length > 0 &&
+                j.keywords.length > 0
+            ).length;
+            setJobMetrics({
+                total: totalCount,
+                complete: completeCount,
+                incomplete: totalCount - completeCount
+            });
         }
     }, [jobs]);
 
