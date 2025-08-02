@@ -158,8 +158,11 @@ const updateJob = (jobUrn, body) => {
     }).then(response => handleResponse(response, 'Failed to update job'));
 };
 
-export const markJobAsApplied = (jobUrn) =>
-    updateJob(jobUrn, { applied_on: new Date().toISOString() });
+export const markJobAsApplied = (jobUrn) => {
+    return fetch(`${API_BASE}/jobs/${encodeURIComponent(jobUrn)}/mark_applied`, {
+        method: 'PATCH'
+    }).then(response => handleResponse(response, 'Failed to mark job as applied'));
+};
 
 export const markJobAsDisabled = (jobUrn) =>
     updateJob(jobUrn, { disabled: true });

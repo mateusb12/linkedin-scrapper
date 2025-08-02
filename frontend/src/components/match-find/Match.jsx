@@ -15,6 +15,7 @@ import { fetchProfiles } from "../../services/profileService.js";
 import AdaptResumeSection from "./MatchResumeTailor.jsx";
 import CoreJobDetails from "./MatchJobDetails.jsx";
 import JobListing from "./MatchListing.jsx";
+import toast from "react-hot-toast";
 
 const Match = () => {
     const [resumes, setResumes] = useState([]);
@@ -128,35 +129,53 @@ const Match = () => {
     };
 
     const updateJobInState = (jobUrn, updatedFields) => {
-        const updateFn = (j) => (j.urn === jobUrn ? { ...j, ...updatedFields } : j);
-        setJobs(prev => prev.map(updateFn));
-        // Remove disabled jobs from the matched list
+        const updateFn = (j) => (j && j.urn === jobUrn ? { ...j, ...updatedFields } : j);
+
+        setJobs(prev => (prev || []).map(updateFn));
+
         if (updatedFields.disabled) {
-            setMatchedJobs(prev => prev.filter(j => j.urn !== jobUrn));
+            setMatchedJobs(prev => (prev || []).filter(j => j && j.urn !== jobUrn));
             if (selectedJob?.urn === jobUrn) {
-                const nextJob = matchedJobs.find(j => j.urn !== jobUrn) || null;
+                const nextJob = (matchedJobs || []).find(j => j && j.urn !== jobUrn) || null;
                 setSelectedJob(nextJob);
             }
         } else {
-            setMatchedJobs(prev => prev.map(updateFn));
+            setMatchedJobs(prev => (prev || []).map(updateFn));
         }
 
         if (selectedJob?.urn === jobUrn) {
-            setSelectedJob(prev => ({ ...prev, ...updatedFields }));
+            setSelectedJob(prev => prev ? { ...prev, ...updatedFields } : prev);
         }
     };
 
     const handleMarkAsApplied = useCallback(async (jobUrn) => {
+        // 1. Add user confirmation dialog
+        const isConfirmed = window.confirm(
+            "Are you sure you want to mark this job as applied?"
+        );
+        if (!isConfirmed) {
+            return; // Stop if the user clicks "Cancel"
+        }
+
+        const toastId = toast.loading('Marking as applied...'); // 2. Show a loading toast
+
         try {
             setErrorMessage('');
+            // Your API call remains the same
             const { job } = await markJobAsApplied(jobUrn);
+
+            // Your state update logic is called
             updateJobInState(jobUrn, job);
-            setSuccessMessage('Job marked as applied.');
-            setTimeout(() => setSuccessMessage(''), 3000);
+
+            // 3. Show a success toast on completion
+            toast.success('Job marked as applied!', { id: toastId });
+
         } catch (error) {
+            // 4. Show an error toast on failure
+            toast.error(error.message || 'An unexpected error occurred.', { id: toastId });
             setErrorMessage(error.message || 'An unexpected error occurred.');
         }
-    }, [selectedJob?.urn, matchedJobs]);
+    }, [updateJobInState]);
 
     const handleMarkAsDisabled = useCallback(async (jobUrn) => {
         try {

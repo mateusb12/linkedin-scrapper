@@ -119,7 +119,8 @@ def insert_extra_fields():
                     return jsonify({"error": str(exc)}), 500
 
                 if "error" in expansion or not isinstance(expansion, dict):
-                    print(f"⚠️ Could not expand job {job.urn}. Reason: {expansion.get('error', 'Invalid response format')}")
+                    print(
+                        f"⚠️ Could not expand job {job.urn}. Reason: {expansion.get('error', 'Invalid response format')}")
                     last_urn = job.urn
                     processed += 1
                     progress(processed, urn=job.urn)
@@ -239,6 +240,31 @@ def mark_job_as_disabled(urn):
         print(f"❌ Failed to disable job {urn}: {e}")
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
+
+
+@job_data_bp.route('/<string:urn>/mark_applied', methods=['PATCH', 'OPTIONS'])
+def mark_job_as_applied(urn):
+    session = get_db_session()
+    try:
+        job = session.query(Job).get(urn)
+
+        if not job:
+            return jsonify({"error": f"Job with URN '{urn}' not found"}), 404
+
+        job.has_applied = True
+        session.commit()
+
+        return jsonify({
+            "message": f"Job '{urn}' marked as applied.",
+            "job": job.to_dict()
+        }), 200
+
+    except Exception as e:
+        session.rollback()
+        return jsonify({"error": "Failed to mark job as applied", "details": str(e)}), 500
+
     finally:
         session.close()
 

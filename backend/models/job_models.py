@@ -79,6 +79,7 @@ class Job(db.Model):
             "posted_on": self.posted_on,
             "job_url": self.job_url,
             "description_full": self.description_full,
+            "has_applied": self.has_applied,
             "company_urn": self.company_urn,
             "company": self.company.to_dict() if self.company else None,
             "applicants": self.applicants,

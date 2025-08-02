@@ -1,18 +1,17 @@
-import React, { useState } from 'react';
-import { XCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react'; // --- ADDED: useEffect ---
+import { XCircle, Lock, Unlock } from 'lucide-react'; // --- ADDED: Lock, Unlock icons ---
 import jsPDF from 'jspdf';
 import { getColorFromScore } from './MatchLogic.jsx';
 import usa from "../../assets/skills_icons/usa.svg";
 import brazil from "../../assets/skills_icons/brazil.svg";
 
-// <<< START: New translation map for contact labels
 const contactLabels = {
     en: { phone: "Phone Number", email: "Email", location: "Location" },
     pt: { phone: "Telefone", email: "Email", location: "Localização" }
 };
-// <<< END: New translation map
 
 const mdToBlocks = (md = '') => {
+    // ... (mdToBlocks function remains unchanged)
     const lines = md.replace(/\r\n?/g, '\n').split('\n');
     const blocks = [];
 
@@ -23,8 +22,6 @@ const mdToBlocks = (md = '') => {
             return;
         }
 
-        // --- THIS IS THE FIX ---
-        // Enhanced handler for the contact info line. It now identifies each part.
         if (idx === 1 && line.includes('|')) {
             const parts = line.split('|').map(s => s.trim());
             parts.forEach(part => {
@@ -41,7 +38,6 @@ const mdToBlocks = (md = '') => {
             });
             return; // End processing for this line
         }
-        // --- END OF THE FIX ---
 
         const hMatch = line.match(/^(#{1,6})\s+(.*)$/);
         if (hMatch) {
@@ -92,6 +88,23 @@ const MatchPdfGeneration = ({
                                 jobTitle
                             }) => {
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+    // --- START: ADDED state and effect for locking/unlocking ---
+    const [isLocked, setIsLocked] = useState(true);
+    const [editedMarkdown, setEditedMarkdown] = useState(fullResumeMarkdown);
+
+    // This effect synchronizes the local state with the prop when the component
+    // is in a "locked" state. When unlocked, it allows the local state to be independent.
+    // If the user re-locks, it reverts any manual changes.
+    useEffect(() => {
+        if (isLocked) {
+            setEditedMarkdown(fullResumeMarkdown);
+        }
+    }, [fullResumeMarkdown, isLocked]);
+
+    const handleToggleLock = () => {
+        setIsLocked(prev => !prev);
+    };
+    // --- END: ADDED state and effect ---
 
     const SPACING = {
         line: 5,
@@ -103,7 +116,8 @@ const MatchPdfGeneration = ({
     };
 
     const handleDownloadPdf = () => {
-        if (!fullResumeMarkdown) return;
+        // --- MODIFIED: Use the editable state for PDF generation ---
+        if (!editedMarkdown) return;
         setIsGeneratingPdf(true);
 
         try {
@@ -121,8 +135,10 @@ const MatchPdfGeneration = ({
                 }
             };
 
-            const blocks = mdToBlocks(fullResumeMarkdown);
+            // --- MODIFIED: Use the editable 'editedMarkdown' state ---
+            const blocks = mdToBlocks(editedMarkdown);
 
+            // ... (rest of the handleDownloadPdf function is the same)
             for (const b of blocks) {
                 if (!b || !b.type) continue;
 
@@ -161,13 +177,11 @@ const MatchPdfGeneration = ({
                         newLine(SPACING.bullet);
                         break;
                     }
-                    // <<< START: New renderer for contact list items
                     case 'li-contact': {
                         pdf.setFontSize(10);
                         const bullet = '– ';
                         const separator = ': ';
 
-                        // Use resumeLanguage prop to get the right translations
                         const labels = contactLabels[resumeLanguage] || contactLabels.en;
                         const labelText = labels[b.contactType];
 
@@ -182,7 +196,6 @@ const MatchPdfGeneration = ({
                         newLine(SPACING.bullet);
                         break;
                     }
-                    // <<< END: New renderer
                     case 'li': {
                         pdf.setFont('helvetica', 'normal');
                         pdf.setFontSize(10);
@@ -246,6 +259,26 @@ const MatchPdfGeneration = ({
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
+                        {/* --- START: ADDED Lock/Unlock Button --- */}
+                        <button
+                            onClick={handleToggleLock}
+                            className={`px-4 py-1.5 font-semibold text-xs rounded-md transition-all flex items-center gap-2 ${
+                                isLocked
+                                    ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                                    : 'bg-gray-600 hover:bg-gray-700 text-white'
+                            }`}
+                        >
+                            {isLocked ? (
+                                <>
+                                    <Unlock size={14} /> Unlock to Edit
+                                </>
+                            ) : (
+                                <>
+                                    <Lock size={14} /> Lock (Discard Edits)
+                                </>
+                            )}
+                        </button>
+                        {/* --- END: ADDED Lock/Unlock Button --- */}
                         <button
                             onClick={onCalculateScore}
                             disabled={isCalculatingScore || isGeneratingPdf}
@@ -262,7 +295,8 @@ const MatchPdfGeneration = ({
                         </button>
                         <button
                             onClick={handleDownloadPdf}
-                            disabled={isCalculatingScore || isGeneratingPdf || !fullResumeMarkdown}
+                            // --- MODIFIED: check editedMarkdown for disabling button ---
+                            disabled={isCalculatingScore || isGeneratingPdf || !editedMarkdown}
                             className="px-4 py-1.5 bg-green-500 hover:bg-green-600 text-white font-semibold text-xs rounded-md disabled:cursor-wait disabled:opacity-50 transition-all flex items-center gap-2"
                         >
                             {isGeneratingPdf ? (
@@ -284,6 +318,7 @@ const MatchPdfGeneration = ({
                 </div>
 
                 {/* match score */}
+                {/* ... (match score section remains unchanged) ... */}
                 <div className="w-full flex justify-center">
                     <div className="w-[85%]">
                         <div className="flex items-center justify-between mb-2">
@@ -316,13 +351,19 @@ const MatchPdfGeneration = ({
                     </div>
                 </div>
 
-                {/* raw markdown textarea */}
+                {/* --- START: MODIFIED raw markdown textarea --- */}
                 <textarea
-                    readOnly
-                    value={fullResumeMarkdown}
-                    className="mt-6 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 font-mono text-sm w-full rounded-md p-4 resize-none focus:ring-2 focus:ring-indigo-500"
+                    readOnly={isLocked}
+                    value={editedMarkdown}
+                    onChange={(e) => setEditedMarkdown(e.target.value)}
+                    className={`mt-6 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 font-mono text-sm w-full rounded-md p-4 resize-none transition-all ${
+                        isLocked
+                            ? 'focus:ring-2 focus:ring-indigo-500'
+                            : 'focus:ring-2 focus:ring-green-500 ring-2 ring-green-500'
+                    }`}
                     style={{ height: '60vh' }}
                 />
+                {/* --- END: MODIFIED raw markdown textarea --- */}
             </div>
         </div>
     );

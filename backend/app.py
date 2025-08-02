@@ -22,7 +22,7 @@ from path.file_content_loader import load_db_path
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 # Database configuration
 db_path = load_db_path()

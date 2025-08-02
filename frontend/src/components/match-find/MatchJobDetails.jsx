@@ -86,7 +86,7 @@ const JobMetaItem = ({ icon, color, children }) => {
 
 const CoreJobDetails = ({ job, profile, onMarkAsApplied, onMarkAsDisabled }) => {
     const formatDate = (dateString) => dateString ? new Date(dateString).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) : 'N/A';
-    const isApplied = !!job.applied_on;
+    const isApplied = !!job.has_applied;
     const jobKeywords = getSkillsArray(job.keywords).map(skill => skill.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')).sort((a, b) => a.localeCompare(b));
     const userSkillsSet = new Set((profile?.positive_keywords || []).map(normalizeKeyword));
 
@@ -109,10 +109,11 @@ const CoreJobDetails = ({ job, profile, onMarkAsApplied, onMarkAsDisabled }) => 
                 <img src={job.company?.logo_url} alt={`${job.company?.name} logo`} className="w-16 h-16 rounded-lg mr-6 object-contain border border-gray-200 dark:border-gray-700"
                      onError={(e) => { e.target.onerror = null; e.target.src = `https://placehold.co/64x64/e2e8f0/4a5568?text=${job.company?.name?.charAt(0) || '?'}`; }} />
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{job.title}</h2>
+                    <h2 className={`text-2xl font-bold ${job.has_applied ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-gray-100'}`}>{job.title}</h2>
                     <p className="text-lg text-gray-700 dark:text-gray-300 flex items-center gap-1">
                         {getLanguageFlagIcon(job.language)} {job.company?.name}
                     </p>
+                    <p className="text-xs text-gray-400 mt-1">{job.urn}</p>
                 </div>
             </header>
 
@@ -120,7 +121,7 @@ const CoreJobDetails = ({ job, profile, onMarkAsApplied, onMarkAsDisabled }) => 
                 <a href={job.job_url} target="_blank" rel="noopener noreferrer" className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition-all">Apply Now</a>
                 {isApplied ? (
                     <div className="flex items-center gap-2 px-6 py-2 text-green-700 dark:text-green-400 font-semibold rounded-lg bg-green-100 dark:bg-green-900/50">
-                        <CheckCircle size={20} /> Applied on {formatDate(job.applied_on)}
+                        <CheckCircle size={20} /> Applied
                     </div>
                 ) : (
                     <div className="flex gap-2">

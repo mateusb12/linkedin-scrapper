@@ -14,22 +14,34 @@ const Spinner = ({className = 'h-5 w-5 text-white'}) => (
 const MatchedJobItem = ({job, onSelect, isSelected}) => {
     const score = Math.round(job.matchScore || 0);
     const barColor = getColorFromScore(score);
-    const isApplied = !!job.applied_on;
+    // 1. Check `has_applied` from the job object to determine the applied status.
+    const isApplied = !!job.has_applied;
 
+    // --- Style Definitions ---
     const baseClasses = "p-4 border-l-4 cursor-pointer transition-colors duration-200";
+
+    // 2. Define classes for the different states.
+    const appliedClasses = "bg-amber-100/50 dark:bg-amber-900/30 border-amber-500";
     const selectedClasses = "bg-sky-100 dark:bg-sky-900/30 border-sky-500";
     const unselectedClasses = "border-transparent hover:bg-gray-100 dark:hover:bg-gray-800";
 
+    // 3. Determine the final classes, prioritizing the 'applied' state.
+    const dynamicClasses = isApplied
+        ? appliedClasses
+        : isSelected ? selectedClasses : unselectedClasses;
+
     return (
         <div onClick={() => onSelect(job)}
-             className={`${baseClasses} ${isSelected ? selectedClasses : unselectedClasses}`}>
+             className={`${baseClasses} ${dynamicClasses}`}>
             <div className="flex justify-between items-start">
                 <div>
-                    <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                        {isApplied && <CheckCircle size={14} className="text-green-500 flex-shrink-0"/>}
-                        <span>{job.title}</span>
+                    <h3 className="font-bold flex items-center gap-2">
+                        {isApplied && <CheckCircle size={14} className="text-green-500 flex-shrink-0" title="Applied" />}
+                        <span className={isApplied ? "text-amber-600 dark:text-amber-400" : "text-gray-800 dark:text-gray-100"}>
+    {job.title}
+  </span>
                         {job.easy_apply &&
-                            <Zap size={14} className="text-yellow-500 flex-shrink-0" title="Easy Apply"/>}
+                            <Zap size={14} className="text-yellow-500 flex-shrink-0" title="Easy Apply" />}
                     </h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{job.company?.name}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{job.location}</p>
@@ -67,6 +79,12 @@ const JobListing = ({
         });
         return Array.from(langSet).sort();
     }, [jobs, forbiddenRegexes]);
+
+    useEffect(() => {
+        if (selectedJob) {
+            console.log("🟦 Selected Job:", selectedJob);
+        }
+    }, [selectedJob]);
 
     useEffect(() => {
         if (allLanguages.includes('python')) setSelectedLanguageFilter('python');
@@ -114,10 +132,6 @@ const JobListing = ({
             }),
         [matchedJobs, selectedLanguageFilter, selectedRecencyFilter]
     );
-
-    if (matchedJobs.length > 0) {
-        console.log("Inspecting the first job object:", matchedJobs[0]);
-    }
 
     const StatusIndicator = () => {
         if (status === 'matching') return (
