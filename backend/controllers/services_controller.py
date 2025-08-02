@@ -1,8 +1,10 @@
 # backend/controllers/services_controller.py
 from datetime import datetime
 
-from flask import Blueprint
+from flask import Blueprint, jsonify
 
+from database.database_connection import get_db_session
+from models import Job
 from services.job_tracking.huntr_service import get_huntr_jobs_data
 from services.job_tracking.python_linkedin_jobs import get_linkedin_applied_jobs
 from utils.date_parser import parse_relative_date
@@ -74,3 +76,26 @@ def get_huntr_jobs():
 def get_linkedin_jobs():
     jobs: list[dict] = get_linkedin_applied_jobs()
     return jobs, 200
+
+
+@services_bp.route("/sql", methods=["GET"])
+def get_sql_jobs():
+    """
+    Fetches all jobs where has_applied is True.
+    """
+    session = get_db_session()
+    try:
+        print("Attempting to query the database for applied jobs...")
+        jobs = (
+            session.query(Job)
+            .filter(Job.has_applied.is_(True))
+            .all()
+        )
+        print(f"Fetched {len(jobs)} applied jobs from the database.")
+        return jsonify([job.to_dict() for job in jobs]), 200
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        session.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
