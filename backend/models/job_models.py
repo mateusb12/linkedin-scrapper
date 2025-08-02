@@ -1,6 +1,6 @@
 # database/orm_models.py
 
-from sqlalchemy import Column, String, Text, ForeignKey, Integer, Boolean, JSON
+from sqlalchemy import Column, String, Text, ForeignKey, Integer, Boolean, JSON, DateTime
 from sqlalchemy.orm import relationship
 
 from database.extensions import db
@@ -59,6 +59,7 @@ class Job(db.Model):
     programming_languages = Column(JSON, nullable=True, default=[])
 
     has_applied = Column(Boolean, default=False)
+    applied_on = Column(DateTime, nullable=True, default=None)
 
     # Foreign Key to link to the 'companies' table
     company_urn = Column(String, ForeignKey('companies.urn'))
@@ -80,6 +81,8 @@ class Job(db.Model):
             "job_url": self.job_url,
             "description_full": self.description_full,
             "has_applied": self.has_applied,
+            "applied_on": self.applied_on.isoformat() if self.applied_on else None,
+            "applied_on_formatted": self.applied_on.strftime("%d-%b-%Y") if self.applied_on else None,
             "company_urn": self.company_urn,
             "company": self.company.to_dict() if self.company else None,
             "applicants": self.applicants,

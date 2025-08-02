@@ -1,13 +1,11 @@
 import os
 import sys
 
-from controllers.services_controller import services_bp
-
 # Move this block to the top
 project_root = os.path.dirname(os.path.abspath(__file__))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
-
+from controllers.services_controller import services_bp
 from controllers.profile_controller import profile_bp
 from dotenv import load_dotenv
 from flask import Flask
