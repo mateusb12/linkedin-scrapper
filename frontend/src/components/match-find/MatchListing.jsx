@@ -1,6 +1,7 @@
 // frontend/src/components/match-find/JobListing.jsx
-import React, {useMemo, useState, useEffect, useRef, useCallback} from 'react'; // 1. ADDED: useRef, useCallback
-import {Award, BarChart2, CheckCircle, Target, Zap} from 'lucide-react';
+import React, {useMemo, useState, useEffect, useRef, useCallback} from 'react';
+// 1. ADDED: ChevronDown and ChevronUp for the collapsible filter UI
+import {Award, BarChart2, CheckCircle, Target, Zap, ChevronDown, ChevronUp} from 'lucide-react';
 import {getColorFromScore} from "./MatchLogic.jsx";
 
 const Spinner = ({className = 'h-5 w-5 text-white'}) => (
@@ -102,16 +103,16 @@ const JobListing = ({
                     }) => {
     const [selectedLanguageFilter, setSelectedLanguageFilter] = useState('');
     const [selectedRecencyFilter, setSelectedRecencyFilter] = useState('');
+    // 2. ADDED: State to manage filter visibility
+    const [isFiltersOpen, setIsFiltersOpen] = useState(true);
 
-    // 2. ADDED: State and refs for the resizable panel
-    const [topPanelHeight, setTopPanelHeight] = useState(480); // Default height in pixels
+    const [topPanelHeight, setTopPanelHeight] = useState(480);
     const topPanelRef = useRef(null);
     const isResizing = useRef(false);
 
-    // 3. ADDED: Handler for resizing logic
     const handleResizeMouseDown = useCallback((e) => {
         isResizing.current = true;
-        e.preventDefault(); // Prevent text selection during drag
+        e.preventDefault();
 
         const startY = e.clientY;
         const startHeight = topPanelRef.current.offsetHeight;
@@ -120,12 +121,9 @@ const JobListing = ({
             if (!isResizing.current) return;
             const deltaY = moveEvent.clientY - startY;
             const newHeight = startHeight + deltaY;
-
-            // Constrain the height to prevent collapsing or expanding too much
-            const minHeight = 250; // Minimum height for the top panel
-            const maxHeight = window.innerHeight - 200; // Leave at least 200px for the list
+            const minHeight = 250;
+            const maxHeight = window.innerHeight - 200;
             const constrainedHeight = Math.max(minHeight, Math.min(newHeight, maxHeight));
-
             setTopPanelHeight(constrainedHeight);
         };
 
@@ -133,7 +131,7 @@ const JobListing = ({
             isResizing.current = false;
             window.removeEventListener('mousemove', handleResizeMouseMove);
             window.removeEventListener('mouseup', handleResizeMouseUp);
-            document.body.style.cursor = ''; // Reset cursor
+            document.body.style.cursor = '';
         };
 
         window.addEventListener('mousemove', handleResizeMouseMove);
@@ -222,10 +220,9 @@ const JobListing = ({
 
     return (
         <aside className="flex flex-col flex-shrink-0 w-[35%] max-w-md border-r border-gray-200 dark:border-gray-700">
-            {/* 4. MODIFIED: Layout restructured for resizable panels */}
             <div
                 ref={topPanelRef}
-                style={{ height: `${topPanelHeight}px`, flexShrink: 0 }}
+                style={{height: `${topPanelHeight}px`, flexShrink: 0}}
                 className="overflow-y-auto"
             >
                 <div className="p-4 space-y-4">
@@ -258,34 +255,57 @@ const JobListing = ({
                             <BarChart2 size={20}/>{status === 'matching' ? 'Analyzing...' : 'Find Best Matches'}
                         </button>
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Filter by
-                            Language (Optional)</label>
-                        <select value={selectedLanguageFilter} onChange={(e) => setSelectedLanguageFilter(e.target.value)}
-                                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-sky-500">
-                            <option value="">-- All Languages --</option>
-                            {allLanguages.map(lang => (
-                                <option key={lang} value={lang}>{lang.charAt(0).toUpperCase() + lang.slice(1)}</option>))}
-                        </select>
-                    </div>
-                    <div className="mt-4">
-                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-                            Posted within
-                        </label>
-                        <select
-                            value={selectedRecencyFilter}
-                            onChange={(e) => setSelectedRecencyFilter(e.target.value)}
-                            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-sky-500"
+
+                    {/* 3. MODIFIED: Filters are now in a collapsible container */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                        <button
+                            onClick={() => setIsFiltersOpen(!isFiltersOpen)}
+                            className="w-full flex justify-between items-center text-left text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
+                            aria-expanded={isFiltersOpen}
                         >
-                            <option value="">Any time</option>
-                            <option value="24h">Last 24h</option>
-                            <option value="7d">Last 7 days</option>
-                            <option value="14d">Last 14 days</option>
-                            <option value="30d">Last 30 days</option>
-                        </select>
+                            <span>Filter Results</span>
+                            {isFiltersOpen ? <ChevronUp size={20}/> : <ChevronDown size={20}/>}
+                        </button>
+
+                        <div
+                            className={`transition-all duration-300 ease-in-out overflow-hidden ${
+                                isFiltersOpen ? 'max-h-96 mt-4' : 'max-h-0'
+                            }`}
+                        >
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Language</label>
+                                    <select value={selectedLanguageFilter}
+                                            onChange={(e) => setSelectedLanguageFilter(e.target.value)}
+                                            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-sky-500">
+                                        <option value="">All Languages</option>
+                                        {allLanguages.map(lang => (
+                                            <option key={lang}
+                                                    value={lang}>{lang.charAt(0).toUpperCase() + lang.slice(1)}</option>))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                        Posted Within
+                                    </label>
+                                    <select
+                                        value={selectedRecencyFilter}
+                                        onChange={(e) => setSelectedRecencyFilter(e.target.value)}
+                                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-sky-500"
+                                    >
+                                        <option value="">Any time</option>
+                                        <option value="24h">Last 24h</option>
+                                        <option value="7d">Last 7 days</option>
+                                        <option value="14d">Last 14 days</option>
+                                        <option value="30d">Last 30 days</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+
                     {matchedJobs.length > 0 && (
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 text-center">
+                        <p className="text-sm text-gray-600 dark:text-gray-400 pt-2 text-center">
                             Showing <strong>{filteredMatchedJobs.length}</strong> of <strong>{matchedJobs.length}</strong> matched
                             jobs
                         </p>
@@ -295,7 +315,6 @@ const JobListing = ({
                 </div>
             </div>
 
-            {/* 5. ADDED: The draggable resizer bar */}
             <div
                 onMouseDown={handleResizeMouseDown}
                 className="w-full h-1.5 bg-gray-300 dark:bg-gray-700 cursor-row-resize hover:bg-sky-500 transition-colors duration-200 flex-shrink-0"
