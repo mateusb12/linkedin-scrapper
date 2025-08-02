@@ -84,7 +84,8 @@ def extract_jobs(data: dict) -> list[dict]:
             applied_at = pd.to_datetime(applied_at_raw)
             formatted_applied = applied_at.strftime("%d/%b/%Y at %H:%M")
             # lowercase month
-            formatted_applied = re.sub(r"(?<=\d{2}/)([A-Za-z]{3})(?=/)", lambda m: m.group(1).lower(), formatted_applied)
+            formatted_applied = re.sub(r"(?<=\d{2}/)([A-Za-z]{3})(?=/)", lambda m: m.group(1).lower(),
+                                       formatted_applied)
         except Exception:
             applied_at = None
             formatted_applied = None
@@ -100,13 +101,18 @@ def extract_jobs(data: dict) -> list[dict]:
     return sorted(jobs, key=lambda j: j["appliedAt"] or "", reverse=True)
 
 
+def get_huntr_jobs_data() -> list[dict]:
+    token = get_fresh_token()
+    data = load_board(token, BOARD_ID)
+    return extract_jobs(data)
+
+
 def main():
     try:
-        print("🔄 Fetching fresh extension token…")
-        token = get_fresh_token()
-        print("📥 Loading board data…")
-        data = load_board(token, BOARD_ID)
-        jobs = extract_jobs(data)
+        jobs = get_huntr_jobs_data()
+        if not jobs:
+            print("No jobs found in Huntr board.")
+            return
 
         print("📋 Applied jobs:")
         for job in jobs:

@@ -1,6 +1,8 @@
 import os
 import sys
 
+from controllers.services_controller import services_bp
+
 # Move this block to the top
 project_root = os.path.dirname(os.path.abspath(__file__))
 if project_root not in sys.path:
@@ -38,6 +40,7 @@ app.register_blueprint(fetch_jobs_bp)
 app.register_blueprint(job_data_bp)
 app.register_blueprint(resume_bp)
 app.register_blueprint(profile_bp)
+app.register_blueprint(services_bp)
 
 
 # --- Routes ---
