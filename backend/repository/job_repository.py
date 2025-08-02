@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any, Union, Type
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, case, desc
 from database.database_connection import get_db_session
@@ -33,7 +33,7 @@ class JobRepository:
         self.session.close()
 
     # Fetch all jobs with company
-    def get_all(self) -> List[Job]:
+    def get_all(self) -> list[Type[Job]]:
         return (
             self.session.query(Job)
             .options(joinedload(Job.company))
@@ -76,6 +76,14 @@ class JobRepository:
             raise KeyError(f"Job with URN '{urn}' not found")
         job.has_applied = True
 
+    def fetch_applied_jobs(self) -> list[Job]:
+        return (
+            self.session.query(Job)
+            .options(joinedload(Job.company))
+            .filter(Job.has_applied.is_(True))
+            .all()
+        )
+
     # Count incomplete jobs
     def count_incomplete(self) -> int:
         return (
@@ -85,7 +93,7 @@ class JobRepository:
         )
 
     # Fetch a batch of incomplete jobs
-    def fetch_incomplete_batch(self, batch_size: int, last_urn: Optional[str] = None) -> List[Job]:
+    def fetch_incomplete_batch(self, batch_size: int, last_urn: Optional[str] = None) -> list[Type[Job]]:
         query = (
             self.session.query(Job)
             .options(joinedload(Job.company))

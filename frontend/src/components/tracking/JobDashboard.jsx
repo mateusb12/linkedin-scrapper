@@ -37,58 +37,66 @@ const formatPtDate = (isoDateStr) => {
 };
 
 // Chart data processor
+// Chart data processor
 const processChartData = (jobs) => {
-    // === MODIFIED FOR STACKED BAR CHART ===
+    // Count total applications by source (for Doughnut chart AND to get unique sources)
+    const appsBySource = jobs.reduce((acc, job) => {
+        acc[job.source] = (acc[job.source] || 0) + 1;
+        return acc;
+    }, {});
+
+    const sourceLabels = Object.keys(appsBySource); // All unique sources: ['LinkedIn', 'Huntr', 'SQL', etc.]
+
     // Count applications per day, broken down by source
     const appsPerDayBySource = jobs.reduce((acc, job) => {
         const dateKey = new Date(job.appliedAt).toISOString().split('T')[0]; // yyyy-mm-dd
         if (!acc[dateKey]) {
             acc[dateKey] = {};
         }
-        acc[dateKey][job.source] = (acc[dateKey][job.source] || 0) + 1;
+        // Ensure all sources have a key for every date to avoid undefined issues
+        sourceLabels.forEach(source => {
+            if (!acc[dateKey][source]) {
+                acc[dateKey][source] = 0;
+            }
+        });
+        acc[dateKey][job.source]++;
         return acc;
     }, {});
 
     const sortedDateKeys = Object.keys(appsPerDayBySource).sort((a, b) => new Date(a) - new Date(b));
     const formattedLabels = sortedDateKeys.map(key => formatPtDate(key));
 
-    const linkedinData = sortedDateKeys.map(key => appsPerDayBySource[key]['LinkedIn'] || 0);
-    const huntrData = sortedDateKeys.map(key => appsPerDayBySource[key]['Huntr'] || 0);
-    // === END MODIFICATION ===
+    // --- DYNAMIC BAR CHART DATASET CREATION ---
+    // Define colors for each source
+    const sourceBarColors = {
+        'LinkedIn': 'rgba(126, 34, 206, 0.75)', // purple-700
+        'Huntr': 'rgba(16, 185, 129, 0.75)',    // emerald-500
+        'SQL': 'rgba(156, 163, 175, 0.75)',    // gray-400 for SQL, or any other color
+    };
+    const defaultBarColor = 'rgba(107, 114, 128, 0.75)'; // gray-500 as fallback
 
+    // Map over the unique source labels to create a dataset for each one
+    const barDatasets = sourceLabels.map(source => ({
+        label: source,
+        data: sortedDateKeys.map(date => appsPerDayBySource[date][source] || 0),
+        backgroundColor: sourceBarColors[source] || defaultBarColor,
+        borderRadius: 5,
+    }));
+    // --- END OF DYNAMIC CREATION ---
 
-    // Count total applications by source (for Doughnut chart)
-    const appsBySource = jobs.reduce((acc, job) => {
-        acc[job.source] = (acc[job.source] || 0) + 1;
-        return acc;
-    }, {});
-
-    const sourceLabels = Object.keys(appsBySource);
+    // Doughnut chart data (remains the same)
     const sourceData = Object.values(appsBySource);
-
     const doughnutColors = sourceLabels.map(label => {
         if (label.toLowerCase() === 'linkedin') return themeColors.purple;
         if (label.toLowerCase() === 'huntr') return themeColors.emerald;
+        if (label.toLowerCase() === 'sql') return themeColors.textSecondary; // Added SQL color
         return themeColors.textSecondary;
     });
 
     return {
         barData: {
             labels: formattedLabels,
-            datasets: [
-                {
-                    label: 'LinkedIn',
-                    data: linkedinData,
-                    backgroundColor: 'rgba(126, 34, 206, 0.75)', // purple-700
-                    borderRadius: 5,
-                },
-                {
-                    label: 'Huntr',
-                    data: huntrData,
-                    backgroundColor: 'rgba(16, 185, 129, 0.75)', // emerald-500
-                    borderRadius: 5,
-                }
-            ],
+            datasets: barDatasets, // Use the dynamically created datasets
         },
         doughnutData: {
             labels: sourceLabels,
