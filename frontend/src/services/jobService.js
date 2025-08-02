@@ -49,3 +49,8 @@ export const fetchLinkedinAppliedJobs = async () => {
     const response = await fetch(`${API_BASE}/services/linkedin`);
     return handleResponse(response, 'Failed to fetch LinkedIn applied jobs');
 };
+
+export const fetchAppliedJobs = async () => {
+    const response = await fetch(`${API_BASE}/services/applied-jobs`);
+    return handleResponse(response, 'Failed to fetch applied jobs');
+};

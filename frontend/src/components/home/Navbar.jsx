@@ -8,7 +8,7 @@ export const Sidebar = ({ activeView, setActiveView }) => {
         { label: "Fetch Config", id: "fetch-config" },
         { label: "Fetch Jobs", id: "fetch-jobs" },
         { label: "Job Listings", id: "job-listings" },
-        { label: "Resume", id: "resume" },
+        { label: "Job Tracking", id: "tracking" },
         { label: "Match", id: "match" },
         { label: "Profile", id: "profile" }
     ];

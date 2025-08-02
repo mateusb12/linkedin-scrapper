@@ -6,6 +6,7 @@ import JobList from "./JobList.jsx";
 import ResumeParser from "../resume/ResumeParser.jsx";
 import Match from "../match-find/Match.jsx";
 import UserProfile from "../profile/userProfile.jsx";
+import {JobDashboard} from "../tracking/JobDashboard.jsx";
 
 export default function FullLayout() {
     const [activeView, setActiveView] = useState("fetch-config");
@@ -20,8 +21,8 @@ export default function FullLayout() {
                 return <FetchJobsView />;
             case "job-listings":
                 return <JobList />;
-            case "resume":
-                return <ResumeParser />;
+            case "tracking":
+                return <JobDashboard />;
             case "match":
                 return <Match />;
             case "profile":
