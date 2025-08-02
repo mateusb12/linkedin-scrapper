@@ -45,6 +45,10 @@ def get_embeddings_folder_path() -> Path:
     return Path(get_source_folder_path(), 'services', 'embeddings')
 
 
+def get_services_job_tracking_folder_path() -> Path:
+    return Path(get_source_folder_path(), 'services', 'job_tracking')
+
+
 def main():
     folder = get_scrapper_folder_path()
     print(folder)

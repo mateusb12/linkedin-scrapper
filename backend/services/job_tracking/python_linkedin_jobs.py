@@ -1,6 +1,8 @@
 import requests
 from typing import List, Dict, Any
 
+from path.file_content_loader import load_cookie_value
+
 
 def fetch_jobs_data() -> Dict[str, Any]:
     """
@@ -12,12 +14,14 @@ def fetch_jobs_data() -> Dict[str, Any]:
            "flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER))&queryId=voyagerSearchDashClusters"
            ".5ba32757c00b31aea747c8bebb92855c")
 
-    try:
-        with open("linkedin_cookie.txt", "r", encoding="utf-8") as f:
-            cookie_value = f.read().strip()
-    except FileNotFoundError:
-        print("Error: 'linkedin_cookie.txt' not found.")
-        return {}
+    # try:
+    #     with open("linkedin_cookie.txt", "r", encoding="utf-8") as f:
+    #         cookie_value = f.read().strip()
+    # except FileNotFoundError:
+    #     print("Error: 'linkedin_cookie.txt' not found.")
+    #     return {}
+
+    cookie_value = load_cookie_value()
 
     headers = {
         'accept': 'application/vnd.linkedin.normalized+json+2.1',
@@ -33,11 +37,14 @@ def fetch_jobs_data() -> Dict[str, Any]:
         'sec-fetch-dest': 'empty',
         'sec-fetch-mode': 'cors',
         'sec-fetch-site': 'same-origin',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                      'Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0',
         'x-li-lang': 'en_US',
         'x-li-page-instance': 'urn:li:page:d_flagship3_myitems_savedjobs;gGeMib0KRoGTbXxHpSSTfg==',
         'x-li-pem-metadata': 'Voyager - My Items=myitems-saved-jobs',
-        'x-li-track': '{"clientVersion":"1.13.37702","mpVersion":"1.13.37702","osName":"web","timezoneOffset":-3,"timezone":"America/Fortaleza","deviceFormFactor":"DESKTOP","mpName":"voyager-web","displayDensity":1,"displayWidth":1920,"displayHeight":1080}',
+        'x-li-track': '{"clientVersion":"1.13.37702","mpVersion":"1.13.37702","osName":"web","timezoneOffset":-3,'
+                      '"timezone":"America/Fortaleza","deviceFormFactor":"DESKTOP","mpName":"voyager-web",'
+                      '"displayDensity":1,"displayWidth":1920,"displayHeight":1080}',
         'x-restli-protocol-version': '2.0.0',
         'Cookie': cookie_value
     }

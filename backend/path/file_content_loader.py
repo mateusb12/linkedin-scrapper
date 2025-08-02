@@ -1,7 +1,8 @@
 import json
 import os
 
-from path.path_reference import get_userdata_path, get_data_folder_path, get_pagination_folder_path
+from path.path_reference import get_userdata_path, get_data_folder_path, get_pagination_folder_path, \
+    get_services_job_tracking_folder_path
 
 
 def load_userdata_json(filename: str) -> dict:
@@ -48,6 +49,22 @@ def load_db_path():
     db_dir = os.path.join(basedir, "database")
     os.makedirs(db_dir, exist_ok=True)
     return os.path.join(db_dir, "linkedin.db")
+
+
+def load_cookie_value():
+    cookie_file_folder_path = get_services_job_tracking_folder_path()
+    if not os.path.exists(cookie_file_folder_path):
+        raise FileNotFoundError(f"Cookie file '{cookie_file_folder_path}' does not exist.")
+    filename = "linkedin_cookie.txt"
+    file_path = os.path.join(cookie_file_folder_path, filename)
+
+    with open(file_path, 'r', encoding='utf-8') as f:
+        cookie_value = f.read().strip()
+
+    if not cookie_value:
+        raise ValueError(f"Cookie file '{cookie_file_folder_path}' is empty.")
+
+    return cookie_value
 
 
 def main():
