@@ -39,3 +39,13 @@ export const getMatchScore = async (jobDescription, resumeText) => {
     });
     return handleResponse(response, 'Failed to fetch match score');
 };
+
+export const fetchHuntrAppliedJobs = async () => {
+    const response = await fetch(`${API_BASE}/services/huntr`);
+    return handleResponse(response, 'Failed to fetch Huntr applied jobs');
+};
+
+export const fetchLinkedinAppliedJobs = async () => {
+    const response = await fetch(`${API_BASE}/services/linkedin`);
+    return handleResponse(response, 'Failed to fetch LinkedIn applied jobs');
+};
