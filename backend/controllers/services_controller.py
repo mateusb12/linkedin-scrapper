@@ -1,4 +1,6 @@
 # backend/controllers/services_controller.py
+from datetime import datetime
+
 from flask import Blueprint
 
 from services.job_tracking.huntr_service import get_huntr_jobs_data
@@ -51,9 +53,13 @@ def get_all_applied_jobs():
             reverse=True
         )
 
+        # Add formattedDate field (e.g., "03-aug-2025")
+        for job in all_jobs:
+            dt = datetime.fromisoformat(job["appliedAt"].replace("Z", "+00:00"))
+            job["formattedDate"] = dt.strftime("%d-%b-%Y").lower()
+
         return all_jobs, 200
     except Exception as e:
-        # Basic error handling
         return {"error": "Failed to fetch job data", "details": str(e)}, 500
 
 

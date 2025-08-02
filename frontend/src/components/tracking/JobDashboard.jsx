@@ -1,4 +1,3 @@
-// frontend/src/components/JobDashboard.jsx
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Bar, Doughnut } from 'react-chartjs-2';
@@ -26,17 +25,32 @@ const themeColors = {
     emerald: '#10b981',
 };
 
+// Format date like "1/ago/2025"
+const formatPtDate = (isoDateStr) => {
+    // Force local date interpretation from yyyy-mm-dd (avoid timezone shift)
+    const [year, month, day] = isoDateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // this is local time now
+    const dayNum = date.getDate();
+    const monthStr = date.toLocaleString('pt-BR', { month: 'short' }).replace('.', '').toLowerCase();
+    const yearNum = date.getFullYear();
+    return `${dayNum}/${monthStr}/${yearNum}`;
+};
+
 // Chart data processor
 const processChartData = (jobs) => {
-    const appsPerDay = jobs.reduce((acc, job) => {
-        const date = new Date(job.appliedAt).toLocaleDateString('en-CA');
-        acc[date] = (acc[date] || 0) + 1;
+    // Count applications per raw date
+    const appsPerDayRaw = jobs.reduce((acc, job) => {
+        const rawDate = new Date(job.appliedAt);
+        const dateKey = rawDate.toISOString().split('T')[0]; // yyyy-mm-dd
+        acc[dateKey] = (acc[dateKey] || 0) + 1;
         return acc;
     }, {});
 
-    const sortedDates = Object.keys(appsPerDay).sort((a, b) => new Date(a) - new Date(b));
-    const applicationsCount = sortedDates.map(date => appsPerDay[date]);
+    const sortedDateKeys = Object.keys(appsPerDayRaw).sort((a, b) => new Date(a) - new Date(b));
+    const formattedLabels = sortedDateKeys.map(key => formatPtDate(key));
+    const applicationsCount = sortedDateKeys.map(key => appsPerDayRaw[key]);
 
+    // Count applications by source
     const appsBySource = jobs.reduce((acc, job) => {
         acc[job.source] = (acc[job.source] || 0) + 1;
         return acc;
@@ -53,7 +67,7 @@ const processChartData = (jobs) => {
 
     return {
         barData: {
-            labels: sortedDates,
+            labels: formattedLabels,
             datasets: [{
                 label: 'Applications per Day',
                 data: applicationsCount,
