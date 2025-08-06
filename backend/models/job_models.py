@@ -50,6 +50,7 @@ class Job(db.Model):
     easy_apply = Column(Boolean, default=False)
     language = Column(String, default="PTBR")
     disabled = Column(Boolean, default=False)
+    processed = Column(Boolean, default=False)
 
     responsibilities = Column(JSON, nullable=True)
     qualifications = Column(JSON, nullable=True)

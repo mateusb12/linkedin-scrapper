@@ -86,26 +86,21 @@ class JobRepository:
 
     # Count incomplete jobs
     def count_incomplete(self) -> int:
-        return (
-            self.session.query(Job)
-            .filter(Job.description_full.isnot(None), incomplete_job_condition())
-            .count()
-        )
+        return self.session.query(Job).filter(Job.processed.is_(False)).count()
 
     # Fetch a batch of incomplete jobs
-    def fetch_incomplete_batch(self, batch_size: int, last_urn: Optional[str] = None) -> list[Type[Job]]:
-        query = (
+    def fetch_incomplete_batch(
+            self, batch_size: int, last_urn: Optional[str] = None
+    ) -> list[Job]:
+        q = (
             self.session.query(Job)
             .options(joinedload(Job.company))
-            .filter(Job.description_full.isnot(None), incomplete_job_condition())
+            .filter(Job.processed.is_(False))
+            .order_by(desc(Job.urn))
         )
         if last_urn:
-            query = query.filter(Job.urn < last_urn)
-        return (
-            query.order_by(desc(Job.urn))
-            .limit(batch_size)
-            .all()
-        )
+            q = q.filter(Job.urn < last_urn)
+        return q.limit(batch_size).all()
 
     # Helper to compute incompleteness score case expression
     def incompleteness_score_case(self):

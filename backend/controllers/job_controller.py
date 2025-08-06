@@ -77,6 +77,7 @@ def insert_extra_fields_stream():
                             if hasattr(job, 'job_type') and job.job_type is None: job.job_type = 'N/A'
                             if hasattr(job, 'language') and job.language is None: job.language = 'en'
 
+                        job.processed = True
                         repo.commit()
 
                     except AllLLMsFailed as exc:
