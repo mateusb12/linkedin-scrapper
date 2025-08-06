@@ -1,9 +1,14 @@
 import axios from "axios";
 
-const BASE_URL = "http://localhost:5000/fetch-jobs";
+// Best practice: Define a single base URL for your API
+const API_BASE_URL = "http://localhost:5000";
+
+// URL for the /fetch-jobs blueprint
+const FETCH_JOBS_URL = `${API_BASE_URL}/fetch-jobs`;
 
 export async function getTotalPages() {
-    const res = await axios.get(`${BASE_URL}/get-total-pages`);
+    // Using the more specific URL variable
+    const res = await axios.get(`${FETCH_JOBS_URL}/get-total-pages`);
     return res.data.total_pages;
 }
 
@@ -15,7 +20,8 @@ export async function fetchJobsByPageRange(startPage, endPage, onProgress, onLog
     for (let i = startPage; i <= endPage; i++) {
         try {
             onLog?.(`Fetching page ${i}...`);
-            const res = await axios.get(`${BASE_URL}/fetch-page/${i}`);
+            // Using the more specific URL variable
+            const res = await axios.get(`${FETCH_JOBS_URL}/fetch-page/${i}`);
 
             if (Array.isArray(res.data.jobs)) {
                 allData.push(...res.data.jobs);
@@ -45,3 +51,41 @@ export async function fetchJobsByPageRange(startPage, endPage, onProgress, onLog
 
     return { data: allData, successCount: successfulFetches };
 }
+
+export const startKeywordExtractionStream = (onProgress, onComplete, onError) => {
+    // --- FIX IS HERE ---
+    // Connect to the new streaming endpoint using the correct base URL and path
+    const eventSource = new EventSource(`${API_BASE_URL}/jobs/keywords-stream`);
+
+    // Listener for regular data messages
+    eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        onProgress(data); // Pass the data to the component's handler
+    };
+
+    // Listener for the custom 'complete' event from the backend
+    eventSource.addEventListener('complete', (event) => {
+        const data = JSON.parse(event.data);
+        onComplete(data);
+        eventSource.close(); // Close the connection on completion
+    });
+
+    // Listener for connection errors or custom 'error' events from the backend
+    eventSource.onerror = (event) => {
+        // The default event doesn't carry a payload, but our custom one might
+        let errorData;
+        if (event.data) {
+            try {
+                errorData = JSON.parse(event.data);
+            } catch (e) {
+                errorData = { error: "An unknown error occurred, and the error payload was not valid JSON." };
+            }
+        } else {
+            errorData = { error: "Connection to the server was lost. Please check the backend console." };
+        }
+        onError(errorData);
+        eventSource.close(); // Close the connection on error
+    };
+
+    return eventSource;
+};
