@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { Loader2 } from "lucide-react";
-import { ResultsView } from "../home/ResultsView.jsx"; // Assumes ResultsView.jsx is in the same folder
+import { ResultsView } from "../home/ResultsView.jsx";
+import {fetchJobsByPageRange, getTotalPages} from "../../services/fetchLinkedinService.js"; // Assumes ResultsView.jsx is in the same folder
 
 export const FetchJobsView = () => {
     const [totalPages, setTotalPages] = useState(0);
@@ -14,21 +15,21 @@ export const FetchJobsView = () => {
     const [progress, setProgress] = useState(0);
     const [fetchedData, setFetchedData] = useState([]);
 
-    const handleGetTotalPages = () => {
+    const handleGetTotalPages = async () => {
         setIsFetchingTotal(true);
         setError('');
         setFetchedData([]);
-        axios.get("http://localhost:5000/fetch-jobs/get-total-pages")
-            .then(res => {
-                const pages = res.data.total_pages;
-                setTotalPages(pages);
-                setEndPage(pages > 0 ? pages : 1); // Default end page to total pages
-            })
-            .catch(err => {
-                console.error("Error fetching total pages:", err);
-                setError("Failed to fetch total pages. Is the server running?");
-            })
-            .finally(() => setIsFetchingTotal(false));
+
+        try {
+            const pages = await getTotalPages();
+            setTotalPages(pages);
+            setEndPage(pages > 0 ? pages : 1);
+        } catch (err) {
+            console.error("Error fetching total pages:", err);
+            setError("Failed to fetch total pages. Is the server running?");
+        } finally {
+            setIsFetchingTotal(false);
+        }
     };
 
     const handleFetchPages = async () => {
@@ -43,62 +44,27 @@ export const FetchJobsView = () => {
         setFetchedData([]);
         setProgress(0);
 
-        const totalPagesToFetch = endPage - startPage + 1;
-        let successfulFetches = 0;
-        let allData = [];
-
-        for (let i = startPage; i <= endPage; i++) {
-            try {
-                setLog(prev => [...prev, `Fetching page ${i}...`]);
-
-                const res = await axios.get(
-                    `http://localhost:5000/fetch-jobs/fetch-page/${i}`
-                );
-
-                setLog(prev => [...prev, `✅ Successfully fetched page ${i}`]);
-
-                if (Array.isArray(res.data.jobs)) {
-                    allData = [...allData, ...res.data.jobs];
-                } else {
-                    setLog(prev => [
-                        ...prev,
-                        `⚠️ Page ${i} response did not contain a 'jobs' array.`
-                    ]);
-                }
-
-                successfulFetches++;
-            } catch (err) {
-                console.error(`Error fetching page ${i}:`, err);
-
-                const errorMessage = err.response?.data?.description || err.message;
-                setLog(prev => [
-                    ...prev,
-                    `❌ Failed to fetch page ${i}: ${errorMessage}`
-                ]);
-                setError("An error occurred. See log for details.");
-
-                const isNetworkError =
-                    !err.response ||
-                    err.code === "ERR_NETWORK" ||
-                    err.message === "Network Error";
-
-                if (isNetworkError) {
-                    const pagesFetched = i - startPage + 1;
-                    setProgress((pagesFetched / totalPagesToFetch) * 100);
-
-                    setLog(prev => [
-                        ...prev,
-                        "🛑 Network error detected — aborting remaining requests."
-                    ]);
-                    break;
-                }
+        const result = await fetchJobsByPageRange(
+            startPage,
+            endPage,
+            ({ page, progress }) => {
+                setProgress(progress);
+            },
+            (message) => {
+                setLog(prev => [...prev, message]);
             }
-            const pagesFetched = i - startPage + 1;
-            setProgress((pagesFetched / totalPagesToFetch) * 100);
+        );
+
+        setFetchedData(result.data);
+        if (result.error) {
+            setError("An error occurred. See log for details.");
         }
 
-        setFetchedData(allData);
-        setLog(prev => [...prev, `--- All tasks complete. Fetched ${successfulFetches}/${totalPagesToFetch} pages successfully. ---`]);
+        setLog(prev => [
+            ...prev,
+            `--- All tasks complete. Fetched ${result.successCount}/${endPage - startPage + 1} pages successfully. ---`
+        ]);
+
         setIsFetchingPages(false);
     };
 
