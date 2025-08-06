@@ -49,28 +49,28 @@ const formatPtDate = (isoDateStr) => {
 
 
 // --- DATE HELPERS ---
-// Helper to get a 'YYYY-MM-DD' string from a Date object in local time
+// Helper to get a 'YYYY-MM-DD' string from a Date object in UTC
 const toYYYYMMDD = (date) => {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
+    const y = date.getUTCFullYear();
+    const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(date.getUTCDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
 };
 
-// Helper to get the start of the week (Monday) for a given date
+// Helper to get the start of the week (Monday) for a given date (using UTC)
 const getWeekStartDate = (date) => {
     const d = new Date(date);
-    const dayOfWeek = d.getDay(); // Sunday: 0, Monday: 1, ...
-    const diff = d.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Adjust for Sunday
-    const weekStart = new Date(d.setDate(diff));
-    weekStart.setHours(0, 0, 0, 0); // Normalize to the beginning of the day
+    const dayOfWeek = d.getUTCDay(); // Sunday: 0, Monday: 1, ... (UTC)
+    const diff = d.getUTCDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Adjust for Sunday
+    const weekStart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), diff));
     return weekStart;
 };
 
-// Helper to get the start of the month for a given date
+
+// Helper to get the start of the month for a given date (using UTC)
 const getMonthStartDate = (date) => {
     const d = new Date(date);
-    return new Date(d.getFullYear(), d.getMonth(), 1);
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
 };
 // --- END DATE HELPERS ---
 
@@ -114,18 +114,19 @@ const processChartData = (jobs, timePeriod = 'daily') => {
 
     const formattedLabels = sortedPeriodKeys.map(key => {
         const [year, month, day] = key.split('-').map(Number);
-        const date = new Date(year, month - 1, day);
+        // Use Date.UTC to create a date that won't be shifted by local timezone in formatPtDate
+        const utcDate = new Date(Date.UTC(year, month - 1, day));
 
         if (timePeriod === 'weekly') {
-            const dayNum = date.getDate();
-            const monthStr = date.toLocaleString('pt-BR', { month: 'short' }).replace('.', '');
+            const dayNum = utcDate.getUTCDate();
+            const monthStr = utcDate.toLocaleString('pt-BR', { month: 'short', timeZone: 'UTC' }).replace('.', '');
             return `Semana de ${dayNum} ${monthStr}`;
         }
         if (timePeriod === 'monthly') {
-            const monthStr = date.toLocaleString('pt-BR', { month: 'long' });
+            const monthStr = utcDate.toLocaleString('pt-BR', { month: 'long', timeZone: 'UTC' });
             return `${monthStr.charAt(0).toUpperCase() + monthStr.slice(1)} de ${year}`;
         }
-        return formatPtDate(key + 'T00:00:00'); // Pass a full ISO-like string
+        return formatPtDate(utcDate.toISOString()); // Pass a full ISO string
     });
 
     const sourceBarColors = {
@@ -169,7 +170,7 @@ const processChartData = (jobs, timePeriod = 'daily') => {
 
 // --- COLLAPSIBLE TABLE COMPONENT (UPDATED) ---
 const JobsTable = ({ jobs }) => {
-    const [isOpen, setIsOpen] = React.useState(false);
+    const [isOpen, setIsOpen] = React.useState(true); // Default to open for better UX
 
     if (!jobs || jobs.length === 0) {
         return null; // Don't render if there are no jobs
@@ -239,7 +240,8 @@ export const JobDashboard = () => {
         staleTime: 1000 * 60 * 5,
     });
 
-    const chartData = jobs ? processChartData(jobs, timePeriod) : null;
+    // Added defensive check for jobs array before processing
+    const chartData = (jobs && Array.isArray(jobs)) ? processChartData(jobs, timePeriod) : null;
 
     const barChartOptions = {
         responsive: true,
