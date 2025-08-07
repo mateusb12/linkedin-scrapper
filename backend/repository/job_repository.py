@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional, Dict, Any, Union, Type
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, case, desc
@@ -43,6 +44,21 @@ class JobRepository:
     # Fetch single job by URN
     def get_by_urn(self, urn: str) -> Optional[Job]:
         return self.session.query(Job).filter_by(urn=urn).first()
+
+    def get_multiple_jobs_by_urn_list(self, urns: List[str]) -> Dict[str, Union[Job, bool]]:
+        # 1) Pull back all matching jobs in one query
+        jobs = (
+            self.session.query(Job)
+            .options(joinedload(Job.company))
+            .filter(Job.urn.in_(urns))
+            .all()
+        )
+
+        # 2) Build a lookup from URN → Job
+        job_map = {job.urn: job for job in jobs}
+
+        # 3) For each requested URN, return the Job or False if missing
+        return {urn: job_map.get(urn, False) for urn in urns}
 
     # Update specified fields on a job
     def update(self, urn: str, updates: Dict[str, Any]) -> List[str]:
@@ -112,6 +128,38 @@ class JobRepository:
                 case((Job.programming_languages.is_(None), 1), else_=0) +
                 case((Job.language.is_(None), 1), else_=0)
         )
+
+    def add_job_by_dict(self, job_dict: dict):
+        print("a")
+
+        job_object = Job(
+            urn=job_dict.get("urn"),
+            title=job_dict.get("title"),
+            location=job_dict.get("location"),
+            workplace_type="Remote",  # Hardcoded
+            employment_type="Full-time",  # Hardcoded
+            posted_on=job_dict.get("timestamp"),
+            job_url=job_dict.get("url"),
+            description_full="No description provided",  # Hardcoded
+            applicants=0,  # Hardcoded
+            description_snippet="",  # Hardcoded
+            easy_apply=False,  # Hardcoded
+            language="PTBR",  # Hardcoded
+            disabled=True,
+            processed=True,
+            responsibilities=[],
+            qualifications=[],
+            keywords=[],
+            job_type="Full-stack",
+            programming_languages=[],
+            has_applied=True,  # From your context, this is an "applied" job
+            applied_on=datetime.fromisoformat(job_dict["timestamp"]) if "timestamp" in job_dict else None,
+            company_urn=None  # Will be set separately if needed (e.g., after company is created)
+        )
+
+        # Add job_object to session
+        self.session.add(job_object)
+        self.session.commit()
 
     # Commit and rollback
     def commit(self):
