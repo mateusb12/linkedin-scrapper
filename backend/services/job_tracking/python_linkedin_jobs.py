@@ -1,7 +1,7 @@
 import re
 import math
 import time
-import os  # Import the os module to read environment variables
+import os
 import requests
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -60,7 +60,7 @@ def _fetch_initial_data(session: requests.Session) -> Optional[Tuple[int, Dict[s
     total_jobs = data.get('data', {}).get('data', {}).get('searchDashClustersByAll', {}).get('paging', {}).get('total',
                                                                                                                0)
     if total_jobs == 0:
-        print("No saved jobs found.")
+        print("No saved jobs found on LinkedIn.")
         return None
 
     return total_jobs, data
@@ -95,27 +95,25 @@ def _structure_job_from_entity(item: Dict[str, Any]) -> Optional[Dict[str, str]]
     }
 
 
-def _enrich_and_save_new_job(job_data: Dict[str, str], job_repo: JobRepository) -> Dict[str, str]:
+def _enrich_and_save_new_job(job_data: Dict[str, str], job_repo: JobRepository) -> Job:
     """
     Enriches a new job with a timestamp by fetching it, then saves it to the database.
     """
     print(f"✨ New job found: {job_data['urn']}. Fetching timestamp...")
     job_number = job_data['urn'].split(':')[-1]
-
-    # This is the only place where the individual timestamp fetch now occurs.
     job_datetime_obj = fetch_job_timestamp(job_number)
 
-    job_data["timestamp"] = job_datetime_obj.isoformat()
-    job_data["formattedTimestamp"] = format_datetime_pt_br(job_datetime_obj)
+    if job_datetime_obj:
+        job_data["timestamp"] = job_datetime_obj.isoformat()
 
     job_repo.add_job_by_dict(job_data)
     print(f"   -> Saved {job_data['urn']} to the database.")
-    return job_data
+    return job_repo.get_by_urn(job_data['urn'])
 
 
-def _process_page(page_json: Dict[str, Any], job_repo: JobRepository) -> Tuple[List[Dict[str, Any]], bool]:
+def _process_page(page_json: Dict[str, Any], job_repo: JobRepository) -> Tuple[List[Job], bool]:
     """
-    Processes a single page of job results, checking the database before fetching new data.
+    Processes a single page of job results, adding new jobs to the database.
     Returns the list of processed jobs and a boolean indicating if new jobs were found.
     """
     new_jobs_found_on_page = False
@@ -134,11 +132,11 @@ def _process_page(page_json: Dict[str, Any], job_repo: JobRepository) -> Tuple[L
 
     processed_jobs = []
     for urn in urns_on_page:
-        if urn in existing_jobs_in_db:
+        if existing_jobs_in_db.get(urn):
             print(f"✅ Job {urn} found in database (cached).")
             processed_jobs.append(existing_jobs_in_db[urn])
         else:
-            new_jobs_found_on_page = True  # Set flag to True
+            new_jobs_found_on_page = True
             new_job_data = potential_jobs_map[urn]
             enriched_job = _enrich_and_save_new_job(new_job_data, job_repo)
             processed_jobs.append(enriched_job)
@@ -148,20 +146,22 @@ def _process_page(page_json: Dict[str, Any], job_repo: JobRepository) -> Tuple[L
 
 def fetch_all_linkedin_jobs() -> List[Job]:
     """
-    Main function to fetch all saved jobs, using the database as a cache
-    to avoid redundant API calls. Stops automatically when no new jobs are found.
+    Main function to fetch all saved jobs. It first fixes incomplete local jobs,
+    then fetches new ones from LinkedIn.
     """
-    # Check for FULL_SCAN environment variable
     full_scan = os.getenv('FULL_SCAN', 'FALSE').upper() == 'TRUE'
     if full_scan:
         print("🚀 FULL_SCAN enabled. All pages will be processed.")
 
     job_repo = JobRepository()
+
+    # --- PHASE 2: Scrape LinkedIn for new jobs ---
+    print("--- 🚀 Phase 2: Fetching new jobs from LinkedIn ---")
     session = setup_session()
 
     initial_data = _fetch_initial_data(session)
     if not initial_data:
-        return []
+        return job_repo.fetch_applied_jobs()
 
     total_jobs, first_page_data = initial_data
     page_size = 10
@@ -175,11 +175,9 @@ def fetch_all_linkedin_jobs() -> List[Job]:
     processed_jobs, new_jobs_found = _process_page(first_page_data, job_repo)
     all_jobs.extend(processed_jobs)
 
-    # If no new jobs were found on the very first page, we can stop immediately.
     if not new_jobs_found and not full_scan:
         print("\n--- No new jobs found on the first page. Sync is up to date. ---")
-        applied_jobs = job_repo.fetch_applied_jobs()
-        return applied_jobs
+        return job_repo.fetch_applied_jobs()
 
     # Loop through the rest of the pages
     for start_index in range(page_size, total_jobs, page_size):
@@ -200,27 +198,26 @@ def fetch_all_linkedin_jobs() -> List[Job]:
             processed_jobs, new_jobs_found = _process_page(page_data, job_repo)
             all_jobs.extend(processed_jobs)
 
-            # The smart-stop logic
             if not new_jobs_found and not full_scan:
                 print(f"\n--- No new jobs found on page {current_page_num}. Stopping sync. ---")
                 print("--- To process all pages, set the environment variable FULL_SCAN=TRUE ---")
-                break  # Exit the loop early
+                break
 
         except requests.exceptions.RequestException as e:
             print(f"❌ Error on page {current_page_num}: {e}. Skipping.")
             continue
 
-    return all_jobs
+    return job_repo.fetch_applied_jobs()
 
 
 def main():
-    print("--- Starting LinkedIn Job Scraper ---")
+    print("--- Starting LinkedIn Job Sync ---")
     start_time = time.time()
     jobs = fetch_all_linkedin_jobs()
     end_time = time.time()
 
     duration = end_time - start_time
-    print(f"\n--- ✨ Successfully processed {len(jobs)} jobs in {duration:.2f} seconds. ---")
+    print(f"\n--- ✨ Sync complete. Found {len(jobs)} total applied jobs in DB after {duration:.2f} seconds. ---")
 
 
 if __name__ == "__main__":

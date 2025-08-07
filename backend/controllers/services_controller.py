@@ -26,13 +26,17 @@ def normalize_huntr_job(job: dict) -> dict:
 # --- THIS FUNCTION IS CORRECTED ---
 def normalize_linkedin_job(job_dict: dict) -> dict:
     """Normalizes a single LinkedIn job dictionary."""
-    return {
-        "company": job_dict.get("company"),
-        "title": job_dict.get("title", "").strip(),
-        "appliedAt": job_dict.get("appliedOn"),  # Key from Job.to_dict()
-        "source": "LinkedIn",
-        "url": job_dict.get("job_url"),  # Key from Job.to_dict()
-    }
+    try:
+        return {
+            "company": job_dict.get("company"),
+            "title": job_dict.get("title", "").strip(),
+            "appliedAt": job_dict["applied_on"],  # Key from Job.to_dict()
+            "source": "LinkedIn",
+            "url": job_dict.get("job_url"),  # Key from Job.to_dict()
+        }
+    except KeyError as e:
+        print("Key error on LinkedIn job normalization:", job_dict)
+        raise e
 
 
 def normalize_sql_job(job: Job) -> dict:
@@ -54,53 +58,66 @@ def get_all_applied_jobs():
     """
     repo = JobRepository()
     try:
-        # --- NEW LOGIC ---
-
-        # 1. Fetch from independent sources first.
+        # 1. Fetch from Huntr
         huntr_jobs_raw = get_huntr_jobs_data()
         normalized_huntr = [normalize_huntr_job(job) for job in huntr_jobs_raw]
 
-        # 2. Sync and fetch from LinkedIn. This is our primary source of truth for LinkedIn jobs.
+        # 2. Fetch from LinkedIn
         print("Syncing LinkedIn jobs...")
         linkedin_jobs_raw = [item.to_dict() for item in fetch_all_linkedin_jobs()]
         normalized_linkedin = [normalize_linkedin_job(job) for job in linkedin_jobs_raw]
         print("Sync complete.")
 
-        # 3. Create a set of all URNs from the LinkedIn sync for efficient de-duplication.
+        # 3. Deduplication via LinkedIn URNs
         linkedin_urns = {job['urn'] for job in normalized_linkedin if job.get('urn')}
 
-        # 4. Fetch all jobs from the SQL database.
+        # 4. Fetch from SQL (excluding jobs already in LinkedIn)
         all_sql_jobs = repo.fetch_applied_jobs()
-
-        # 5. Filter out any SQL job that we already have from the LinkedIn sync.
-        # This prevents the same job from appearing twice with two different sources.
         non_linkedin_sql_jobs = [job for job in all_sql_jobs if job.urn not in linkedin_urns]
         normalized_sql = [normalize_sql_job(job) for job in non_linkedin_sql_jobs]
 
-        # 6. Combine the clean, de-duplicated lists.
+        # 5. Combine sources
         all_jobs_unfiltered = normalized_huntr + normalized_linkedin + normalized_sql
 
-        # --- The rest of your processing logic remains the same ---
+        # 6. Print source counts
+        source_counts = {
+            "huntr": len(normalized_huntr),
+            "linkedin": len(normalized_linkedin),
+            "sql": len(normalized_sql),
+        }
+        print("Job source counts:", source_counts)
+
+        # 7. Filter + clean appliedAt
         all_jobs_filtered = []
         for job in all_jobs_unfiltered:
             applied_at = job.get("appliedAt")
             if not applied_at:
                 continue
 
-            if isinstance(applied_at, str):
-                job["appliedAt"] = parse_datetime(applied_at)
+            try:
+                if isinstance(applied_at, str):
+                    applied_at = parse_datetime(applied_at)
 
-            if job["appliedAt"].tzinfo is None:
-                job["appliedAt"] = job["appliedAt"].replace(tzinfo=timezone.utc)
+                if applied_at is None:
+                    continue
 
-            all_jobs_filtered.append(job)
+                if applied_at.tzinfo is None:
+                    applied_at = applied_at.replace(tzinfo=timezone.utc)
 
+                job["appliedAt"] = applied_at
+                all_jobs_filtered.append(job)
+            except Exception as parse_err:
+                print(f"Skipping job with invalid appliedAt: {applied_at} (error: {parse_err})")
+                continue
+
+        # 8. Sort by date
         all_jobs_sorted = sorted(
             all_jobs_filtered,
             key=lambda x: x["appliedAt"],
             reverse=True
         )
 
+        # 9. Format output
         for job in all_jobs_sorted:
             job["formattedDate"] = job["appliedAt"].strftime("%d-%b-%Y").lower()
             job["appliedAt"] = job["appliedAt"].isoformat()
@@ -108,6 +125,10 @@ def get_all_applied_jobs():
         return jsonify(all_jobs_sorted), 200
 
     except Exception as e:
+        if isinstance(e, KeyError):
+            print("KeyError detected – missing required key:")
+            print(traceback.format_exc())
+            raise
         print("An error occurred in /applied-jobs endpoint:")
         print(traceback.format_exc())
         return jsonify({"error": "Failed to fetch job data", "details": str(e)}), 500

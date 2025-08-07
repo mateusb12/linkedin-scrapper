@@ -207,11 +207,14 @@ const JobsTable = ({ jobs }) => {
                         </thead>
                         <tbody className="bg-gray-800 divide-y divide-gray-700">
                         {jobs.map((job) => (
-                            <tr key={job.id} className="hover:bg-gray-700/50">
+                            <tr key={job.urn} className="hover:bg-gray-700/50">
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{formatPtDate(job.appliedAt)}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{job.source}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{job.title}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">{job.company}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
+                                    {/* FIX: Render the company name property instead of the object */}
+                                    {job.company && typeof job.company === 'object' ? job.company.name : job.company}
+                                </td>
                             </tr>
                         ))}
                         </tbody>
@@ -227,17 +230,11 @@ const JobsTable = ({ jobs }) => {
 export const JobDashboard = () => {
     const [timePeriod, setTimePeriod] = React.useState('daily'); // 'daily', 'weekly', 'monthly'
 
-    const {
-        data: jobs,
-        isLoading,
-        isError,
-        error,
-        refetch,
-        isFetching
-    } = useQuery({
-        queryKey: ['appliedJobs'],
-        queryFn: fetchAppliedJobs,
-        staleTime: 1000 * 60 * 5,
+    const { data: jobs, isLoading, isError, error, refetch, isFetching } = useQuery({
+      queryKey: ['appliedJobs'],
+      queryFn: fetchAppliedJobs,
+      staleTime: 5 * 60 * 1000,
+      retry: false
     });
 
     // Added defensive check for jobs array before processing

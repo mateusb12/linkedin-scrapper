@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Union, Type
+from typing import List, Optional, Dict, Any, Union, Type, cast
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, case, desc
 from database.database_connection import get_db_session
@@ -165,15 +165,31 @@ class JobRepository:
         """
         Fetches jobs marked as applied and with 'No description provided'.
         """
-        return (
-            self.session.query(Job)
-            .options(joinedload(Job.company))
-            .filter(
-                Job.has_applied.is_(True),
-                Job.description_full == "No description provided"
-            )
-            .all()
-        )
+        return cast(list[Job],
+                    self.session.query(Job)
+                    .options(joinedload(Job.company))
+                    .filter(
+                        Job.has_applied.is_(True),
+                        Job.description_full == "No description provided"
+                    )
+                    .all()
+                    )
+
+    def get_incomplete_jobs(self) -> list[Job]:
+        """
+        Fetches jobs that are considered incomplete:
+        - description_full is "No description provided"
+        - applied_on is NULL
+        """
+        return cast(list[Job],
+                    self.session.query(Job)
+                    .options(joinedload(Job.company))
+                    .filter(
+                        Job.description_full == "No description provided",
+                        Job.applied_on.is_(None)
+                    )
+                    .all()
+                    )
 
     # Commit and rollback
     def commit(self):
