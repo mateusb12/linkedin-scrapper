@@ -176,8 +176,9 @@ def fetch_all_linkedin_jobs() -> List[Job]:
     all_jobs.extend(processed_jobs)
 
     if not new_jobs_found and not full_scan:
-        print("\n--- No new jobs found on the first page. Sync is up to date. ---")
-        return job_repo.fetch_applied_jobs()
+        applied_jobs = job_repo.fetch_applied_jobs()
+        print(f"\n--- No new jobs found on the first page. Sync is up to date. Found {len(applied_jobs)} jobs in DB. ---")
+        return applied_jobs
 
     # Loop through the rest of the pages
     for start_index in range(page_size, total_jobs, page_size):

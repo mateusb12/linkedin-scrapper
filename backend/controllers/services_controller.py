@@ -72,7 +72,7 @@ def get_all_applied_jobs():
         linkedin_urns = {job['urn'] for job in normalized_linkedin if job.get('urn')}
 
         # 4. Fetch from SQL (excluding jobs already in LinkedIn)
-        all_sql_jobs = repo.fetch_applied_jobs()
+        all_sql_jobs = repo.fetch_internal_sql_jobs()
         non_linkedin_sql_jobs = [job for job in all_sql_jobs if job.urn not in linkedin_urns]
         normalized_sql = [normalize_sql_job(job) for job in non_linkedin_sql_jobs]
 

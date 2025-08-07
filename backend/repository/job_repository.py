@@ -92,14 +92,30 @@ class JobRepository:
             raise KeyError(f"Job with URN '{urn}' not found")
         job.has_applied = True
 
-    def fetch_applied_jobs(self) -> list[Job]:
-        return (
+    def fetch_internal_sql_jobs(self) -> list[Job]:
+        return cast(
+            list[Job],
             self.session.query(Job)
             .options(joinedload(Job.company))
-            .filter(Job.has_applied.is_(True))
+            .filter(
+                Job.has_applied.is_(True),
+                Job.description_full != "No description provided",
+                Job.disabled.is_(False)
+            )
             .all()
         )
 
+    def fetch_applied_jobs(self) -> list[Job]:
+        return cast(
+            list[Job],
+            self.session.query(Job)
+            .options(joinedload(Job.company))
+            .filter(
+                Job.has_applied.is_(True),
+                Job.description_full == "No description provided"
+            )
+            .all()
+        )
     # Count incomplete jobs
     def count_incomplete(self) -> int:
         return self.session.query(Job).filter(Job.processed.is_(False)).count()
@@ -160,18 +176,6 @@ class JobRepository:
         # Add job_object to session
         self.session.add(job_object)
         self.session.commit()
-
-    def fetch_applied_jobs(self) -> list[Job]:
-        return cast(
-            list[Job],
-            self.session.query(Job)
-            .options(joinedload(Job.company))
-            .filter(
-                Job.has_applied.is_(True),
-                Job.description_full != "No description provided"
-            )
-            .all()
-        )
 
     def get_incomplete_jobs(self) -> list[Job]:
         """

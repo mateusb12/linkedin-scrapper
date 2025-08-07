@@ -45,16 +45,17 @@ const formatPtDateTime = (isoDateStr) => {
     const date = new Date(isoDateStr);
     if (isNaN(date.getTime())) return 'Invalid Date';
 
-    // Use toLocaleString to format the date and time according to the user's locale (pt-BR)
-    // This automatically converts the UTC timestamp from the backend to the user's local timezone.
-    return date.toLocaleString('pt-BR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-    });
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const year = date.getUTCFullYear();
+
+    const monthDate = new Date(Date.UTC(year, date.getUTCMonth(), 1));
+    const month = monthDate.toLocaleString('pt-BR', { month: 'short', timeZone: 'UTC' }).replace('.', '').toLowerCase();
+
+    const hours = String(date.getUTCHours()).padStart(2, '0');
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+
+    return `${day}/${month}/${year}, ${hours}:${minutes}:${seconds}`;
 };
 // END OF CHANGES
 
