@@ -50,23 +50,37 @@ def normalize_sql_job(job: Job) -> dict:
 @services_bp.route("/applied-jobs", methods=["GET"])
 def get_all_applied_jobs():
     """
-    Fetches and unifies job applications from Huntr, LinkedIn, and SQL.
+    Fetches and unifies job applications, de-duplicating to ensure correct source labeling.
     """
     repo = JobRepository()
     try:
-        # Fetch raw data
+        # --- NEW LOGIC ---
+
+        # 1. Fetch from independent sources first.
         huntr_jobs_raw = get_huntr_jobs_data()
-        linkedin_jobs_raw = [item.to_dict() for item in fetch_all_linkedin_jobs()]  # Returns List[dict]
-        sql_jobs = repo.fetch_applied_jobs()  # Returns List[Job]
-
-        # Normalize each source
         normalized_huntr = [normalize_huntr_job(job) for job in huntr_jobs_raw]
-        normalized_linkedin = [normalize_linkedin_job(job) for job in linkedin_jobs_raw]
-        normalized_sql = [normalize_sql_job(job) for job in sql_jobs]
 
+        # 2. Sync and fetch from LinkedIn. This is our primary source of truth for LinkedIn jobs.
+        print("Syncing LinkedIn jobs...")
+        linkedin_jobs_raw = [item.to_dict() for item in fetch_all_linkedin_jobs()]
+        normalized_linkedin = [normalize_linkedin_job(job) for job in linkedin_jobs_raw]
+        print("Sync complete.")
+
+        # 3. Create a set of all URNs from the LinkedIn sync for efficient de-duplication.
+        linkedin_urns = {job['urn'] for job in normalized_linkedin if job.get('urn')}
+
+        # 4. Fetch all jobs from the SQL database.
+        all_sql_jobs = repo.fetch_applied_jobs()
+
+        # 5. Filter out any SQL job that we already have from the LinkedIn sync.
+        # This prevents the same job from appearing twice with two different sources.
+        non_linkedin_sql_jobs = [job for job in all_sql_jobs if job.urn not in linkedin_urns]
+        normalized_sql = [normalize_sql_job(job) for job in non_linkedin_sql_jobs]
+
+        # 6. Combine the clean, de-duplicated lists.
         all_jobs_unfiltered = normalized_huntr + normalized_linkedin + normalized_sql
 
-        # Filter out any entries where appliedAt is missing, then convert to datetime
+        # --- The rest of your processing logic remains the same ---
         all_jobs_filtered = []
         for job in all_jobs_unfiltered:
             applied_at = job.get("appliedAt")
@@ -81,28 +95,23 @@ def get_all_applied_jobs():
 
             all_jobs_filtered.append(job)
 
-        # Merge and sort by date
         all_jobs_sorted = sorted(
             all_jobs_filtered,
             key=lambda x: x["appliedAt"],
             reverse=True
         )
 
-        # Add formattedDate field
         for job in all_jobs_sorted:
             job["formattedDate"] = job["appliedAt"].strftime("%d-%b-%Y").lower()
-            # Convert datetime back to ISO string for JSON compatibility
             job["appliedAt"] = job["appliedAt"].isoformat()
 
         return jsonify(all_jobs_sorted), 200
 
     except Exception as e:
-        # Print the full error to the console for easier debugging
         print("An error occurred in /applied-jobs endpoint:")
         print(traceback.format_exc())
         return jsonify({"error": "Failed to fetch job data", "details": str(e)}), 500
     finally:
-        # Ensure the database session is closed after every request
         repo.close()
 
 
