@@ -5,6 +5,7 @@ import os  # Import the os module to read environment variables
 import requests
 from typing import List, Dict, Any, Optional, Tuple
 
+from models import Job
 # Assuming these imports are correctly configured in your project
 from repository.job_repository import JobRepository
 from path.file_content_loader import load_cookie_value
@@ -145,7 +146,7 @@ def _process_page(page_json: Dict[str, Any], job_repo: JobRepository) -> Tuple[L
     return processed_jobs, new_jobs_found_on_page
 
 
-def fetch_all_linkedin_jobs() -> List[Dict[str, str]]:
+def fetch_all_linkedin_jobs() -> List[Job]:
     """
     Main function to fetch all saved jobs, using the database as a cache
     to avoid redundant API calls. Stops automatically when no new jobs are found.
