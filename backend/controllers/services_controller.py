@@ -7,7 +7,7 @@ from database.database_connection import get_db_session
 from models import Job
 from repository.job_repository import JobRepository
 from services.job_tracking.huntr_service import get_huntr_jobs_data
-from services.job_tracking.python_linkedin_jobs import get_linkedin_applied_jobs
+from services.job_tracking.python_linkedin_jobs import fetch_all_linkedin_jobs
 from utils.date_parser import parse_relative_date
 from dateutil.parser import parse as parse_datetime
 
@@ -54,7 +54,7 @@ def get_all_applied_jobs():
     try:
         # Fetch raw data
         huntr_jobs_raw = get_huntr_jobs_data()
-        linkedin_jobs_raw = get_linkedin_applied_jobs()
+        linkedin_jobs_raw = fetch_all_linkedin_jobs()
         repo = JobRepository()
         sql_jobs = repo.fetch_applied_jobs()
 
@@ -96,7 +96,7 @@ def get_huntr_jobs():
 
 @services_bp.route("/linkedin", methods=["GET"])
 def get_linkedin_jobs():
-    jobs: list[dict] = get_linkedin_applied_jobs()
+    jobs: list[dict] = fetch_all_linkedin_jobs()
     return jobs, 200
 
 
