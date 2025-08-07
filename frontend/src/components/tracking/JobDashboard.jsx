@@ -38,6 +38,26 @@ const formatPtDate = (isoDateStr) => {
     return `${dayNum} ${monthStr} ${yearNum}`;
 };
 
+// START OF CHANGES
+// NEW: Format date and time for the table
+const formatPtDateTime = (isoDateStr) => {
+    if (!isoDateStr) return 'N/A';
+    const date = new Date(isoDateStr);
+    if (isNaN(date.getTime())) return 'Invalid Date';
+
+    // Use toLocaleString to format the date and time according to the user's locale (pt-BR)
+    // This automatically converts the UTC timestamp from the backend to the user's local timezone.
+    return date.toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+    });
+};
+// END OF CHANGES
+
 
 // --- DATE HELPERS ---
 const toYYYYMMDD = (date) => {
@@ -236,7 +256,9 @@ const JobsTable = ({ jobs }) => {
                         <tbody className="bg-gray-800 divide-y divide-gray-700">
                         {jobs.map((job) => (
                             <tr key={job.urn} className="hover:bg-gray-700/50">
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{formatPtDate(job.appliedAt)}</td>
+                                {/* START OF CHANGES */}
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{formatPtDateTime(job.appliedAt)}</td>
+                                {/* END OF CHANGES */}
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{job.source}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{job.title}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">

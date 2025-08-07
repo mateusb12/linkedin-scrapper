@@ -161,19 +161,17 @@ class JobRepository:
         self.session.add(job_object)
         self.session.commit()
 
-    def fetch_easy_applied_jobs(self) -> list[Job]:
-        """
-        Fetches jobs marked as applied and with 'No description provided'.
-        """
-        return cast(list[Job],
-                    self.session.query(Job)
-                    .options(joinedload(Job.company))
-                    .filter(
-                        Job.has_applied.is_(True),
-                        Job.description_full == "No description provided"
-                    )
-                    .all()
-                    )
+    def fetch_applied_jobs(self) -> list[Job]:
+        return cast(
+            list[Job],
+            self.session.query(Job)
+            .options(joinedload(Job.company))
+            .filter(
+                Job.has_applied.is_(True),
+                Job.description_full != "No description provided"
+            )
+            .all()
+        )
 
     def get_incomplete_jobs(self) -> list[Job]:
         """
