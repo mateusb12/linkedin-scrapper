@@ -25,31 +25,21 @@ const themeColors = {
     emerald: '#10b981',
 };
 
-// Format date like "1 ago 2025" - More robust version
+// Format date like "1 ago 2025"
 const formatPtDate = (isoDateStr) => {
     if (!isoDateStr) return 'N/A';
     const date = new Date(isoDateStr);
-
-    // Check if the date is valid
-    if (isNaN(date.getTime())) {
-        return 'Invalid Date';
-    }
-
-    // Use UTC methods to avoid timezone shifting the date for display
+    if (isNaN(date.getTime())) return 'Invalid Date';
     const dayNum = date.getUTCDate();
-    const month = date.getUTCMonth(); // 0-11
+    const month = date.getUTCMonth();
     const yearNum = date.getUTCFullYear();
-
-    // Create a UTC date to correctly format the month name in Portuguese
     const monthDate = new Date(Date.UTC(yearNum, month, 1));
     const monthStr = monthDate.toLocaleString('pt-BR', { month: 'short', timeZone: 'UTC' }).replace('.', '').toLowerCase();
-
     return `${dayNum} ${monthStr} ${yearNum}`;
 };
 
 
 // --- DATE HELPERS ---
-// Helper to get a 'YYYY-MM-DD' string from a Date object in UTC
 const toYYYYMMDD = (date) => {
     const y = date.getUTCFullYear();
     const m = String(date.getUTCMonth() + 1).padStart(2, '0');
@@ -57,27 +47,67 @@ const toYYYYMMDD = (date) => {
     return `${y}-${m}-${d}`;
 };
 
-// Helper to get the start of the week (Monday) for a given date (using UTC)
 const getWeekStartDate = (date) => {
     const d = new Date(date);
-    const dayOfWeek = d.getUTCDay(); // Sunday: 0, Monday: 1, ... (UTC)
-    const diff = d.getUTCDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Adjust for Sunday
+    const dayOfWeek = d.getUTCDay();
+    const diff = d.getUTCDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
     const weekStart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), diff));
     return weekStart;
 };
 
-
-// Helper to get the start of the month for a given date (using UTC)
 const getMonthStartDate = (date) => {
     const d = new Date(date);
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+};
+
+// NEW: Helper to filter jobs by a date range
+const filterJobsByDateRange = (jobs, range) => {
+    if (!jobs || range === 'all') {
+        return jobs;
+    }
+
+    const now = new Date();
+    // Use UTC for all date calculations to be consistent with other helpers
+    const nowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    let startDateUtc;
+
+    switch (range) {
+        case 'this_week':
+            startDateUtc = getWeekStartDate(nowUtc);
+            break;
+        case 'last_2_weeks':
+            startDateUtc = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate() - 14));
+            break;
+        case 'last_month':
+             startDateUtc = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth() - 1, nowUtc.getUTCDate()));
+            break;
+        case 'last_6_months':
+            startDateUtc = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth() - 6, nowUtc.getUTCDate()));
+            break;
+        case 'last_year':
+            startDateUtc = new Date(Date.UTC(nowUtc.getUTCFullYear() - 1, nowUtc.getUTCMonth(), nowUtc.getUTCDate()));
+            break;
+        default:
+            return jobs;
+    }
+
+    return jobs.filter(job => {
+        const appliedDate = new Date(job.appliedAt);
+        return appliedDate >= startDateUtc;
+    });
 };
 // --- END DATE HELPERS ---
 
 
 // Chart data processor
 const processChartData = (jobs, timePeriod = 'daily') => {
-    // Count total applications by source
+    if (!jobs || jobs.length === 0) {
+        return {
+            barData: { labels: [], datasets: [] },
+            doughnutData: { labels: [], datasets: [{ data: [] }] }
+        };
+    }
+
     const appsBySource = jobs.reduce((acc, job) => {
         acc[job.source] = (acc[job.source] || 0) + 1;
         return acc;
@@ -85,7 +115,6 @@ const processChartData = (jobs, timePeriod = 'daily') => {
 
     const sourceLabels = Object.keys(appsBySource);
 
-    // Count applications per period, broken down by source
     const appsPerPeriodBySource = jobs.reduce((acc, job) => {
         const appliedDate = new Date(job.appliedAt);
         let periodKey;
@@ -94,7 +123,7 @@ const processChartData = (jobs, timePeriod = 'daily') => {
             periodKey = toYYYYMMDD(getWeekStartDate(appliedDate));
         } else if (timePeriod === 'monthly') {
             periodKey = toYYYYMMDD(getMonthStartDate(appliedDate));
-        } else { // daily
+        } else {
             periodKey = toYYYYMMDD(appliedDate);
         }
 
@@ -114,9 +143,7 @@ const processChartData = (jobs, timePeriod = 'daily') => {
 
     const formattedLabels = sortedPeriodKeys.map(key => {
         const [year, month, day] = key.split('-').map(Number);
-        // Use Date.UTC to create a date that won't be shifted by local timezone in formatPtDate
         const utcDate = new Date(Date.UTC(year, month - 1, day));
-
         if (timePeriod === 'weekly') {
             const dayNum = utcDate.getUTCDate();
             const monthStr = utcDate.toLocaleString('pt-BR', { month: 'short', timeZone: 'UTC' }).replace('.', '');
@@ -126,7 +153,7 @@ const processChartData = (jobs, timePeriod = 'daily') => {
             const monthStr = utcDate.toLocaleString('pt-BR', { month: 'long', timeZone: 'UTC' });
             return `${monthStr.charAt(0).toUpperCase() + monthStr.slice(1)} de ${year}`;
         }
-        return formatPtDate(utcDate.toISOString()); // Pass a full ISO string
+        return formatPtDate(utcDate.toISOString());
     });
 
     const sourceBarColors = {
@@ -168,12 +195,16 @@ const processChartData = (jobs, timePeriod = 'daily') => {
     };
 };
 
-// --- COLLAPSIBLE TABLE COMPONENT (UPDATED) ---
+// --- COLLAPSIBLE TABLE COMPONENT ---
 const JobsTable = ({ jobs }) => {
-    const [isOpen, setIsOpen] = React.useState(true); // Default to open for better UX
+    const [isOpen, setIsOpen] = React.useState(true);
 
     if (!jobs || jobs.length === 0) {
-        return null; // Don't render if there are no jobs
+        return (
+            <div className="mt-6 bg-gray-800 p-6 rounded-lg shadow-lg text-center text-gray-400">
+                No application data for the selected period.
+            </div>
+        );
     }
 
     return (
@@ -185,10 +216,7 @@ const JobsTable = ({ jobs }) => {
                 <span>Raw Application Data ({jobs.length})</span>
                 <svg
                     className={`w-6 h-6 transform transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"
                 >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
                 </svg>
@@ -212,7 +240,6 @@ const JobsTable = ({ jobs }) => {
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{job.source}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{job.title}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
-                                    {/* FIX: Render the company name property instead of the object */}
                                     {job.company && typeof job.company === 'object' ? job.company.name : job.company}
                                 </td>
                             </tr>
@@ -228,7 +255,8 @@ const JobsTable = ({ jobs }) => {
 
 // Main dashboard component
 export const JobDashboard = () => {
-    const [timePeriod, setTimePeriod] = React.useState('daily'); // 'daily', 'weekly', 'monthly'
+    const [timePeriod, setTimePeriod] = React.useState('daily');
+    const [dateRange, setDateRange] = React.useState('all'); // NEW state for the date range filter
 
     const { data: jobs, isLoading, isError, error, refetch, isFetching } = useQuery({
       queryKey: ['appliedJobs'],
@@ -237,8 +265,11 @@ export const JobDashboard = () => {
       retry: false
     });
 
-    // Added defensive check for jobs array before processing
-    const chartData = (jobs && Array.isArray(jobs)) ? processChartData(jobs, timePeriod) : null;
+    // NEW: Filter jobs based on the selected date range before processing
+    const filteredJobs = filterJobsByDateRange(jobs, dateRange);
+
+    // Use the filtered jobs for chart processing
+    const chartData = (filteredJobs && Array.isArray(filteredJobs)) ? processChartData(filteredJobs, timePeriod) : null;
 
     const barChartOptions = {
         responsive: true,
@@ -275,19 +306,34 @@ export const JobDashboard = () => {
 
     if (isLoading) return <div className="text-gray-300 p-8">Loading dashboard... ⏳</div>;
     if (isError) return <div className="text-red-500 p-8">Error: {error.message} 😞</div>;
-    if (!jobs || jobs.length === 0) return <div className="text-gray-400 p-8">No application data found.</div>;
+    if (!jobs) return <div className="text-gray-400 p-8">No application data found.</div>;
 
     return (
         <div className="p-6 bg-gray-900 text-gray-200">
-            <div className="flex items-center justify-between mb-6">
-                <h2 className="text-3xl font-bold text-white">Job Application Dashboard</h2>
-                <button
-                    onClick={() => refetch()}
-                    disabled={isFetching}
-                    className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded shadow transition disabled:bg-amber-800 disabled:cursor-not-allowed"
-                >
-                    {isFetching ? 'Refreshing...' : 'Refresh'}
-                </button>
+            <div className="mb-6">
+                <h2 className="text-3xl font-bold text-white mb-4">Job Application Dashboard</h2>
+                <div className="flex items-center gap-4">
+                    {/* Date Range Dropdown */}
+                    <select
+                        value={dateRange}
+                        onChange={(e) => setDateRange(e.target.value)}
+                        className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-amber-500 focus:border-amber-500 block p-2.5"
+                    >
+                        <option value="all">All Time</option>
+                        <option value="this_week">This Week</option>
+                        <option value="last_2_weeks">Last 2 Weeks</option>
+                        <option value="last_month">Last Month</option>
+                        <option value="last_6_months">Last 6 Months</option>
+                        <option value="last_year">Last Year</option>
+                    </select>
+                    <button
+                        onClick={() => refetch()}
+                        disabled={isFetching}
+                        className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded shadow transition disabled:bg-amber-800 disabled:cursor-not-allowed"
+                    >
+                        {isFetching ? 'Refreshing...' : 'Refresh'}
+                    </button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -319,8 +365,8 @@ export const JobDashboard = () => {
                 </div>
             </div>
 
-            {/* Data Table Section */}
-            <JobsTable jobs={jobs} />
+            {/* Data Table Section - now uses filteredJobs */}
+            <JobsTable jobs={filteredJobs} />
         </div>
     );
 };
