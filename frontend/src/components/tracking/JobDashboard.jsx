@@ -11,6 +11,7 @@ import {
     Legend,
     ArcElement,
 } from 'chart.js';
+import { RefreshCcw, Settings} from 'lucide-react';
 import { fetchAppliedJobs } from '../../services/jobService.js';
 
 // Register Chart.js components
@@ -352,9 +353,19 @@ export const JobDashboard = () => {
                     <button
                         onClick={() => refetch()}
                         disabled={isFetching}
-                        className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded shadow transition disabled:bg-amber-800 disabled:cursor-not-allowed"
+                        className="h-10 w-10 bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow transition disabled:bg-amber-800 disabled:cursor-not-allowed flex items-center justify-center"
+                        title="Refresh data"
                     >
-                        {isFetching ? 'Refreshing...' : 'Refresh'}
+                        <RefreshCcw
+                            className={`w-5 h-5 ${isFetching ? 'animate-spin' : ''}`}
+                        />
+                    </button>
+                    <button
+                        onClick={() => console.log('Config clicked')}
+                        className="h-10 w-10 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow transition flex items-center justify-center"
+                        title="Open settings"
+                    >
+                        <Settings className="w-5 h-5" />
                     </button>
                 </div>
             </div>
