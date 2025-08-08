@@ -9,7 +9,7 @@ from models import Job
 # Assuming these imports are correctly configured in your project
 from repository.job_repository import JobRepository
 from path.file_content_loader import load_cookie_value
-from services.job_tracking.linkedin_find_timestamp import fetch_job_timestamp
+from services.linkedin_calls.fetch_linkedin_timestamp import fetch_job_timestamp
 from utils.date_parser import format_datetime_pt_br
 
 

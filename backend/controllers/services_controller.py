@@ -7,7 +7,7 @@ import traceback
 from models import Job
 from repository.job_repository import JobRepository
 from services.job_tracking.huntr_service import get_huntr_jobs_data
-from services.job_tracking.python_linkedin_jobs import fetch_all_linkedin_jobs
+from services.job_tracking.fetch_linkedin_applied_jobs import fetch_all_linkedin_jobs
 
 services_bp = Blueprint("services", __name__, url_prefix="/services")
 
