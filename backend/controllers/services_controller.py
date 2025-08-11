@@ -59,8 +59,8 @@ def get_all_applied_jobs():
     repo = JobRepository()
     try:
         # 1. Fetch from Huntr
-        huntr_jobs_raw = get_huntr_jobs_data()
-        normalized_huntr = [normalize_huntr_job(job) for job in huntr_jobs_raw]
+        # huntr_jobs_raw = get_huntr_jobs_data()
+        # normalized_huntr = [normalize_huntr_job(job) for job in huntr_jobs_raw]
 
         # 2. Fetch from LinkedIn
         print("Syncing LinkedIn jobs...")
@@ -77,11 +77,10 @@ def get_all_applied_jobs():
         normalized_sql = [normalize_sql_job(job) for job in non_linkedin_sql_jobs]
 
         # 5. Combine sources
-        all_jobs_unfiltered = normalized_huntr + normalized_linkedin + normalized_sql
+        all_jobs_unfiltered = normalized_linkedin + normalized_sql
 
         # 6. Print source counts
         source_counts = {
-            "huntr": len(normalized_huntr),
             "linkedin": len(normalized_linkedin),
             "sql": len(normalized_sql),
         }

@@ -9,11 +9,12 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 # 1. IMPORT THE NEW FETCHER MODULE
-from .linkedin_fetcher import fetch_page_data_from_api, fetch_raw_job_details_from_api
 
 # 2. THE REST OF YOUR IMPORTS REMAIN
 from linkedin.api_fetch.orchestration_curls.orchestration_parser import parse_orchestration_data
 from linkedin.api_fetch.single_job.structure_single_job import extract_job_details
+from services.linkedin_calls.fetch_linkedin_recommended_jobs import fetch_page_data_from_api, \
+    fetch_raw_job_details_from_api
 
 
 def get_total_job_pages() -> Optional[int]:

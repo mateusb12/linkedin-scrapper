@@ -6,48 +6,32 @@ import requests
 from typing import List, Dict, Any, Optional, Tuple
 
 from models import Job
-# Assuming these imports are correctly configured in your project
 from repository.job_repository import JobRepository
 from path.file_content_loader import load_cookie_value
 from services.linkedin_calls.fetch_linkedin_timestamp import fetch_job_timestamp
-from utils.date_parser import format_datetime_pt_br
+from services.linkedin_calls.curl_storage.linkedin_fetch_call_repository import load_linkedin_config
 
 
-def setup_session() -> requests.Session:
-    """Sets up and configures the requests.Session object with necessary headers."""
+def setup_session(config: Dict[str, Any]) -> requests.Session:
+    """
+    Sets up and configures the requests.Session object using headers from the loaded configuration.
+    """
     session = requests.Session()
-    session.headers.update({
-        'accept': 'application/vnd.linkedin.normalized+json+2.1',
-        'accept-language': 'en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7',
-        'csrf-token': 'ajax:2584240299603910567',  # Note: This might need to be dynamic
-        'priority': 'u=1, i',
-        'referer': 'https://www.linkedin.com/my-items/saved-jobs/',
-        'sec-ch-prefers-color-scheme': 'dark',
-        'sec-ch-ua': '"Not)A;Brand";v="8", "Chromium";v="138", "Microsoft Edge";v="138"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-origin',
-        'x-li-lang': 'en_US',
-        'x-li-page-instance': 'urn:li:page:d_flagship3_myitems_savedjobs;gGeMib0KRoGTbXxHpSSTfg==',
-        'x-li-pem-metadata': 'Voyager - My Items=myitems-saved-jobs',
-        'x-li-track': '{"clientVersion":"1.13.37702","mpVersion":"1.13.37702","osName":"web","timezoneOffset":-3,'
-                      '"timezone":"America/Fortaleza","deviceFormFactor":"DESKTOP","mpName":"voyager-web",'
-                      '"displayDensity":1,"displayWidth":1920,"displayHeight":1080}',
-        'x-restli-protocol-version': '2.0.0',
-        'Cookie': load_cookie_value(),
-    })
+    # Load headers from the config and add the dynamic cookie
+    headers = config.get('headers', {})
+    headers['Cookie'] = load_cookie_value()
+    session.headers.update(headers)
     return session
 
 
-def _fetch_initial_data(session: requests.Session) -> Optional[Tuple[int, Dict[str, Any]]]:
+def _fetch_initial_data(session: requests.Session, config: Dict[str, Any]) -> Optional[Tuple[int, Dict[str, Any]]]:
     """Fetches the first page to get the total number of saved jobs."""
     print("Fetching first page to get total job count...")
+    base_url = config['base_url']
+    query_id = config['query_id']
     initial_url = (
-        "https://www.linkedin.com/voyager/api/graphql?variables=(start:0,query:("
-        "flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER))&queryId=voyagerSearchDashClusters"
-        ".5ba32757c00b31aea747c8bebb92855c"
+        f"{base_url}?variables=(start:0,query:(flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER))"
+        f"&queryId={query_id}"
     )
     try:
         response = session.get(initial_url)
@@ -57,8 +41,7 @@ def _fetch_initial_data(session: requests.Session) -> Optional[Tuple[int, Dict[s
         print(f"❌ Error on initial request: {e}")
         return None
 
-    total_jobs = data.get('data', {}).get('data', {}).get('searchDashClustersByAll', {}).get('paging', {}).get('total',
-                                                                                                               0)
+    total_jobs = data.get('data', {}).get('data', {}).get('searchDashClustersByAll', {}).get('paging', {}).get('total', 0)
     if total_jobs == 0:
         print("No saved jobs found on LinkedIn.")
         return None
@@ -146,7 +129,7 @@ def _process_page(page_json: Dict[str, Any], job_repo: JobRepository) -> Tuple[L
 
 def fetch_all_linkedin_jobs() -> List[Job]:
     """
-    Main function to fetch all saved jobs. It first fixes incomplete local jobs,
+    Main function to fetch all saved jobs. It first loads API configuration,
     then fetches new ones from LinkedIn.
     """
     full_scan = os.getenv('FULL_SCAN', 'FALSE').upper() == 'TRUE'
@@ -155,16 +138,23 @@ def fetch_all_linkedin_jobs() -> List[Job]:
 
     job_repo = JobRepository()
 
-    # --- PHASE 2: Scrape LinkedIn for new jobs ---
-    print("--- 🚀 Phase 2: Fetching new jobs from LinkedIn ---")
-    session = setup_session()
+    # --- Phase 1: Load Configuration from Database ---
+    print("--- ⚙️ Phase 1: Loading LinkedIn API configuration from DB ---")
+    config = load_linkedin_config('LinkedIn_Saved_Jobs_Scraper')
+    if not config:
+        print("❌ Critical error: Could not load API configuration 'LinkedIn_Saved_Jobs_Scraper'. Aborting sync.")
+        return job_repo.fetch_applied_jobs()  # Return what's already in the DB
 
-    initial_data = _fetch_initial_data(session)
+    # --- Phase 2: Scrape LinkedIn for new jobs ---
+    print("\n--- 🚀 Phase 2: Fetching new jobs from LinkedIn ---")
+    session = setup_session(config)
+    initial_data = _fetch_initial_data(session, config)
+
     if not initial_data:
         return job_repo.fetch_applied_jobs()
 
     total_jobs, first_page_data = initial_data
-    page_size = 10
+    page_size = 10  # LinkedIn API default
     num_pages = math.ceil(total_jobs / page_size)
     print(f"✅ Found {total_jobs} jobs across {num_pages} pages. Will now process them.\n")
 
@@ -181,17 +171,18 @@ def fetch_all_linkedin_jobs() -> List[Job]:
         return applied_jobs
 
     # Loop through the rest of the pages
+    base_url = config['base_url']
+    query_id = config['query_id']
     for start_index in range(page_size, total_jobs, page_size):
         current_page_num = (start_index // page_size) + 1
         print(f"\n--- Fetching and processing page {current_page_num} of {num_pages} ---")
 
         url = (
-            f"https://www.linkedin.com/voyager/api/graphql?variables=(start:{start_index},query:("
-            f"flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER))&queryId=voyagerSearchDashClusters"
-            f".5ba32757c00b31aea747c8bebb92855c"
+            f"{base_url}?variables=(start:{start_index},query:(flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER))"
+            f"&queryId={query_id}"
         )
         try:
-            time.sleep(1)
+            time.sleep(1) # Be respectful to the API
             response = session.get(url)
             response.raise_for_status()
             page_data = response.json()
