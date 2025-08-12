@@ -1,20 +1,20 @@
-# backend/scripts/save_linkedin_config.py
+# backend/services/linkedin_calls/curl_storage/linkedin_fetch_call_repository.py
 
 import json
 import os
 import sys
+import requests
+from typing import Dict, Any, Optional, Tuple
 
 # --- Add project root to path to allow imports from backend ---
-# This ensures that we can import 'app', 'db', and 'models'
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 # -------------------------------------------------------------
 
-# NOTE: We removed the top-level imports of app, db, and FetchCurl to prevent circular dependencies.
-# They are now imported locally within the functions that need them.
+# Local imports are used within functions to prevent circular dependencies
+from path.file_content_loader import load_cookie_value
 
-# --- The headers from your original setup_session ---
 # This dictionary contains all the static headers for the LinkedIn request.
 HEADERS_DICT = {
     'accept': 'application/vnd.linkedin.normalized+json+2.1',
@@ -39,11 +39,37 @@ HEADERS_DICT = {
 }
 
 
+def get_linkedin_fetch_artefacts() -> Optional[Tuple[requests.Session, Dict[str, Any]]]:
+    """
+    Loads LinkedIn config, creates a session with the dynamic cookie, and returns both.
+
+    This function is the single source for getting everything needed to make a
+    LinkedIn API call, encapsulating the session and cookie logic.
+
+    Returns:
+        A tuple containing:
+        - A fully configured requests.Session object.
+        - The configuration dictionary (containing base_url, query_id, etc.).
+        Returns None if the configuration cannot be loaded.
+    """
+    config = load_linkedin_config('LinkedIn_Saved_Jobs_Scraper')
+    if not config:
+        print("❌ Critical error: Could not load API configuration 'LinkedIn_Saved_Jobs_Scraper'.")
+        return None
+
+    session = requests.Session()
+
+    # Load headers from the config and add the dynamic cookie
+    headers = config.get('headers', {})
+    headers['Cookie'] = load_cookie_value()
+    session.headers.update(headers)
+
+    return session, config
+
+
 def save_linkedin_config_to_db():
     """
     Saves the LinkedIn request configuration to the database using the FetchCurl model.
-    This function runs within the Flask application context to ensure it has access
-    to the configured database session.
     """
     # Local imports to prevent circular dependency
     from app import app
@@ -102,9 +128,6 @@ def load_linkedin_config(config_name: str) -> dict | None:
 
 if __name__ == "__main__":
     config_name = "LinkedIn_Saved_Jobs_Scraper"
-    # To run this script directly, you might need to ensure the app context is set up correctly.
-    # Depending on your project structure, this might need more setup.
-    # For now, we assume it's called from within the app's lifecycle.
     # save_linkedin_config_to_db()
     loaded_config = load_linkedin_config(config_name=config_name)
     print("Loaded configuration:", loaded_config)

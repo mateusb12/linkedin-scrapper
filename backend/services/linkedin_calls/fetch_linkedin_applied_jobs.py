@@ -7,21 +7,24 @@ from typing import List, Dict, Any, Optional, Tuple
 
 from models import Job
 from repository.job_repository import JobRepository
-from path.file_content_loader import load_cookie_value
 from services.linkedin_calls.fetch_linkedin_timestamp import fetch_job_timestamp
-from services.linkedin_calls.curl_storage.linkedin_fetch_call_repository import load_linkedin_config
+from services.linkedin_calls.curl_storage.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
 
 
 def setup_session(config: Dict[str, Any]) -> requests.Session:
     """
-    Sets up and configures the requests.Session object using headers from the loaded configuration.
+    DEPRECATED: Sets up and configures the requests.Session object.
+    This function is maintained for backward compatibility. The primary logic
+    has moved to get_linkedin_fetch_artefacts in the repository. This function
+    now calls it internally and ignores the 'config' parameter.
     """
-    session = requests.Session()
-    # Load headers from the config and add the dynamic cookie
-    headers = config.get('headers', {})
-    headers['Cookie'] = load_cookie_value()
-    session.headers.update(headers)
-    return session
+    print("⚠️ WARNING: Calling setup_session is deprecated. Update dependencies to use get_linkedin_fetch_artefacts.")
+    artefacts = get_linkedin_fetch_artefacts()
+    if artefacts:
+        session, _ = artefacts
+        return session
+    # Fallback to a basic session if the new method fails
+    return requests.Session()
 
 
 def _fetch_initial_data(session: requests.Session, config: Dict[str, Any]) -> Optional[Tuple[int, Dict[str, Any]]]:
@@ -138,16 +141,17 @@ def fetch_all_linkedin_jobs() -> List[Job]:
 
     job_repo = JobRepository()
 
-    # --- Phase 1: Load Configuration from Database ---
-    print("--- ⚙️ Phase 1: Loading LinkedIn API configuration from DB ---")
-    config = load_linkedin_config('LinkedIn_Saved_Jobs_Scraper')
-    if not config:
-        print("❌ Critical error: Could not load API configuration 'LinkedIn_Saved_Jobs_Scraper'. Aborting sync.")
+    # --- Phase 1: Load Configuration and Setup Session from Repository ---
+    print("--- ⚙️ Phase 1: Loading config and preparing session from repository ---")
+    artefacts = get_linkedin_fetch_artefacts()
+    if not artefacts:
+        print("Aborting sync.")
         return job_repo.fetch_applied_jobs()  # Return what's already in the DB
+
+    session, config = artefacts
 
     # --- Phase 2: Scrape LinkedIn for new jobs ---
     print("\n--- 🚀 Phase 2: Fetching new jobs from LinkedIn ---")
-    session = setup_session(config)
     initial_data = _fetch_initial_data(session, config)
 
     if not initial_data:
