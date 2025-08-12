@@ -77,6 +77,7 @@ class FetchCurl(db.Model):
             "headers": parsed_headers,  # Use the parsed dictionary
             "body": parsed_body,          # Use the parsed body
             "referer": self.referer,
+            "cookies": self.cookies,
         }
 
 

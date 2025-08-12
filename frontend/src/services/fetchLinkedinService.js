@@ -3,8 +3,9 @@ import axios from "axios";
 // Best practice: Define a single base URL for your API
 const API_BASE_URL = "http://localhost:5000";
 
-// URL for the /fetch-jobs blueprint
+// URLs for different blueprints
 const FETCH_JOBS_URL = `${API_BASE_URL}/fetch-jobs`;
+const SERVICES_URL = `${API_BASE_URL}/services`; // <-- URL for the /services blueprint
 
 export async function getTotalPages() {
     // Using the more specific URL variable
@@ -53,7 +54,6 @@ export async function fetchJobsByPageRange(startPage, endPage, onProgress, onLog
 }
 
 export const startKeywordExtractionStream = (onProgress, onComplete, onError) => {
-    // --- FIX IS HERE ---
     // Connect to the new streaming endpoint using the correct base URL and path
     const eventSource = new EventSource(`${API_BASE_URL}/jobs/keywords-stream`);
 
@@ -72,7 +72,6 @@ export const startKeywordExtractionStream = (onProgress, onComplete, onError) =>
 
     // Listener for connection errors or custom 'error' events from the backend
     eventSource.onerror = (event) => {
-        // The default event doesn't carry a payload, but our custom one might
         let errorData;
         if (event.data) {
             try {
@@ -89,3 +88,30 @@ export const startKeywordExtractionStream = (onProgress, onComplete, onError) =>
 
     return eventSource;
 };
+
+
+// --- NEW FUNCTIONS FOR COOKIE MANAGEMENT ---
+
+/**
+ * Fetches the current LinkedIn cookie from the backend.
+ * @param {string | number} identifier - The name or ID of the FetchCurl record (e.g., 'LinkedIn_Saved_Jobs_Scraper').
+ * @returns {Promise<string>} The cookie string.
+ */
+export async function getLinkedinCookie(identifier) {
+    const res = await axios.get(`${SERVICES_URL}/cookies`, {
+        params: { identifier }
+    });
+    return res.data.cookies;
+}
+
+/**
+ * Updates the LinkedIn cookie in the backend.
+ * @param {string | number} identifier - The name or ID of the FetchCurl record.
+ * @param {string} cookies - The new cookie string to save.
+ * @returns {Promise<object>} The success response from the server.
+ */
+export async function updateLinkedinCookie(identifier, cookies) {
+    const payload = { identifier, cookies };
+    const res = await axios.put(`${SERVICES_URL}/cookies`, payload);
+    return res.data;
+}

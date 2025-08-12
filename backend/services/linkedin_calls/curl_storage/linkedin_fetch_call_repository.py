@@ -12,9 +12,6 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 # -------------------------------------------------------------
 
-# Local imports are used within functions to prevent circular dependencies
-from path.file_content_loader import load_cookie_value
-
 # This dictionary contains all the static headers for the LinkedIn request.
 HEADERS_DICT = {
     'accept': 'application/vnd.linkedin.normalized+json+2.1',
@@ -41,7 +38,8 @@ HEADERS_DICT = {
 
 def get_linkedin_fetch_artefacts() -> Optional[Tuple[requests.Session, Dict[str, Any]]]:
     """
-    Loads LinkedIn config, creates a session with the dynamic cookie, and returns both.
+    Loads LinkedIn config, creates a session with the cookie from the config,
+    and returns both.
 
     This function is the single source for getting everything needed to make a
     LinkedIn API call, encapsulating the session and cookie logic.
@@ -59,9 +57,9 @@ def get_linkedin_fetch_artefacts() -> Optional[Tuple[requests.Session, Dict[str,
 
     session = requests.Session()
 
-    # Load headers from the config and add the dynamic cookie
+    # The config dictionary now contains the headers with the correct cookie,
+    # so we can just update the session directly.
     headers = config.get('headers', {})
-    headers['Cookie'] = load_cookie_value()
     session.headers.update(headers)
 
     return session, config
@@ -100,34 +98,66 @@ def save_linkedin_config_to_db():
 def load_linkedin_config(config_name: str) -> dict | None:
     """
     Loads a specific request configuration from the database by name.
+    If the configuration is found but does not have a cookie stored, this function
+    will load the cookie from the source file, update the database record, and
+    then include it in the returned configuration dictionary.
     """
     # Local imports to prevent circular dependency
     from app import app
     from database.extensions import db
     from models.fetch_models import FetchCurl
+    from path.file_content_loader import load_cookie_value
 
     with app.app_context():
         print(f"🔎 Attempting to load configuration '{config_name}' from the database...")
         record = db.session.query(FetchCurl).filter_by(name=config_name).first()
 
-        if record:
-            print(f"✅ Configuration '{config_name}' found.")
-            headers_dict = json.loads(record.headers)
-            return {
-                "name": record.name,
-                "base_url": record.base_url,
-                "query_id": record.query_id,
-                "method": record.method,
-                "headers": headers_dict,
-                "referer": record.referer
-            }
-        else:
+        if not record:
             print(f"❌ Configuration '{config_name}' not found in the database.")
             return None
+
+        print(f"✅ Configuration '{config_name}' found.")
+        headers_dict = json.loads(record.headers)
+        cookie_to_use = record.cookies
+
+        # If there's no cookie in the database, load it from the file and update the record.
+        # This is a one-time operation per record without a cookie.
+        if not cookie_to_use:
+            print(f"🍪 No cookie found in DB for '{config_name}'. Loading from file...")
+            cookie_from_file = load_cookie_value()
+            if cookie_from_file:
+                record.cookies = cookie_from_file
+                db.session.commit()
+                cookie_to_use = cookie_from_file
+                print(f"💾 DB record for '{config_name}' updated with the new cookie.")
+            else:
+                print(f"⚠️ Warning: Could not load cookie from file for '{config_name}'. Proceeding without a cookie.")
+        else:
+            print("🍪 Using existing cookie from the database.")
+
+        # Ensure the cookie is part of the headers for the request session.
+        if cookie_to_use:
+            headers_dict['Cookie'] = cookie_to_use
+
+        return {
+            "name": record.name,
+            "base_url": record.base_url,
+            "query_id": record.query_id,
+            "method": record.method,
+            "headers": headers_dict,
+            "referer": record.referer
+        }
 
 
 if __name__ == "__main__":
     config_name = "LinkedIn_Saved_Jobs_Scraper"
-    # save_linkedin_config_to_db()
-    loaded_config = load_linkedin_config(config_name=config_name)
-    print("Loaded configuration:", loaded_config)
+    # To create the initial record if it doesn't exist:
+    # from app import app
+    # with app.app_context():
+    #     save_linkedin_config_to_db()
+
+    # To test loading the configuration:
+    # from app import app
+    # with app.app_context():
+    #     loaded_config = load_linkedin_config(config_name=config_name)
+    #     print("Loaded configuration:", json.dumps(loaded_config, indent=2))

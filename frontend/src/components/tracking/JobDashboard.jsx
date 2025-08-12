@@ -13,6 +13,9 @@ import {
 } from 'chart.js';
 import { RefreshCcw, Settings, Lock, Unlock } from 'lucide-react';
 import { fetchAppliedJobs } from '../../services/jobService.js';
+// --- START: Import cookie management services ---
+import { getLinkedinCookie, updateLinkedinCookie } from '../../services/fetchLinkedinService.js';
+// --- END: Import cookie management services ---
 
 // Register Chart.js components
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
@@ -272,35 +275,54 @@ const JobsTable = ({ jobs }) => {
     );
 };
 
-// --- START OF CHANGES: NEW COLLAPSIBLE SETTINGS COMPONENT ---
-const CookieSettings = ({ onClose }) => {
+// --- START OF CHANGES: UPDATED SETTINGS COMPONENT ---
+const CookieSettings = ({ onClose, onSaveSuccess }) => {
     const [cookieData, setCookieData] = React.useState('');
     const [isLocked, setIsLocked] = React.useState(true);
     const [isLoading, setIsLoading] = React.useState(true);
+    const [statusMessage, setStatusMessage] = React.useState('');
 
-    // Effect to fetch dummy data when the component mounts
+    const identifier = 'LinkedIn_Saved_Jobs_Scraper';
+
+    // Effect to fetch the real cookie data when the component mounts
     React.useEffect(() => {
-        setIsLoading(true);
-        // Simulate a backend fetch with a timeout
-        setTimeout(() => {
-            setCookieData('dummy-cookie-value-from-backend; expires=Fri, 31 Dec 2025 23:59:59 GMT; path=/');
-            setIsLoading(false);
-        }, 800);
-    }, []);
+        const fetchCookie = async () => {
+            setIsLoading(true);
+            setStatusMessage('Fetching cookie...');
+            try {
+                const currentCookie = await getLinkedinCookie(identifier);
+                setCookieData(currentCookie || '');
+                setStatusMessage('Cookie loaded successfully. Unlock to edit.');
+            } catch (error) {
+                const errorMessage = error.response?.data?.error || error.message;
+                setStatusMessage(`Error fetching cookie: ${errorMessage}`);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchCookie();
+    }, []); // Empty dependency array ensures this runs only once on mount
 
     // Handler for saving the cookie data
-    const handleSave = () => {
-        console.log('Saving cookie data:', cookieData);
-        // Here you would typically make an API call to save the data
-        onClose(); // Close the settings panel after saving
+    const handleSave = async () => {
+        setStatusMessage('Saving...');
+        try {
+            const response = await updateLinkedinCookie(identifier, cookieData);
+            setStatusMessage(`✅ ${response.message}`);
+            setIsLocked(true); // Re-lock the field after a successful save
+            onSaveSuccess(); // Trigger the refetch function in the parent component
+        } catch (error) {
+            const errorMessage = error.response?.data?.error || error.message;
+            setStatusMessage(`❌ Save failed: ${errorMessage}`);
+        }
     };
 
     return (
         <div className="bg-gray-800 p-6 rounded-lg shadow-lg mt-6 mb-6 transition-all duration-300">
-            <h3 className="text-xl font-semibold text-white mb-4">Cookie Configuration</h3>
-            <div className="mb-6">
+            <h3 className="text-xl font-semibold text-white mb-4">LinkedIn Scraper Configuration</h3>
+            <div className="mb-4">
                 <label htmlFor="cookie-data" className="block text-sm font-medium text-gray-300 mb-2">
-                    Cookie Content
+                    li_at Cookie
                 </label>
                 <div className="relative">
                     <textarea
@@ -310,7 +332,7 @@ const CookieSettings = ({ onClose }) => {
                         readOnly={isLocked}
                         className={`w-full p-2.5 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-amber-500 focus:border-amber-500 transition-colors duration-200 ${isLocked ? 'cursor-not-allowed bg-gray-600/50' : 'bg-gray-700'}`}
                         rows="4"
-                        placeholder="Cookie data will be loaded here..."
+                        placeholder="Paste your LinkedIn 'li_at' cookie value here..."
                     />
                     <button
                         onClick={() => setIsLocked(!isLocked)}
@@ -320,6 +342,9 @@ const CookieSettings = ({ onClose }) => {
                         {isLocked ? <Lock size={16} /> : <Unlock size={16} />}
                     </button>
                 </div>
+                {statusMessage && (
+                    <p className="mt-2 text-sm text-gray-400">{statusMessage}</p>
+                )}
             </div>
             <div className="flex justify-end gap-4">
                 <button
@@ -333,7 +358,7 @@ const CookieSettings = ({ onClose }) => {
                     disabled={isLocked || isLoading}
                     className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow transition-colors disabled:bg-amber-800 disabled:cursor-not-allowed"
                 >
-                    Save
+                    Save & Refresh Data
                 </button>
             </div>
         </div>
@@ -346,7 +371,7 @@ const CookieSettings = ({ onClose }) => {
 export const JobDashboard = () => {
     const [timePeriod, setTimePeriod] = React.useState('daily');
     const [dateRange, setDateRange] = React.useState('all');
-    const [isSettingsOpen, setIsSettingsOpen] = React.useState(false); // NEW: State to control settings visibility
+    const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
 
     const { data: jobs, isLoading, isError, error, refetch, isFetching } = useQuery({
         queryKey: ['appliedJobs'],
@@ -423,20 +448,19 @@ export const JobDashboard = () => {
                             className={`w-5 h-5 ${isFetching ? 'animate-spin' : ''}`}
                         />
                     </button>
-                    {/* START OF CHANGES: Updated settings button */}
+                    {/* Updated settings button */}
                     <button
-                        onClick={() => setIsSettingsOpen(!isSettingsOpen)} // This now toggles the settings panel
+                        onClick={() => setIsSettingsOpen(!isSettingsOpen)}
                         className="h-10 w-10 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow transition flex items-center justify-center"
                         title="Open settings"
                     >
                         <Settings className="w-5 h-5" />
                     </button>
-                    {/* END OF CHANGES */}
                 </div>
             </div>
 
-            {/* START OF CHANGES: Render the collapsible settings panel */}
-            {isSettingsOpen && <CookieSettings onClose={() => setIsSettingsOpen(false)} />}
+            {/* START OF CHANGES: Render settings panel with onSaveSuccess prop */}
+            {isSettingsOpen && <CookieSettings onClose={() => setIsSettingsOpen(false)} onSaveSuccess={refetch} />}
             {/* END OF CHANGES */}
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">

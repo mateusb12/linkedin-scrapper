@@ -1,10 +1,11 @@
 # backend/controllers/services_controller.py
 from datetime import timezone
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 from dateutil.parser import parse as parse_datetime
 import traceback
 
-from models import Job
+from database.extensions import db
+from models import Job, FetchCurl
 from repository.job_repository import JobRepository
 from services.job_tracking.huntr_service import get_huntr_jobs_data
 from services.linkedin_calls.fetch_linkedin_applied_jobs import fetch_all_linkedin_jobs
@@ -156,3 +157,77 @@ def get_sql_jobs():
         return jsonify([job.to_dict() for job in jobs]), 200
     finally:
         repo.close()
+
+def _get_record_by_identifier(identifier: str) -> FetchCurl | None:
+    """
+    Finds a FetchCurl record by its ID or name.
+    - If the identifier is a digit, it searches by primary key (id).
+    - Otherwise, it searches by the 'name' field.
+
+    Args:
+        identifier: The ID or name of the record.
+
+    Returns:
+        The FetchCurl ORM instance or None if not found.
+    """
+    if identifier.isdigit():
+        return db.session.query(FetchCurl).filter_by(id=int(identifier)).one_or_none()
+    else:
+        return db.session.query(FetchCurl).filter_by(name=identifier).one_or_none()
+
+@services_bp.route("/cookies", methods=["GET", "PUT"])
+def manage_cookies():
+    """
+    A unified endpoint to get or set cookies for a FetchCurl record.
+
+    GET /fetch-curl/cookies?identifier=<id_or_name>
+      - Retrieves the cookies for the specified record.
+
+    PUT /fetch-curl/cookies
+      - Updates the cookies for the record specified in the JSON body.
+      - Body: {"identifier": "<id_or_name>", "cookies": "new_cookie_string"}
+    """
+    # --- Setter (Update) Logic ---
+    if request.method == "PUT":
+        data = request.get_json()
+        if not data or "identifier" not in data or "cookies" not in data:
+            return jsonify({"error": "Missing 'identifier' or 'cookies' in request body"}), 400
+
+        identifier = data.get("identifier")
+        new_cookies = data.get("cookies")
+
+        record = _get_record_by_identifier(str(identifier))
+
+        if not record:
+            return jsonify({"error": f"Record with identifier '{identifier}' not found"}), 404
+
+        try:
+            record.cookies = new_cookies
+            db.session.commit()
+            return jsonify({
+                "message": "Cookies updated successfully",
+                "identifier": identifier,
+                "record": record.to_dict()
+            }), 200
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": "Failed to update cookies", "details": str(e)}), 500
+
+    # --- Getter (Retrieve) Logic ---
+    if request.method == "GET":
+        identifier = request.args.get("identifier")
+        if not identifier:
+            return jsonify({"error": "Missing 'identifier' query parameter"}), 400
+
+        record = _get_record_by_identifier(identifier)
+
+        if not record:
+            return jsonify({"error": f"Record with identifier '{identifier}' not found"}), 404
+
+        return jsonify({
+            "identifier": identifier,
+            "cookies": record.cookies
+        }), 200
+
+    # Fallback for unsupported methods
+    return jsonify({"error": "Method not allowed"}), 405
