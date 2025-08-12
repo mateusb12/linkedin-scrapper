@@ -13,12 +13,64 @@ import {
 } from 'chart.js';
 import { RefreshCcw, Settings, Lock, Unlock } from 'lucide-react';
 import { fetchAppliedJobs } from '../../services/jobService.js';
-// --- START: Import cookie management services ---
 import { getLinkedinCookie, updateLinkedinCookie } from '../../services/fetchLinkedinService.js';
-// --- END: Import cookie management services ---
 
 // Register Chart.js components
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
+
+// --- START: Skeleton Components ---
+// These components are used as placeholders while data is loading or refreshing.
+// They use TailwindCSS's `animate-pulse` for a smooth loading effect.
+
+const DashboardHeaderSkeleton = () => (
+    <div className="mb-6 animate-pulse">
+        <div className="h-9 bg-gray-700 rounded w-1/2 mb-4"></div>
+        <div className="flex items-center gap-4">
+            <div className="h-10 bg-gray-700 rounded-lg w-40"></div>
+            <div className="h-10 w-10 bg-gray-700 rounded-lg"></div>
+            <div className="h-10 w-10 bg-gray-700 rounded-lg"></div>
+        </div>
+    </div>
+);
+
+const ChartSkeleton = () => (
+    <div className="bg-gray-800 p-6 rounded-lg shadow-lg animate-pulse">
+        <div className="flex justify-between items-center mb-4">
+            <div className="h-6 bg-gray-700 rounded w-1/3"></div>
+            <div className="h-9 bg-gray-700 rounded w-24"></div>
+        </div>
+        <div className="h-80 bg-gray-700 rounded-lg"></div>
+    </div>
+);
+
+const TableSkeleton = ({ rows = 5 }) => (
+    <div className="mt-6 bg-gray-800 p-6 rounded-lg shadow-lg animate-pulse">
+        <div className="h-7 bg-gray-700 rounded w-1/4 mb-4"></div>
+        <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-700">
+                <thead className="bg-gray-700/50">
+                <tr>
+                    <th scope="col" className="px-6 py-3"><div className="h-4 bg-gray-600 rounded w-3/4"></div></th>
+                    <th scope="col" className="px-6 py-3"><div className="h-4 bg-gray-600 rounded w-1/2"></div></th>
+                    <th scope="col" className="px-6 py-3"><div className="h-4 bg-gray-600 rounded w-5/6"></div></th>
+                    <th scope="col" className="px-6 py-3"><div className="h-4 bg-gray-600 rounded w-2/3"></div></th>
+                </tr>
+                </thead>
+                <tbody className="bg-gray-800 divide-y divide-gray-700">
+                {Array.from({ length: rows }).map((_, index) => (
+                    <tr key={index}>
+                        <td className="px-6 py-4"><div className="h-4 bg-gray-700 rounded"></div></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-gray-700 rounded w-1/2"></div></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-gray-700 rounded w-5/6"></div></td>
+                        <td className="px-6 py-4"><div className="h-4 bg-gray-700 rounded w-2/3"></div></td>
+                    </tr>
+                ))}
+                </tbody>
+            </table>
+        </div>
+    </div>
+);
+// --- END: Skeleton Components ---
 
 // Theme colors
 const themeColors = {
@@ -275,7 +327,7 @@ const JobsTable = ({ jobs }) => {
     );
 };
 
-// --- START OF CHANGES: UPDATED SETTINGS COMPONENT ---
+// --- COOKIE SETTINGS COMPONENT ---
 const CookieSettings = ({ onClose, onSaveSuccess }) => {
     const [cookieData, setCookieData] = React.useState('');
     const [isLocked, setIsLocked] = React.useState(true);
@@ -284,7 +336,6 @@ const CookieSettings = ({ onClose, onSaveSuccess }) => {
 
     const identifier = 'LinkedIn_Saved_Jobs_Scraper';
 
-    // Effect to fetch the real cookie data when the component mounts
     React.useEffect(() => {
         const fetchCookie = async () => {
             setIsLoading(true);
@@ -301,16 +352,15 @@ const CookieSettings = ({ onClose, onSaveSuccess }) => {
             }
         };
         fetchCookie();
-    }, []); // Empty dependency array ensures this runs only once on mount
+    }, []);
 
-    // Handler for saving the cookie data
     const handleSave = async () => {
         setStatusMessage('Saving...');
         try {
             const response = await updateLinkedinCookie(identifier, cookieData);
             setStatusMessage(`✅ ${response.message}`);
-            setIsLocked(true); // Re-lock the field after a successful save
-            onSaveSuccess(); // Trigger the refetch function in the parent component
+            setIsLocked(true);
+            onSaveSuccess();
         } catch (error) {
             const errorMessage = error.response?.data?.error || error.message;
             setStatusMessage(`❌ Save failed: ${errorMessage}`);
@@ -366,10 +416,9 @@ const CookieSettings = ({ onClose, onSaveSuccess }) => {
         </div>
     );
 };
-// --- END OF CHANGES ---
 
 
-// Main dashboard component
+// --- REFACTORED Main Dashboard Component ---
 export const JobDashboard = () => {
     const [timePeriod, setTimePeriod] = React.useState('daily');
     const [dateRange, setDateRange] = React.useState('all');
@@ -418,8 +467,29 @@ export const JobDashboard = () => {
         { daily: 'Day', weekly: 'Week', monthly: 'Month' }[timePeriod]
     }`;
 
-    if (isLoading) return <div className="text-gray-300 p-8">Loading dashboard... ⏳</div>;
+    // --- START: Skeleton Loading State ---
+    // On initial load (`isLoading`), show a full-page skeleton.
+    if (isLoading) {
+        return (
+            <div className="p-6 bg-gray-900 text-gray-200">
+                <DashboardHeaderSkeleton />
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                    <div className="lg:col-span-3">
+                        <ChartSkeleton />
+                    </div>
+                    <div className="lg:col-span-2">
+                        <ChartSkeleton />
+                    </div>
+                </div>
+                <TableSkeleton />
+            </div>
+        );
+    }
+    // --- END: Skeleton Loading State ---
+
     if (isError) return <div className="text-red-500 p-8">Error: {error.message} 😞</div>;
+
+    // A fallback for the case where there's no error but also no data.
     if (!jobs) return <div className="text-gray-400 p-8">No application data found.</div>;
 
     return (
@@ -427,7 +497,6 @@ export const JobDashboard = () => {
             <div className="mb-6">
                 <h2 className="text-3xl font-bold text-white mb-4">Job Application Dashboard</h2>
                 <div className="flex items-center gap-4">
-                    {/* Date Range Dropdown */}
                     <select
                         value={dateRange}
                         onChange={(e) => setDateRange(e.target.value)}
@@ -446,11 +515,8 @@ export const JobDashboard = () => {
                         className="h-10 w-10 bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow transition disabled:bg-amber-800 disabled:cursor-not-allowed flex items-center justify-center"
                         title="Refresh data"
                     >
-                        <RefreshCcw
-                            className={`w-5 h-5 ${isFetching ? 'animate-spin' : ''}`}
-                        />
+                        <RefreshCcw className={`w-5 h-5 ${isFetching ? 'animate-spin' : ''}`} />
                     </button>
-                    {/* Updated settings button */}
                     <button
                         onClick={() => setIsSettingsOpen(!isSettingsOpen)}
                         className="h-10 w-10 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow transition flex items-center justify-center"
@@ -461,42 +527,54 @@ export const JobDashboard = () => {
                 </div>
             </div>
 
-            {/* START OF CHANGES: Render settings panel with onSaveSuccess prop */}
             {isSettingsOpen && <CookieSettings onClose={() => setIsSettingsOpen(false)} onSaveSuccess={refetch} />}
-            {/* END OF CHANGES */}
 
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                {/* Bar Chart Section */}
-                <div className="lg:col-span-3 bg-gray-800 p-6 rounded-lg shadow-lg">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-xl font-semibold text-white">{barChartTitle}</h3>
-                        <select
-                            value={timePeriod}
-                            onChange={(e) => setTimePeriod(e.target.value)}
-                            className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-amber-500 focus:border-amber-500 block p-2.5"
-                        >
-                            <option value="daily">Daily</option>
-                            <option value="weekly">Weekly</option>
-                            <option value="monthly">Monthly</option>
-                        </select>
+            {/* --- START: Content with Fetching Skeletons --- */}
+            {/* When refetching (`isFetching`), show skeletons for charts and table. */}
+            {isFetching ? (
+                <>
+                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                        <div className="lg:col-span-3"><ChartSkeleton /></div>
+                        <div className="lg:col-span-2"><ChartSkeleton /></div>
                     </div>
-                    <div className="relative h-80">
-                        {chartData && <Bar data={chartData.barData} options={barChartOptions} />}
+                    <TableSkeleton />
+                </>
+            ) : (
+                <>
+                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                        {/* Bar Chart Section */}
+                        <div className="lg:col-span-3 bg-gray-800 p-6 rounded-lg shadow-lg">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-xl font-semibold text-white">{barChartTitle}</h3>
+                                <select
+                                    value={timePeriod}
+                                    onChange={(e) => setTimePeriod(e.target.value)}
+                                    className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-amber-500 focus:border-amber-500 block p-2.5"
+                                >
+                                    <option value="daily">Daily</option>
+                                    <option value="weekly">Weekly</option>
+                                    <option value="monthly">Monthly</option>
+                                </select>
+                            </div>
+                            <div className="relative h-80">
+                                {chartData && <Bar data={chartData.barData} options={barChartOptions} />}
+                            </div>
+                        </div>
+
+                        {/* Doughnut Chart Section */}
+                        <div className="lg:col-span-2 bg-gray-800 p-6 rounded-lg shadow-lg">
+                            <h3 className="text-xl font-semibold text-white mb-4">Applications by Source</h3>
+                            <div className="relative h-80">
+                                {chartData && <Doughnut data={chartData.doughnutData} options={doughnutChartOptions} />}
+                            </div>
+                        </div>
                     </div>
-                </div>
 
-                {/* Doughnut Chart Section */}
-                <div className="lg:col-span-2 bg-gray-800 p-6 rounded-lg shadow-lg">
-                    <h3 className="text-xl font-semibold text-white mb-4">Applications by Source</h3>
-                    <div className="relative h-80">
-                        {chartData && <Doughnut data={chartData.doughnutData} options={doughnutChartOptions} />}
-                    </div>
-                </div>
-            </div>
-
-            {/* Data Table Section */}
-            <JobsTable jobs={filteredJobs} />
-
+                    {/* Data Table Section */}
+                    <JobsTable jobs={filteredJobs} />
+                </>
+            )}
+            {/* --- END: Content with Fetching Skeletons --- */}
         </div>
     );
 };
