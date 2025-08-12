@@ -11,7 +11,7 @@ import {
     Legend,
     ArcElement,
 } from 'chart.js';
-import { RefreshCcw, Settings} from 'lucide-react';
+import { RefreshCcw, Settings, Lock, Unlock } from 'lucide-react';
 import { fetchAppliedJobs } from '../../services/jobService.js';
 
 // Register Chart.js components
@@ -39,8 +39,7 @@ const formatPtDate = (isoDateStr) => {
     return `${dayNum} ${monthStr} ${yearNum}`;
 };
 
-// START OF CHANGES
-// NEW: Format date and time for the table
+// Format date and time for the table
 const formatPtDateTime = (isoDateStr) => {
     if (!isoDateStr) return 'N/A';
     const date = new Date(isoDateStr);
@@ -58,7 +57,6 @@ const formatPtDateTime = (isoDateStr) => {
 
     return `${day}/${month}/${year}, ${hours}:${minutes}:${seconds}`;
 };
-// END OF CHANGES
 
 
 // --- DATE HELPERS ---
@@ -82,7 +80,7 @@ const getMonthStartDate = (date) => {
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
 };
 
-// NEW: Helper to filter jobs by a date range
+// Helper to filter jobs by a date range
 const filterJobsByDateRange = (jobs, range) => {
     if (!jobs || range === 'all') {
         return jobs;
@@ -101,7 +99,7 @@ const filterJobsByDateRange = (jobs, range) => {
             startDateUtc = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate() - 14));
             break;
         case 'last_month':
-             startDateUtc = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth() - 1, nowUtc.getUTCDate()));
+            startDateUtc = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth() - 1, nowUtc.getUTCDate()));
             break;
         case 'last_6_months':
             startDateUtc = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth() - 6, nowUtc.getUTCDate()));
@@ -258,9 +256,7 @@ const JobsTable = ({ jobs }) => {
                         <tbody className="bg-gray-800 divide-y divide-gray-700">
                         {jobs.map((job) => (
                             <tr key={job.urn} className="hover:bg-gray-700/50">
-                                {/* START OF CHANGES */}
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{formatPtDateTime(job.appliedAt)}</td>
-                                {/* END OF CHANGES */}
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{job.source}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{job.title}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
@@ -276,23 +272,90 @@ const JobsTable = ({ jobs }) => {
     );
 };
 
+// --- START OF CHANGES: NEW COLLAPSIBLE SETTINGS COMPONENT ---
+const CookieSettings = ({ onClose }) => {
+    const [cookieData, setCookieData] = React.useState('');
+    const [isLocked, setIsLocked] = React.useState(true);
+    const [isLoading, setIsLoading] = React.useState(true);
+
+    // Effect to fetch dummy data when the component mounts
+    React.useEffect(() => {
+        setIsLoading(true);
+        // Simulate a backend fetch with a timeout
+        setTimeout(() => {
+            setCookieData('dummy-cookie-value-from-backend; expires=Fri, 31 Dec 2025 23:59:59 GMT; path=/');
+            setIsLoading(false);
+        }, 800);
+    }, []);
+
+    // Handler for saving the cookie data
+    const handleSave = () => {
+        console.log('Saving cookie data:', cookieData);
+        // Here you would typically make an API call to save the data
+        onClose(); // Close the settings panel after saving
+    };
+
+    return (
+        <div className="bg-gray-800 p-6 rounded-lg shadow-lg mt-6 mb-6 transition-all duration-300">
+            <h3 className="text-xl font-semibold text-white mb-4">Cookie Configuration</h3>
+            <div className="mb-6">
+                <label htmlFor="cookie-data" className="block text-sm font-medium text-gray-300 mb-2">
+                    Cookie Content
+                </label>
+                <div className="relative">
+                    <textarea
+                        id="cookie-data"
+                        value={isLoading ? 'Loading...' : cookieData}
+                        onChange={(e) => setCookieData(e.target.value)}
+                        readOnly={isLocked}
+                        className={`w-full p-2.5 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-amber-500 focus:border-amber-500 transition-colors duration-200 ${isLocked ? 'cursor-not-allowed bg-gray-600/50' : 'bg-gray-700'}`}
+                        rows="4"
+                        placeholder="Cookie data will be loaded here..."
+                    />
+                    <button
+                        onClick={() => setIsLocked(!isLocked)}
+                        className="absolute top-2.5 right-2.5 p-1.5 bg-gray-600 hover:bg-gray-500 rounded-md text-white transition-colors"
+                        title={isLocked ? 'Unlock to Edit' : 'Lock Field'}
+                    >
+                        {isLocked ? <Lock size={16} /> : <Unlock size={16} />}
+                    </button>
+                </div>
+            </div>
+            <div className="flex justify-end gap-4">
+                <button
+                    onClick={onClose}
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg shadow transition-colors"
+                >
+                    Close
+                </button>
+                <button
+                    onClick={handleSave}
+                    disabled={isLocked || isLoading}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow transition-colors disabled:bg-amber-800 disabled:cursor-not-allowed"
+                >
+                    Save
+                </button>
+            </div>
+        </div>
+    );
+};
+// --- END OF CHANGES ---
+
 
 // Main dashboard component
 export const JobDashboard = () => {
     const [timePeriod, setTimePeriod] = React.useState('daily');
-    const [dateRange, setDateRange] = React.useState('all'); // NEW state for the date range filter
+    const [dateRange, setDateRange] = React.useState('all');
+    const [isSettingsOpen, setIsSettingsOpen] = React.useState(false); // NEW: State to control settings visibility
 
     const { data: jobs, isLoading, isError, error, refetch, isFetching } = useQuery({
-      queryKey: ['appliedJobs'],
-      queryFn: fetchAppliedJobs,
-      staleTime: 5 * 60 * 1000,
-      retry: false
+        queryKey: ['appliedJobs'],
+        queryFn: fetchAppliedJobs,
+        staleTime: 5 * 60 * 1000,
+        retry: false
     });
 
-    // NEW: Filter jobs based on the selected date range before processing
     const filteredJobs = filterJobsByDateRange(jobs, dateRange);
-
-    // Use the filtered jobs for chart processing
     const chartData = (filteredJobs && Array.isArray(filteredJobs)) ? processChartData(filteredJobs, timePeriod) : null;
 
     const barChartOptions = {
@@ -360,15 +423,21 @@ export const JobDashboard = () => {
                             className={`w-5 h-5 ${isFetching ? 'animate-spin' : ''}`}
                         />
                     </button>
+                    {/* START OF CHANGES: Updated settings button */}
                     <button
-                        onClick={() => console.log('Config clicked')}
+                        onClick={() => setIsSettingsOpen(!isSettingsOpen)} // This now toggles the settings panel
                         className="h-10 w-10 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow transition flex items-center justify-center"
                         title="Open settings"
                     >
                         <Settings className="w-5 h-5" />
                     </button>
+                    {/* END OF CHANGES */}
                 </div>
             </div>
+
+            {/* START OF CHANGES: Render the collapsible settings panel */}
+            {isSettingsOpen && <CookieSettings onClose={() => setIsSettingsOpen(false)} />}
+            {/* END OF CHANGES */}
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                 {/* Bar Chart Section */}
@@ -399,8 +468,9 @@ export const JobDashboard = () => {
                 </div>
             </div>
 
-            {/* Data Table Section - now uses filteredJobs */}
+            {/* Data Table Section */}
             <JobsTable jobs={filteredJobs} />
+
         </div>
     );
 };
