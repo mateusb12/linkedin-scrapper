@@ -116,6 +116,8 @@ def load_linkedin_config(config_name: str) -> dict | None:
             print(f"❌ Configuration '{config_name}' not found in the database.")
             return None
 
+        print(f"[DEBUG] Scraper is READING record from DB -> ID: {record.id}, Name: {record.name}")
+
         print(f"✅ Configuration '{config_name}' found.")
         headers_dict = json.loads(record.headers)
         cookie_to_use = record.cookies

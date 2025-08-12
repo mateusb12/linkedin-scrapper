@@ -5,6 +5,7 @@ import os
 import requests
 from typing import List, Dict, Any, Optional, Tuple
 
+from exceptions.service_exceptions import LinkedInScrapingException
 from models import Job
 from repository.job_repository import JobRepository
 from services.linkedin_calls.fetch_linkedin_timestamp import fetch_job_timestamp
@@ -27,7 +28,7 @@ def setup_session(config: Dict[str, Any]) -> requests.Session:
     return requests.Session()
 
 
-def _fetch_initial_data(session: requests.Session, config: Dict[str, Any]) -> Optional[Tuple[int, Dict[str, Any]]]:
+def _fetch_initial_data(session: requests.Session, config: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]: # <-- No longer Optional
     """Fetches the first page to get the total number of saved jobs."""
     print("Fetching first page to get total job count...")
     base_url = config['base_url']
@@ -38,16 +39,18 @@ def _fetch_initial_data(session: requests.Session, config: Dict[str, Any]) -> Op
     )
     try:
         response = session.get(initial_url)
-        response.raise_for_status()
+        response.raise_for_status() # This will raise an exception on 4xx or 5xx errors
         data = response.json()
     except requests.exceptions.RequestException as e:
-        print(f"❌ Error on initial request: {e}")
-        return None
+        # --- FIX: Raise our custom exception instead of returning None ---
+        error_message = f"Failed to fetch initial data from LinkedIn: {e}"
+        print(f"❌ {error_message}")
+        raise LinkedInScrapingException(error_message) from e
 
     total_jobs = data.get('data', {}).get('data', {}).get('searchDashClustersByAll', {}).get('paging', {}).get('total', 0)
     if total_jobs == 0:
+        # This is a valid case, but you might still want to raise an exception if you expect jobs
         print("No saved jobs found on LinkedIn.")
-        return None
 
     return total_jobs, data
 
@@ -152,12 +155,10 @@ def fetch_all_linkedin_jobs() -> List[Job]:
 
     # --- Phase 2: Scrape LinkedIn for new jobs ---
     print("\n--- 🚀 Phase 2: Fetching new jobs from LinkedIn ---")
-    initial_data = _fetch_initial_data(session, config)
+    total_jobs, first_page_data = _fetch_initial_data(session, config)
 
-    if not initial_data:
+    if total_jobs == 0:
         return job_repo.fetch_applied_jobs()
-
-    total_jobs, first_page_data = initial_data
     page_size = 10  # LinkedIn API default
     num_pages = math.ceil(total_jobs / page_size)
     print(f"✅ Found {total_jobs} jobs across {num_pages} pages. Will now process them.\n")

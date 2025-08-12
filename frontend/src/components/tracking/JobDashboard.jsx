@@ -371,7 +371,7 @@ const CookieSettings = ({ onClose, onSaveSuccess }) => {
         <div className="bg-gray-800 p-6 rounded-lg shadow-lg mt-6 mb-6 transition-all duration-300">
             <h3 className="text-xl font-semibold text-white">LinkedIn Scraper Configuration</h3>
             <h2><i>Network Filter</i></h2>
-            <h2 className="mb-4 text-red-500">SEARCH_MY_ITEMS_JOB_SEEKER</h2>
+            <h2 className="mb-4 text-amber-500">SEARCH_MY_ITEMS_JOB_SEEKER</h2>
             <div className="mb-4">
                 <label htmlFor="cookie-data" className="block text-sm font-medium text-gray-300 mb-2">
                     li_at Cookie
@@ -416,7 +416,6 @@ const CookieSettings = ({ onClose, onSaveSuccess }) => {
         </div>
     );
 };
-
 
 // --- REFACTORED Main Dashboard Component ---
 export const JobDashboard = () => {
@@ -467,8 +466,7 @@ export const JobDashboard = () => {
         { daily: 'Day', weekly: 'Week', monthly: 'Month' }[timePeriod]
     }`;
 
-    // --- START: Skeleton Loading State ---
-    // On initial load (`isLoading`), show a full-page skeleton.
+    // --- FIX: The initial loading state is fine, but we will restructure the main return ---
     if (isLoading) {
         return (
             <div className="p-6 bg-gray-900 text-gray-200">
@@ -485,15 +483,12 @@ export const JobDashboard = () => {
             </div>
         );
     }
-    // --- END: Skeleton Loading State ---
 
-    if (isError) return <div className="text-red-500 p-8">Error: {error.message} 😞</div>;
-
-    // A fallback for the case where there's no error but also no data.
-    if (!jobs) return <div className="text-gray-400 p-8">No application data found.</div>;
-
+    // --- FIX: Main component now always renders the header and settings.
+    // The content inside changes based on the query state (error, fetching, or success).
     return (
         <div className="p-6 bg-gray-900 text-gray-200">
+            {/* --- Header and controls are now ALWAYS visible --- */}
             <div className="mb-6">
                 <h2 className="text-3xl font-bold text-white mb-4">Job Application Dashboard</h2>
                 <div className="flex items-center gap-4">
@@ -501,6 +496,7 @@ export const JobDashboard = () => {
                         value={dateRange}
                         onChange={(e) => setDateRange(e.target.value)}
                         className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-amber-500 focus:border-amber-500 block p-2.5"
+                        disabled={isError} // Disable controls on error
                     >
                         <option value="all">All Time</option>
                         <option value="this_week">This Week</option>
@@ -527,54 +523,65 @@ export const JobDashboard = () => {
                 </div>
             </div>
 
+            {/* --- The settings panel is also always available to be opened --- */}
             {isSettingsOpen && <CookieSettings onClose={() => setIsSettingsOpen(false)} onSaveSuccess={refetch} />}
 
-            {/* --- START: Content with Fetching Skeletons --- */}
-            {/* When refetching (`isFetching`), show skeletons for charts and table. */}
-            {isFetching ? (
-                <>
-                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                        <div className="lg:col-span-3"><ChartSkeleton /></div>
-                        <div className="lg:col-span-2"><ChartSkeleton /></div>
+            {/* --- The main content area now handles all states (error, fetching, success) --- */}
+            <div className="mt-6">
+                {isError ? (
+                    <div className="bg-gray-800 p-8 rounded-lg shadow-lg text-center">
+                        <h3 className="text-2xl text-red-500 font-bold">Failed to Fetch Data 😞</h3>
+                        <p className="text-gray-400 mt-2 max-w-2xl mx-auto">
+                            Could not retrieve job application data. This is likely due to an invalid or expired LinkedIn cookie.
+                        </p>
+                        <p className="text-amber-400 mt-4">
+                            Please click the <Settings size={16} className="inline-block mx-1" /> settings icon above to open the configuration panel and update your cookie.
+                        </p>
                     </div>
-                    <TableSkeleton />
-                </>
-            ) : (
-                <>
-                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                        {/* Bar Chart Section */}
-                        <div className="lg:col-span-3 bg-gray-800 p-6 rounded-lg shadow-lg">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-xl font-semibold text-white">{barChartTitle}</h3>
-                                <select
-                                    value={timePeriod}
-                                    onChange={(e) => setTimePeriod(e.target.value)}
-                                    className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-amber-500 focus:border-amber-500 block p-2.5"
-                                >
-                                    <option value="daily">Daily</option>
-                                    <option value="weekly">Weekly</option>
-                                    <option value="monthly">Monthly</option>
-                                </select>
+                ) : isFetching ? (
+                    <>
+                        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                            <div className="lg:col-span-3"><ChartSkeleton /></div>
+                            <div className="lg:col-span-2"><ChartSkeleton /></div>
+                        </div>
+                        <TableSkeleton />
+                    </>
+                ) : (
+                    <>
+                        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                            {/* Bar Chart Section */}
+                            <div className="lg:col-span-3 bg-gray-800 p-6 rounded-lg shadow-lg">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-xl font-semibold text-white">{barChartTitle}</h3>
+                                    <select
+                                        value={timePeriod}
+                                        onChange={(e) => setTimePeriod(e.target.value)}
+                                        className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-amber-500 focus:border-amber-500 block p-2.5"
+                                    >
+                                        <option value="daily">Daily</option>
+                                        <option value="weekly">Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                    </select>
+                                </div>
+                                <div className="relative h-80">
+                                    {chartData && <Bar data={chartData.barData} options={barChartOptions} />}
+                                </div>
                             </div>
-                            <div className="relative h-80">
-                                {chartData && <Bar data={chartData.barData} options={barChartOptions} />}
+
+                            {/* Doughnut Chart Section */}
+                            <div className="lg:col-span-2 bg-gray-800 p-6 rounded-lg shadow-lg">
+                                <h3 className="text-xl font-semibold text-white mb-4">Applications by Source</h3>
+                                <div className="relative h-80">
+                                    {chartData && <Doughnut data={chartData.doughnutData} options={doughnutChartOptions} />}
+                                </div>
                             </div>
                         </div>
 
-                        {/* Doughnut Chart Section */}
-                        <div className="lg:col-span-2 bg-gray-800 p-6 rounded-lg shadow-lg">
-                            <h3 className="text-xl font-semibold text-white mb-4">Applications by Source</h3>
-                            <div className="relative h-80">
-                                {chartData && <Doughnut data={chartData.doughnutData} options={doughnutChartOptions} />}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Data Table Section */}
-                    <JobsTable jobs={filteredJobs} />
-                </>
-            )}
-            {/* --- END: Content with Fetching Skeletons --- */}
+                        {/* Data Table Section */}
+                        <JobsTable jobs={filteredJobs} />
+                    </>
+                )}
+            </div>
         </div>
     );
 };

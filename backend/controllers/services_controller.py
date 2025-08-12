@@ -5,6 +5,7 @@ from dateutil.parser import parse as parse_datetime
 import traceback
 
 from database.extensions import db
+from exceptions.service_exceptions import LinkedInScrapingException
 from models import Job, FetchCurl
 from repository.job_repository import JobRepository
 from services.job_tracking.huntr_service import get_huntr_jobs_data
@@ -123,7 +124,10 @@ def get_all_applied_jobs():
             job["appliedAt"] = job["appliedAt"].isoformat()
 
         return jsonify(all_jobs_sorted), 200
-
+    except LinkedInScrapingException as e:
+        print(f"ERROR during LinkedIn sync: {e}")
+        # Return a 502 Bad Gateway, which is appropriate for a failed upstream request
+        return jsonify({"error": "Failed to fetch data from LinkedIn.", "details": str(e)}), 502
     except Exception as e:
         if isinstance(e, KeyError):
             print("KeyError detected – missing required key:")
@@ -196,10 +200,14 @@ def manage_cookies():
         identifier = data.get("identifier")
         new_cookies = data.get("cookies")
 
+        print(f"\n[DEBUG] Frontend is asking to UPDATE record with IDENTIFIER: '{identifier}'")
+
         record = _get_record_by_identifier(str(identifier))
 
         if not record:
             return jsonify({"error": f"Record with identifier '{identifier}' not found"}), 404
+
+        print(f"[DEBUG] Found record in DB to UPDATE -> ID: {record.id}, Name: {record.name}\n")
 
         try:
             record.cookies = new_cookies
