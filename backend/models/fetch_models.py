@@ -37,6 +37,8 @@ class FetchCurl(db.Model):
     body = Column(Text)  # Stored as a JSON string
     referer = Column(String)
 
+    cookies = Column(Text, nullable=True)
+
     def __repr__(self):
         return f"<FetchCallRecord(id={self.id}, method='{self.method}', url='{self.base_url}')>"
 
