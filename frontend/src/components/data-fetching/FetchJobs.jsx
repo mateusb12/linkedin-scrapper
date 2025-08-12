@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import { Loader2 } from "lucide-react";
 import { ResultsView } from "../home/ResultsView.jsx";
 import {
@@ -7,7 +6,25 @@ import {
     getTotalPages,
     startKeywordExtractionStream
 } from "../../services/fetchLinkedinService.js";
-// Import the new streaming service
+
+// Helper function to format milliseconds into HH:MM:SS
+const formatDuration = (ms) => {
+    if (ms < 0 || !isFinite(ms)) return '00:00:00';
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return [hours, minutes, seconds]
+        .map(v => v.toString().padStart(2, '0'))
+        .join(':');
+};
+
+// Helper function to format a Date object into HH:MM:SS
+const formatTime = (date) => {
+    if (!date || !(date instanceof Date) || !isFinite(date)) return '...';
+    return date.toLocaleTimeString('en-GB'); // en-GB for HH:MM:SS format
+};
+
 
 export const FetchJobsView = () => {
     // --- Existing State ---
@@ -21,7 +38,7 @@ export const FetchJobsView = () => {
     const [progress, setProgress] = useState(0);
     const [fetchedData, setFetchedData] = useState([]);
 
-    // --- New State for Keyword Extraction ---
+    // --- State for Keyword Extraction ---
     const [isExtracting, setIsExtracting] = useState(false);
     const [extractionProgress, setExtractionProgress] = useState(0);
     const [extractionLog, setExtractionLog] = useState([]);
@@ -29,8 +46,9 @@ export const FetchJobsView = () => {
     const [totalToProcess, setTotalToProcess] = useState(0);
     const [processedCount, setProcessedCount] = useState(0);
     const [eventSource, setEventSource] = useState(null);
+    const [extractionStartTime, setExtractionStartTime] = useState(null);
+    const [extractionStats, setExtractionStats] = useState(null);
 
-    // --- Existing Handlers (handleGetTotalPages, handleFetchPages) remain the same ---
     const handleGetTotalPages = async () => {
         setIsFetchingTotal(true);
         setError('');
@@ -75,15 +93,15 @@ export const FetchJobsView = () => {
     };
 
 
-    // --- New Handler for Keyword Extraction ---
-    const handleKeywordExtraction = () => {
-        // Reset state before starting
+    const handleStartExtraction = () => {
         setIsExtracting(true);
         setExtractionProgress(0);
         setExtractionLog([]);
         setExtractionError('');
         setTotalToProcess(0);
         setProcessedCount(0);
+        setExtractionStats(null);
+        setExtractionStartTime(Date.now());
 
         const es = startKeywordExtractionStream(
             (progressData) => { // onProgress
@@ -113,6 +131,46 @@ export const FetchJobsView = () => {
         setEventSource(es);
     };
 
+    const handleStopExtraction = () => {
+        if (eventSource) {
+            eventSource.close();
+        }
+        setIsExtracting(false);
+        setEventSource(null);
+        setExtractionLog(prev => [...prev, '🛑 Extraction stopped by user.']);
+    };
+
+
+    // Effect for calculating real-time stats
+    useEffect(() => {
+        if (!isExtracting || processedCount === 0 || !extractionStartTime || totalToProcess === 0) {
+            setExtractionStats(null);
+            return;
+        }
+
+        const intervalId = setInterval(() => {
+            const elapsedTimeMs = Date.now() - extractionStartTime;
+            if (elapsedTimeMs <= 0 || processedCount === 0) return;
+
+            const timePerJob = elapsedTimeMs / processedCount;
+            const jobsPerMinute = (processedCount / elapsedTimeMs) * 60000;
+            const remainingJobs = totalToProcess - processedCount;
+            const remainingTimeMs = remainingJobs * timePerJob;
+            const eta = new Date(Date.now() + remainingTimeMs);
+
+            setExtractionStats({
+                remaining: remainingJobs,
+                timePerJob: (timePerJob / 1000).toFixed(2),
+                jobsPerMinute: jobsPerMinute.toFixed(1),
+                remainingTime: formatDuration(remainingTimeMs),
+                eta: formatTime(eta),
+            });
+        }, 1000); // Update stats every second
+
+        return () => clearInterval(intervalId);
+    }, [isExtracting, processedCount, totalToProcess, extractionStartTime]);
+
+
     // Cleanup effect to close the connection if the component unmounts
     useEffect(() => {
         return () => {
@@ -132,9 +190,8 @@ export const FetchJobsView = () => {
                 Run the full data fetching and processing pipeline step-by-step.
             </p>
 
-            {/* Step 1: Get Total Pages (Existing UI) */}
+            {/* Step 1: Get Total Pages */}
             <div className="bg-white dark:bg-[#2d2d3d] p-6 rounded-lg shadow-sm border border-gray-300 dark:border-gray-600">
-                {/* ... your existing JSX for Step 1 ... */}
                 <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-300">
                     Step 1: Get Total Available Pages
                 </h2>
@@ -156,10 +213,8 @@ export const FetchJobsView = () => {
                 </div>
             </div>
 
-
-            {/* Step 2: Fetch Page Range (Existing UI) */}
+            {/* Step 2: Fetch Page Range */}
             <div className={`mt-8 bg-white dark:bg-[#2d2d3d] p-6 rounded-lg shadow-sm border border-gray-300 dark:border-gray-600 ${totalPages === 0 ? 'opacity-50' : ''}`}>
-                {/* ... your existing JSX for Step 2 ... */}
                 <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-300">
                     Step 2: Select Pages to Fetch
                 </h2>
@@ -202,7 +257,7 @@ export const FetchJobsView = () => {
                 </div>
             </div>
 
-            {/* --- New UI: Step 3 for Keyword Extraction --- */}
+            {/* Step 3: Keyword Extraction */}
             <div className="mt-8 bg-white dark:bg-[#2d2d3d] p-6 rounded-lg shadow-sm border border-gray-300 dark:border-gray-600">
                 <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-300">
                     Step 3: Extract Keywords & Skills
@@ -210,28 +265,55 @@ export const FetchJobsView = () => {
                 <p className="text-gray-600 dark:text-gray-400 mt-2 mb-4">
                     Process all jobs in the database to extract keywords and skills using the LLM. This is a long-running process that will stream its progress.
                 </p>
-                <button
-                    onClick={handleKeywordExtraction}
-                    disabled={isExtracting || isFetchingPages}
-                    className="py-2 px-4 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-500 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center"
-                >
-                    {isExtracting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                    Start Extraction
-                </button>
+                {!isExtracting ? (
+                    <button
+                        onClick={handleStartExtraction}
+                        disabled={isFetchingPages}
+                        className="py-2 px-4 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-500 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center"
+                    >
+                        Start Extraction
+                    </button>
+                ) : (
+                    <button
+                        onClick={handleStopExtraction}
+                        className="py-2 px-4 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-500 transition-colors flex items-center"
+                    >
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin"/>
+                        Stop Extraction
+                    </button>
+                )}
             </div>
 
-            {/* Progress Bar and Log for Page Fetching (Existing UI) */}
+            {/* Progress Bar and Log for Page Fetching */}
             {(isFetchingPages || log.length > 0) && (
                 <div className="mt-8">
-                    {/* ... your existing JSX for page fetching progress ... */}
+                    <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-300">Fetch Progress</h2>
+                    {isFetchingPages && (
+                        <div className="mt-4">
+                            <div className="flex justify-between mb-1">
+                                <span className="text-base font-medium text-blue-700 dark:text-white">Progress</span>
+                                <span
+                                    className="text-sm font-medium text-blue-700 dark:text-white">{Math.round(progress)}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                                <div className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                                     style={{width: `${progress}%`}}></div>
+                            </div>
+                        </div>
+                    )}
+                    {error &&
+                        <p className="mt-4 text-sm text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-md">{error}</p>}
+                    <pre className="mt-4 p-4 bg-gray-900 text-white rounded-lg text-sm font-mono overflow-x-auto h-64">
+                        {log.map((entry, i) => <div key={i}>{entry}</div>)}
+                    </pre>
                 </div>
             )}
 
-            {/* --- New UI: Progress Bar and Log for Extraction --- */}
+            {/* Progress Bar, Stats, and Log for Extraction */}
             {(isExtracting || extractionLog.length > 0) && (
                 <div className="mt-8">
                     <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-300">Extraction Progress</h2>
-                    {isExtracting && totalToProcess > 0 && (
+                    {(isExtracting || processedCount > 0) && totalToProcess > 0 && (
                         <div className="mt-4">
                             <div className="flex justify-between mb-1">
                                 <span className="text-base font-medium text-purple-700 dark:text-white">
@@ -245,6 +327,19 @@ export const FetchJobsView = () => {
                                 <div className="bg-purple-600 h-2.5 rounded-full transition-all duration-300"
                                      style={{width: `${extractionProgress}%`}}></div>
                             </div>
+                            {extractionStats && (
+                                <div className="mt-3 flex flex-wrap items-center justify-center text-center gap-x-4 gap-y-2 text-sm text-gray-600 dark:text-gray-400 font-mono bg-gray-100 dark:bg-gray-900/50 p-3 rounded-md">
+                                    <span>remaining: <strong className="text-gray-800 dark:text-gray-200">{extractionStats.remaining}</strong></span>
+                                    <span className="text-gray-400 dark:text-gray-600 hidden sm:inline">|</span>
+                                    <span>time/job: <strong className="text-gray-800 dark:text-gray-200">{extractionStats.timePerJob}s</strong></span>
+                                    <span className="text-gray-400 dark:text-gray-600 hidden sm:inline">|</span>
+                                    <span>jobs/min: <strong className="text-gray-800 dark:text-gray-200">{extractionStats.jobsPerMinute}</strong></span>
+                                    <span className="text-gray-400 dark:text-gray-600 hidden md:inline">|</span>
+                                    <span>rem time: <strong className="text-gray-800 dark:text-gray-200">{extractionStats.remainingTime}</strong></span>
+                                    <span className="text-gray-400 dark:text-gray-600 hidden md:inline">|</span>
+                                    <span>ETA: <strong className="text-gray-800 dark:text-gray-200">{extractionStats.eta}</strong></span>
+                                </div>
+                            )}
                         </div>
                     )}
                     {extractionError &&
@@ -256,7 +351,7 @@ export const FetchJobsView = () => {
             )}
 
 
-            {/* Results Output (Existing UI) */}
+            {/* Results Output */}
             {fetchedData.length > 0 && !isFetchingPages && (
                 <ResultsView data={fetchedData} />
             )}
