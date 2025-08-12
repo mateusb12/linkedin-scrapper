@@ -319,7 +319,9 @@ const CookieSettings = ({ onClose, onSaveSuccess }) => {
 
     return (
         <div className="bg-gray-800 p-6 rounded-lg shadow-lg mt-6 mb-6 transition-all duration-300">
-            <h3 className="text-xl font-semibold text-white mb-4">LinkedIn Scraper Configuration</h3>
+            <h3 className="text-xl font-semibold text-white">LinkedIn Scraper Configuration</h3>
+            <h2><i>Network Filter</i></h2>
+            <h2 className="mb-4 text-red-500">SEARCH_MY_ITEMS_JOB_SEEKER</h2>
             <div className="mb-4">
                 <label htmlFor="cookie-data" className="block text-sm font-medium text-gray-300 mb-2">
                     li_at Cookie
