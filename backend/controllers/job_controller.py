@@ -11,13 +11,38 @@ from repository.job_repository import JobRepository, incomplete_job_condition
 job_data_bp = Blueprint("jobs", __name__, url_prefix="/jobs")
 
 
+# --- SHARED HELPER FUNCTIONS ---
+
+def get_job_status(job: Job) -> str:
+    """
+    Determines if a job is 'complete' or 'incomplete'.
+
+    The criterion is based on the 'processed' flag, which is the same logic
+    used by the `keywords-stream` endpoint to identify jobs that need
+    LLM-based field expansion. A job is incomplete if `processed` is not `True`.
+    """
+    return "complete" if job.processed else "incomplete"
+
+
+def _job_to_dict_with_status(job: Job) -> dict:
+    """Converts a Job object to a dictionary and adds the calculated 'status' field."""
+    job_dict = job.to_dict()
+    job_dict["status"] = get_job_status(job)
+    return job_dict
+
+
+# --- END SHARED HELPER FUNCTIONS ---
+
+
 @job_data_bp.route("/", methods=["GET"])
 @job_data_bp.route("/all", methods=["GET"])
 def get_all_jobs():
+    """Retrieves all jobs and adds a 'status' field to each."""
     repo = JobRepository()
     try:
         jobs = repo.get_all()
-        return jsonify([j.to_dict() for j in jobs]), 200
+        # Use the helper to add the 'status' field to each job's dictionary
+        return jsonify([_job_to_dict_with_status(j) for j in jobs]), 200
     except Exception as e:
         repo.rollback()
         return jsonify({"error": str(e)}), 500
