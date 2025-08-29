@@ -1,16 +1,14 @@
 import React from 'react';
-import {LogOut, Moon, Sun} from "lucide-react";
-import { useState, useEffect } from 'react';
-import {useDarkMode} from "../../hooks/useDarkMode.jsx";
+import { LogOut, Moon, Sun, Settings, Briefcase, List, ClipboardList, Users, User } from "lucide-react";
 
 export const Sidebar = ({ activeView, setActiveView }) => {
     const navItems = [
-        { label: "Fetch Config", id: "fetch-config" },
-        { label: "Fetch Jobs", id: "fetch-jobs" },
-        { label: "Job Listings", id: "job-listings" },
-        { label: "Job Tracking", id: "tracking" },
-        { label: "Match", id: "match" },
-        { label: "Profile", id: "profile" }
+        { label: "Fetch Config", id: "fetch-config", icon: Settings },
+        { label: "Fetch Jobs", id: "fetch-jobs", icon: Briefcase },
+        { label: "Job Listings", id: "job-listings", icon: List },
+        { label: "Job Tracking", id: "tracking", icon: ClipboardList },
+        { label: "Match", id: "match", icon: Users },
+        { label: "Profile", id: "profile", icon: User }
     ];
 
     const profile = {
@@ -22,16 +20,17 @@ export const Sidebar = ({ activeView, setActiveView }) => {
     return (
         <aside className="w-64 flex-shrink-0 bg-white dark:bg-[#2d2d3d] p-5 flex flex-col justify-between">
             <nav className="flex flex-col space-y-2">
-                {navItems.map(({ label, id }) => (
+                {navItems.map(({ label, id, icon: Icon }) => (
                     <button
                         key={id}
                         onClick={() => setActiveView(id)}
-                        className={`w-full text-left p-3 rounded-lg text-base font-medium transition-colors ${
+                        className={`w-full flex items-center gap-3 text-left p-3 rounded-lg text-base font-medium transition-colors ${
                             activeView === id
                                 ? 'bg-blue-600 text-white font-semibold dark:bg-[#4a4a6a]'
                                 : 'text-gray-700 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-[#4a4a6a] dark:hover:text-white'
                         }`}
                     >
+                        <Icon size={20} />
                         {label}
                     </button>
                 ))}
@@ -52,27 +51,5 @@ export const Sidebar = ({ activeView, setActiveView }) => {
                 </div>
             </div>
         </aside>
-    );
-};
-
-export const Header = ({ handleLogout }) => {
-    const [isDark, toggleDarkMode] = useDarkMode();
-    return (
-        <header className="h-14 flex items-center justify-end px-4 bg-gray-200 dark:bg-gray-800 shadow-sm space-x-2">
-            <button
-                onClick={toggleDarkMode}
-                className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-300 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-400 dark:hover:bg-gray-600 transition-colors"
-                aria-label="Toggle dark mode"
-            >
-                {isDark ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
-            <button
-                onClick={handleLogout}
-                className="w-9 h-9 flex items-center justify-center rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
-                aria-label="Logout"
-            >
-                <LogOut size={18} />
-            </button>
-        </header>
     );
 };
