@@ -133,8 +133,8 @@ export default function FetchConfig() {
                     <label htmlFor="toggle" className="flex items-center cursor-pointer">
                         <div className="relative">
                             <input type="checkbox" id="toggle" className="sr-only" checked={isTokenMode} onChange={() => setIsTokenMode(!isTokenMode)} />
-                            <div className="block bg-gray-600 w-14 h-8 rounded-full"></div>
-                            <div className="dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform"></div>
+                            <div className={`block w-14 h-8 rounded-full ${isTokenMode ? "bg-teal-400" : "bg-purple-400"}`}></div>
+                            <div className={`dot absolute top-1 left-1 w-6 h-6 rounded-full bg-white transform transition-transform duration-300 ${isTokenMode ? "translate-x-6" : ""}`}></div>
                         </div>
                     </label>
                     <span className={`text-sm font-medium ${isTokenMode ? 'text-blue-500' : 'text-gray-500'}`}>Token Only</span>
@@ -144,21 +144,63 @@ export default function FetchConfig() {
             {isTokenMode ? (
                 <div className="space-y-6 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
                     <div>
-                        <div className="flex justify-between items-center mb-1">
-                            <label htmlFor="csrf-token" className="block text-sm font-medium text-gray-700 dark:text-gray-300">CSRF Token</label>
-                            <button onClick={() => fetchAndSetData("🔄 Refreshing tokens...")} title="Refresh tokens from backend" className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400"><RefreshIcon /></button>
+                        <div className="flex items-center mb-1 space-x-2">
+                            <button
+                                onClick={() => fetchAndSetData("🔄 Refreshing tokens...")}
+                                title="Refresh tokens from backend"
+                                className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400"
+                            >
+                                <RefreshIcon />
+                            </button>
+                            <label
+                                htmlFor="csrf-token"
+                                className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                            >
+                                CSRF Token
+                            </label>
                         </div>
-                        <input type="text" id="csrf-token" value={csrfToken} onChange={(e) => setCsrfToken(e.target.value)} placeholder="ajax:1234567890123456789" className="w-full p-2 border border-gray-300 rounded-md shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"/>
+                        <input
+                            type="text"
+                            id="csrf-token"
+                            value={csrfToken}
+                            onChange={(e) => setCsrfToken(e.target.value)}
+                            placeholder="ajax:1234567890123456789"
+                            className="w-full p-2 border border-gray-300 rounded-md shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
+                        />
                     </div>
                     <div>
-                        <div className="flex justify-between items-center mb-1">
-                            <label htmlFor="cookie" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Cookie</label>
-                            <button onClick={() => fetchAndSetData("🔄 Refreshing tokens...")} title="Refresh tokens from backend" className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400"><RefreshIcon /></button>
+                        <div className="flex items-center mb-1 space-x-2">
+                            <button
+                                onClick={() => fetchAndSetData("🔄 Refreshing tokens...")}
+                                title="Refresh tokens from backend"
+                                className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400"
+                            >
+                                <RefreshIcon />
+                            </button>
+                            <label
+                                htmlFor="cookie"
+                                className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                            >
+                                Cookie
+                            </label>
                         </div>
-                        <textarea id="cookie" value={cookie} onChange={(e) => setCookie(e.target.value)} rows={6} placeholder="li_at=...; JSESSIONID=...;" className="w-full p-2 border border-gray-300 rounded-md shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500 font-mono text-xs"/>
+                        <textarea
+                            id="cookie"
+                            value={cookie}
+                            onChange={(e) => setCookie(e.target.value)}
+                            rows={6}
+                            placeholder="li_at=...; JSESSIONID=...;"
+                            className="w-full p-2 border border-gray-300 rounded-md shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500 font-mono text-xs"
+                        />
                     </div>
                     <div className="flex items-center space-x-4">
-                        <button onClick={handleTokenSave} disabled={!cookie || !csrfToken} className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed">Save Tokens</button>
+                        <button
+                            onClick={handleTokenSave}
+                            disabled={!cookie || !csrfToken}
+                            className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        >
+                            Save Tokens
+                        </button>
                         {statusMessage.general && <p className="text-sm">{statusMessage.general}</p>}
                     </div>
                 </div>
