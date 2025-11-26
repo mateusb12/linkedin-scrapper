@@ -15,6 +15,7 @@ import {
     Users
 } from 'lucide-react';
 import { getSkillsArray, normalizeKeyword } from "./MatchLogic.jsx";
+
 import csharp from "../../assets/skills_icons/csharp.svg";
 import python from "../../assets/skills_icons/python.svg";
 import js from "../../assets/skills_icons/javascript.svg";

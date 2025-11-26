@@ -3,10 +3,10 @@
 from sqlalchemy import Column, String, Text, ForeignKey, Integer, Boolean, JSON, DateTime
 from sqlalchemy.orm import relationship
 
-from database.extensions import db
+from .base_model import Base
 
 
-class Company(db.Model):
+class Company(Base):
     __tablename__ = 'companies'
 
     # Columns based on the 'company' object in the JSON
@@ -33,7 +33,7 @@ class Company(db.Model):
         return data
 
 
-class Job(db.Model):
+class Job(Base):
     __tablename__ = 'jobs'
 
     # Columns based on the top-level job objects in the JSON

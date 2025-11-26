@@ -29,3 +29,5 @@
 /frontend/public/myProfile.md
 /backend/services/embeddings/cache.json
 /backend/services/job_tracking/linkedin_cookie.txt
+/frontend/*.env
+/frontend/.env*

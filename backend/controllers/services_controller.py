@@ -4,11 +4,11 @@ from flask import Blueprint, jsonify, request
 from dateutil.parser import parse as parse_datetime
 import traceback
 
-from database.extensions import db
 from exceptions.service_exceptions import LinkedInScrapingException
 from models import Job, FetchCurl
 from repository.job_repository import JobRepository
 from services.job_tracking.huntr_service import get_huntr_jobs_data
+from database.database_connection import get_db_session
 from services.linkedin_calls.fetch_linkedin_applied_jobs import fetch_all_linkedin_jobs
 
 services_bp = Blueprint("services", __name__, url_prefix="/services")
@@ -174,10 +174,13 @@ def _get_record_by_identifier(identifier: str) -> FetchCurl | None:
     Returns:
         The FetchCurl ORM instance or None if not found.
     """
-    if identifier.isdigit():
-        return db.session.query(FetchCurl).filter_by(id=int(identifier)).one_or_none()
-    else:
-        return db.session.query(FetchCurl).filter_by(name=identifier).one_or_none()
+    session = get_db_session()
+    try:
+        if isinstance(identifier, int) or identifier.isdigit():
+            return session.query(FetchCurl).filter_by(id=int(identifier)).one_or_none()
+        return session.query(FetchCurl).filter_by(name=identifier).one_or_none()
+    finally:
+        session.close()
 
 @services_bp.route("/cookies", methods=["GET", "PUT"])
 def manage_cookies():

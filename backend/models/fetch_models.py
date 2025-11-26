@@ -6,13 +6,13 @@ from urllib.parse import urlparse, parse_qs
 
 # --- SQLAlchemy ORM Setup ---
 from sqlalchemy import create_engine, Column, Integer, String, Text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session
 
-from database.extensions import db
+from .base_model import Base
 
 
 # 2. Define the ORM Model for our data
-class FetchCurl(db.Model):
+class FetchCurl(Base):
     """
     SQLAlchemy ORM model to store the flattened fetch call data in a database.
     """
@@ -169,52 +169,3 @@ def parse_fetch_string_flat(fetch_string: str) -> Optional[FlatFetchCall]:
         print(f"An error occurred during parsing: {e}")
         return None
 
-
-# --- Example Usage ---
-if __name__ == "__main__":
-    # 3. Setup the database engine (in-memory SQLite for this example)
-    engine = create_engine('sqlite:///:memory:')
-
-    # 4. Create the table in the database
-    Base.metadata.create_all(engine)
-
-    # 5. Create a session to interact with the database
-    Session = sessionmaker(bind=engine)
-    session = Session()
-
-    # The input string provided by the user
-    input_string = r'''
-    fetch("https://www.linkedin.com/voyager/api/graphql?variables=(count:24,jobCollectionSlug:recommended,query:(origin:GENERIC_JOB_COLLECTIONS_LANDING),start:48)&queryId=voyagerJobsDashJobCards.93590893e4adb90623f00d61719b838c", {
-      "headers": { "Referer": "https://www.linkedin.com/jobs/collections/recommended/" },
-      "body": null, "method": "GET" });
-    '''
-    cleaned_string = " ".join(input_string.split())
-
-    # Parse the string into the intermediate dataclass
-    structured_data = parse_fetch_string_flat(cleaned_string)
-
-    if structured_data:
-        print("--- Parsing Successful ---")
-
-        # Convert the dataclass to a dictionary
-        data_dict = asdict(structured_data)
-
-        # Create an instance of the ORM model
-        new_record = FetchCurl(**data_dict)
-        print(f"\n[+] Created ORM object: {new_record}")
-
-        # Add the new record to the session and commit to the database
-        session.add(new_record)
-        session.commit()
-        print("\n[+] Record committed to the in-memory database.")
-
-        # Verify by querying the database
-        retrieved_record = session.query(FetchCurl).first()
-        print("\n[+] Verified by querying the database:")
-        print(f"  - ID: {retrieved_record.id}")
-        print(f"  - Method: {retrieved_record.method}")
-        print(f"  - Referer: {retrieved_record.referer}")
-        print(f"  - Headers (JSON): {retrieved_record.headers[:50]}...")
-
-    # Close the session
-    session.close()

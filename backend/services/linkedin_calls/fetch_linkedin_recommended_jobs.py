@@ -39,11 +39,18 @@ def fetch_page_data_from_api(page_number: int, quiet: bool = False) -> Optional[
     """
     try:
         db_content = _load_pagination_job_curl_command()
+        if not db_content:
+            raise ValueError("No pagination cURL command found in the database.")
         url, headers = parse_curl_command_from_orm(db_content)
         if not quiet:
             print("--- Successfully parsed pagination cURL command ---")
     except Exception as e:
         raise RuntimeError(f"Failed to parse pagination cURL: {e}") from e
+
+    if db_content is None:
+        raise ValueError(
+            "Pagination cURL has not been configured. Use PUT /fetch-jobs/pagination-curl to set it."
+        )
 
     count_match = re.search(r"count:(\d+)", url)
     count = int(count_match.group(1)) if count_match else 24

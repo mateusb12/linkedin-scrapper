@@ -1,10 +1,10 @@
 from sqlalchemy import Column, Integer, JSON, String, ForeignKey, Text
 from sqlalchemy.orm import relationship
 
-from database.extensions import db
+from models import Base
 
 
-class Resume(db.Model):
+class Resume(Base):
     __tablename__ = 'resume'
 
     id = Column(Integer, primary_key=True)
@@ -37,7 +37,7 @@ class Resume(db.Model):
         }
 
 
-class Profile(db.Model):
+class Profile(Base):
     __tablename__ = 'profile'
 
     id = Column(Integer, primary_key=True)
