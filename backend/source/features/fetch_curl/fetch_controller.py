@@ -1,9 +1,7 @@
 from flask import Blueprint, request, jsonify, abort
-from database.populator import populate_from_json
 from source.features.fetch_curl.fetch_service import FetchService
 
-# Define Blueprint
-fetch_curl_bp = Blueprint("fetch_curl", __name__, url_prefix="/fetch-jobs")
+fetch_curl_bp = Blueprint("fetch_curl", __name__, url_prefix="/config")
 
 @fetch_curl_bp.route("/curl/<string:name>", methods=["GET"])
 def get_config(name: str):
@@ -24,7 +22,8 @@ def update_config(name: str):
     except ValueError as e:
         return abort(400, description=str(e))
 
-# --- Legacy/Specific Aliases (Frontend uses these) ---
+# --- Legacy/Specific Aliases ---
+# These are still "Config" actions, so they belong here under /config
 
 @fetch_curl_bp.route("/pagination-curl", methods=["GET", "PUT"])
 def handle_pagination_curl():
@@ -35,22 +34,3 @@ def handle_pagination_curl():
 def handle_individual_curl():
     if request.method == "GET": return get_config("SingleJob")
     return update_config("SingleJob")
-
-# --- Execution Endpoints ---
-
-@fetch_curl_bp.route('/get-total-pages')
-def get_total_pages():
-    pages = FetchService.get_total_pages()
-    return jsonify({"total_pages": pages})
-
-@fetch_curl_bp.route('/fetch-page/<int:page_number>', methods=['GET'])
-def fetch_page(page_number: int):
-    data = FetchService.execute_fetch_page(page_number)
-    if not data:
-        return abort(500, description="Failed to fetch data from LinkedIn")
-
-    # Optional: If you want to save to the main DB immediately
-    # This is an external dependency we might want to decouple later
-    populate_from_json(data)
-
-    return jsonify(data)

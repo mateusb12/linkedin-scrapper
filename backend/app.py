@@ -7,11 +7,11 @@ from flask import Flask, request
 from flask_cors import CORS
 
 from controllers.job_controller import job_data_bp
-from controllers.job_curls_controller import fetch_jobs_bp
 from controllers.resume_data import resume_bp
 from database.database_connection import create_db_and_tables
 from path.file_content_loader import load_db_path
 from source.features.fetch_curl import fetch_curl_bp
+from source.features.job_population.population_controller import population_bp
 
 load_dotenv()
 
@@ -24,6 +24,7 @@ CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 app.register_blueprint(fetch_curl_bp)
 # app.register_blueprint(fetch_jobs_bp)
 app.register_blueprint(job_data_bp)
+app.register_blueprint(population_bp)
 app.register_blueprint(resume_bp)
 app.register_blueprint(profile_bp)
 app.register_blueprint(services_bp)

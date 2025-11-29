@@ -1,39 +1,46 @@
 import axios from "axios";
 
-// Best practice: Define a single base URL for your API
 const API_BASE_URL = "http://localhost:5000";
 
-// URLs for different blueprints
-const FETCH_JOBS_URL = `${API_BASE_URL}/fetch-jobs`;
-const SERVICES_URL = `${API_BASE_URL}/services`; // <-- URL for the /services blueprint
+// ✅ UPDATED: Distinct constants for distinct resources
+const PIPELINE_URL = `${API_BASE_URL}/pipeline`; // For running the fetch process
+const CONFIG_URL = `${API_BASE_URL}/config`;     // For saving cURL settings
+const SERVICES_URL = `${API_BASE_URL}/services`;
 
+// 1. Pipeline Actions
 export async function getTotalPages() {
-    // Using the more specific URL variable
-    const res = await axios.get(`${FETCH_JOBS_URL}/get-total-pages`);
+    const res = await axios.get(`${PIPELINE_URL}/get-total-pages`);
     return res.data.total_pages;
 }
 
 export async function fetchJobsByPageRange(startPage, endPage, onProgress, onLog) {
     const totalPagesToFetch = endPage - startPage + 1;
-    let allData = [];
     let successfulFetches = 0;
+    let allData = [];
 
     for (let i = startPage; i <= endPage; i++) {
         try {
             onLog?.(`Fetching page ${i}...`);
-            // Using the more specific URL variable
-            const res = await axios.get(`${FETCH_JOBS_URL}/fetch-page/${i}`);
+            // ✅ UPDATED URL
+            const res = await axios.get(`${PIPELINE_URL}/fetch-page/${i}`);
 
-            if (Array.isArray(res.data.jobs)) {
-                allData.push(...res.data.jobs);
-                onLog?.(`✅ Successfully fetched page ${i}`);
+            if (res.data.success) {
+                const count = res.data.count || 0;
+                const totalFound = res.data.total_found || 0;
+
+                if (count > 0) {
+                    onLog?.(`✅ Page ${i}: Saved ${count} new jobs (Found ${totalFound})`);
+                } else {
+                    onLog?.(`⚠️ Page ${i}: Processed successfully but no new jobs saved.`);
+                }
+                successfulFetches++;
             } else {
-                onLog?.(`⚠️ Page ${i} response did not contain a 'jobs' array.`);
+                const msg = res.data.message || res.data.error || "Unknown backend error";
+                onLog?.(`⚠️ Page ${i}: Backend reported failure: ${msg}`);
             }
 
-            successfulFetches++;
         } catch (err) {
-            const errorMessage = err.response?.data?.description || err.message;
+            const errorMessage = err.response?.data?.description || err.response?.data?.error || err.message;
             onLog?.(`❌ Failed to fetch page ${i}: ${errorMessage}`);
 
             const isNetworkError =
@@ -53,63 +60,52 @@ export async function fetchJobsByPageRange(startPage, endPage, onProgress, onLog
     return { data: allData, successCount: successfulFetches };
 }
 
+// 2. Configuration Actions (If you have a settings page calling these)
+// You didn't show the frontend code for these, but if they exist, update them:
+export async function savePaginationCurl(curlString) {
+    return axios.put(`${CONFIG_URL}/pagination-curl`, { curl: curlString });
+}
+
+export async function saveIndividualJobCurl(curlString) {
+    return axios.put(`${CONFIG_URL}/individual-job-curl`, { curl: curlString });
+}
+
+// ... existing Keyword Extraction and Cookie functions remain unchanged ...
 export const startKeywordExtractionStream = (onProgress, onComplete, onError) => {
-    // Connect to the new streaming endpoint using the correct base URL and path
+    // This is on a different controller (JobController), so ensure that URL is correct too.
+    // Assuming your app.py registers job_data_bp with /jobs prefix:
     const eventSource = new EventSource(`${API_BASE_URL}/jobs/keywords-stream`);
 
-    // Listener for regular data messages
+    // ... rest of stream logic ...
     eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        onProgress(data); // Pass the data to the component's handler
+        onProgress(data);
     };
 
-    // Listener for the custom 'complete' event from the backend
     eventSource.addEventListener('complete', (event) => {
         const data = JSON.parse(event.data);
         onComplete(data);
-        eventSource.close(); // Close the connection on completion
+        eventSource.close();
     });
 
-    // Listener for connection errors or custom 'error' events from the backend
     eventSource.onerror = (event) => {
         let errorData;
         if (event.data) {
-            try {
-                errorData = JSON.parse(event.data);
-            } catch (e) {
-                errorData = { error: "An unknown error occurred, and the error payload was not valid JSON." };
-            }
+            try { errorData = JSON.parse(event.data); } catch (e) { errorData = { error: "Unknown error" }; }
         } else {
-            errorData = { error: "Connection to the server was lost. Please check the backend console." };
+            errorData = { error: "Connection lost." };
         }
         onError(errorData);
-        eventSource.close(); // Close the connection on error
+        eventSource.close();
     };
-
     return eventSource;
 };
 
-
-// --- NEW FUNCTIONS FOR COOKIE MANAGEMENT ---
-
-/**
- * Fetches the current LinkedIn cookie from the backend.
- * @param {string | number} identifier - The name or ID of the FetchCurl record (e.g., 'LinkedIn_Saved_Jobs_Scraper').
- * @returns {Promise<string>} The cookie string.
- */
 export async function getLinkedinCookie(identifier) {
-    const res = await axios.get(`${SERVICES_URL}/cookies`, {
-        params: { identifier }
-    });
+    const res = await axios.get(`${SERVICES_URL}/cookies`, { params: { identifier } });
     return res.data.cookies;
 }
 
-/**
- * Updates the LinkedIn cookie in the backend.
- * @param {string | number} identifier - The name or ID of the FetchCurl record.
- * @param {string} cookies - The new cookie string to save.
- * @returns {Promise<object>} The success response from the server.
- */
 export async function updateLinkedinCookie(identifier, cookies) {
     const payload = { identifier, cookies };
     const res = await axios.put(`${SERVICES_URL}/cookies`, payload);
