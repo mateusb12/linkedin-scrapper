@@ -16,7 +16,6 @@ def get_total_pages():
 def fetch_page_endpoint(page_number: int):
     try:
         result = PopulationService.fetch_and_save_page(page_number)
-
         # If success=False, we can still return 200 with the error message
         # or return 500. Returning 200 allows the frontend to handle "soft" failures gracefully.
         return jsonify(result), 200

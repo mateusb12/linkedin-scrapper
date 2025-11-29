@@ -88,3 +88,30 @@ class FetchService:
         count = data.get('paging', {}).get('count', 25)
 
         return math.ceil(total_jobs / count)
+
+    @staticmethod
+    def execute_fetch_page_raw(page_number: int) -> Optional[Dict]:
+        """
+        Executes the request and returns the RAW JSON response.
+        Used by the job_population feature to handle its own parsing.
+        """
+        db = get_db_session()
+        try:
+            record = db.query(FetchCurl).filter(FetchCurl.name == "Pagination").first()
+            if not record:
+                # If this raises, the user sees "Pagination cURL not configured" in logs
+                raise ValueError("Pagination cURL not configured in database.")
+
+            # ORM constructs the valid URL/Headers based on the stored config
+            url, headers = record.construct_request(page_number=page_number)
+
+            print(f"🚀 [Raw Fetch] Page {page_number}...")
+            response = requests.get(url, headers=headers, timeout=15)
+            response.raise_for_status()
+
+            return response.json()
+        except Exception as e:
+            print(f"❌ [FetchService] Raw Fetch failed: {e}")
+            return None
+        finally:
+            db.close()
