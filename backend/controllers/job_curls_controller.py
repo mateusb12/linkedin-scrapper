@@ -1,35 +1,23 @@
-from dataclasses import asdict
-
 from flask import Blueprint, abort, jsonify, request
-from sqlalchemy.orm.exc import NoResultFound
 
 from database.database_connection import get_db_session
 from database.populator import populate_from_json
 from linkedin.api_fetch.orchestrator import get_total_job_pages, run_fetch_for_page
 from models import FetchCurl
-from models.fetch_models import parse_fetch_string_flat
-from utils.node_fetch_conversion import looks_like_node_fetch, parse_fetch_to_dict
+
+# Notice: Parsing imports (asdict, looks_like_node_fetch, etc.) are removed from here.
 
 fetch_jobs_bp = Blueprint("fetch-jobs", __name__, url_prefix="/fetch-jobs")
 
 
 # --- Helper Functions for DB Logic ---
-# These functions contain the core database interaction logic, allowing the
-# routes to remain clean and focused on request handling.
 
 def _get_curl_by_name(name: str):
     """
-    Helper function to retrieve a FetchCurl object by its name from the database.
-
-    Args:
-        name: The unique name of the cURL configuration to retrieve.
-
-    Returns:
-        A Flask JSON response tuple (dict, status_code).
+    Helper function to retrieve a FetchCurl object by its name.
     """
     db = get_db_session()
     try:
-        # Use .first() to get the first matching record.
         curl_record = db.query(FetchCurl).filter(FetchCurl.name == name).first()
 
         if not curl_record:
@@ -48,62 +36,46 @@ def _get_curl_by_name(name: str):
 
 def _upsert_curl_by_name(name: str):
     """
-    Helper function to create or update a FetchCurl object by its unique name.
-
-    This function implements "upsert" logic:
-    1. It first queries the database to see if an entry with the given 'name'
-       already exists.
-    2. If it exists, the existing record is updated with the new data.
-    3. If it does not exist, a new record is created.
-    This ensures that the 'name' field remains a unique identifier.
-
-    Args:
-        name: The unique name of the cURL configuration to create or update.
-
-    Returns:
-        A Flask JSON response tuple (dict, status_code).
+    Helper function to create or update a FetchCurl object using the ORM's
+    internal parsing logic.
     """
     raw_body = request.data.decode("utf-8")
+
+    # Simple validation remains at controller level
     if not raw_body:
         abort(400, description="Request body cannot be empty.")
-
-    # Parse the raw cURL string from the request body into a structured object.
-    node_fetch = looks_like_node_fetch(raw_body)
-    if node_fetch:
-        data_dict = parse_fetch_to_dict(raw_body)
-    else:
-        cleaned_string = " ".join(raw_body.split())
-        structured_data = parse_fetch_string_flat(cleaned_string)
-        if not structured_data:
-            abort(400, description="Failed to parse the provided fetch string.")
-
-        data_dict = asdict(structured_data)
 
     db = get_db_session()
 
     try:
-        # First, try to retrieve an existing record with the same name.
+        # 1. Retrieve or Instantiate
         record = db.query(FetchCurl).filter(FetchCurl.name == name).first()
+        status_code = 200
 
-        if record:
-            # UPDATE: If the record exists, update its fields with the new data.
-            for key, value in data_dict.items():
-                setattr(record, key, value)
-            message = f"'{name}' cURL was successfully updated."
-            status_code = 200  # OK
-        else:
-            # CREATE: If the record does not exist, create a new one.
-            # The name is assigned from the URL parameter.
-            record = FetchCurl(**data_dict, name=name)
+        if not record:
+            # Create new instance if it doesn't exist
+            record = FetchCurl(name=name)
             db.add(record)
-            message = f"'{name}' cURL was successfully stored."
-            status_code = 201  # Created
+            status_code = 201
 
+        # 2. Delegate Parsing and Updating to the Model
+        # The model raises ValueError if parsing fails, which we catch below.
+        try:
+            record.update_from_raw(raw_body)
+        except ValueError as ve:
+            abort(400, description=str(ve))
+
+        # 3. Persist
         db.commit()
         db.refresh(record)
 
+        message = f"'{name}' cURL was successfully {'stored' if status_code == 201 else 'updated'}."
+
     except Exception as e:
         db.rollback()
+        # If it's an abort exception (from the inner try), re-raise it
+        if hasattr(e, 'code') and e.code == 400:
+            raise e
         abort(500, description=f"A database error occurred: {e}")
     finally:
         db.close()
@@ -112,7 +84,6 @@ def _upsert_curl_by_name(name: str):
 
 
 # --- Generic API Endpoint ---
-# This is the new, primary endpoint for managing cURL configurations.
 
 @fetch_jobs_bp.route("/curl/<string:name>", methods=["GET", "PUT"])
 def handle_generic_curl(name: str):
@@ -125,12 +96,10 @@ def handle_generic_curl(name: str):
         return _get_curl_by_name(name)
     elif request.method == "PUT":
         return _upsert_curl_by_name(name)
-    abort(405)  # Method Not Allowed for other HTTP verbs
+    abort(405)
 
 
 # --- Backward-Compatible Endpoints ---
-# The original API endpoints are preserved to ensure older clients continue
-# to function without modification. They now call the same core logic.
 
 @fetch_jobs_bp.route("/pagination-curl", methods=["GET", "PUT"])
 def handle_pagination_curl():
@@ -147,10 +116,6 @@ def handle_pagination_curl():
 
 @fetch_jobs_bp.route("/individual-job-curl", methods=["GET", "PUT"])
 def handle_individual_job_curl():
-    """
-    [DEPRECATED] Handles getting and setting the "SingleJob" cURL command.
-    This endpoint is preserved for backward compatibility.
-    """
     if request.method == "GET":
         return _get_curl_by_name("SingleJob")
     elif request.method == "PUT":

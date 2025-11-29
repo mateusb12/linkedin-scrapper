@@ -9,72 +9,53 @@ import { ConfigEditor } from "./ConfigEditor.jsx";
 const NETWORK_FILTER_PAGINATION = "jobCollectionSlug:recommended";
 const NETWORK_FILTER_INDIVIDUAL = "jobPostingDetailDescription_start";
 
-const PAGINATION_TEMPLATE = {
-    base_url: "https://www.linkedin.com/voyager/api/graphql",
-    query_id: "voyagerJobsDashJobCards.93590893e4adb90623f00d61719b838c",
-    variables_count: 24,
-    variables_job_collection_slug: "recommended",
-    variables_start: 0,
-    variables_query_origin: "GENERIC_JOB_COLLECTIONS_LANDING",
-    headers: {
-        "Referer": "https://www.linkedin.com/jobs/collections/recommended/",
-        "accept": "application/vnd.linkedin.normalized+json+2.1",
-        "accept-language": "en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7",
-        "priority": "u=1, i",
-        "sec-ch-prefers-color-scheme": "dark",
-        "sec-ch-ua": "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Microsoft Edge\";v=\"138\"",
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": "\"Windows\"",
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
-        "x-li-lang": "en_US",
-        "x-li-page-instance": "urn:li:page:d_flagship3_job_collections_discovery_landing;50NZCKkKTNeg3KVooOQLyQ==",
-        "x-li-pem-metadata": "Voyager - Careers - Job Collections=job-collection-pagination-fetch",
-        "x-li-prefetch": "1",
-        "x-li-track": "{\"clientVersion\":\"1.13.37692\",\"mpVersion\":\"1.13.37692\",\"osName\":\"web\",\"timezoneOffset\":-3,\"timezone\":\"America/Fortaleza\",\"deviceFormFactor\":\"DESKTOP\",\"mpName\":\"voyager-web\",\"displayDensity\":1,\"displayWidth\":1920,\"displayHeight\":1080}",
-        "x-restli-protocol-version": "2.0.0"
-    },
-    method: "GET"
-};
-
-const INDIVIDUAL_TEMPLATE = {
-    ...PAGINATION_TEMPLATE,
-    query_id: "voyagerJobsDashJobCards.174f05382121bd73f2f133da2e4af893",
-    variables_count: 5,
-    variables_job_collection_slug: "",
-    variables_query_origin: "",
-    headers: {
-        ...PAGINATION_TEMPLATE.headers,
-        "x-li-pem-metadata": ""
-    }
-};
-
-const RefreshIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-        <path
-            fillRule="evenodd"
-            d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-            clipRule="evenodd"
-        />
+const CopyIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
     </svg>
 );
+
+const FilterHelper = ({ label, filterText }) => {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(filterText);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 p-2 rounded border border-gray-200 dark:border-gray-600 text-xs mt-1">
+            <span className="font-mono text-gray-600 dark:text-gray-300 truncate mr-2">{filterText}</span>
+            <button
+                onClick={handleCopy}
+                className="flex items-center space-x-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 font-semibold"
+                title="Copy Filter"
+            >
+                {copied ? <span>Copied!</span> : <CopyIcon />}
+            </button>
+        </div>
+    );
+};
 
 export default function FetchConfig() {
     const [isDark] = useDarkMode();
     const [isLoading, setIsLoading] = useState(true);
     const [statusMessage, setStatusMessage] = useState({});
-    const [isTokenMode, setIsTokenMode] = useState(true);
 
-    // Token Mode State
-    const [cookie, setCookie] = useState("");
-    const [csrfToken, setCsrfToken] = useState("");
+    // Toggle between Simple (Manual Paste) and Advanced (Full JSON Edit)
+    const [isSimpleMode, setIsSimpleMode] = useState(true);
 
-    // Full Edit Mode State
-    const [paginationJson, setPaginationJson] = useState("");
+    // --- State for Simple Mode (Direct Inputs) ---
+    const [simplePagInput, setSimplePagInput] = useState("");
+    const [simpleIndInput, setSimpleIndInput] = useState("");
+
+    // --- State for Full Edit Mode (Visualizers) ---
+    const [paginationJson, setPaginationJson] = useState("{}");
     const [paginationFetch, setPaginationFetch] = useState("");
     const [paginationCurl, setPaginationCurl] = useState("");
-    const [individualJobJson, setIndividualJobJson] = useState("");
+
+    const [individualJobJson, setIndividualJobJson] = useState("{}");
     const [individualJobFetch, setIndividualJobFetch] = useState("");
     const [individualJobCurl, setIndividualJobCurl] = useState("");
 
@@ -97,19 +78,10 @@ export default function FetchConfig() {
                 axios.get("http://localhost:5000/fetch-jobs/individual-job-curl"),
             ]);
 
-            const headers =
-                typeof pagRes.data.headers === "string"
-                    ? JSON.parse(pagRes.data.headers)
-                    : pagRes.data.headers;
-
-            setCookie(headers.cookie || "");
-            setCsrfToken(headers["csrf-token"] || "");
-
             processAndSet(pagRes.data, setPaginationJson, setPaginationFetch, setPaginationCurl);
             processAndSet(indRes.data, setIndividualJobJson, setIndividualJobFetch, setIndividualJobCurl);
 
             if (feedbackMessage) {
-                setStatusMessage({ general: "✅ Tokens refreshed successfully!" });
                 clearStatusMessage("general");
             }
         } catch (err) {
@@ -130,45 +102,34 @@ export default function FetchConfig() {
         fetchAndSetData();
     }, []);
 
-    const handleTokenSave = async () => {
-        setStatusMessage({ general: "Saving..." });
 
-        const pagConfig = {
-            ...PAGINATION_TEMPLATE,
-            headers: { ...PAGINATION_TEMPLATE.headers, cookie, "csrf-token": csrfToken },
-        };
+    // --- Handlers for Simple Mode ---
 
-        const indConfig = {
-            ...INDIVIDUAL_TEMPLATE,
-            headers: { ...INDIVIDUAL_TEMPLATE.headers, cookie, "csrf-token": csrfToken },
-        };
-
-        const paginationFetchString = generateFetchCommand(JSON.stringify(pagConfig));
-        const individualFetchString = generateFetchCommand(JSON.stringify(indConfig));
-
+    const handleUpdatePagination = async () => {
+        if (!simplePagInput.trim()) return;
+        setStatusMessage({ general: "Saving Pagination..." });
         try {
-            await Promise.all([
-                axios.put("http://localhost:5000/fetch-jobs/pagination-curl", paginationFetchString, {
-                    headers: { "Content-Type": "text/plain" },
-                }),
-                axios.put(
-                    "http://localhost:5000/fetch-jobs/individual-job-curl",
-                    individualFetchString,
-                    {
-                        headers: { "Content-Type": "text/plain" },
-                    }
-                ),
-            ]);
-
-            setStatusMessage({ general: "✅ Tokens updated successfully!" });
+            // Send RAW input inside a wrapper object. Backend handles the parsing.
+            await axios.put("http://localhost:5000/fetch-jobs/pagination-curl", { curl: simplePagInput });
+            setSimplePagInput("");
+            await fetchAndSetData("✅ Pagination cURL Updated!");
         } catch (error) {
-            setStatusMessage({
-                general: `❌ Error saving tokens: ${
-                    error.response?.data?.description || error.message
-                }`,
-            });
-        } finally {
-            clearStatusMessage("general");
+            console.error(error);
+            setStatusMessage({ general: `❌ Error: ${error.response?.data?.description || error.message}` });
+        }
+    };
+
+    const handleUpdateIndividual = async () => {
+        if (!simpleIndInput.trim()) return;
+        setStatusMessage({ general: "Saving Job Config..." });
+        try {
+            // Send RAW input inside a wrapper object. Backend handles the parsing.
+            await axios.put("http://localhost:5000/fetch-jobs/individual-job-curl", { curl: simpleIndInput });
+            setSimpleIndInput("");
+            await fetchAndSetData("✅ Individual Job cURL Updated!");
+        } catch (error) {
+            console.error(error);
+            setStatusMessage({ general: `❌ Error: ${error.response?.data?.description || error.message}` });
         }
     };
 
@@ -184,116 +145,109 @@ export default function FetchConfig() {
                     </h1>
 
                     <p className="text-gray-600 dark:text-gray-400 mt-1">
-                        {isTokenMode
-                            ? "Quickly update session tokens."
-                            : "Advanced mode for full request editing."}
+                        {isSimpleMode
+                            ? "Paste fresh cURLs directly from the browser."
+                            : "Advanced mode for inspecting parsed data."}
                     </p>
                 </div>
 
                 <div className="flex items-center space-x-3">
-                    <span className={`text-sm font-medium ${!isTokenMode ? "text-blue-500" : "text-gray-500"}`}>
-                        Full Edit
+                    <span className={`text-sm font-medium ${!isSimpleMode ? "text-blue-500" : "text-gray-500"}`}>
+                        Advanced View
                     </span>
-
                     <label htmlFor="toggle" className="flex items-center cursor-pointer">
                         <div className="relative">
                             <input
                                 type="checkbox"
                                 id="toggle"
                                 className="sr-only"
-                                checked={isTokenMode}
-                                onChange={() => setIsTokenMode(!isTokenMode)}
+                                checked={isSimpleMode}
+                                onChange={() => setIsSimpleMode(!isSimpleMode)}
                             />
-
-                            <div className={`block w-14 h-8 rounded-full ${isTokenMode ? "bg-teal-400" : "bg-purple-400"}`} />
-                            <div
-                                className={`dot absolute top-1 left-1 w-6 h-6 rounded-full bg-white transform transition-transform duration-300 ${
-                                    isTokenMode ? "translate-x-6" : ""
-                                }`}
-                            />
+                            <div className={`block w-14 h-8 rounded-full ${isSimpleMode ? "bg-teal-400" : "bg-purple-400"}`} />
+                            <div className={`dot absolute top-1 left-1 w-6 h-6 rounded-full bg-white transform transition-transform duration-300 ${isSimpleMode ? "translate-x-6" : ""}`} />
                         </div>
                     </label>
-
-                    <span className={`text-sm font-medium ${isTokenMode ? "text-blue-500" : "text-gray-500"}`}>
-                        Token Only
+                    <span className={`text-sm font-medium ${isSimpleMode ? "text-blue-500" : "text-gray-500"}`}>
+                        Update Mode
                     </span>
                 </div>
             </div>
 
+            {/* STATUS MESSAGE OVERLAY */}
+            {statusMessage.general && (
+                <div className="mb-4 p-3 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded font-semibold text-center animate-pulse">
+                    {statusMessage.general}
+                </div>
+            )}
+
             {/* BODY */}
-            {isTokenMode ? (
-                /* TOKEN MODE */
-                <div className="space-y-6 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+            {isSimpleMode ? (
+                /* TWO FIELD UPDATE MODE */
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                    {/* CSRF */}
-                    <div>
-                        <div className="flex items-center mb-1 space-x-2">
-                            <button
-                                onClick={() => fetchAndSetData("🔄 Refreshing tokens...")}
-                                title="Refresh tokens from backend"
-                                className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400"
-                            >
-                                <RefreshIcon />
-                            </button>
-                            <label htmlFor="csrf-token" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                CSRF Token
-                            </label>
-                        </div>
-
-                        <input
-                            type="text"
-                            id="csrf-token"
-                            value={csrfToken}
-                            onChange={(e) => setCsrfToken(e.target.value)}
-                            placeholder="ajax:1234567890123456789"
-                            className="w-full p-2 border border-gray-300 rounded-md shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                    </div>
-
-                    {/* COOKIE */}
-                    <div>
-                        <div className="flex items-center mb-1 space-x-2">
-                            <button
-                                onClick={() => fetchAndSetData("🔄 Refreshing tokens...")}
-                                title="Refresh tokens from backend"
-                                className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400"
-                            >
-                                <RefreshIcon />
-                            </button>
-
-                            <label htmlFor="cookie" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Cookie
-                            </label>
+                    {/* LEFT: PAGINATION */}
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
+                        <div className="mb-4">
+                            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center">
+                                📄 Pagination Request
+                            </h2>
+                            <p className="text-xs text-gray-500 mt-1">
+                                Controls how we traverse the job list (pages 1, 2, 3...).
+                            </p>
+                            <FilterHelper label="Network Filter" filterText={NETWORK_FILTER_PAGINATION} />
                         </div>
 
                         <textarea
-                            id="cookie"
-                            value={cookie}
-                            onChange={(e) => setCookie(e.target.value)}
-                            rows={6}
-                            placeholder="li_at=...; JSESSIONID=...;"
-                            className="w-full p-2 border border-gray-300 rounded-md shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500 font-mono text-xs"
+                            value={simplePagInput}
+                            onChange={(e) => setSimplePagInput(e.target.value)}
+                            rows={8}
+                            placeholder="Paste cURL with 'jobCollectionSlug' here..."
+                            className="w-full p-3 mb-4 text-xs font-mono border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300 focus:ring-2 focus:ring-blue-500 outline-none"
                         />
-                    </div>
 
-                    {/* SAVE BUTTON */}
-                    <div className="flex items-center space-x-4">
                         <button
-                            onClick={handleTokenSave}
-                            disabled={!cookie || !csrfToken}
-                            className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                            onClick={handleUpdatePagination}
+                            disabled={!simplePagInput}
+                            className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                            Save Tokens
+                            Update Pagination Config
                         </button>
-
-                        {statusMessage.general && <p className="text-sm">{statusMessage.general}</p>}
                     </div>
+
+                    {/* RIGHT: INDIVIDUAL JOB */}
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
+                        <div className="mb-4">
+                            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center">
+                                💼 Individual Job Request
+                            </h2>
+                            <p className="text-xs text-gray-500 mt-1">
+                                Controls how we fetch details for a single job card.
+                            </p>
+                            <FilterHelper label="Network Filter" filterText={NETWORK_FILTER_INDIVIDUAL} />
+                        </div>
+
+                        <textarea
+                            value={simpleIndInput}
+                            onChange={(e) => setSimpleIndInput(e.target.value)}
+                            rows={8}
+                            placeholder="Paste cURL with 'jobPostingDetailDescription' here..."
+                            className="w-full p-3 mb-4 text-xs font-mono border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300 focus:ring-2 focus:ring-purple-500 outline-none"
+                        />
+
+                        <button
+                            onClick={handleUpdateIndividual}
+                            disabled={!simpleIndInput}
+                            className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            Update Job Config
+                        </button>
+                    </div>
+
                 </div>
             ) : (
-                /* FULL EDIT MODE */
+                /* FULL EDIT MODE (READ ONLY / ADVANCED) */
                 <div className="space-y-12">
-
-                    {/* Pagination Request */}
                     <div>
                         <ConfigEditor
                             title="Pagination Request"
@@ -306,8 +260,6 @@ export default function FetchConfig() {
                             setCurlValue={setPaginationCurl}
                         />
                     </div>
-
-                    {/* Individual Job Request */}
                     <div>
                         <ConfigEditor
                             title="Individual Job Request"

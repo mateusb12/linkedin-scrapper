@@ -3,6 +3,7 @@
 
 import json
 import math
+import shlex
 from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
@@ -15,6 +16,32 @@ from linkedin.api_fetch.orchestration_curls.orchestration_parser import parse_or
 from linkedin.api_fetch.single_job.structure_single_job import extract_job_details
 from services.linkedin_calls.fetch_linkedin_recommended_jobs import fetch_page_data_from_api, \
     fetch_raw_job_details_from_api
+
+def to_curl(request):
+    """
+    Converts a python `requests.PreparedRequest` object to a cURL command string.
+    """
+    command = "curl -X {method} {uri}".format(
+        method=shlex.quote(request.method),
+        uri=shlex.quote(request.url)
+    )
+
+    if request.headers:
+        for header, value in request.headers.items():
+            command += " -H {header}".format(
+                header=shlex.quote(f"{header}: {value}")
+            )
+
+    if request.body:
+        body = request.body
+        if isinstance(body, bytes):
+            try:
+                body = body.decode('utf-8')
+            except:
+                body = str(body)
+        command += " -d {body}".format(body=shlex.quote(body))
+
+    return command
 
 
 def get_total_job_pages() -> Optional[int]:

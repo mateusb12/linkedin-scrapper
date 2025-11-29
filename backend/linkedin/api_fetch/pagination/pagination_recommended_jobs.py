@@ -1,59 +1,47 @@
 import json
+import shlex
 from urllib.parse import urlencode
 
 import requests
 import re
 from dataclasses import dataclass, asdict
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from typing import List, Optional, Dict, Tuple
 
 from models import FetchCurl
 
-
-# --- Dataclass Definitions for Structured Output ---
-# These dataclasses define the final, clean structure for the job data.
+# --- Dataclass Definitions ---
 
 @dataclass
 class Paging:
-    """Contains pagination information for the job list."""
     count: int
     start: int
     total: int
 
-
 @dataclass
 class Metadata:
-    """Contains metadata about the search results."""
     resultsCountHeader: str
     resultsCountHeaderWithTotal: str
 
-
 @dataclass
 class Company:
-    """Represents a company posting a job."""
     urn: str
     name: str
     logo_url: Optional[str]
 
-
 @dataclass
 class Geo:
-    """Represents a geographical location."""
     urn: str
     name: str
 
-
 @dataclass
 class JobSeekerState:
-    """Tracks the user's interaction with a job (e.g., saved, applied)."""
     job_card_urn: str
     is_saved: bool
     is_applied: bool
 
-
 @dataclass
 class JobPostingSummary:
-    """A summary of a single job posting."""
     urn: str
     title: str
     company_urn: Optional[str]
@@ -63,131 +51,115 @@ class JobPostingSummary:
     easy_apply: bool
     employment_type: str
 
-
 @dataclass
 class JobsPage:
-    """The root object representing the entire structured page of job data."""
     paging: Paging
     metadata: Metadata
     jobs: List[JobPostingSummary]
-    companies: Dict[str, Company]  # Keyed by company_urn
-    geos: Dict[str, Geo]  # Keyed by geo_urn
-    seeker_states: Dict[str, JobSeekerState]  # Keyed by job_card_urn
+    companies: Dict[str, Company]
+    geos: Dict[str, Geo]
+    seeker_states: Dict[str, JobSeekerState]
 
 
 # --- Helper Functions ---
 
 def parse_curl_command_from_curl_string(curl_string: str) -> Tuple[str, Dict[str, str]]:
     """
-    Parses a cURL command string to extract the URL and headers.
-
-    Args:
-        curl_string: The raw cURL command string, typically copied from a browser.
-
-    Returns:
-        A tuple containing the URL and a dictionary of headers.
-
-    Raises:
-        ValueError: If the URL cannot be found in the cURL string.
+    Robustly parses a cURL command using shlex.
     """
-    headers = {}
-    # Normalize the cURL command by removing line breaks and extra spaces.
+    # Normalize
     curl_string = curl_string.replace('\\\n', ' ').replace('\n', ' ').replace('\xa0', ' ').strip()
 
-    # Extract the URL.
-    url_match = re.search(r"curl '([^']*)'", curl_string)
-    if not url_match:
-        raise ValueError("Could not find URL in cURL string. Ensure it's enclosed in single quotes.")
-    url = url_match.group(1)
+    try:
+        tokens = shlex.split(curl_string)
+    except ValueError as e:
+        print(f"❌ Error parsing cURL string with shlex: {e}")
+        return "", {}
 
-    # Extract all headers.
-    header_matches = re.findall(r"-H '([^']*)'", curl_string)
-    for header in header_matches:
-        try:
-            key, value = header.split(':', 1)
-            headers[key.strip()] = value.strip()
-        except ValueError:
-            print(f"Warning: Could not parse header: {header}")
+    url = None
+    headers = {}
 
-    # Specifically find and add the cookie header if it exists separately.
-    cookie_match = re.search(r"-b '([^']*)'", curl_string)
-    if cookie_match:
-        headers['Cookie'] = cookie_match.group(1).strip()
+    for i, token in enumerate(tokens):
+        if token.startswith('http') and url is None:
+            if i > 0 and tokens[i-1] not in ('-H', '--header', '-d', '--data', '--compressed'):
+                url = token
+
+        if token in ('-H', '--header') and i + 1 < len(tokens):
+            header_raw = tokens[i+1]
+            if ':' in header_raw:
+                key, value = header_raw.split(':', 1)
+                headers[key.strip()] = value.strip()
+
+        # Explicitly handle -b / --cookie if present
+        if token in ('-b', '--cookie') and i + 1 < len(tokens):
+            headers['Cookie'] = tokens[i+1].strip()
+
+    if not url:
+        raise ValueError("Could not find URL in cURL string.")
 
     return url, headers
 
 
 def parse_curl_command_from_orm(orm_object: FetchCurl) -> Tuple[str, Dict[str, str]]:
     """
-    Constructs the URL and extracts headers from a FetchCurl ORM object.
-
-    Args:
-        orm_object: An instance of the FetchCurl ORM class.
-
-    Returns:
-        A tuple containing the reconstructed URL and a dictionary of headers.
+    Constructs the URL and extracts headers.
     """
-    # --- URL Reconstruction ---
-    # Start with the base URL
+    print("\n🕵️ --- PARSING ORM OBJECT ---")
+
+    # 1. Try to parse from Raw Body (The "Correct" Way)
+    if hasattr(orm_object, 'body') and orm_object.body and "curl" in orm_object.body:
+        print("   ✅ Found raw 'body' in database. Parsing fresh using shlex...")
+        try:
+            url, headers = parse_curl_command_from_curl_string(orm_object.body)
+            print(f"   ✅ Fresh parse successful. Cookie length: {len(headers.get('Cookie', ''))}")
+            return url, headers
+        except Exception as e:
+            print(f"   ⚠️ Failed to parse raw body: {e}")
+
+    # 2. Fallback to Stale Headers (The "Broken" Way)
+    print("   ⚠️ Raw body missing or failed. Falling back to stored 'headers' column.")
+
     url = orm_object.base_url
 
-    # Prepare query parameters
+    # Rebuild URL params (Standard logic)
     params = {}
     variables = {}
-
-    # Gather variables for the 'variables' parameter
     if orm_object.variables_count is not None:
         variables['count'] = orm_object.variables_count
     if orm_object.variables_job_collection_slug:
         variables['jobCollectionSlug'] = orm_object.variables_job_collection_slug
     if orm_object.variables_query_origin:
-        # The query is nested inside variables
         variables['query'] = {'origin': orm_object.variables_query_origin}
     if orm_object.variables_start is not None:
         variables['start'] = orm_object.variables_start
 
-    # Add the JSON-like 'variables' string to the main parameters
     if variables:
-        # The format is '(key:value,key:value)'
         variables_str = '(' + ','.join(
             [f'{k}:{v}' if not isinstance(v, dict) else f"{k}:({','.join([f'{vk}:{vv}' for vk, vv in v.items()])})" for
              k, v in variables.items()]) + ')'
         params['variables'] = variables_str
 
-    # Add queryId
     if orm_object.query_id:
         params['queryId'] = orm_object.query_id
-
-    # Append query string to the base URL if there are parameters
     if params:
         url += '?' + urlencode(params, safe=':(),')
 
-    # --- Header Extraction ---
+    # Load Headers
     headers = {}
     if orm_object.headers:
         try:
-            # Load headers from the JSON string
             headers = json.loads(orm_object.headers)
+            print(f"   ⚠️ Loaded stored headers. Cookie length: {len(headers.get('Cookie', '') if headers.get('Cookie') else headers.get('cookie', ''))}")
         except json.JSONDecodeError:
-            print(f"Warning: Could not parse headers JSON: {orm_object.headers}")
+            print(f"   ❌ Could not parse headers JSON: {orm_object.headers}")
 
     return url, headers
 
 
 def fetch_linkedin_jobs(url: str, headers: Dict) -> Optional[Dict]:
-    """
-    Fetches job data from the LinkedIn API.
-
-    Args:
-        url: The API endpoint URL.
-        headers: The request headers, including authentication tokens.
-
-    Returns:
-        The JSON response as a dictionary, or None if the request fails.
-    """
     try:
         response = requests.get(url, headers=headers)
-        response.raise_for_status()  # Raises an HTTPError for bad responses (4xx or 5xx)
+        response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
         print(f"Error making request to LinkedIn: {e}")
@@ -201,24 +173,12 @@ def fetch_linkedin_jobs(url: str, headers: Dict) -> Optional[Dict]:
 
 
 def parse_jobs_page(data: Dict) -> Optional[JobsPage]:
-    """
-    Parses the full JSON response from LinkedIn to build a structured JobsPage object.
-    This function orchestrates the entire transformation from raw to structured data.
-
-    Args:
-        data: The loaded JSON data as a Python dictionary.
-
-    Returns:
-        A JobsPage dataclass object, or None if parsing fails.
-    """
     if not data or 'data' not in data or 'included' not in data:
-        print("Error: Invalid or empty data provided to parser. Cannot find 'data' or 'included' keys.")
+        print("Error: Invalid or empty data provided to parser.")
         return None
 
-    # Create a lookup map for all items in the 'included' array for efficient access.
     included_map = {item['entityUrn']: item for item in data.get('included', []) if 'entityUrn' in item}
 
-    # 1. Parse Paging and Metadata from the main data block.
     try:
         base_path = data['data']['data']['jobsDashJobCardsByJobCollections']
         paging_data = base_path['paging']
@@ -232,13 +192,12 @@ def parse_jobs_page(data: Dict) -> Optional[JobsPage]:
         header_text = metadata_data.get('resultsCountHeader', {}).get('text', '')
         metadata = Metadata(
             resultsCountHeader=header_text,
-            resultsCountHeaderWithTotal=header_text  # In the example JSON, these are the same.
+            resultsCountHeaderWithTotal=header_text
         )
     except KeyError as e:
         print(f"Error: Could not find paging/metadata information. Missing key: {e}")
         return None
 
-    # 2. Pre-parse all Company and Geo api_fetch from the lookup map.
     companies: Dict[str, Company] = {}
     geos: Dict[str, Geo] = {}
 
@@ -249,7 +208,6 @@ def parse_jobs_page(data: Dict) -> Optional[JobsPage]:
             logo_url = None
             logo_info = (item.get("logoResolutionResult") or {}).get("vectorImage") or {}
             if logo_info and logo_info.get("rootUrl") and logo_info.get("artifacts"):
-                # Prefer 200px artifact for the logo, but fall back to the first available one.
                 artifact = next((a for a in logo_info["artifacts"] if a.get("width") == 200),
                                 logo_info["artifacts"][0] if logo_info["artifacts"] else None)
                 if artifact:
@@ -257,7 +215,7 @@ def parse_jobs_page(data: Dict) -> Optional[JobsPage]:
 
             companies[urn] = Company(
                 urn=urn,
-                name=item.get('name', 'Unknown Company'),  # Name is often in the job card, will be updated.
+                name=item.get('name', 'Unknown Company'),
                 logo_url=logo_url
             )
         elif item_type == "com.linkedin.voyager.dash.common.geo.Geo":
@@ -266,11 +224,9 @@ def parse_jobs_page(data: Dict) -> Optional[JobsPage]:
                 name=item.get('name', 'Unknown Location')
             )
 
-    # 3. Parse JobPostings and SeekerStates, linking them to the pre-parsed api_fetch.
     jobs: List[JobPostingSummary] = []
     seeker_states: Dict[str, JobSeekerState] = {}
 
-    # We iterate through JobPostingCard objects, as they are the central nodes connecting other api_fetch.
     job_cards = [item for item in included_map.values() if
                  item.get('$type') == "com.linkedin.voyager.dash.jobs.JobPostingCard"]
 
@@ -279,20 +235,16 @@ def parse_jobs_page(data: Dict) -> Optional[JobsPage]:
         if not job_card_urn:
             continue
 
-        # --- Link Company ---
         company_urn = None
         logo_attributes = card.get('logo', {}).get('attributes', [])
         if logo_attributes:
             company_urn = logo_attributes[0].get('detailData', {}).get('*companyLogo')
 
-        # The company name is more reliably found in the job card's description.
-        # We update our company record with this more specific name.
         if company_urn and company_urn in companies:
             company_name_from_card = card.get('primaryDescription', {}).get('text')
             if company_name_from_card:
                 companies[company_urn].name = company_name_from_card
 
-        # --- Extract Job Details ---
         posted_on_date = None
         easy_apply = False
         for item in card.get('footerItems', []):
@@ -301,12 +253,10 @@ def parse_jobs_page(data: Dict) -> Optional[JobsPage]:
             if item.get('type') == 'EASY_APPLY_TEXT':
                 easy_apply = True
 
-        # --- Safely extract description snippet ---
         relevance_insight = card.get('relevanceInsight') or {}
         text_insight = relevance_insight.get('text') or {}
         description_snippet = text_insight.get('text', '')
 
-        # --- Create JobPostingSummary ---
         job_summary = JobPostingSummary(
             urn=card.get('*jobPosting'),
             title=card.get('jobPostingTitle', 'No Title'),
@@ -315,11 +265,10 @@ def parse_jobs_page(data: Dict) -> Optional[JobsPage]:
             posted_on=posted_on_date,
             description_snippet=description_snippet,
             easy_apply=easy_apply,
-            employment_type=""  # This field is not available in the provided JSON structure.
+            employment_type=""
         )
         jobs.append(job_summary)
 
-        # --- Parse JobSeekerState ---
         seeker_state_urn = card.get('*jobSeekerJobState')
         if seeker_state_urn and seeker_state_urn in included_map:
             state_data = included_map[seeker_state_urn]
@@ -331,12 +280,8 @@ def parse_jobs_page(data: Dict) -> Optional[JobsPage]:
                 is_applied='APPLIED' in actions
             )
 
-    valid_jobs = [
-        job for job in jobs
-        if job.urn is not None and job.title != "No Title"
-    ]
+    valid_jobs = [j for j in jobs if j.urn is not None and j.title != "No Title"]
 
-    # 4. Assemble the final JobsPage object.
     return JobsPage(
         paging=paging,
         metadata=metadata,
@@ -346,10 +291,7 @@ def parse_jobs_page(data: Dict) -> Optional[JobsPage]:
         seeker_states=seeker_states
     )
 
-
 class CustomJsonEncoder(json.JSONEncoder):
-    """Custom JSON encoder to handle date objects, converting them to ISO 8601 strings."""
-
     def default(self, obj):
         if isinstance(obj, (datetime, date)):
             return obj.isoformat()

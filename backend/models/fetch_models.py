@@ -1,21 +1,16 @@
 import re
 import json
+import shlex
 from dataclasses import dataclass, asdict
-from typing import Optional
-from urllib.parse import urlparse, parse_qs
+from typing import Optional, Dict, Any
+from urllib.parse import urlparse, parse_qs, unquote # <--- Added unquote
 
 # --- SQLAlchemy ORM Setup ---
-from sqlalchemy import create_engine, Column, Integer, String, Text
-from sqlalchemy.orm import Session
-
+from sqlalchemy import Column, Integer, String, Text
 from .base_model import Base
 
 
-# 2. Define the ORM Model for our data
 class FetchCurl(Base):
-    """
-    SQLAlchemy ORM model to store the flattened fetch call data in a database.
-    """
     __tablename__ = 'fetch_curl'
 
     id = Column(Integer, primary_key=True)
@@ -33,36 +28,25 @@ class FetchCurl(Base):
 
     # Request Options
     method = Column(String)
-    headers = Column(Text)  # Stored as a JSON string
-    body = Column(Text)  # Stored as a JSON string
+    headers = Column(Text)
+    body = Column(Text)
     referer = Column(String)
-
     cookies = Column(Text, nullable=True)
 
-    def __repr__(self):
-        return f"<FetchCallRecord(id={self.id}, method='{self.method}', url='{self.base_url}')>"
-
     def to_dict(self):
-        """
-        Serializes the object to a dictionary, ensuring that JSON strings for
-        headers and body are parsed into proper dictionary objects.
-        """
         parsed_headers = {}
         if self.headers:
             try:
-                # Parse the string representation of headers into a dict
                 parsed_headers = json.loads(self.headers)
             except (json.JSONDecodeError, TypeError):
-                # Handle cases where headers are not a valid JSON string
-                parsed_headers = {"error": "Invalid JSON format in headers field."}
+                parsed_headers = {}
 
         parsed_body = None
         if self.body:
             try:
-                # Parse the string representation of the body
                 parsed_body = json.loads(self.body)
             except (json.JSONDecodeError, TypeError):
-                parsed_body = {"error": "Invalid JSON format in body field."}
+                parsed_body = {}
 
         return {
             "id": self.id,
@@ -74,20 +58,43 @@ class FetchCurl(Base):
             "variables_query_origin": self.variables_query_origin,
             "variables_start": self.variables_start,
             "method": self.method,
-            "headers": parsed_headers,  # Use the parsed dictionary
-            "body": parsed_body,          # Use the parsed body
+            "headers": parsed_headers,
+            "body": parsed_body,
             "referer": self.referer,
             "cookies": self.cookies,
         }
 
+    def update_from_raw(self, raw_body: str):
+        if not raw_body:
+            raise ValueError("Request body cannot be empty.")
 
-# --- Dataclass Definition (for parsing) ---
+        command_string = raw_body.strip()
+        try:
+            json_body = json.loads(raw_body)
+            if isinstance(json_body, dict):
+                command_string = json_body.get("curl") or json_body.get("fetch") or json_body.get("command") or raw_body
+        except json.JSONDecodeError:
+            pass
+
+        structured_data = None
+        if command_string.strip().startswith("curl"):
+            structured_data = parse_curl_string_flat(command_string)
+        elif "fetch(" in command_string:
+            structured_data = parse_fetch_string_flat(command_string)
+
+        if not structured_data:
+            raise ValueError("Could not parse string. Ensure it is a valid cURL command.")
+
+        data_dict = asdict(structured_data)
+
+        for key, value in data_dict.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+
+        self.body = raw_body
+
 @dataclass
 class FlatFetchCall:
-    """
-    Represents a flattened fetch call, used as an intermediate step before
-    creating the ORM model instance.
-    """
     base_url: Optional[str] = None
     query_id: Optional[str] = None
     variables_count: Optional[int] = None
@@ -99,73 +106,117 @@ class FlatFetchCall:
     body: Optional[str] = None
     referer: Optional[str] = None
 
+def _process_linkedin_url(raw_url: str) -> Dict[str, Any]:
+    """
+    Robustly extracts LinkedIn variables using targeted regex.
+    """
+    parsed_uri = urlparse(raw_url)
+    # Reconstruct base URL without query params
+    base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}{parsed_uri.path}"
+    query_params = parse_qs(parsed_uri.query)
+
+    # Get the variables string and UNQUOTE it (fix %3A, %28, etc.)
+    variables_raw = query_params.get('variables', [''])[0]
+    variables_str = unquote(variables_raw)
+
+    # Helper to find a value by key in the messy string
+    def find_val(key_name, is_int=False):
+        # Look for "key:value" or "key: value"
+        # Stop capturing at comma, closing paren, or end of string
+        pattern = re.compile(rf"\b{key_name}\s*:\s*([^,\)]+)")
+        match = pattern.search(variables_str)
+        if match:
+            val = match.group(1).strip()
+            if is_int and val.isdigit():
+                return int(val)
+            return val
+        return None
+
+    # Targeted Extraction
+    count = find_val('count', is_int=True)
+    start = find_val('start', is_int=True)
+    slug = find_val('jobCollectionSlug')
+
+    # Origin is usually nested in query:(origin:...), so we search explicitly
+    origin = find_val('origin')
+
+    return {
+        "base_url": base_url,
+        "query_id": query_params.get('queryId', [None])[0],
+        "variables_count": count,
+        "variables_job_collection_slug": slug,
+        "variables_query_origin": origin,
+        "variables_start": start,
+    }
+
+def parse_curl_string_flat(curl_string: str) -> Optional[FlatFetchCall]:
+    curl_string = curl_string.replace('\\\n', ' ').replace('\n', ' ').strip()
+    try:
+        tokens = shlex.split(curl_string)
+    except ValueError as e:
+        print(f"Error splitting cURL string: {e}")
+        return None
+
+    url = None
+    headers = {}
+    body = None
+    method = "GET"
+
+    for i, token in enumerate(tokens):
+        if token.startswith('http') and url is None:
+            if i == 0 or tokens[i-1] not in ('-H', '--header', '-d', '--data', '--data-raw', '--cookie', '-b', '-X', '--request'):
+                url = token
+
+        if token in ('-H', '--header') and i + 1 < len(tokens):
+            header_raw = tokens[i+1]
+            if ':' in header_raw:
+                key, value = header_raw.split(':', 1)
+                headers[key.strip()] = value.strip()
+
+        if token in ('-b', '--cookie') and i + 1 < len(tokens):
+            headers['Cookie'] = tokens[i+1].strip()
+
+        if token in ('-d', '--data', '--data-raw', '--data-binary') and i + 1 < len(tokens):
+            body = tokens[i+1]
+            method = "POST"
+
+        if token in ('-X', '--request') and i + 1 < len(tokens):
+            method = tokens[i+1]
+
+    if not url:
+        return None
+
+    url_data = _process_linkedin_url(url)
+
+    return FlatFetchCall(
+        **url_data,
+        method=method,
+        headers=json.dumps(headers),
+        body=body,
+        referer=headers.get("Referer")
+    )
 
 def parse_fetch_string_flat(fetch_string: str) -> Optional[FlatFetchCall]:
-    """
-    Parses a string containing a JavaScript fetch() call and structures it
-    into a single, flat Python dataclass.
-
-    Args:
-        fetch_string: A string containing the raw fetch call.
-
-    Returns:
-        A FlatFetchCall dataclass instance with the parsed data, or None if
-        parsing fails.
-    """
     try:
-        # This regex is designed to capture the URL and the options object from the fetch call.
-        # The trailing `?;` makes the semicolon at the end optional for more flexibility.
         match = re.search(r'fetch\("([^"]+)",\s*({.*})\);?', fetch_string, re.DOTALL)
         if not match:
-            print("Error: Could not find a valid fetch() call pattern.")
             return None
         raw_url, options_str = match.groups()
 
-        # Safely load JSON data from the options string
         options_data = json.loads(options_str)
         headers_json = json.dumps(options_data.get("headers", {}), indent=2)
         body_json = json.dumps(options_data.get("body"))
 
-        # Parse the URL to extract its components
-        parsed_uri = urlparse(raw_url)
-        base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}{parsed_uri.path}"
-        query_params = parse_qs(parsed_uri.query)
+        url_data = _process_linkedin_url(raw_url)
 
-        # Parse the 'variables' query parameter, which has a custom format
-        variables_dict = {}
-        variables_str = query_params.get('variables', [''])[0].strip('()')
-        # Regex to find key-value pairs within the variables string
-        var_pattern = re.compile(r"(\w+):\s*([^,]+(?:\([^)]+\))?)")
-        var_matches = var_pattern.findall(variables_str)
-
-        for key, value in var_matches:
-            # Handle nested structures like 'query:(...)'
-            if value.startswith('(') and value.endswith('('):
-                nested_pattern = re.compile(r"(\w+):([\w_]+)")
-                nested_matches = nested_pattern.findall(value.strip('()'))
-                variables_dict[key] = dict(nested_matches)
-            elif value.isdigit():
-                variables_dict[key] = int(value)
-            else:
-                variables_dict[key] = value
-
-        # Populate the dataclass with all extracted information
-        flat_fetch_call = FlatFetchCall(
-            base_url=base_url,
-            query_id=query_params.get('queryId', [None])[0],
-            variables_count=variables_dict.get('count'),
-            variables_job_collection_slug=variables_dict.get('jobCollectionSlug'),
-            variables_query_origin=variables_dict.get('query', {}).get('origin'),
-            variables_start=variables_dict.get('start'),
+        return FlatFetchCall(
+            **url_data,
             method=options_data.get("method"),
             headers=headers_json,
             body=body_json,
             referer=options_data.get("headers", {}).get("Referer")
         )
 
-        return flat_fetch_call
-
-    except (json.JSONDecodeError, IndexError, Exception) as e:
-        print(f"An error occurred during parsing: {e}")
+    except Exception as e:
+        print(f"Error parsing Fetch: {e}")
         return None
-

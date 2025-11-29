@@ -41,9 +41,50 @@ def fetch_page_data_from_api(page_number: int, quiet: bool = False) -> Optional[
         db_content = _load_pagination_job_curl_command()
         if not db_content:
             raise ValueError("No pagination cURL command found in the database.")
+
+        # 1. Parse content
         url, headers = parse_curl_command_from_orm(db_content)
+
+        # --- DEBUG START ---
+        print("\n🔎 --- DEBUG: HEADER ANALYSIS ---")
+        cookie_string = headers.get('cookie') or headers.get('Cookie')
+
+        if not cookie_string:
+            print("❌ CRITICAL: No 'Cookie' header found in the parsed cURL.")
+        else:
+            print(f"✅ Cookie found (Length: {len(cookie_string)})")
+
+            # 2. Extract JSESSIONID
+            # Matches JSESSIONID="ajax:..." or JSESSIONID=ajax:...
+            match = re.search(r'JSESSIONID="?([^";\s]+)"?', cookie_string)
+
+            if match:
+                correct_token = match.group(1)
+                print(f"   --> Extracted JSESSIONID from cookie: {correct_token}")
+
+                # 3. Check current header token
+                current_token = headers.get('csrf-token') or headers.get('Csrf-Token')
+                print(f"   --> Current 'csrf-token' in header:   {current_token}")
+
+                # 4. Compare and Fix
+                if current_token != correct_token:
+                    print(f"⚠️  MISMATCH DETECTED. Auto-fixing headers...")
+                    headers['csrf-token'] = correct_token
+                    headers['Csrf-Token'] = correct_token
+                    print(f"   --> Header updated to: {correct_token}")
+                else:
+                    print("✅ Tokens match. No changes needed.")
+            else:
+                print("❌ CRITICAL: Could not find 'JSESSIONID' inside the cookie string via Regex.")
+                # Print a small snippet of the cookie to help debug the regex manually if needed
+                print(f"   --> Cookie snippet: {cookie_string[:100]}...")
+
+        print("🔎 ------------------------------\n")
+        # --- DEBUG END ---
+
         if not quiet:
             print("--- Successfully parsed pagination cURL command ---")
+
     except Exception as e:
         raise RuntimeError(f"Failed to parse pagination cURL: {e}") from e
 
@@ -52,6 +93,7 @@ def fetch_page_data_from_api(page_number: int, quiet: bool = False) -> Optional[
             "Pagination cURL has not been configured. Use PUT /fetch-jobs/pagination-curl to set it."
         )
 
+    # Prepare URL parameters
     count_match = re.search(r"count:(\d+)", url)
     count = int(count_match.group(1)) if count_match else 24
     start_index = (page_number - 1) * count
@@ -60,13 +102,17 @@ def fetch_page_data_from_api(page_number: int, quiet: bool = False) -> Optional[
     if not quiet:
         print(f"--- Fetching page {page_number} (start index: {start_index}) ---")
 
+    # Final Debug before sending
+    print(f"🚀 Sending Request to: {modified_url[:60]}...")
+    print(f"🚀 Using CSRF Token: {headers.get('csrf-token')}")
+
     live_data = fetch_linkedin_jobs(modified_url, headers)
+
     if not live_data:
         if not quiet:
             print("Received no data from the API. This could be due to an expired cURL token or invalid page number.")
         return None
 
-    # This returns a structured Pydantic model, ready for conversion to dict
     return parse_jobs_page(live_data)
 
 

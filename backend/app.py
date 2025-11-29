@@ -7,7 +7,7 @@ from flask import Flask, request
 from flask_cors import CORS
 
 from controllers.job_controller import job_data_bp
-from controllers.job_curls import fetch_jobs_bp
+from controllers.job_curls_controller import fetch_jobs_bp
 from controllers.resume_data import resume_bp
 from database.database_connection import create_db_and_tables
 from path.file_content_loader import load_db_path
