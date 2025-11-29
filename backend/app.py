@@ -11,6 +11,7 @@ from controllers.job_curls_controller import fetch_jobs_bp
 from controllers.resume_data import resume_bp
 from database.database_connection import create_db_and_tables
 from path.file_content_loader import load_db_path
+from source.features.fetch_curl import fetch_curl_bp
 
 load_dotenv()
 
@@ -20,7 +21,8 @@ CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 
 # Register blueprints
-app.register_blueprint(fetch_jobs_bp)
+app.register_blueprint(fetch_curl_bp)
+# app.register_blueprint(fetch_jobs_bp)
 app.register_blueprint(job_data_bp)
 app.register_blueprint(resume_bp)
 app.register_blueprint(profile_bp)

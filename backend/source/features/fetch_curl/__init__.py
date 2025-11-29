@@ -1,0 +1,1 @@
+from .fetch_controller import fetch_curl_bp

@@ -2,8 +2,8 @@ import re
 import json
 import shlex
 from dataclasses import dataclass, asdict
-from typing import Optional, Dict, Any
-from urllib.parse import urlparse, parse_qs, unquote # <--- Added unquote
+from typing import Optional, Dict, Any, Tuple
+from urllib.parse import urlparse, parse_qs, unquote, urlencode
 
 # --- SQLAlchemy ORM Setup ---
 from sqlalchemy import Column, Integer, String, Text
@@ -65,6 +65,10 @@ class FetchCurl(Base):
         }
 
     def update_from_raw(self, raw_body: str):
+        """
+        Input: Raw cURL string from Frontend.
+        Action: Parses and updates columns.
+        """
         if not raw_body:
             raise ValueError("Request body cannot be empty.")
 
@@ -93,6 +97,66 @@ class FetchCurl(Base):
 
         self.body = raw_body
 
+    def construct_request(self, page_number: int = 1) -> Tuple[str, Dict]:
+        """
+        Output: Ready-to-use URL and Headers for requests.get().
+        """
+        # 1. Calculate Start Index
+        # Default count to 24 if missing
+        count = self.variables_count if self.variables_count else 24
+        start_index = (page_number - 1) * count
+
+        # 2. Build Variables String
+        # LinkedIn expects: (count:24,start:0,...)
+        # We assume if it's Pagination, we need slug. If SingleJob, we might need different logic,
+        # but for now we reconstruct based on what we have.
+
+        vars_parts = []
+
+        # Specific logic for Pagination vs Individual could go here,
+        # but generic reconstruction is usually safer:
+
+        if self.variables_count is not None:
+            vars_parts.append(f"count:{count}")
+
+        if self.variables_job_collection_slug:
+            vars_parts.append(f"jobCollectionSlug:{self.variables_job_collection_slug}")
+
+        if self.variables_query_origin:
+            # origin is usually nested: query:(origin:...)
+            vars_parts.append(f"query:(origin:{self.variables_query_origin})")
+
+        # Always inject the calculated start
+        vars_parts.append(f"start:{start_index}")
+
+        # If we have stored raw variables (for complex individual requests), we might need a fallback,
+        # but for Pagination, this reconstruction is perfect.
+        variables_str = f"({','.join(vars_parts)})"
+
+        # 3. Build Query Parameters
+        params = {
+            'variables': variables_str
+        }
+        if self.query_id:
+            params['queryId'] = self.query_id
+
+        # 4. Final URL
+        # safe=':(),' ensures LinkedIn's weird syntax isn't double-encoded
+        full_url = f"{self.base_url}?{urlencode(params, safe=':(),')}"
+
+        # 5. Headers
+        headers = {}
+        if self.headers:
+            try:
+                headers = json.loads(self.headers)
+            except:
+                pass
+
+        return full_url, headers
+
+
+# --- Helper Parsing Classes & Functions ---
+
 @dataclass
 class FlatFetchCall:
     base_url: Optional[str] = None
@@ -107,22 +171,14 @@ class FlatFetchCall:
     referer: Optional[str] = None
 
 def _process_linkedin_url(raw_url: str) -> Dict[str, Any]:
-    """
-    Robustly extracts LinkedIn variables using targeted regex.
-    """
     parsed_uri = urlparse(raw_url)
-    # Reconstruct base URL without query params
     base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}{parsed_uri.path}"
     query_params = parse_qs(parsed_uri.query)
 
-    # Get the variables string and UNQUOTE it (fix %3A, %28, etc.)
     variables_raw = query_params.get('variables', [''])[0]
     variables_str = unquote(variables_raw)
 
-    # Helper to find a value by key in the messy string
     def find_val(key_name, is_int=False):
-        # Look for "key:value" or "key: value"
-        # Stop capturing at comma, closing paren, or end of string
         pattern = re.compile(rf"\b{key_name}\s*:\s*([^,\)]+)")
         match = pattern.search(variables_str)
         if match:
@@ -132,29 +188,20 @@ def _process_linkedin_url(raw_url: str) -> Dict[str, Any]:
             return val
         return None
 
-    # Targeted Extraction
-    count = find_val('count', is_int=True)
-    start = find_val('start', is_int=True)
-    slug = find_val('jobCollectionSlug')
-
-    # Origin is usually nested in query:(origin:...), so we search explicitly
-    origin = find_val('origin')
-
     return {
         "base_url": base_url,
         "query_id": query_params.get('queryId', [None])[0],
-        "variables_count": count,
-        "variables_job_collection_slug": slug,
-        "variables_query_origin": origin,
-        "variables_start": start,
+        "variables_count": find_val('count', is_int=True),
+        "variables_job_collection_slug": find_val('jobCollectionSlug'),
+        "variables_query_origin": find_val('origin'),
+        "variables_start": find_val('start', is_int=True),
     }
 
 def parse_curl_string_flat(curl_string: str) -> Optional[FlatFetchCall]:
     curl_string = curl_string.replace('\\\n', ' ').replace('\n', ' ').strip()
     try:
         tokens = shlex.split(curl_string)
-    except ValueError as e:
-        print(f"Error splitting cURL string: {e}")
+    except ValueError:
         return None
 
     url = None
@@ -166,57 +213,34 @@ def parse_curl_string_flat(curl_string: str) -> Optional[FlatFetchCall]:
         if token.startswith('http') and url is None:
             if i == 0 or tokens[i-1] not in ('-H', '--header', '-d', '--data', '--data-raw', '--cookie', '-b', '-X', '--request'):
                 url = token
-
         if token in ('-H', '--header') and i + 1 < len(tokens):
-            header_raw = tokens[i+1]
-            if ':' in header_raw:
-                key, value = header_raw.split(':', 1)
+            if ':' in tokens[i+1]:
+                key, value = tokens[i+1].split(':', 1)
                 headers[key.strip()] = value.strip()
-
         if token in ('-b', '--cookie') and i + 1 < len(tokens):
             headers['Cookie'] = tokens[i+1].strip()
+        if token in ('-d', '--data', '--data-raw') and i + 1 < len(tokens):
+            body = tokens[i+1]; method = "POST"
 
-        if token in ('-d', '--data', '--data-raw', '--data-binary') and i + 1 < len(tokens):
-            body = tokens[i+1]
-            method = "POST"
-
-        if token in ('-X', '--request') and i + 1 < len(tokens):
-            method = tokens[i+1]
-
-    if not url:
-        return None
-
+    if not url: return None
     url_data = _process_linkedin_url(url)
 
     return FlatFetchCall(
-        **url_data,
-        method=method,
-        headers=json.dumps(headers),
-        body=body,
-        referer=headers.get("Referer")
+        **url_data, method=method, headers=json.dumps(headers), body=body, referer=headers.get("Referer")
     )
 
 def parse_fetch_string_flat(fetch_string: str) -> Optional[FlatFetchCall]:
     try:
         match = re.search(r'fetch\("([^"]+)",\s*({.*})\);?', fetch_string, re.DOTALL)
-        if not match:
-            return None
+        if not match: return None
         raw_url, options_str = match.groups()
-
         options_data = json.loads(options_str)
-        headers_json = json.dumps(options_data.get("headers", {}), indent=2)
-        body_json = json.dumps(options_data.get("body"))
-
         url_data = _process_linkedin_url(raw_url)
-
         return FlatFetchCall(
             **url_data,
             method=options_data.get("method"),
-            headers=headers_json,
-            body=body_json,
+            headers=json.dumps(options_data.get("headers", {})),
+            body=json.dumps(options_data.get("body")),
             referer=options_data.get("headers", {}).get("Referer")
         )
-
-    except Exception as e:
-        print(f"Error parsing Fetch: {e}")
-        return None
+    except: return None

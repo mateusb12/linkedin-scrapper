@@ -1,134 +1,71 @@
 # linkedin_fetcher.py
-# --- Contains all direct HTTP call and API interaction logic ---
-
 import re
+import requests
+import json
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-# Assuming these imports are correct relative to your project structure
-from linkedin.api_fetch.pagination.pagination_recommended_jobs import parse_curl_command_from_orm, fetch_linkedin_jobs, \
-    parse_jobs_page
+# Updated Imports
+from linkedin.api_fetch.pagination.pagination_recommended_jobs import parse_jobs_page
 from linkedin.api_fetch.single_job.fetch_single_job_details import make_session, fetch_job_detail
 from models import FetchCurl
 from path.path_reference import get_orchestration_curls_folder_path
 
-# Path to your individual job cURL command file
 env_path = get_orchestration_curls_folder_path()
 INDIVIDUAL_JOB_CURL_COMMAND_PATH = Path(env_path, "individual_job_curl.txt")
 
 
 def _load_pagination_job_curl_command() -> FetchCurl:
-    """Loads the pagination cURL command from the database."""
     from database.database_connection import get_db_session
     db = get_db_session()
     record = db.query(FetchCurl).filter(FetchCurl.name == "Pagination").first()
     return record
 
 
+def fetch_linkedin_jobs(url: str, headers: Dict) -> Optional[Dict]:
+    """Helper to make the actual request."""
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error making request to LinkedIn: {e}")
+        if e.response is not None:
+            print(f"Status Code: {e.response.status_code}")
+        return None
+
+
 def fetch_page_data_from_api(page_number: int, quiet: bool = False) -> Optional[dict]:
-    """
-    Executes the pagination cURL for a specific page and returns the parsed page data.
-    This function handles the direct API call.
-
-    Args:
-        page_number: The page number to fetch (e.g., 1, 2, 3...).
-        quiet: If True, suppresses some print statements.
-
-    Returns:
-        A dictionary containing the parsed data for the requested page, or None on failure.
-    """
     try:
         db_content = _load_pagination_job_curl_command()
         if not db_content:
             raise ValueError("No pagination cURL command found in the database.")
 
-        # 1. Parse content
-        url, headers = parse_curl_command_from_orm(db_content)
-
-        # --- DEBUG START ---
-        print("\n🔎 --- DEBUG: HEADER ANALYSIS ---")
-        cookie_string = headers.get('cookie') or headers.get('Cookie')
-
-        if not cookie_string:
-            print("❌ CRITICAL: No 'Cookie' header found in the parsed cURL.")
-        else:
-            print(f"✅ Cookie found (Length: {len(cookie_string)})")
-
-            # 2. Extract JSESSIONID
-            # Matches JSESSIONID="ajax:..." or JSESSIONID=ajax:...
-            match = re.search(r'JSESSIONID="?([^";\s]+)"?', cookie_string)
-
-            if match:
-                correct_token = match.group(1)
-                print(f"   --> Extracted JSESSIONID from cookie: {correct_token}")
-
-                # 3. Check current header token
-                current_token = headers.get('csrf-token') or headers.get('Csrf-Token')
-                print(f"   --> Current 'csrf-token' in header:   {current_token}")
-
-                # 4. Compare and Fix
-                if current_token != correct_token:
-                    print(f"⚠️  MISMATCH DETECTED. Auto-fixing headers...")
-                    headers['csrf-token'] = correct_token
-                    headers['Csrf-Token'] = correct_token
-                    print(f"   --> Header updated to: {correct_token}")
-                else:
-                    print("✅ Tokens match. No changes needed.")
-            else:
-                print("❌ CRITICAL: Could not find 'JSESSIONID' inside the cookie string via Regex.")
-                # Print a small snippet of the cookie to help debug the regex manually if needed
-                print(f"   --> Cookie snippet: {cookie_string[:100]}...")
-
-        print("🔎 ------------------------------\n")
-        # --- DEBUG END ---
+        # --- NEW LOGIC: Ask ORM to build the request ---
+        url, headers = db_content.construct_request(page_number=page_number)
 
         if not quiet:
-            print("--- Successfully parsed pagination cURL command ---")
+            print(f"\n🚀 Fetching Page {page_number}")
+            print(f"   URL: {url[:80]}...")
+            print(f"   CSRF: {headers.get('csrf-token')}")
+
+        live_data = fetch_linkedin_jobs(url, headers)
+
+        if not live_data:
+            print("Received no data from the API.")
+            return None
+
+        return parse_jobs_page(live_data)
 
     except Exception as e:
-        raise RuntimeError(f"Failed to parse pagination cURL: {e}") from e
-
-    if db_content is None:
-        raise ValueError(
-            "Pagination cURL has not been configured. Use PUT /fetch-jobs/pagination-curl to set it."
-        )
-
-    # Prepare URL parameters
-    count_match = re.search(r"count:(\d+)", url)
-    count = int(count_match.group(1)) if count_match else 24
-    start_index = (page_number - 1) * count
-    modified_url = re.sub(r"start:\d+", f"start:{start_index}", url)
-
-    if not quiet:
-        print(f"--- Fetching page {page_number} (start index: {start_index}) ---")
-
-    # Final Debug before sending
-    print(f"🚀 Sending Request to: {modified_url[:60]}...")
-    print(f"🚀 Using CSRF Token: {headers.get('csrf-token')}")
-
-    live_data = fetch_linkedin_jobs(modified_url, headers)
-
-    if not live_data:
-        if not quiet:
-            print("Received no data from the API. This could be due to an expired cURL token or invalid page number.")
+        print(f"Fatal error during fetch: {e}")
         return None
-
-    return parse_jobs_page(live_data)
 
 
 def fetch_raw_job_details_from_api(job_urn_ids: List[str]) -> List[Dict[str, Any]]:
-    """
-    Given a list of job URNs, fetches the raw, detailed data for each job.
-    This function handles the direct API calls.
-
-    Args:
-        job_urn_ids: A list of job URN identifiers.
-
-    Returns:
-        A list of dictionaries, where each contains the raw response for a job.
-    """
+    # This part remains mostly as-is until we fully migrate individual jobs to ORM too
     if not job_urn_ids:
-        print("No job URNs provided to fetch details.")
+        print("No job URNs provided.")
         return []
 
     content = INDIVIDUAL_JOB_CURL_COMMAND_PATH.read_text(encoding="utf-8").strip()
@@ -139,11 +76,10 @@ def fetch_raw_job_details_from_api(job_urn_ids: List[str]) -> List[Dict[str, Any
     print(f"--- Fetching details for {total} jobs... ---")
     for idx, urn in enumerate(job_urn_ids, start=1):
         try:
-            print(f"[{idx}/{total}] Fetching detail for {urn}...", end=" ")
+            # print(f"[{idx}/{total}] {urn}...", end=" ")
             data = fetch_job_detail(session, urn)
-            # We append the raw data along with the URN for context
             raw_results.append({"jobPostingUrn": urn, "detailResponse": data})
-            print("✓")
+            # print("✓")
         except Exception as exc:
             print(f"✗ Failed: {exc}")
 

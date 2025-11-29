@@ -31,3 +31,6 @@
 /backend/services/job_tracking/linkedin_cookie.txt
 /frontend/*.env
 /frontend/.env*
+repomix-output.*
+repomix-output.md
+*repomix-output*
