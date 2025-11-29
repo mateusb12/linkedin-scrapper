@@ -1,9 +1,16 @@
 // src/components/data-fetching/FetchConfig.jsx
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import { useDarkMode } from "../../hooks/useDarkMode.jsx";
 import { generateCurlCommand, generateFetchCommand } from "../../utils/fetchUtils.js";
 import { ConfigEditor } from "./ConfigEditor.jsx";
+
+// Import the service functions instead of using axios directly
+import {
+    getPaginationCurl,
+    getIndividualJobCurl,
+    savePaginationCurl,
+    saveIndividualJobCurl
+} from "../../services/fetchLinkedinService.js";
 
 // 🔥 Network Filter Constants
 const NETWORK_FILTER_PAGINATION = "jobCollectionSlug:recommended";
@@ -73,13 +80,14 @@ export default function FetchConfig() {
         if (feedbackMessage) setStatusMessage({ general: feedbackMessage });
 
         try {
-            const [pagRes, indRes] = await Promise.all([
-                axios.get("http://localhost:5000/fetch-jobs/pagination-curl"),
-                axios.get("http://localhost:5000/fetch-jobs/individual-job-curl"),
+            // UPDATED: Using Service functions instead of direct axios
+            const [pagData, indData] = await Promise.all([
+                getPaginationCurl(),
+                getIndividualJobCurl(),
             ]);
 
-            processAndSet(pagRes.data, setPaginationJson, setPaginationFetch, setPaginationCurl);
-            processAndSet(indRes.data, setIndividualJobJson, setIndividualJobFetch, setIndividualJobCurl);
+            processAndSet(pagData, setPaginationJson, setPaginationFetch, setPaginationCurl);
+            processAndSet(indData, setIndividualJobJson, setIndividualJobFetch, setIndividualJobCurl);
 
             if (feedbackMessage) {
                 clearStatusMessage("general");
@@ -109,13 +117,14 @@ export default function FetchConfig() {
         if (!simplePagInput.trim()) return;
         setStatusMessage({ general: "Saving Pagination..." });
         try {
-            // Send RAW input inside a wrapper object. Backend handles the parsing.
-            await axios.put("http://localhost:5000/fetch-jobs/pagination-curl", { curl: simplePagInput });
+            // UPDATED: Using Service function
+            await savePaginationCurl(simplePagInput);
             setSimplePagInput("");
             await fetchAndSetData("✅ Pagination cURL Updated!");
         } catch (error) {
             console.error(error);
-            setStatusMessage({ general: `❌ Error: ${error.response?.data?.description || error.message}` });
+            const msg = error.response?.data?.description || error.response?.data?.message || error.message;
+            setStatusMessage({ general: `❌ Error: ${msg}` });
         }
     };
 
@@ -123,13 +132,14 @@ export default function FetchConfig() {
         if (!simpleIndInput.trim()) return;
         setStatusMessage({ general: "Saving Job Config..." });
         try {
-            // Send RAW input inside a wrapper object. Backend handles the parsing.
-            await axios.put("http://localhost:5000/fetch-jobs/individual-job-curl", { curl: simpleIndInput });
+            // UPDATED: Using Service function
+            await saveIndividualJobCurl(simpleIndInput);
             setSimpleIndInput("");
             await fetchAndSetData("✅ Individual Job cURL Updated!");
         } catch (error) {
             console.error(error);
-            setStatusMessage({ general: `❌ Error: ${error.response?.data?.description || error.message}` });
+            const msg = error.response?.data?.description || error.response?.data?.message || error.message;
+            setStatusMessage({ general: `❌ Error: ${msg}` });
         }
     };
 
