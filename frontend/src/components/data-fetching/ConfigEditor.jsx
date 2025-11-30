@@ -1,11 +1,11 @@
-// src/components/data-fetching/ConfigEditor.jsx
 import React, { useState } from 'react';
 import axios from 'axios';
+import {CopyableCodeBlock} from "./CopyableCodeBlock.jsx";
 
 export const ConfigEditor = ({
                                  title,
                                  subtitle,
-                                 networkFilter, // 🔥 New Prop
+                                 networkFilter,
                                  jsonValue,
                                  setJsonValue,
                                  fetchValue,
@@ -17,7 +17,6 @@ export const ConfigEditor = ({
     const [status, setStatus] = useState(null);
     const [showStatus, setShowStatus] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
-    const [copied, setCopied] = useState(false);
 
     const getDisplayValue = () => {
         switch (view) {
@@ -45,13 +44,6 @@ export const ConfigEditor = ({
         }
     };
 
-    const handleCopyFilter = () => {
-        if (!networkFilter) return;
-        navigator.clipboard.writeText(networkFilter);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
-
     const handleUpdate = () => {
         const endpoint = title === "Pagination Request"
             ? "http://localhost:5000/fetch-jobs/pagination-curl"
@@ -77,42 +69,26 @@ export const ConfigEditor = ({
 
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-            <div className="flex justify-between items-start mb-4">
-                <div className="space-y-2">
+            <div className="flex flex-col sm:flex-row justify-between items-start mb-4 gap-4">
+                <div className="space-y-3 w-full sm:max-w-md">
                     <div>
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{title}</h2>
-                        {subtitle && <p className="text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>}
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{title}</h2>
+                        {subtitle && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{subtitle}</p>}
                     </div>
 
-                    {/* 🔥 New Network Filter UI */}
+                    {/* 🔥 Reusable Component used here */}
                     {networkFilter && (
-                        <div className="inline-flex items-center gap-3 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md px-3 py-1.5 group">
-                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                                Network Filter:
-                            </span>
-                            <code className="text-sm font-mono text-pink-600 dark:text-pink-400 font-medium">
-                                {networkFilter}
-                            </code>
-                            <button
-                                onClick={handleCopyFilter}
-                                title="Copy filter"
-                                className="ml-1 p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-                            >
-                                {copied ? (
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-500" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                    </svg>
-                                ) : (
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                    </svg>
-                                )}
-                            </button>
+                        <div className="mt-2">
+                            <CopyableCodeBlock
+                                label="Network Filter"
+                                text={networkFilter}
+                                className="w-full max-w-sm"
+                            />
                         </div>
                     )}
                 </div>
 
-                <div className="flex items-center rounded-lg bg-gray-200 dark:bg-gray-700 p-1 flex-shrink-0">
+                <div className="flex items-center rounded-lg bg-gray-200 dark:bg-gray-700 p-1 flex-shrink-0 self-start">
                     {['fetch', 'json', 'curl'].map((mode) => (
                         <button
                             key={mode}
@@ -128,7 +104,7 @@ export const ConfigEditor = ({
             <textarea
                 value={getDisplayValue()}
                 onChange={handleOnChange}
-                className="w-full h-64 p-3 bg-white dark:bg-[#1e1e1e] border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-200 font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none custom-scrollbar"
+                className="w-full h-64 p-3 bg-white dark:bg-[#1e1e1e] border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-gray-200 font-mono text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none custom-scrollbar resize-none"
                 placeholder={`Paste the full ${view} command here...`}
             />
 

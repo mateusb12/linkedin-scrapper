@@ -3,8 +3,9 @@ import React, { useEffect, useState } from "react";
 import { useDarkMode } from "../../hooks/useDarkMode.jsx";
 import { generateCurlCommand, generateFetchCommand } from "../../utils/fetchUtils.js";
 import { ConfigEditor } from "./ConfigEditor.jsx";
+// 1. Import the component we actually fixed
+import { CopyableCodeBlock } from "./CopyableCodeBlock.jsx";
 
-// Import the service functions instead of using axios directly
 import {
     getPaginationCurl,
     getIndividualJobCurl,
@@ -16,34 +17,7 @@ import {
 const NETWORK_FILTER_PAGINATION = "jobCollectionSlug:recommended";
 const NETWORK_FILTER_INDIVIDUAL = "jobPostingDetailDescription_start";
 
-const CopyIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-    </svg>
-);
-
-const FilterHelper = ({ label, filterText }) => {
-    const [copied, setCopied] = useState(false);
-
-    const handleCopy = () => {
-        navigator.clipboard.writeText(filterText);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
-
-    return (
-        <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 p-2 rounded border border-gray-200 dark:border-gray-600 text-xs mt-1">
-            <span className="font-mono text-gray-600 dark:text-gray-300 truncate mr-2">{filterText}</span>
-            <button
-                onClick={handleCopy}
-                className="flex items-center space-x-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 font-semibold"
-                title="Copy Filter"
-            >
-                {copied ? <span>Copied!</span> : <CopyIcon />}
-            </button>
-        </div>
-    );
-};
+// --- DELETED: Inline CopyIcon and FilterHelper (This was the problem) ---
 
 export default function FetchConfig() {
     const [isDark] = useDarkMode();
@@ -80,7 +54,6 @@ export default function FetchConfig() {
         if (feedbackMessage) setStatusMessage({ general: feedbackMessage });
 
         try {
-            // UPDATED: Using Service functions instead of direct axios
             const [pagData, indData] = await Promise.all([
                 getPaginationCurl(),
                 getIndividualJobCurl(),
@@ -117,7 +90,6 @@ export default function FetchConfig() {
         if (!simplePagInput.trim()) return;
         setStatusMessage({ general: "Saving Pagination..." });
         try {
-            // UPDATED: Using Service function
             await savePaginationCurl(simplePagInput);
             setSimplePagInput("");
             await fetchAndSetData("✅ Pagination cURL Updated!");
@@ -132,7 +104,6 @@ export default function FetchConfig() {
         if (!simpleIndInput.trim()) return;
         setStatusMessage({ general: "Saving Job Config..." });
         try {
-            // UPDATED: Using Service function
             await saveIndividualJobCurl(simpleIndInput);
             setSimpleIndInput("");
             await fetchAndSetData("✅ Individual Job cURL Updated!");
@@ -202,10 +173,14 @@ export default function FetchConfig() {
                             <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center">
                                 📄 Pagination Request
                             </h2>
-                            <p className="text-xs text-gray-500 mt-1">
+                            <p className="text-xs text-gray-500 mt-1 mb-3">
                                 Controls how we traverse the job list (pages 1, 2, 3...).
                             </p>
-                            <FilterHelper label="Network Filter" filterText={NETWORK_FILTER_PAGINATION} />
+                            {/* 2. REPLACED: Using real CopyableCodeBlock */}
+                            <CopyableCodeBlock
+                                label="Network Filter"
+                                text={NETWORK_FILTER_PAGINATION}
+                            />
                         </div>
 
                         <textarea
@@ -231,10 +206,14 @@ export default function FetchConfig() {
                             <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center">
                                 💼 Individual Job Request
                             </h2>
-                            <p className="text-xs text-gray-500 mt-1">
+                            <p className="text-xs text-gray-500 mt-1 mb-3">
                                 Controls how we fetch details for a single job card.
                             </p>
-                            <FilterHelper label="Network Filter" filterText={NETWORK_FILTER_INDIVIDUAL} />
+                            {/* 2. REPLACED: Using real CopyableCodeBlock */}
+                            <CopyableCodeBlock
+                                label="Network Filter"
+                                text={NETWORK_FILTER_INDIVIDUAL}
+                            />
                         </div>
 
                         <textarea

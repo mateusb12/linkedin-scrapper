@@ -196,7 +196,7 @@ class EnrichmentService:
                 "company_name": company_name,
                 "company_urn": company_urn,
                 "company_logo": company_logo,
-                "processed": True
+                "processed": False
             }
 
         return results
