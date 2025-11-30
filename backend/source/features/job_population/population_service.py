@@ -4,8 +4,8 @@ from typing import Dict, Any
 from source.features.fetch_curl.fetch_service import FetchService
 from repository.job_repository import JobRepository
 from models import Company
-from source.features.job_population.enrichment_service import EnrichmentService
 from source.features.job_population.linkedin_parser import parse_job_entries
+from source.features.job_population.enrichment_service import EnrichmentService
 
 class PopulationService:
 
@@ -14,7 +14,6 @@ class PopulationService:
         data = FetchService.execute_fetch_page_raw(page_number=1)
         if not data: return 0
         try:
-            # Safe extraction
             inner = (data.get('data') or {}).get('data') or {}
             paging = (inner.get('jobsDashJobCardsByJobCollections') or {}).get('paging') or {}
             total = paging.get('total', 0)
@@ -26,61 +25,64 @@ class PopulationService:
 
     @staticmethod
     def fetch_and_save_page(page_number: int) -> Dict[str, Any]:
-        # 1. FETCH
+        # 1. FETCH PAGINATION (Lightweight)
+        print(f"--- Fetching Page {page_number} (List) ---")
         raw_data = FetchService.execute_fetch_page_raw(page_number)
         if not raw_data:
             return {"success": False, "message": "Network request failed"}
 
-        # 2. PARSE
+        # 2. PARSE SUMMARIES
         job_entries = parse_job_entries(raw_data)
         if not job_entries:
             return {"success": True, "count": 0, "total_found": 0, "message": "No jobs found"}
 
-        # 3. SAVE & CHECK DUPLICATES
         repo = JobRepository()
-        session = repo.session  # <--- Important: Use Repo's session
-
+        session = repo.session
         saved_count = 0
-        try:
-            for job_data in job_entries:
-                # This is the "Is it already inside DB?" check
-                existing = repo.get_by_urn(job_data['urn'])
 
-                if not existing:
-                    # It's new! Add it.
-                    job_id = job_data.get('job_id')
-                    print(f"   > Enriching Job ID: {job_id}...", end=" ")
-                    enriched_data = EnrichmentService.fetch_job_details(job_id)
-                    if enriched_data:
-                        print("Success.")
-                        # Merge enriched fields into job_data
-                        job_data.update(enriched_data)
-                    else:
-                        print("Failed (saving basic data).")
-                        job_data['description_full'] = "No description provided"
-                        job_data['processed'] = False
+        # 3. IDENTIFY NEW JOBS
+        new_jobs = []
+        for job in job_entries:
+            if not repo.get_by_urn(job['urn']):
+                new_jobs.append(job)
 
-                    if job_data.get('company_urn'):
-                        comp = session.query(Company).filter_by(urn=job_data['company_urn']).first()
-                        if not comp:
-                            session.add(Company(urn=job_data['company_urn'], name="Unknown"))
-                            session.flush()
+        print(f"Found {len(new_jobs)} new jobs to enrich out of {len(job_entries)}.")
 
-                    repo.add_job_by_dict(job_data)
-                    saved_count += 1
-                # If existing: We do nothing (Skip)
+        # 4. BATCH ENRICHMENT (The Magic Step)
+        if new_jobs:
+            # Extract IDs for the batch call
+            job_ids = [j['job_id'] for j in new_jobs]
 
-            repo.commit()
+            print(f"--- Batch Fetching Details for {len(job_ids)} jobs ---")
+            enriched_results = EnrichmentService.fetch_batch_job_details(job_ids)
 
-            # The frontend uses 'count' (saved) vs 'total_found' to determine if it was a skip
-            return {
-                "success": True,
-                "count": saved_count,
-                "total_found": len(job_entries)
-            }
+            # 5. MERGE & SAVE
+            for job in new_jobs:
+                jid = job['job_id']
 
-        except Exception as e:
-            repo.rollback()
-            return {"success": False, "error": str(e)}
-        finally:
-            repo.close()
+                # If we got details for this ID, merge them in
+                if jid in enriched_results:
+                    job.update(enriched_results[jid])
+                else:
+                    print(f"⚠️ Warning: No details found for {jid} in batch response.")
+                    job['description_full'] = "No description provided"
+                    job['processed'] = False
+
+                # Handle Company
+                if job.get('company_urn'):
+                    comp = session.query(Company).filter_by(urn=job['company_urn']).first()
+                    if not comp:
+                        session.add(Company(urn=job['company_urn'], name=job.get('company_name', 'Unknown')))
+                        session.flush()
+
+                repo.add_job_by_dict(job)
+                saved_count += 1
+
+        repo.commit()
+        repo.close()
+
+        return {
+            "success": True,
+            "count": saved_count,
+            "total_found": len(job_entries)
+        }
