@@ -146,17 +146,18 @@ class JobRepository:
         )
 
     def add_job_by_dict(self, job_dict: dict):
-        print("a")
+        description = job_dict.get("description_full") or "No description provided"
+        is_processed = job_dict.get("processed", False)
 
         job_object = Job(
             urn=job_dict.get("urn"),
             title=job_dict.get("title"),
             location=job_dict.get("location"),
-            workplace_type="Remote",  # Hardcoded
+            workplace_type=job_dict.get("workplace_type", "Remote"),
             employment_type="Full-time",  # Hardcoded
             posted_on=job_dict.get("timestamp"),
             job_url=job_dict.get("url"),
-            description_full="No description provided",  # Hardcoded
+            description_full=description,
             applicants=0,  # Hardcoded
             description_snippet="",  # Hardcoded
             easy_apply=False,  # Hardcoded

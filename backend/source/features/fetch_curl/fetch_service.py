@@ -1,4 +1,4 @@
-import math
+import json
 import requests
 from dataclasses import asdict
 from typing import Optional, Dict, Any
@@ -32,7 +32,6 @@ class FetchService:
                 record = FetchCurl(name=name)
                 db.add(record)
 
-            # The ORM handles the complex parsing logic now!
             record.update_from_raw(raw_body)
             db.commit()
             return True
@@ -45,28 +44,20 @@ class FetchService:
 
     @staticmethod
     def execute_fetch_page(page_number: int) -> Optional[Dict]:
-        """
-        1. Loads config from DB
-        2. Constructs Request
-        3. Pings LinkedIn
-        4. Parses Result
-        """
+        """Loads config from DB and fetches a page."""
         db = get_db_session()
         try:
             record = db.query(FetchCurl).filter(FetchCurl.name == "Pagination").first()
             if not record:
                 raise ValueError("Pagination cURL not configured.")
 
-            # ORM constructs the valid URL/Headers
             url, headers = record.construct_request(page_number=page_number)
 
             print(f"🚀 Fetching Page {page_number}...")
             response = requests.get(url, headers=headers)
             response.raise_for_status()
 
-            # Pure Logic Parser
             parsed_data = parse_jobs_page(response.json())
-
             if parsed_data:
                 return asdict(parsed_data)
             return None
@@ -79,39 +70,93 @@ class FetchService:
 
     @staticmethod
     def get_total_pages() -> int:
-        """Fetches page 1 to calculate total available pages."""
+        import math
         data = FetchService.execute_fetch_page(1)
         if not data:
             return 0
-
         total_jobs = data.get('paging', {}).get('total', 0)
         count = data.get('paging', {}).get('count', 25)
-
         return math.ceil(total_jobs / count)
 
     @staticmethod
     def execute_fetch_page_raw(page_number: int) -> Optional[Dict]:
-        """
-        Executes the request and returns the RAW JSON response.
-        Used by the job_population feature to handle its own parsing.
-        """
+        """Returns RAW JSON for population service."""
         db = get_db_session()
         try:
             record = db.query(FetchCurl).filter(FetchCurl.name == "Pagination").first()
             if not record:
-                # If this raises, the user sees "Pagination cURL not configured" in logs
-                raise ValueError("Pagination cURL not configured in database.")
+                raise ValueError("Pagination cURL not configured.")
 
-            # ORM constructs the valid URL/Headers based on the stored config
             url, headers = record.construct_request(page_number=page_number)
 
             print(f"🚀 [Raw Fetch] Page {page_number}...")
             response = requests.get(url, headers=headers, timeout=15)
             response.raise_for_status()
-
             return response.json()
         except Exception as e:
             print(f"❌ [FetchService] Raw Fetch failed: {e}")
+            return None
+        finally:
+            db.close()
+
+    @staticmethod
+    def execute_fetch_graphql(params: Dict[str, str]) -> Optional[Dict]:
+        """
+        Executes a GET request to the Voyager GraphQL endpoint.
+        CRITICAL FIX: We manually construct the URL query string here.
+        Passing 'variables' via standard requests params causes URL-encoding of
+        parentheses (e.g. %28 instead of '('), which LinkedIn rejects with 400.
+        """
+        base_url = "https://www.linkedin.com/voyager/api/graphql"
+
+        if 'variables' in params and 'queryId' in params:
+            # Manually build string to preserve parenthesis structure
+            # Note: The inner content of 'variables' should already be properly encoded by the caller
+            query_string = f"?variables={params['variables']}&queryId={params['queryId']}"
+            full_url = base_url + query_string
+            return FetchService._internal_request(full_url, params=None)
+
+        return FetchService._internal_request(base_url, params=params)
+
+    @staticmethod
+    def _internal_request(url: str, params: Optional[Dict[str, str]] = None) -> Optional[Dict]:
+        """
+        Executes a generic authenticated request reusing credentials from the 'Pagination' config.
+        """
+        db = get_db_session()
+        try:
+            record = db.query(FetchCurl).filter(FetchCurl.name == "Pagination").first()
+            if not record:
+                print("❌ [FetchService] No 'Pagination' record found.")
+                return None
+
+            headers = {}
+            if record.headers:
+                try:
+                    headers = json.loads(record.headers)
+                except:
+                    pass
+
+            # Use 'params' only if provided, otherwise assume URL is fully constructed
+            req = requests.Request('GET', url, headers=headers, params=params)
+            prepared = req.prepare()
+
+            # --- DEBUG PRINT (Temporary) ---
+            print(f"🐍 DEBUG URL: {prepared.url}")
+            # -------------------------------
+
+            response = requests.Session().send(prepared, timeout=10)
+
+            if response.status_code != 200:
+                print(f"❌ Status: {response.status_code}")
+                # LinkedIn errors are often verbose html/json, print short snippet
+                print(f"❌ Response: {response.text[:200]}")
+                return None
+
+            return response.json()
+
+        except Exception as e:
+            print(f"❌ [FetchService] Request failed: {e}")
             return None
         finally:
             db.close()

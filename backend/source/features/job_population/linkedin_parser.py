@@ -38,6 +38,8 @@ def parse_job_entries(data: Dict) -> List[Dict]:
         if not job_urn:
             continue
 
+        job_id = job_urn.split(':')[-1]
+
         # --- SAFE EXTRACTION START ---
         # We use (dict.get(key) or {}) to handle cases where the value is None (JSON null)
 
@@ -80,6 +82,7 @@ def parse_job_entries(data: Dict) -> List[Dict]:
 
         parsed_jobs.append({
             "urn": job_urn,
+            "job_id": job_id,
             "title": title,
             "location": location,
             "company_urn": company_urn,

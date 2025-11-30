@@ -4,6 +4,7 @@ from typing import Dict, Any
 from source.features.fetch_curl.fetch_service import FetchService
 from repository.job_repository import JobRepository
 from models import Company
+from source.features.job_population.enrichment_service import EnrichmentService
 from source.features.job_population.linkedin_parser import parse_job_entries
 
 class PopulationService:
@@ -47,6 +48,18 @@ class PopulationService:
 
                 if not existing:
                     # It's new! Add it.
+                    job_id = job_data.get('job_id')
+                    print(f"   > Enriching Job ID: {job_id}...", end=" ")
+                    enriched_data = EnrichmentService.fetch_job_details(job_id)
+                    if enriched_data:
+                        print("Success.")
+                        # Merge enriched fields into job_data
+                        job_data.update(enriched_data)
+                    else:
+                        print("Failed (saving basic data).")
+                        job_data['description_full'] = "No description provided"
+                        job_data['processed'] = False
+
                     if job_data.get('company_urn'):
                         comp = session.query(Company).filter_by(urn=job_data['company_urn']).first()
                         if not comp:
