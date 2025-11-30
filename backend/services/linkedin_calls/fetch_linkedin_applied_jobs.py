@@ -7,7 +7,7 @@ from typing import List, Dict, Any, Optional, Tuple
 
 from exceptions.service_exceptions import LinkedInScrapingException
 from models import Job
-from repository.job_repository import JobRepository
+from source.features.job_population.job_repository import JobRepository
 from services.linkedin_calls.fetch_linkedin_timestamp import fetch_job_timestamp
 from services.linkedin_calls.curl_storage.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
 

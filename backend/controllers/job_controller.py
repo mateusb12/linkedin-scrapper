@@ -6,7 +6,7 @@ from factory.core_instances import embedding_calculator
 from models import Job
 from services.model_orchestrator import LLMOrchestrator, AllLLMsFailed
 from utils.metric_utils import JobConsoleProgress
-from repository.job_repository import JobRepository, incomplete_job_condition
+from source.features.job_population.job_repository import JobRepository
 
 job_data_bp = Blueprint("jobs", __name__, url_prefix="/jobs")
 

@@ -2,7 +2,7 @@ import math
 from typing import Dict, Any
 
 from source.features.fetch_curl.fetch_service import FetchService
-from repository.job_repository import JobRepository
+from source.features.job_population.job_repository import JobRepository
 from models import Company
 from source.features.job_population.linkedin_parser import parse_job_entries
 from source.features.job_population.enrichment_service import EnrichmentService

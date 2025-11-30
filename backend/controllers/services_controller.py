@@ -6,7 +6,7 @@ import traceback
 
 from exceptions.service_exceptions import LinkedInScrapingException
 from models import Job, FetchCurl
-from repository.job_repository import JobRepository
+from source.features.job_population.job_repository import JobRepository
 from services.job_tracking.huntr_service import get_huntr_jobs_data
 from database.database_connection import get_db_session
 from services.linkedin_calls.fetch_linkedin_applied_jobs import fetch_all_linkedin_jobs
