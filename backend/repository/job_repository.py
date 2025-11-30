@@ -153,26 +153,34 @@ class JobRepository:
             urn=job_dict.get("urn"),
             title=job_dict.get("title"),
             location=job_dict.get("location"),
+            # Allow overrides from enrichment, fallback to defaults
             workplace_type=job_dict.get("workplace_type", "Remote"),
-            employment_type="Full-time",  # Hardcoded
-            posted_on=job_dict.get("timestamp"),
-            job_url=job_dict.get("url"),
+            employment_type=job_dict.get("employment_type", "Full-time"),
+
+            posted_on=job_dict.get("posted_on") or job_dict.get("timestamp"),
+            job_url=job_dict.get("job_url"),
+
             description_full=description,
-            applicants=0,  # Hardcoded
-            description_snippet="",  # Hardcoded
-            easy_apply=False,  # Hardcoded
-            language="PTBR",  # Hardcoded
-            disabled=True,
-            processed=True,
+            applicants=job_dict.get("applicants", 0),
+            description_snippet=job_dict.get("description_snippet", ""),
+            easy_apply=job_dict.get("easy_apply", False),
+            language="PTBR",
+            disabled=False,
+            processed=is_processed,
+
             responsibilities=[],
             qualifications=[],
             keywords=[],
             job_type="Full-stack",
             programming_languages=[],
-            has_applied=True,  # From your context, this is an "applied" job
-            applied_on=datetime.fromisoformat(job_dict["timestamp"]) if "timestamp" in job_dict else None,
-            company_urn=None  # Will be set separately if needed (e.g., after company is created)
+            has_applied=False,
+
+            # [CRITICAL FIX] Actually save the company link!
+            company_urn=job_dict.get("company_urn")
         )
+
+        self.session.add(job_object)
+        self.session.commit()
 
         # Add job_object to session
         self.session.add(job_object)

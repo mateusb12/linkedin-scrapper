@@ -1,6 +1,6 @@
 import re
 import urllib.parse
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from source.features.fetch_curl.fetch_service import FetchService
 
@@ -9,26 +9,17 @@ class EnrichmentService:
 
     @staticmethod
     def fetch_batch_job_details(job_ids: List[str]) -> Dict[str, Dict[str, Any]]:
-        """
-        Fetches details for MULTIPLE jobs in one single HTTP request.
-        Returns a dictionary mapping job_id -> enriched_data_dict.
-        """
         if not job_ids:
             return {}
 
-        # 1. Construct the list of encoded URNs
-        # Format: urn:li:fsd_jobPostingCard:(<ID>,JOB_DETAILS)
         urn_list = []
         for jid in job_ids:
             raw_urn = f"urn:li:fsd_jobPostingCard:({jid},JOB_DETAILS)"
             encoded_urn = urllib.parse.quote(raw_urn)
             urn_list.append(encoded_urn)
 
-        # Join them with commas for the List(...) syntax
         urns_string = ",".join(urn_list)
 
-        # 2. Build Query
-        # Notice we pass the comma-separated list inside List(...)
         variables_str = (
             f"(jobPostingDetailDescription_start:0,"
             f"jobPostingDetailDescription_count:5,"
@@ -42,12 +33,10 @@ class EnrichmentService:
             "queryId": EnrichmentService.QUERY_ID
         }
 
-        # 3. Execute
         response_data = FetchService.execute_fetch_graphql(params)
         if not response_data:
             return {}
 
-        # 4. Parse Batch Response
         return EnrichmentService._parse_batch_response(response_data)
 
     @staticmethod
@@ -66,63 +55,124 @@ class EnrichmentService:
         return texts
 
     @staticmethod
+    def _build_company_map(included: List[Dict]) -> Dict[str, Dict]:
+        """
+        Creates a lookup: {'urn:li:fsd_company:123': {'name': 'Google', 'logo': 'http...'}}
+        """
+        company_map = {}
+        for item in included:
+            if item.get("$type") == "com.linkedin.voyager.dash.organization.Company":
+                urn = item.get("entityUrn")
+                name = item.get("name")
+
+                # Resolve Logo
+                logo_url = None
+                res_result = item.get("logoResolutionResult", {})
+                vector_img = res_result.get("vectorImage", {})
+                artifacts = vector_img.get("artifacts", [])
+                root_url = vector_img.get("rootUrl", "")
+
+                if root_url and artifacts:
+                    # Prefer 200px width, else take the first one
+                    best_artifact = next((a for a in artifacts if a.get("width") == 200), artifacts[0])
+                    file_path = best_artifact.get("fileIdentifyingUrlPathSegment", "")
+                    logo_url = f"{root_url}{file_path}"
+
+                if urn:
+                    company_map[urn] = {"name": name, "logo_url": logo_url}
+
+        # Debug: Print how many companies we found
+        # print(f"   [Enrichment] Built Company Map with {len(company_map)} entries.")
+        return company_map
+
+    @staticmethod
     def _parse_batch_response(data: dict) -> Dict[str, Dict[str, Any]]:
-        """
-        Parses the batch response and maps data back to specific Job IDs.
-        """
         results = {}
 
-        # In a batch response, 'elements' contains the JobCards
-        # We need to look into 'jobsDashJobCardsByPrefetch' usually
         base_data = data.get("data", {}).get("data", {})
         prefetch_data = base_data.get("jobsDashJobCardsByPrefetch", {})
         elements = prefetch_data.get("elements", [])
-
-        # Also grab the 'included' list for cross-referencing descriptions
         included = data.get("included", [])
 
         if not elements:
             return {}
 
+        # 1. Build Lookup Maps
+        company_map = EnrichmentService._build_company_map(included)
+
+        # Map: Job URN -> Description Text
+        desc_map = {}
+        # Map: Job URN -> Company URN (from JobPosting entity)
+        job_to_company_map = {}
+
+        for item in included:
+            urn = item.get("entityUrn", "")
+
+            # Extract Description
+            if item.get("$type") == "com.linkedin.voyager.dash.jobs.JobDescription":
+                match = re.search(r'jobDescription:(\d+)', urn)
+                if match:
+                    text = item.get("descriptionText", {}).get("text") or item.get("text")
+                    if text:
+                        desc_map[match.group(1)] = text
+
+            # Extract Company Link from JobPosting entity
+            if item.get("$type") == "com.linkedin.voyager.dash.jobs.JobPosting":
+                # URN is usually "urn:li:fsd_jobPosting:4331369291"
+                match = re.search(r'jobPosting:(\d+)', urn)
+                if match:
+                    jid = match.group(1)
+                    # companyDetails -> jobCompany -> *company
+                    comp_details = item.get("companyDetails", {})
+                    job_comp = comp_details.get("jobCompany", {})
+                    comp_urn = job_comp.get("*company")
+                    if comp_urn:
+                        job_to_company_map[jid] = comp_urn
+
         for card in elements:
             job_card = card.get("jobCard", {})
 
-            # Extract URN to identify which job this is
-            # usually in '*jobPostingCard' or we have to find the ID in the entityUrn
-            # Let's try to find the ID from the available data
             entity_urn = card.get("entityUrn") or job_card.get("*jobPostingCard")
-            if not entity_urn:
-                continue
-
-            # Extract ID from URN: urn:li:fsd_jobPostingCard:(4143563457,JOB_DETAILS)
+            if not entity_urn: continue
             match = re.search(r'\((\d+),', entity_urn)
-            if not match:
-                continue
+            if not match: continue
             job_id = match.group(1)
 
-            # --- Now we parse the details for this specific card ---
-            # (Reusing the logic from before, but applied to this card item)
-
+            # --- DESCRIPTION ---
             description_html = "No description provided"
+            if job_id in desc_map:
+                description_html = desc_map[job_id]
+            else:
+                desc_collection = job_card.get("jobPostingDetailDescription", {})
+                all_text_lines = EnrichmentService._recursive_text_extract(desc_collection)
+                if all_text_lines:
+                    seen = set()
+                    deduped_lines = [x for x in all_text_lines if not (x in seen or seen.add(x))]
+                    description_html = "\n<br>\n".join(deduped_lines)
 
-            # 1. Try finding linked description in 'included'
-            # (We skip this optimization for brevity, vacuuming the card is safer for batching)
+            # --- COMPANY RESOLUTION (Nuclear Strategy) ---
+            company_name = "Unknown Company"
+            company_logo = None
+            company_urn = None
 
-            # 2. Vacuum the card itself
-            desc_collection = job_card.get("jobPostingDetailDescription", {})
-            if not desc_collection and included:
-                # Fallback: Check if description is in 'included' matched by URN
-                # This part is complex in batch, so we rely on the card having the data usually
-                pass
+            # 1. Try the robust JobPosting -> Company map we just built
+            if job_id in job_to_company_map:
+                company_urn = job_to_company_map[job_id]
 
-            all_text_lines = EnrichmentService._recursive_text_extract(desc_collection)
+            # 2. Fallback to Logo attribute if map failed
+            if not company_urn:
+                logo_attributes = job_card.get("logo", {}).get("attributes", [])
+                if logo_attributes:
+                    detail_data = logo_attributes[0].get("detailData", {})
+                    company_urn = detail_data.get("*companyLogo")
 
-            if all_text_lines:
-                seen = set()
-                deduped_lines = [x for x in all_text_lines if not (x in seen or seen.add(x))]
-                description_html = "\n<br>\n".join(deduped_lines)
+            # 3. Resolve Name/Logo from the Company Map
+            if company_urn and company_urn in company_map:
+                c_data = company_map[company_urn]
+                company_name = c_data["name"]
+                company_logo = c_data["logo_url"]
 
-            # Metadata
+            # --- METADATA ---
             applicant_count = 0
             tertiary_text = job_card.get("tertiaryDescription", {}).get("text", "")
             app_match = re.search(r'(\d+)\s+applicants?', tertiary_text)
@@ -131,7 +181,6 @@ class EnrichmentService:
             elif "Over 100" in tertiary_text:
                 applicant_count = 100
 
-            # Workplace
             nav_subtitle = job_card.get("navigationBarSubtitle", "")
             workplace_type = "On-site"
             if "(Remote)" in nav_subtitle:
@@ -144,6 +193,9 @@ class EnrichmentService:
                 "applicants": applicant_count,
                 "workplace_type": workplace_type,
                 "employment_type": "Full-time",
+                "company_name": company_name,
+                "company_urn": company_urn,
+                "company_logo": company_logo,
                 "processed": True
             }
 
