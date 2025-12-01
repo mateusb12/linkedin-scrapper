@@ -110,23 +110,21 @@ const ProfileDetails = ({ profile, setProfile, onSave, selectedResume, handleEdu
                 <div className="md:col-span-2"><DynamicInputSection title="Negative Keywords" items={profile.negative_keywords || []} setItems={(newItems) => handleArrayChange('negative_keywords', newItems)} /></div>
             </div>
 
-            {/* Education Section (Moved Here) */}
-            {selectedResume && (
-                <div className="space-y-4 mt-6 pt-6 border-t border-gray-700">
-                    <h3 className={`text-xl font-semibold ${palette.text.primary}`}>Education</h3>
-                    {(selectedResume.education || []).map((edu, index) => (
-                        <div key={edu.id || index} className={`${palette.bg.nestedCard} p-4 rounded-md border ${palette.border.secondary} relative`}>
-                            <button onClick={() => removeEducationItem(index)} className={styleguide.iconButton.delete}><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg></button>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <input type="text" name="degree" value={edu.degree} placeholder="Degree" onChange={e => handleEducationChange(e, index)} className={inputClasses} />
-                                <input type="text" name="school" value={edu.school} placeholder="School" onChange={e => handleEducationChange(e, index)} className={inputClasses} />
-                                <input type="text" name="dates" value={edu.dates} placeholder="Dates" onChange={e => handleEducationChange(e, index)} className={inputClasses} />
-                            </div>
+            {/* Education Section - NOW BOUND TO PROFILE */}
+            <div className="space-y-4 mt-6 pt-6 border-t border-gray-700">
+                <h3 className={`text-xl font-semibold ${palette.text.primary}`}>Education</h3>
+                {(profile.education || []).map((edu, index) => (
+                    <div key={edu.id || index} className={`${palette.bg.nestedCard} p-4 rounded-md border ${palette.border.secondary} relative`}>
+                        <button onClick={() => removeEducationItem(index)} className={styleguide.iconButton.delete}><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg></button>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <input type="text" name="degree" value={edu.degree} placeholder="Degree" onChange={e => handleEducationChange(e, index)} className={inputClasses} />
+                            <input type="text" name="school" value={edu.school} placeholder="School" onChange={e => handleEducationChange(e, index)} className={inputClasses} />
+                            <input type="text" name="dates" value={edu.dates} placeholder="Dates" onChange={e => handleEducationChange(e, index)} className={inputClasses} />
                         </div>
-                    ))}
-                    <button onClick={addEducationItem} className={styleguide.button.success}>+ Add Education</button>
-                </div>
-            )}
+                    </div>
+                ))}
+                <button onClick={addEducationItem} className={styleguide.button.success}>+ Add Education</button>
+            </div>
 
             <div className={`flex justify-end mt-6 pt-6 border-t ${palette.border.primary}`}><button onClick={onSave} className={styleguide.button.primary}>Save Profile</button></div>
         </div>
@@ -445,22 +443,19 @@ const UserProfile = () => {
         setResumes(updatedResumes);
     };
     const handleEducationChange = (e, index) => {
-        if (!selectedResume) return;
         const { name, value } = e.target;
-        const updatedEducation = [...selectedResume.education];
+        const updatedEducation = [...(profile.education || [])];
         updatedEducation[index] = { ...updatedEducation[index], [name]: value };
-        handleResumeFieldChange('education', updatedEducation);
+        setProfile({ ...profile, education: updatedEducation });
     };
     const addEducationItem = () => {
-        if (!selectedResume) return;
         const newItem = { id: `edu_${Date.now()}`, degree: '', school: '', dates: '' };
-        const updatedEducation = [...selectedResume.education, newItem];
-        handleResumeFieldChange('education', updatedEducation);
+        const updatedEducation = [...(profile.education || []), newItem];
+        setProfile({ ...profile, education: updatedEducation });
     };
     const removeEducationItem = (index) => {
-        if (!selectedResume) return;
-        const updatedEducation = selectedResume.education.filter((_, i) => i !== index);
-        handleResumeFieldChange('education', updatedEducation);
+        const updatedEducation = (profile.education || []).filter((_, i) => i !== index);
+        setProfile({ ...profile, education: updatedEducation });
     };
 
     // --- MARKDOWN GENERATION LOGIC ---
@@ -469,7 +464,10 @@ const UserProfile = () => {
         const header = generateProfileHeaderMarkdown(profile);
         const skills = generateHardSkillsMarkdown(selectedResume.hard_skills);
         const experience = generateExperienceMarkdown(selectedResume.professional_experience);
-        const education = generateEducationMarkdown(selectedResume.education);
+
+        // Pass profile.education here
+        const education = generateEducationMarkdown(profile.education || []);
+
         const projects = generateProjectsMarkdown(selectedResume.projects);
         return [header, skills, experience, education, projects].filter(Boolean).join('\n\n---\n\n');
     };

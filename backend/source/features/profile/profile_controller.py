@@ -24,6 +24,7 @@ def create_profile():
             languages=data.get("languages", []),
             positive_keywords=data.get("positive_keywords", []),
             negative_keywords=data.get("negative_keywords", []),
+            education=data.get("education", []) # Add this line
         )
 
         session.add(profile)
@@ -82,6 +83,7 @@ def update_profile(profile_id):
         profile.languages = data.get("languages", profile.languages)
         profile.positive_keywords = data.get("positive_keywords", profile.positive_keywords)
         profile.negative_keywords = data.get("negative_keywords", profile.negative_keywords)
+        profile.education = data.get("education", profile.education)
 
         session.commit()
         return jsonify({"message": f"Profile {profile_id} updated successfully"}), 200
