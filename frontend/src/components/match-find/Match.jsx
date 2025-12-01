@@ -50,12 +50,7 @@ const Match = () => {
         if (jobs.length > 0) {
             const totalCount = jobs.length;
             const completeCount = jobs.filter(j =>
-                j.responsibilities &&
-                j.qualifications &&
-                j.keywords &&
-                j.responsibilities.length > 0 &&
-                Object.keys(j.qualifications).length > 0 &&
-                j.keywords.length > 0
+                j.keywords && j.keywords.length > 0
             ).length;
             setJobMetrics({
                 total: totalCount,

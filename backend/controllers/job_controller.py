@@ -62,15 +62,15 @@ def insert_extra_fields_stream():
         repo = JobRepository()
         BATCH_SIZE = 3
         last_urn = None
+
         try:
             total_to_process = repo.count_incomplete()
             processed_this_run = 0
 
-            # --- FIX: JobConsoleProgress RESTORED ---
-            # Initialize the console progress bar for server-side monitoring.
+            # Progress bar for backend console
             progress = JobConsoleProgress(total_to_process)
 
-            # This initial message sets up the progress bar on the frontend.
+            # Initial payload for frontend
             initial_data = {"total": total_to_process, "processed": 0}
             yield f"data: {json.dumps(initial_data)}\n\n"
 
@@ -85,23 +85,38 @@ def insert_extra_fields_stream():
                     try:
                         expansion = orchestrator.expand_job(job.description_full or "")
 
-                        # Aggressively update fields to ensure the job is marked as "complete".
-                        if isinstance(expansion, dict):
-                            if hasattr(job, 'keywords'): job.keywords = expansion.get('keywords', [])
-                            if hasattr(job, 'programming_languages'): job.programming_languages = expansion.get('technologies', [])
-                            if hasattr(job, 'responsibilities'): job.responsibilities = expansion.get('responsibilities', [])
-                            if hasattr(job, 'qualifications'): job.qualifications = expansion.get('qualifications', [])
-                            if hasattr(job, 'job_type'): job.job_type = expansion.get('job_type', job.job_type or 'N/A')
-                            if hasattr(job, 'language'): job.language = expansion.get('language', job.language or 'en')
-                        else:
-                            # If expansion fails, still fill fields to mark as complete
-                            if hasattr(job, 'keywords') and job.keywords is None: job.keywords = []
-                            if hasattr(job, 'programming_languages') and job.programming_languages is None: job.programming_languages = []
-                            if hasattr(job, 'responsibilities') and job.responsibilities is None: job.responsibilities = []
-                            if hasattr(job, 'qualifications') and job.qualifications is None: job.qualifications = []
-                            if hasattr(job, 'job_type') and job.job_type is None: job.job_type = 'N/A'
-                            if hasattr(job, 'language') and job.language is None: job.language = 'en'
+                        # --- VALIDATION LAYER ---
+                        valid = (
+                                isinstance(expansion, dict)
+                                and isinstance(expansion.get("keywords"), list)
+                                and len(expansion["keywords"]) > 0
+                                and isinstance(expansion.get("responsibilities"), list)
+                                and len(expansion["responsibilities"]) > 0
+                                and isinstance(expansion.get("qualifications"), list)
+                                and len(expansion["qualifications"]) > 0
+                        )
 
+                        if not valid:
+                            # ❌ DO NOT mark as processed
+                            job.processed = False
+                            repo.commit()
+
+                            warning_msg = {
+                                "message": f"LLM returned incomplete data for {job.urn}",
+                                "urn": job.urn
+                            }
+                            yield f"event: warning\ndata: {json.dumps(warning_msg)}\n\n"
+                            continue
+
+                        # --- APPLY VALID FIELDS ---
+                        job.keywords = expansion["keywords"]
+                        job.responsibilities = expansion["responsibilities"]
+                        job.qualifications = expansion["qualifications"]
+
+                        job.job_type = expansion.get("job_type", job.job_type)
+                        job.language = expansion.get("language", job.language)
+
+                        # Now AND ONLY NOW mark as processed
                         job.processed = True
                         repo.commit()
 
@@ -113,11 +128,10 @@ def insert_extra_fields_stream():
                     processed_this_run += 1
                     last_urn = job.urn
 
-                    # --- FIX: JobConsoleProgress CALL RESTORED ---
-                    # This call updates the progress bar in your backend terminal.
+                    # Update console progress bar
                     progress(processed_this_run, urn=job.urn)
 
-                    # This yield sends progress data to the frontend client.
+                    # Stream progress message
                     progress_data = {
                         "processed": processed_this_run,
                         "total": total_to_process,
@@ -126,11 +140,20 @@ def insert_extra_fields_stream():
                     }
                     yield f"data: {json.dumps(progress_data)}\n\n"
 
-            yield f"event: complete\ndata: {json.dumps({'message': 'All jobs processed successfully.'})}\n\n"
+            # FINAL SUMMARY
+            remaining = repo.count_incomplete()
+            message = (
+                "All jobs processed successfully."
+                if remaining == 0
+                else f"Processing finished, but {remaining} jobs still incomplete."
+            )
+
+            yield f"event: complete\ndata: {json.dumps({'message': message, 'remaining': remaining})}\n\n"
 
         except Exception as e:
             repo.rollback()
             yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+
         finally:
             repo.close()
 

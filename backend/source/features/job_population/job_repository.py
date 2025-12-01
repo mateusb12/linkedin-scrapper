@@ -118,7 +118,20 @@ class JobRepository:
         )
     # Count incomplete jobs
     def count_incomplete(self) -> int:
-        return self.session.query(Job).filter(Job.processed.is_(False)).count()
+        return (
+            self.session.query(Job)
+            .filter(
+                or_(
+                    Job.responsibilities == None,
+                    Job.responsibilities == [],
+                    Job.qualifications == None,
+                    Job.qualifications == [],
+                    Job.keywords == None,
+                    Job.keywords == []
+                )
+            )
+            .count()
+        )
 
     # Fetch a batch of incomplete jobs
     def fetch_incomplete_batch(
@@ -127,7 +140,16 @@ class JobRepository:
         q = (
             self.session.query(Job)
             .options(joinedload(Job.company))
-            .filter(Job.processed.is_(False))
+            .filter(
+                or_(
+                    Job.responsibilities == None,
+                    Job.responsibilities == [],
+                    Job.qualifications == None,
+                    Job.qualifications == [],
+                    Job.keywords == None,
+                    Job.keywords == []
+                )
+            )
             .order_by(desc(Job.urn))
         )
         if last_urn:
@@ -208,3 +230,10 @@ class JobRepository:
 
     def rollback(self):
         self.session.rollback()
+
+    def is_job_really_complete(job: Job) -> bool:
+        return (
+                isinstance(job.responsibilities, list) and len(job.responsibilities) > 0 and
+                isinstance(job.qualifications, list) and len(job.qualifications) > 0 and
+                isinstance(job.keywords, list) and len(job.keywords) > 0
+        )
