@@ -5,9 +5,9 @@ const API_BASE_URL = "http://localhost:5000";
 // Correct URL prefixes matching the backend Blueprints
 const PIPELINE_URL = `${API_BASE_URL}/pipeline`;
 const CONFIG_URL = `${API_BASE_URL}/config`;
-const SERVICES_URL = `${API_BASE_URL}/services`;
+// const SERVICES_URL = `${API_BASE_URL}/services`; // Deprecated: We use /config now
 
-// --- 1. CONFIGURATION (Fixes the 404s) ---
+// --- 1. CONFIGURATION (Generic Scrapers) ---
 
 export async function getPaginationCurl() {
     const res = await axios.get(`${CONFIG_URL}/pagination-curl`);
@@ -49,15 +49,11 @@ export async function fetchJobsByPageRange(startPage, endPage, onProgress, onLog
                 const count = res.data.count || 0;
                 const totalFound = res.data.total_found || 0;
 
-                // --- LOGIC FOR SKIPPING ---
                 if (count > 0) {
-                    // Scenario A: Found new jobs and saved them
                     onLog?.(`✅ Page ${i}: Saved ${count} new jobs (Found ${totalFound})`);
                 } else if (totalFound > 0 && count === 0) {
-                    // Scenario B: Found jobs, but they were all duplicates -> SKIP
                     onLog?.(`⏭️ SKIPPING PAGE ${i} - All ${totalFound} jobs already in database.`);
                 } else {
-                    // Scenario C: Page was actually empty or parsing failed
                     onLog?.(`⚠️ Page ${i}: No jobs found on this page.`);
                 }
 
@@ -122,17 +118,20 @@ export const startKeywordExtractionStream = (onProgress, onComplete, onError) =>
     return eventSource;
 };
 
-// --- 4. COOKIE MANAGEMENT ---
+// --- 4. SCRAPER AUTHENTICATION (Updated) ---
 
-export async function getLinkedinCookie(identifier) {
-    const res = await axios.get(`${SERVICES_URL}/cookies`, {
-        params: { identifier }
+/**
+ * Updates the 'LinkedIn_Saved_Jobs_Scraper' configuration.
+ * Sends the raw cURL string to the backend, which extracts:
+ * - The new 'queryId' (for the URL)
+ * - The new 'csrf-token' header
+ * - The new 'Cookie' header
+ */
+export async function updateScraperConfig(curlString) {
+    // This hits the robust parser in the backend: fetch_curl/fetch_controller.py
+    // The backend endpoint is: /config/curl/<name>
+    const res = await axios.put(`${CONFIG_URL}/curl/LinkedIn_Saved_Jobs_Scraper`, {
+        curl: curlString
     });
-    return res.data.cookies;
-}
-
-export async function updateLinkedinCookie(identifier, cookies) {
-    const payload = { identifier, cookies };
-    const res = await axios.put(`${SERVICES_URL}/cookies`, payload);
     return res.data;
 }

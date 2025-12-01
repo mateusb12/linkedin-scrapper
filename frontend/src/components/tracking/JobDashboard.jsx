@@ -11,9 +11,10 @@ import {
     Legend,
     ArcElement,
 } from 'chart.js';
-import { RefreshCcw, Settings, Lock, Unlock } from 'lucide-react';
+import { RefreshCcw, Settings, Lock, Unlock, ExternalLink, HelpCircle, Terminal } from 'lucide-react';
 import { fetchAppliedJobs } from '../../services/jobService.js';
-import { getLinkedinCookie, updateLinkedinCookie } from '../../services/fetchLinkedinService.js';
+// --- CHANGED: Imported the new service function ---
+import { updateScraperConfig } from '../../services/fetchLinkedinService.js';
 
 // --- ADDED: Import the reusable CopyableCodeBlock ---
 import { CopyableCodeBlock } from '../data-fetching/CopyableCodeBlock.jsx';
@@ -81,6 +82,7 @@ const themeColors = {
     emerald: '#10b981',
 };
 
+// ... [Keep existing Date Helpers and Formatting functions exactly as they were] ...
 // Format date like "1 ago 2025"
 const formatPtDate = (isoDateStr) => {
     if (!isoDateStr) return 'N/A';
@@ -327,97 +329,104 @@ const JobsTable = ({ jobs }) => {
     );
 };
 
-// --- COOKIE SETTINGS COMPONENT ---
-const CookieSettings = ({ onClose, onSaveSuccess }) => {
-    const [cookieData, setCookieData] = React.useState('');
-    const [isLocked, setIsLocked] = React.useState(true);
-    const [isLoading, setIsLoading] = React.useState(true);
+// --- REDESIGNED SETTINGS COMPONENT: FULL CURL IMPORTER ---
+const ScraperSettings = ({ onClose, onSaveSuccess }) => {
+    const [curlData, setCurlData] = React.useState('');
+    const [isSaving, setIsSaving] = React.useState(false);
     const [statusMessage, setStatusMessage] = React.useState('');
 
-    const identifier = 'LinkedIn_Saved_Jobs_Scraper';
-
-    React.useEffect(() => {
-        const fetchCookie = async () => {
-            setIsLoading(true);
-            setStatusMessage('Fetching cookie...');
-            try {
-                const currentCookie = await getLinkedinCookie(identifier);
-                setCookieData(currentCookie || '');
-                setStatusMessage('Cookie loaded successfully. Unlock to edit.');
-            } catch (error) {
-                const errorMessage = error.response?.data?.error || error.message;
-                setStatusMessage(`Error fetching cookie: ${errorMessage}`);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchCookie();
-    }, []);
-
     const handleSave = async () => {
-        setStatusMessage('Saving...');
+        if (!curlData.trim()) return;
+        setIsSaving(true);
+        setStatusMessage('Parsing & Saving...');
         try {
-            const response = await updateLinkedinCookie(identifier, cookieData);
-            setStatusMessage(`✅ ${response.message}`);
-            setIsLocked(true);
-            onSaveSuccess();
+            const response = await updateScraperConfig(curlData);
+            setStatusMessage(`✅ Success! ${response.message || 'Updated.'}`);
+            setTimeout(() => {
+                onSaveSuccess();
+                onClose();
+            }, 1000);
         } catch (error) {
-            const errorMessage = error.response?.data?.error || error.message;
-            setStatusMessage(`❌ Save failed: ${errorMessage}`);
+            setStatusMessage(`❌ Error: ${error.message}`);
+        } finally {
+            setIsSaving(false);
         }
     };
 
     return (
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg mt-6 mb-6 transition-all duration-300">
-            <h3 className="text-xl font-semibold text-white mb-4">LinkedIn Scraper Configuration</h3>
-
-            {/* --- REPLACED: Hardcoded text with the shiny new CopyableCodeBlock --- */}
-            <div className="mb-6">
-                <CopyableCodeBlock
-                    label="Network Filter"
-                    text="SEARCH_MY_ITEMS_JOB_SEEKER"
-                />
+        <div className="bg-gray-800 p-6 rounded-lg shadow-lg mt-6 mb-6 border border-gray-700">
+            <div className="flex justify-between items-start mb-6">
+                <div>
+                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                        <Terminal size={20} className="text-purple-400" />
+                        Update LinkedIn Credentials
+                    </h3>
+                    <p className="text-gray-400 text-sm mt-1">
+                        Paste a fresh cURL command to refresh your session cookies and tokens.
+                    </p>
+                </div>
+                <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
             </div>
 
-            <div className="mb-4">
-                <label htmlFor="cookie-data" className="block text-sm font-medium text-gray-300 mb-2">
-                    li_at Cookie
-                </label>
-                <div className="relative">
-                    <textarea
-                        id="cookie-data"
-                        value={isLoading ? 'Loading...' : cookieData}
-                        onChange={(e) => setCookieData(e.target.value)}
-                        readOnly={isLocked}
-                        className={`w-full p-2.5 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-amber-500 focus:border-amber-500 transition-colors duration-200 ${isLocked ? 'cursor-not-allowed bg-gray-600/50' : 'bg-gray-700'}`}
-                        rows="4"
-                        placeholder="Paste your LinkedIn 'li_at' cookie value here..."
-                    />
-                    <button
-                        onClick={() => setIsLocked(!isLocked)}
-                        className="absolute top-2.5 right-2.5 p-1.5 bg-gray-600 hover:bg-gray-500 rounded-md text-white transition-colors"
-                        title={isLocked ? 'Unlock to Edit' : 'Lock Field'}
-                    >
-                        {isLocked ? <Lock size={16} /> : <Unlock size={16} />}
-                    </button>
+            {/* --- INSTRUCTION STEPS --- */}
+            <div className="bg-gray-900/50 p-4 rounded-lg mb-6 text-sm text-gray-300 space-y-3 border border-gray-700">
+                <div className="flex items-start gap-3">
+                    <div className="bg-purple-900/50 text-purple-300 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border border-purple-700">1</div>
+                    <p>
+                        Go to <a href="https://www.linkedin.com/my-items/saved-jobs/?cardType=APPLIED" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline flex items-center inline-flex gap-1">LinkedIn Applied Jobs <ExternalLink size={12} /></a>.
+                    </p>
                 </div>
+                <div className="flex items-start gap-3">
+                    <div className="bg-purple-900/50 text-purple-300 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border border-purple-700">2</div>
+                    <p>Open <b>Developer Tools</b> (F12) → <b>Network</b> tab.</p>
+                </div>
+                <div className="flex items-start gap-3">
+                    <div className="bg-purple-900/50 text-purple-300 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border border-purple-700">3</div>
+                    <div>
+                        <p className="mb-1">Filter for the request matching the keyword below:</p>
+                        <CopyableCodeBlock text="SEARCH_MY_ITEMS_JOB_SEEKER" />
+                    </div>
+                </div>
+                <div className="flex items-start gap-3">
+                    <div className="bg-purple-900/50 text-purple-300 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border border-purple-700">4</div>
+                    <p>Right-click the request → <b>Copy</b> → <b>Copy as cURL (bash)</b>.</p>
+                </div>
+            </div>
+
+            {/* --- INPUT AREA --- */}
+            <div className="mb-4">
+                <label htmlFor="curl-input" className="block text-sm font-medium text-gray-300 mb-2">
+                    Paste cURL Command
+                </label>
+                <textarea
+                    id="curl-input"
+                    value={curlData}
+                    onChange={(e) => setCurlData(e.target.value)}
+                    className="w-full p-3 bg-gray-900 border border-gray-600 text-green-400 font-mono text-xs rounded-lg focus:ring-purple-500 focus:border-purple-500 min-h-[120px]"
+                    placeholder="curl 'https://www.linkedin.com/voyager/api/graphql?variables=...' -H 'csrf-token: ...' ..."
+                />
                 {statusMessage && (
-                    <p className="mt-2 text-sm text-gray-400">{statusMessage}</p>
+                    <p className={`mt-2 text-sm ${statusMessage.startsWith('✅') ? 'text-green-400' : 'text-amber-400'}`}>
+                        {statusMessage}
+                    </p>
                 )}
             </div>
-            <div className="flex justify-end gap-4">
+
+            {/* --- ACTIONS --- */}
+            <div className="flex justify-end gap-3">
                 <button
                     onClick={onClose}
-                    className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg shadow transition-colors"
+                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg transition-colors"
                 >
-                    Close
+                    Cancel
                 </button>
                 <button
                     onClick={handleSave}
-                    disabled={isLocked || isLoading}
-                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow transition-colors disabled:bg-amber-800 disabled:cursor-not-allowed"
+                    disabled={isSaving || !curlData}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                    Save & Refresh Data
+                    {isSaving ? <RefreshCcw size={16} className="animate-spin" /> : null}
+                    Save & Refresh
                 </button>
             </div>
         </div>
@@ -440,6 +449,7 @@ export const JobDashboard = () => {
     const filteredJobs = filterJobsByDateRange(jobs, dateRange);
     const chartData = (filteredJobs && Array.isArray(filteredJobs)) ? processChartData(filteredJobs, timePeriod) : null;
 
+    // ... (Chart Options remain same as before) ...
     const barChartOptions = {
         responsive: true,
         maintainAspectRatio: false,
@@ -447,17 +457,8 @@ export const JobDashboard = () => {
             legend: { position: 'top', labels: { color: themeColors.textPrimary, font: { size: 14 } } },
         },
         scales: {
-            y: {
-                stacked: true,
-                beginAtZero: true,
-                ticks: { color: themeColors.textSecondary, stepSize: 1 },
-                grid: { color: 'rgba(156, 163, 175, 0.2)' },
-            },
-            x: {
-                stacked: true,
-                ticks: { color: themeColors.textSecondary },
-                grid: { color: 'rgba(156, 163, 175, 0.1)' },
-            },
+            y: { stacked: true, beginAtZero: true, ticks: { color: themeColors.textSecondary, stepSize: 1 }, grid: { color: 'rgba(156, 163, 175, 0.2)' } },
+            x: { stacked: true, ticks: { color: themeColors.textSecondary }, grid: { color: 'rgba(156, 163, 175, 0.1)' } },
         },
     };
 
@@ -473,37 +474,30 @@ export const JobDashboard = () => {
         { daily: 'Day', weekly: 'Week', monthly: 'Month' }[timePeriod]
     }`;
 
-    // --- FIX: The initial loading state is fine, but we will restructure the main return ---
     if (isLoading) {
         return (
             <div className="p-6 bg-gray-900 text-gray-200">
                 <DashboardHeaderSkeleton />
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                    <div className="lg:col-span-3">
-                        <ChartSkeleton />
-                    </div>
-                    <div className="lg:col-span-2">
-                        <ChartSkeleton />
-                    </div>
+                    <div className="lg:col-span-3"><ChartSkeleton /></div>
+                    <div className="lg:col-span-2"><ChartSkeleton /></div>
                 </div>
                 <TableSkeleton />
             </div>
         );
     }
 
-    // --- FIX: Main component now always renders the header and settings.
-    // The content inside changes based on the query state (error, fetching, or success).
     return (
-        <div className="p-6 bg-gray-900 text-gray-200">
-            {/* --- Header and controls are now ALWAYS visible --- */}
+        <div className="p-6 bg-gray-900 text-gray-200 min-h-screen">
             <div className="mb-6">
                 <h2 className="text-3xl font-bold text-white mb-4">Job Application Dashboard</h2>
-                <div className="flex items-center gap-4">
+
+                <div className="flex flex-wrap items-center gap-4">
                     <select
                         value={dateRange}
                         onChange={(e) => setDateRange(e.target.value)}
-                        className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-amber-500 focus:border-amber-500 block p-2.5"
-                        disabled={isError} // Disable controls on error
+                        className="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg focus:ring-purple-500 focus:border-purple-500 block p-2.5 shadow-sm"
+                        disabled={isError}
                     >
                         <option value="all">All Time</option>
                         <option value="this_week">This Week</option>
@@ -512,40 +506,55 @@ export const JobDashboard = () => {
                         <option value="last_6_months">Last 6 Months</option>
                         <option value="last_year">Last Year</option>
                     </select>
-                    <button
-                        onClick={() => refetch()}
-                        disabled={isFetching}
-                        className="h-10 w-10 bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow transition disabled:bg-amber-800 disabled:cursor-not-allowed flex items-center justify-center"
-                        title="Refresh data"
-                    >
-                        <RefreshCcw className={`w-5 h-5 ${isFetching ? 'animate-spin' : ''}`} />
-                    </button>
-                    <button
-                        onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                        className="h-10 w-10 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow transition flex items-center justify-center"
-                        title="Open settings"
-                    >
-                        <Settings className="w-5 h-5" />
-                    </button>
+
+                    <div className="flex items-center gap-2 ml-auto">
+                        <button
+                            onClick={() => refetch()}
+                            disabled={isFetching}
+                            className="h-10 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow-lg transition-all disabled:bg-gray-700 disabled:cursor-not-allowed flex items-center gap-2 font-medium"
+                            title="Refresh data"
+                        >
+                            <RefreshCcw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+                            {isFetching ? 'Syncing...' : 'Sync'}
+                        </button>
+                        <button
+                            onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                            className={`h-10 w-10 text-white rounded-lg shadow-lg transition-all flex items-center justify-center border ${isSettingsOpen ? 'bg-purple-900 border-purple-500 ring-2 ring-purple-500/50' : 'bg-gray-800 border-gray-700 hover:bg-gray-700'}`}
+                            title="Update Credentials"
+                        >
+                            <Settings className="w-5 h-5" />
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            {/* --- The settings panel is also always available to be opened --- */}
-            {isSettingsOpen && <CookieSettings onClose={() => setIsSettingsOpen(false)} onSaveSuccess={refetch} />}
+            {/* --- CONFIGURATION PANEL (Replaced) --- */}
+            {isSettingsOpen && (
+                <ScraperSettings
+                    onClose={() => setIsSettingsOpen(false)}
+                    onSaveSuccess={refetch}
+                />
+            )}
 
-            {/* --- The main content area now handles all states (error, fetching, success) --- */}
             <div className="mt-6">
                 {isError ? (
-                    <div className="bg-gray-800 p-8 rounded-lg shadow-lg text-center">
-                        <h3 className="text-2xl text-red-500 font-bold">Failed to Fetch Data 😞</h3>
-                        <p className="text-gray-400 mt-2 max-w-2xl mx-auto">
-                            Could not retrieve job application data. This is likely due to an invalid or expired LinkedIn cookie.
+                    <div className="bg-gray-800 border border-red-900/50 p-12 rounded-xl shadow-lg text-center">
+                        <div className="bg-red-900/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Lock size={32} className="text-red-500" />
+                        </div>
+                        <h3 className="text-2xl text-white font-bold mb-2">Session Expired</h3>
+                        <p className="text-gray-400 max-w-md mx-auto mb-6">
+                            Your LinkedIn credentials have expired or are invalid. Please update your session to continue fetching data.
                         </p>
-                        <p className="text-amber-400 mt-4">
-                            Please click the <Settings size={16} className="inline-block mx-1" /> settings icon above to open the configuration panel and update your cookie.
-                        </p>
+                        <button
+                            onClick={() => setIsSettingsOpen(true)}
+                            className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg shadow-lg transition-all flex items-center gap-2 mx-auto"
+                        >
+                            <Settings size={18} />
+                            Update Credentials
+                        </button>
                     </div>
-                ) : isFetching ? (
+                ) : isFetching && !jobs ? (
                     <>
                         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                             <div className="lg:col-span-3"><ChartSkeleton /></div>
@@ -556,14 +565,15 @@ export const JobDashboard = () => {
                 ) : (
                     <>
                         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                            {/* Bar Chart Section */}
-                            <div className="lg:col-span-3 bg-gray-800 p-6 rounded-lg shadow-lg">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-xl font-semibold text-white">{barChartTitle}</h3>
+                            <div className="lg:col-span-3 bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                                        {barChartTitle}
+                                    </h3>
                                     <select
                                         value={timePeriod}
                                         onChange={(e) => setTimePeriod(e.target.value)}
-                                        className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-amber-500 focus:border-amber-500 block p-2.5"
+                                        className="bg-gray-900 border border-gray-600 text-white text-xs rounded-lg focus:ring-purple-500 focus:border-purple-500 block p-2"
                                     >
                                         <option value="daily">Daily</option>
                                         <option value="weekly">Weekly</option>
@@ -575,16 +585,14 @@ export const JobDashboard = () => {
                                 </div>
                             </div>
 
-                            {/* Doughnut Chart Section */}
-                            <div className="lg:col-span-2 bg-gray-800 p-6 rounded-lg shadow-lg">
-                                <h3 className="text-xl font-semibold text-white mb-4">Applications by Source</h3>
-                                <div className="relative h-80">
+                            <div className="lg:col-span-2 bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+                                <h3 className="text-lg font-semibold text-white mb-6">Applications by Source</h3>
+                                <div className="relative h-80 flex justify-center">
                                     {chartData && <Doughnut data={chartData.doughnutData} options={doughnutChartOptions} />}
                                 </div>
                             </div>
                         </div>
 
-                        {/* Data Table Section */}
                         <JobsTable jobs={filteredJobs} />
                     </>
                 )}
