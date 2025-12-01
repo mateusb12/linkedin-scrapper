@@ -52,19 +52,11 @@ def load_db_path():
 
 
 def load_cookie_value():
-    cookie_file_folder_path = get_services_job_tracking_folder_path()
-    if not os.path.exists(cookie_file_folder_path):
-        raise FileNotFoundError(f"Cookie file '{cookie_file_folder_path}' does not exist.")
-    filename = "linkedin_cookie.txt"
-    file_path = os.path.join(cookie_file_folder_path, filename)
-
-    with open(file_path, 'r', encoding='utf-8') as f:
-        cookie_value = f.read().strip()
-
-    if not cookie_value:
-        raise ValueError(f"Cookie file '{cookie_file_folder_path}' is empty.")
-
-    return cookie_value
+    """
+    Deprecated: cookie is now always loaded from DB.
+    Always return None so the caller does NOT use file cookies.
+    """
+    return None
 
 
 def main():

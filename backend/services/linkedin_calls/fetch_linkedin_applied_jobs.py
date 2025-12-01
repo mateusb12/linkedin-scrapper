@@ -1,9 +1,10 @@
-import re
 import math
 import time
 import os
 import requests
-from typing import List, Dict, Any, Optional, Tuple
+import shlex  # Added for safe quoting
+from typing import List, Dict, Any, Tuple
+from urllib.parse import quote
 
 from exceptions.service_exceptions import LinkedInScrapingException
 from models import Job
@@ -11,59 +12,34 @@ from source.features.job_population.job_repository import JobRepository
 from services.linkedin_calls.fetch_linkedin_timestamp import fetch_job_timestamp
 from services.linkedin_calls.curl_storage.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
 
-
-def setup_session(config: Dict[str, Any]) -> requests.Session:
+# --- HELPER: Debug Curl ---
+def debug_print_curl(response):
     """
-    DEPRECATED: Sets up and configures the requests.Session object.
-    This function is maintained for backward compatibility. The primary logic
-    has moved to get_linkedin_fetch_artefacts in the repository. This function
-    now calls it internally and ignores the 'config' parameter.
+    Reconstructs and prints the exact cURL command from the Python request object.
+    This captures headers, cookies, and URL exactly as Python sent them.
     """
-    print("⚠️ WARNING: Calling setup_session is deprecated. Update dependencies to use get_linkedin_fetch_artefacts.")
-    artefacts = get_linkedin_fetch_artefacts()
-    if artefacts:
-        session, _ = artefacts
-        return session
-    # Fallback to a basic session if the new method fails
-    return requests.Session()
+    req = response.request
+    command = f"curl -X {req.method} '{req.url}'"
 
+    for k, v in req.headers.items():
+        # Escape single quotes for bash safety
+        safe_value = v.replace("'", "'\\''")
+        command += f" \\\n -H '{k}: {safe_value}'"
 
-def _fetch_initial_data(session: requests.Session, config: Dict[str, Any]) -> Tuple[int, Dict[str, Any]]: # <-- No longer Optional
-    """Fetches the first page to get the total number of saved jobs."""
-    print("Fetching first page to get total job count...")
-    base_url = config['base_url']
-    query_id = config['query_id']
-    initial_url = (
-        f"{base_url}?variables=(start:0,query:(flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER))"
-        f"&queryId={query_id}"
-    )
-    try:
-        response = session.get(initial_url)
-        response.raise_for_status() # This will raise an exception on 4xx or 5xx errors
-        data = response.json()
-    except requests.exceptions.RequestException as e:
-        # --- FIX: Raise our custom exception instead of returning None ---
-        error_message = f"Failed to fetch initial data from LinkedIn: {e}"
-        print(f"❌ {error_message}")
-        raise LinkedInScrapingException(error_message) from e
+    print("\n--------- 🐛 DEBUG: PYTHON GENERATED CURL (Copy below to Terminal) ---------\n")
+    print(command)
+    print("\n----------------------------------------------------------------------------\n")
 
-    total_jobs = data.get('data', {}).get('data', {}).get('searchDashClustersByAll', {}).get('paging', {}).get('total', 0)
-    if total_jobs == 0:
-        # This is a valid case, but you might still want to raise an exception if you expect jobs
-        print("No saved jobs found on LinkedIn.")
-
-    return total_jobs, data
-
-
-def _structure_job_from_entity(item: Dict[str, Any]) -> Optional[Dict[str, str]]:
-    """
-    Parses a single job entity from the LinkedIn API response into a dictionary.
-    This function does NOT perform any network requests.
-    """
+# --- HELPER: Parse Entity ---
+def _structure_job_from_entity(item: Dict[str, Any]) -> Any:
+    """Parses a single job entity from the LinkedIn API response."""
+    # Check if the item is an EntityResultViewModel
     if item.get('$type') != 'com.linkedin.voyager.dash.search.EntityResultViewModel':
         return None
 
     url = item.get('navigationUrl', 'N/A')
+    # Regex to extract job ID
+    import re
     match = re.search(r'/jobs/view/(\d+)', url)
     if not match:
         return None
@@ -72,6 +48,7 @@ def _structure_job_from_entity(item: Dict[str, Any]) -> Optional[Dict[str, str]]
     status = 'N/A'
     insights = item.get('insightsResolutionResults', [])
     if insights and isinstance(insights, list):
+        # Extract status like "Applied 1mo ago"
         status = insights[0].get('simpleInsight', {}).get('title', {}).get('text', 'N/A').strip()
 
     return {
@@ -81,141 +58,133 @@ def _structure_job_from_entity(item: Dict[str, Any]) -> Optional[Dict[str, str]]
         'url': url,
         'status': status,
         'urn': urn_id,
+        'applied_on': status # Passing raw status to be parsed by util later
     }
 
-
+# --- HELPER: Enrich & Save ---
 def _enrich_and_save_new_job(job_data: Dict[str, str], job_repo: JobRepository) -> Job:
-    """
-    Enriches a new job with a timestamp by fetching it, then saves it to the database.
-    """
-    print(f"✨ New job found: {job_data['urn']}. Fetching timestamp...")
-    job_number = job_data['urn'].split(':')[-1]
-    job_datetime_obj = fetch_job_timestamp(job_number)
+    """Enriches a new job with a timestamp and saves it."""
+    # print(f"✨ New job found: {job_data['urn']}")
 
-    if job_datetime_obj:
-        job_data["timestamp"] = job_datetime_obj.isoformat()
+    # 1. Fetch Timestamp (optional, adds delay)
+    # job_number = job_data['urn'].split(':')[-1]
+    # job_datetime_obj = fetch_job_timestamp(job_number)
+    # if job_datetime_obj:
+    #     job_data["timestamp"] = job_datetime_obj.isoformat()
 
+    # 2. Add to Repository
     job_repo.add_job_by_dict(job_data)
-    print(f"   -> Saved {job_data['urn']} to the database.")
+
+    # 3. Mark as Applied explicitly
+    job_repo.mark_applied(job_data['urn'])
+
     return job_repo.get_by_urn(job_data['urn'])
 
-
-def _process_page(page_json: Dict[str, Any], job_repo: JobRepository) -> Tuple[List[Job], bool]:
-    """
-    Processes a single page of job results, adding new jobs to the database.
-    Returns the list of processed jobs and a boolean indicating if new jobs were found.
-    """
-    new_jobs_found_on_page = False
-
-    potential_jobs = [
-        job for item in page_json.get('included', [])
-        if (job := _structure_job_from_entity(item)) is not None
-    ]
-    if not potential_jobs:
-        return [], False
-
-    potential_jobs_map = {job['urn']: job for job in potential_jobs}
-    urns_on_page = list(potential_jobs_map.keys())
-
-    existing_jobs_in_db = job_repo.get_multiple_jobs_by_urn_list(urns_on_page)
-
-    processed_jobs = []
-    for urn in urns_on_page:
-        if existing_jobs_in_db.get(urn):
-            print(f"✅ Job {urn} found in database (cached).")
-            processed_jobs.append(existing_jobs_in_db[urn])
-        else:
-            new_jobs_found_on_page = True
-            new_job_data = potential_jobs_map[urn]
-            enriched_job = _enrich_and_save_new_job(new_job_data, job_repo)
-            processed_jobs.append(enriched_job)
-
-    return processed_jobs, new_jobs_found_on_page
-
-
+# --- CORE: Fetch Logic ---
 def fetch_all_linkedin_jobs() -> List[Job]:
     """
-    Main function to fetch all saved jobs. It first loads API configuration,
-    then fetches new ones from LinkedIn.
+    Re-creates the 'SEARCH_MY_ITEMS_JOB_SEEKER' cURL request logic.
     """
-    full_scan = os.getenv('FULL_SCAN', 'FALSE').upper() == 'TRUE'
-    if full_scan:
-        print("🚀 FULL_SCAN enabled. All pages will be processed.")
-
     job_repo = JobRepository()
 
-    # --- Phase 1: Load Configuration and Setup Session from Repository ---
-    print("--- ⚙️ Phase 1: Loading config and preparing session from repository ---")
+    # 1. Load Config (Headers & QueryID) from DB
+    print("--- ⚙️ Loading 'LinkedIn_Saved_Jobs_Scraper' config ---")
     artefacts = get_linkedin_fetch_artefacts()
     if not artefacts:
-        print("Aborting sync.")
-        return job_repo.fetch_applied_jobs()  # Return what's already in the DB
+        print("❌ Config not found. Aborting.")
+        return job_repo.fetch_applied_jobs()
 
     session, config = artefacts
+    base_url = config['base_url']
+    query_id = config['query_id'] # This MUST match the hash in your cURL
 
-    # --- Phase 2: Scrape LinkedIn for new jobs ---
-    print("\n--- 🚀 Phase 2: Fetching new jobs from LinkedIn ---")
-    total_jobs, first_page_data = _fetch_initial_data(session, config)
+    if not query_id:
+        print("❌ Missing 'query_id' in configuration.")
+        return job_repo.fetch_applied_jobs()
+
+    # 2. Define the Request Generator
+    def build_url(start_index: int) -> str:
+        # EXACT variables structure from your cURL
+        variables = f"(start:{start_index},query:(flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER))"
+        # We quote the variables to ensure safe URL characters (parentheses etc)
+        # However, requests params usually handle this, but manual construction is safer for LinkedIn's strict parser
+        return f"{base_url}?variables={variables}&queryId={query_id}"
+
+    # 3. Fetch Initial Page
+    print(f"\n--- 🚀 Fetching 'Applied' Jobs (QueryID: {query_id}) ---")
+    try:
+        # We manually build the URL to ensure parentheses aren't double-encoded incorrectly
+        url = build_url(0)
+        response = session.get(url)
+
+        # --- DEBUG: PRINT CURL ---
+        debug_print_curl(response)
+        # -------------------------
+
+        response.raise_for_status()
+        data = response.json()
+    except Exception as e:
+        print(f"❌ Failed to fetch initial data: {e}")
+        return job_repo.fetch_applied_jobs()
+
+    # 4. Parse Total Count
+    try:
+        paging = data.get('data', {}).get('data', {}).get('searchDashClustersByAll', {}).get('paging', {})
+        total_jobs = paging.get('total', 0)
+    except AttributeError:
+        total_jobs = 0
+
+    print(f"✅ Found {total_jobs} total applied jobs on LinkedIn.")
 
     if total_jobs == 0:
         return job_repo.fetch_applied_jobs()
-    page_size = 10  # LinkedIn API default
-    num_pages = math.ceil(total_jobs / page_size)
-    print(f"✅ Found {total_jobs} jobs across {num_pages} pages. Will now process them.\n")
 
-    all_jobs = []
+    # 5. Pagination Loop
+    page_size = 10 # LinkedIn hard limit for this endpoint is usually 10
+    all_jobs_processed = []
 
-    # Process the first page
-    print(f"--- Processing page 1 of {num_pages} ---")
-    processed_jobs, new_jobs_found = _process_page(first_page_data, job_repo)
-    all_jobs.extend(processed_jobs)
+    # Process First Page Data (already fetched)
+    _process_page_data(data, job_repo, all_jobs_processed)
 
-    if not new_jobs_found and not full_scan:
-        applied_jobs = job_repo.fetch_applied_jobs()
-        print(f"\n--- No new jobs found on the first page. Sync is up to date. Found {len(applied_jobs)} jobs in DB. ---")
-        return applied_jobs
-
-    # Loop through the rest of the pages
-    base_url = config['base_url']
-    query_id = config['query_id']
-    for start_index in range(page_size, total_jobs, page_size):
-        current_page_num = (start_index // page_size) + 1
-        print(f"\n--- Fetching and processing page {current_page_num} of {num_pages} ---")
-
-        url = (
-            f"{base_url}?variables=(start:{start_index},query:(flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER))"
-            f"&queryId={query_id}"
-        )
+    # Fetch Remaining Pages
+    for start in range(page_size, total_jobs, page_size):
+        print(f"   -> Fetching page starting at {start}...")
         try:
-            time.sleep(1) # Be respectful to the API
+            time.sleep(1.5) # Rate limit protection
+            url = build_url(start)
             response = session.get(url)
-            response.raise_for_status()
-            page_data = response.json()
 
-            processed_jobs, new_jobs_found = _process_page(page_data, job_repo)
-            all_jobs.extend(processed_jobs)
+            if response.status_code != 200:
+                print(f"   ⚠️ Page failed with {response.status_code}")
+                continue
 
-            if not new_jobs_found and not full_scan:
-                print(f"\n--- No new jobs found on page {current_page_num}. Stopping sync. ---")
-                print("--- To process all pages, set the environment variable FULL_SCAN=TRUE ---")
-                break
+            _process_page_data(response.json(), job_repo, all_jobs_processed)
 
-        except requests.exceptions.RequestException as e:
-            print(f"❌ Error on page {current_page_num}: {e}. Skipping.")
-            continue
+        except Exception as e:
+            print(f"   ❌ Error on page {start}: {e}")
 
     return job_repo.fetch_applied_jobs()
 
+def _process_page_data(data: Dict, repo: JobRepository, out_list: List):
+    """Parses the specific nested structure of 'searchDashClustersByAll'."""
+    clusters = data.get('data', {}).get('data', {}).get('searchDashClustersByAll', {}).get('elements', [])
 
-def main():
-    print("--- Starting LinkedIn Job Sync ---")
-    start_time = time.time()
-    jobs = fetch_all_linkedin_jobs()
-    end_time = time.time()
+    for cluster in clusters:
+        items = cluster.get('items', [])
+        for item in items:
+            entity_result = item.get('item', {}).get('entityResult', {})
+            structured = _structure_job_from_entity(entity_result)
 
-    duration = end_time - start_time
-    print(f"\n--- ✨ Sync complete. Found {len(jobs)} total applied jobs in DB after {duration:.2f} seconds. ---")
+            if structured:
+                # Upsert / Save logic
+                existing = repo.get_by_urn(structured['urn'])
+                if not existing:
+                    _enrich_and_save_new_job(structured, repo)
+                else:
+                    # Ensure it's marked applied even if it existed before
+                    repo.mark_applied(structured['urn'])
 
+                out_list.append(structured)
 
 if __name__ == "__main__":
-    main()
+    fetch_all_linkedin_jobs()

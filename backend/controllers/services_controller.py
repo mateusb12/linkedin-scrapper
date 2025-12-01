@@ -195,43 +195,15 @@ def manage_cookies():
       - Body: {"identifier": "<id_or_name>", "cookies": "new_cookie_string"}
     """
     # --- Setter (Update) Logic ---
-    if request.method == "PUT":
-        data = request.get_json()
-        if not data or "identifier" not in data or "cookies" not in data:
-            return jsonify({"error": "Missing 'identifier' or 'cookies' in request body"}), 400
+    session = get_db_session()
 
-        identifier = data.get("identifier")
-        new_cookies = data.get("cookies")
-
-        print(f"\n[DEBUG] Frontend is asking to UPDATE record with IDENTIFIER: '{identifier}'")
-
-        record = _get_record_by_identifier(str(identifier))
-
-        if not record:
-            return jsonify({"error": f"Record with identifier '{identifier}' not found"}), 404
-
-        print(f"[DEBUG] Found record in DB to UPDATE -> ID: {record.id}, Name: {record.name}\n")
-
-        try:
-            record.cookies = new_cookies
-            db.session.commit()
-            return jsonify({
-                "message": "Cookies updated successfully",
-                "identifier": identifier,
-                "record": record.to_dict()
-            }), 200
-        except Exception as e:
-            db.session.rollback()
-            return jsonify({"error": "Failed to update cookies", "details": str(e)}), 500
-
-    # --- Getter (Retrieve) Logic ---
+    # GET ---------------------------------------------------
     if request.method == "GET":
         identifier = request.args.get("identifier")
         if not identifier:
             return jsonify({"error": "Missing 'identifier' query parameter"}), 400
 
-        record = _get_record_by_identifier(identifier)
-
+        record = session.query(FetchCurl).filter_by(name=identifier).one_or_none()
         if not record:
             return jsonify({"error": f"Record with identifier '{identifier}' not found"}), 404
 
@@ -240,5 +212,34 @@ def manage_cookies():
             "cookies": record.cookies
         }), 200
 
-    # Fallback for unsupported methods
+    # PUT ---------------------------------------------------
+    if request.method == "PUT":
+        data = request.get_json()
+
+        if not data or "identifier" not in data or "cookies" not in data:
+            return jsonify({"error": "Missing 'identifier' or 'cookies' in request body"}), 400
+
+        identifier = data["identifier"]
+        new_cookies = data["cookies"]
+
+        record = session.query(FetchCurl).filter_by(name=identifier).one_or_none()
+
+        # UPSERT logic
+        if not record:
+            record = FetchCurl(name=identifier, cookies=new_cookies)
+            session.add(record)
+        else:
+            record.cookies = new_cookies
+
+        try:
+            session.commit()
+            return jsonify({
+                "message": "Cookies saved successfully",
+                "identifier": identifier,
+                "cookies": new_cookies
+            }), 200
+        except Exception as e:
+            session.rollback()
+            return jsonify({"error": "Database error", "details": str(e)}), 500
+
     return jsonify({"error": "Method not allowed"}), 405

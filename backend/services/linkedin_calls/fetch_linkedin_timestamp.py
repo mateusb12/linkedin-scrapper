@@ -47,7 +47,7 @@ def fetch_job_timestamp(job_id: str = "4275393151"):
                       '"timezone":"America/Fortaleza","deviceFormFactor":"DESKTOP","mpName":"voyager-web",'
                       '"displayDensity":1,"displayWidth":1920,"displayHeight":1080}',
         'x-restli-protocol-version': '2.0.0',
-        'Cookie': load_cookie_value(),
+        'Cookie': None,
     }
 
     response = requests.get(url, headers=headers)

@@ -37,31 +37,15 @@ HEADERS_DICT = {
 
 
 def get_linkedin_fetch_artefacts() -> Optional[Tuple[requests.Session, Dict[str, Any]]]:
-    """
-    Loads LinkedIn config, creates a session with the cookie from the config,
-    and returns both.
+    from .linkedin_fetch_call_repository import load_linkedin_config
 
-    This function is the single source for getting everything needed to make a
-    LinkedIn API call, encapsulating the session and cookie logic.
-
-    Returns:
-        A tuple containing:
-        - A fully configured requests.Session object.
-        - The configuration dictionary (containing base_url, query_id, etc.).
-        Returns None if the configuration cannot be loaded.
-    """
     config = load_linkedin_config('LinkedIn_Saved_Jobs_Scraper')
     if not config:
         print("❌ Critical error: Could not load API configuration 'LinkedIn_Saved_Jobs_Scraper'.")
         return None
 
     session = requests.Session()
-
-    # The config dictionary now contains the headers with the correct cookie,
-    # so we can just update the session directly.
-    headers = config.get('headers', {})
-    session.headers.update(headers)
-
+    session.headers.update(config.get('headers', {}))
     return session, config
 
 
@@ -69,97 +53,79 @@ def save_linkedin_config_to_db():
     """
     Saves the LinkedIn request configuration to the database using the FetchCurl model.
     """
-    # Local imports to prevent circular dependency
-    from app import app
-    from database.extensions import db
+    from database.database_connection import get_db_session
     from models.fetch_models import FetchCurl
 
-    with app.app_context():
-        config_name = "LinkedIn_Saved_Jobs_Scraper"
-        existing_record = db.session.query(FetchCurl).filter_by(name=config_name).first()
-        if existing_record:
-            print(f"✅ Configuration '{config_name}' already exists in the database. No action taken.")
-            return
+    session = get_db_session()
 
-        print(f"🔧 Creating new configuration record for '{config_name}'...")
-        new_record = FetchCurl(
-            name=config_name,
-            base_url="https://www.linkedin.com/voyager/api/graphql",
-            query_id="voyagerSearchDashClusters.5ba32757c00b31aea747c8bebb92855c",
-            method="GET",
-            headers=json.dumps(HEADERS_DICT, indent=2),
-            referer=HEADERS_DICT.get('referer')
-        )
-        db.session.add(new_record)
-        db.session.commit()
-        print(f"💾 Successfully saved '{config_name}' configuration to the database.")
+    config_name = "LinkedIn_Saved_Jobs_Scraper"
+    existing_record = session.query(FetchCurl).filter_by(name=config_name).first()
+    if existing_record:
+        print(f"✅ Configuration '{config_name}' already exists in the database. No action taken.")
+        session.close()
+        return
+
+    print(f"🔧 Creating new configuration record for '{config_name}'...")
+    new_record = FetchCurl(
+        name=config_name,
+        base_url="https://www.linkedin.com/voyager/api/graphql",
+        query_id="voyagerSearchDashClusters.5ba32757c00b31aea747c8bebb92855c",
+        method="GET",
+        headers=json.dumps(HEADERS_DICT, indent=2),
+        referer=HEADERS_DICT.get('referer')
+    )
+
+    session.add(new_record)
+    session.commit()
+    session.close()
+    print(f"💾 Successfully saved '{config_name}' configuration to the database.")
 
 
 def load_linkedin_config(config_name: str) -> dict | None:
     """
     Loads a specific request configuration from the database by name.
-    If the configuration is found but does not have a cookie stored, this function
-    will load the cookie from the source file, update the database record, and
-    then include it in the returned configuration dictionary.
     """
-    # Local imports to prevent circular dependency
-    from app import app
-    from database.extensions import db
+    from database.database_connection import get_db_session
     from models.fetch_models import FetchCurl
     from path.file_content_loader import load_cookie_value
 
-    with app.app_context():
-        print(f"🔎 Attempting to load configuration '{config_name}' from the database...")
-        record = db.session.query(FetchCurl).filter_by(name=config_name).first()
+    session = get_db_session()
 
-        if not record:
-            print(f"❌ Configuration '{config_name}' not found in the database.")
-            return None
+    print(f"🔎 Attempting to load configuration '{config_name}' from the database...")
+    record = session.query(FetchCurl).filter_by(name=config_name).first()
 
-        print(f"[DEBUG] Scraper is READING record from DB -> ID: {record.id}, Name: {record.name}")
+    if not record:
+        print(f"❌ Configuration '{config_name}' not found in the database.")
+        session.close()
+        return None
 
-        print(f"✅ Configuration '{config_name}' found.")
-        headers_dict = json.loads(record.headers)
-        cookie_to_use = record.cookies
+    print(f"[DEBUG] Scraper READ record -> ID {record.id}, Name {record.name}")
 
-        # If there's no cookie in the database, load it from the file and update the record.
-        # This is a one-time operation per record without a cookie.
-        if not cookie_to_use:
-            print(f"🍪 No cookie found in DB for '{config_name}'. Loading from file...")
-            cookie_from_file = load_cookie_value()
-            if cookie_from_file:
-                record.cookies = cookie_from_file
-                db.session.commit()
-                cookie_to_use = cookie_from_file
-                print(f"💾 DB record for '{config_name}' updated with the new cookie.")
-            else:
-                print(f"⚠️ Warning: Could not load cookie from file for '{config_name}'. Proceeding without a cookie.")
-        else:
-            print("🍪 Using existing cookie from the database.")
+    headers_dict = json.loads(record.headers)
+    cookie_to_use = record.cookies
 
-        # Ensure the cookie is part of the headers for the request session.
-        if cookie_to_use:
-            headers_dict['Cookie'] = cookie_to_use
+    # If cookie missing, load from file
+    if not cookie_to_use:
+        raise RuntimeError(
+            f"❌ ERROR: No cookie found in database for '{config_name}'. "
+            "File-based cookie loading is disabled."
+        )
 
-        return {
-            "name": record.name,
-            "base_url": record.base_url,
-            "query_id": record.query_id,
-            "method": record.method,
-            "headers": headers_dict,
-            "referer": record.referer
-        }
+    else:
+        print("🍪 Using cookie from DB.")
 
+    # Inject cookie into headers
+    if cookie_to_use:
+        headers_dict["Cookie"] = cookie_to_use
 
-if __name__ == "__main__":
-    config_name = "LinkedIn_Saved_Jobs_Scraper"
-    # To create the initial record if it doesn't exist:
-    # from app import app
-    # with app.app_context():
-    #     save_linkedin_config_to_db()
+    config = {
+        "name": record.name,
+        "base_url": record.base_url,
+        "query_id": record.query_id,
+        "method": record.method,
+        "headers": headers_dict,
+        "referer": record.referer
+    }
 
-    # To test loading the configuration:
-    # from app import app
-    # with app.app_context():
-    #     loaded_config = load_linkedin_config(config_name=config_name)
-    #     print("Loaded configuration:", json.dumps(loaded_config, indent=2))
+    session.close()
+    return config

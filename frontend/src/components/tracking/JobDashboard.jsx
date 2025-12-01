@@ -15,13 +15,13 @@ import { RefreshCcw, Settings, Lock, Unlock } from 'lucide-react';
 import { fetchAppliedJobs } from '../../services/jobService.js';
 import { getLinkedinCookie, updateLinkedinCookie } from '../../services/fetchLinkedinService.js';
 
+// --- ADDED: Import the reusable CopyableCodeBlock ---
+import { CopyableCodeBlock } from '../data-fetching/CopyableCodeBlock.jsx';
+
 // Register Chart.js components
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
 // --- START: Skeleton Components ---
-// These components are used as placeholders while data is loading or refreshing.
-// They use TailwindCSS's `animate-pulse` for a smooth loading effect.
-
 const DashboardHeaderSkeleton = () => (
     <div className="mb-6 animate-pulse">
         <div className="h-9 bg-gray-700 rounded w-1/2 mb-4"></div>
@@ -369,9 +369,16 @@ const CookieSettings = ({ onClose, onSaveSuccess }) => {
 
     return (
         <div className="bg-gray-800 p-6 rounded-lg shadow-lg mt-6 mb-6 transition-all duration-300">
-            <h3 className="text-xl font-semibold text-white">LinkedIn Scraper Configuration</h3>
-            <h2><i>Network Filter</i></h2>
-            <h2 className="mb-4 text-amber-500">SEARCH_MY_ITEMS_JOB_SEEKER</h2>
+            <h3 className="text-xl font-semibold text-white mb-4">LinkedIn Scraper Configuration</h3>
+
+            {/* --- REPLACED: Hardcoded text with the shiny new CopyableCodeBlock --- */}
+            <div className="mb-6">
+                <CopyableCodeBlock
+                    label="Network Filter"
+                    text="SEARCH_MY_ITEMS_JOB_SEEKER"
+                />
+            </div>
+
             <div className="mb-4">
                 <label htmlFor="cookie-data" className="block text-sm font-medium text-gray-300 mb-2">
                     li_at Cookie
