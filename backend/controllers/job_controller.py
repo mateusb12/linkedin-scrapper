@@ -131,11 +131,14 @@ def insert_extra_fields_stream():
                     # Update console progress bar
                     progress(processed_this_run, urn=job.urn)
 
+                    current_llm = getattr(progress, "current_status", None)
+
                     # Stream progress message
                     progress_data = {
                         "processed": processed_this_run,
                         "total": total_to_process,
                         "urn": job.urn,
+                        "llm": current_llm,     # <-- 🔥 NEW FIELD
                         "message": f"Processed URN: {job.urn}"
                     }
                     yield f"data: {json.dumps(progress_data)}\n\n"
