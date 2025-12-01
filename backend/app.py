@@ -1,7 +1,7 @@
 from werkzeug.exceptions import BadRequest
 
 from source.features.get_applied_jobs.services_controller import services_bp
-from controllers.profile_controller import profile_bp
+from source.features.profile.profile_controller import profile_bp
 from dotenv import load_dotenv
 from flask import Flask, request
 from flask_cors import CORS
