@@ -1,15 +1,12 @@
-import math
 import time
 import os
 import re
-import requests
-import json
 from datetime import datetime
 from typing import List, Dict, Any, Tuple # Added Tuple
 
 from models import Job
 from source.features.job_population.job_repository import JobRepository
-from services.linkedin_calls.curl_storage.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
+from source.features.get_applied_jobs.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
 from utils.date_parser import parse_relative_date
 
 # --- HELPER: Parse Entity ---

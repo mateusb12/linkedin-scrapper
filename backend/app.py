@@ -1,6 +1,6 @@
 from werkzeug.exceptions import BadRequest
 
-from controllers.services_controller import services_bp
+from source.features.get_applied_jobs.services_controller import services_bp
 from controllers.profile_controller import profile_bp
 from dotenv import load_dotenv
 from flask import Flask, request
@@ -9,7 +9,6 @@ from flask_cors import CORS
 from controllers.job_controller import job_data_bp
 from controllers.resume_data import resume_bp
 from database.database_connection import create_db_and_tables
-from path.file_content_loader import load_db_path
 from source.features.fetch_curl import fetch_curl_bp
 from source.features.job_population.population_controller import population_bp
 
