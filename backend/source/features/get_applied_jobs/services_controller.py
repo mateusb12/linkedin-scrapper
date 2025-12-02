@@ -26,29 +26,39 @@ def normalize_huntr_job(job: dict) -> dict:
 
 
 # --- THIS FUNCTION IS CORRECTED ---
-def normalize_linkedin_job(job_dict: dict) -> dict:
-    """Normalizes a single LinkedIn job dictionary."""
+def normalize_linkedin_job(job_data) -> dict:
+    """Normalizes a single LinkedIn job (can be dict or Job object)."""
+    # Handle if fetch_all_linkedin_jobs returns ORM objects
+    if isinstance(job_data, Job):
+        return normalize_sql_job(job_data)
+
+    # Handle if it returns dicts
     try:
+        # Check if 'applied_on' is already a datetime object or string
+        applied_at = job_data.get("applied_on")
+
         return {
-            "company": job_dict.get("company"),
-            "title": job_dict.get("title", "").strip(),
-            "appliedAt": job_dict["applied_on"],  # Key from Job.to_dict()
+            "company": job_data.get("company"),
+            "title": job_data.get("title", "").strip(),
+            "appliedAt": applied_at,
             "source": "LinkedIn",
-            "url": job_dict.get("job_url"),  # Key from Job.to_dict()
+            "url": job_data.get("job_url"),
+            "urn": job_data.get("urn") # Ensure URN is passed for deduplication
         }
     except KeyError as e:
-        print("Key error on LinkedIn job normalization:", job_dict)
+        print("Key error on LinkedIn job normalization:", job_data)
         raise e
 
 
 def normalize_sql_job(job: Job) -> dict:
-    """Normalizes a single SQL Job object."""
+    """Normalizes a single SQL Job object for the frontend."""
     return {
         "company": job.company.name if job.company else "Unknown",
-        "title": job.title.strip() if job.title else "",
+        "title": job.title.strip() if job.title else "Unknown Title",
         "appliedAt": job.applied_on,
-        "source": "SQL",
+        "source": "LinkedIn" if "linkedin" in (job.job_url or "") else "SQL",
         "url": job.job_url or None,
+        "urn": job.urn
     }
 
 
@@ -60,79 +70,58 @@ def get_all_applied_jobs():
     """
     repo = JobRepository()
     try:
-        # 1. Fetch from Huntr
-        # huntr_jobs_raw = get_huntr_jobs_data()
-        # normalized_huntr = [normalize_huntr_job(job) for job in huntr_jobs_raw]
-
-        # 2. Fetch from LinkedIn
+        # 1. Trigger the sync (Updates DB with fresh timestamps)
         print("Syncing LinkedIn jobs...")
-        linkedin_jobs_raw = [item.to_dict() for item in fetch_all_linkedin_jobs()]
-        normalized_linkedin = [normalize_linkedin_job(job) for job in linkedin_jobs_raw]
+        fetch_all_linkedin_jobs()
         print("Sync complete.")
 
-        # 3. Deduplication via LinkedIn URNs
-        linkedin_urns = {job['urn'] for job in normalized_linkedin if job.get('urn')}
+        # 2. Fetch ALL applied jobs from DB (Now includes those without descriptions)
+        all_jobs = repo.fetch_internal_sql_jobs()
 
-        # 4. Fetch from SQL (excluding jobs already in LinkedIn)
-        all_sql_jobs = repo.fetch_internal_sql_jobs()
-        non_linkedin_sql_jobs = [job for job in all_sql_jobs if job.urn not in linkedin_urns]
-        normalized_sql = [normalize_sql_job(job) for job in non_linkedin_sql_jobs]
+        normalized_jobs = [normalize_sql_job(job) for job in all_jobs]
 
-        # 5. Combine sources
-        all_jobs_unfiltered = normalized_linkedin + normalized_sql
-
-        # 6. Print source counts
-        source_counts = {
-            "linkedin": len(normalized_linkedin),
-            "sql": len(normalized_sql),
-        }
-        print("Job source counts:", source_counts)
-
-        # 7. Filter + clean appliedAt
-        all_jobs_filtered = []
-        for job in all_jobs_unfiltered:
+        # 3. Clean and Sort
+        final_list = []
+        for job in normalized_jobs:
             applied_at = job.get("appliedAt")
+
+            # Skip if no date
             if not applied_at:
                 continue
 
             try:
+                # Ensure we have a datetime object
                 if isinstance(applied_at, str):
                     applied_at = parse_datetime(applied_at)
 
-                if applied_at is None:
-                    continue
-
+                # Ensure Timezone Awareness (UTC) for consistent sorting
                 if applied_at.tzinfo is None:
                     applied_at = applied_at.replace(tzinfo=timezone.utc)
 
                 job["appliedAt"] = applied_at
-                all_jobs_filtered.append(job)
+
+                # Format for Frontend Display
+                # Example: 02-dec-2025
+                job["formattedDate"] = applied_at.strftime("%d-%b-%Y").lower()
+
+                # ISO format for charts/sorting
+                job["appliedAt"] = applied_at.isoformat()
+
+                final_list.append(job)
             except Exception as parse_err:
-                print(f"Skipping job with invalid appliedAt: {applied_at} (error: {parse_err})")
+                print(f"Skipping job {job.get('title')} - invalid date: {applied_at} ({parse_err})")
                 continue
 
-        # 8. Sort by date
+        # 4. Sort Descending (Newest First)
         all_jobs_sorted = sorted(
-            all_jobs_filtered,
+            final_list,
             key=lambda x: x["appliedAt"],
             reverse=True
         )
 
-        # 9. Format output
-        for job in all_jobs_sorted:
-            job["formattedDate"] = job["appliedAt"].strftime("%d-%b-%Y").lower()
-            job["appliedAt"] = job["appliedAt"].isoformat()
-
         return jsonify(all_jobs_sorted), 200
-    except LinkedInScrapingException as e:
-        print(f"ERROR during LinkedIn sync: {e}")
-        # Return a 502 Bad Gateway, which is appropriate for a failed upstream request
-        return jsonify({"error": "Failed to fetch data from LinkedIn.", "details": str(e)}), 502
+
     except Exception as e:
-        if isinstance(e, KeyError):
-            print("KeyError detected – missing required key:")
-            print(traceback.format_exc())
-            raise
         print("An error occurred in /applied-jobs endpoint:")
         print(traceback.format_exc())
         return jsonify({"error": "Failed to fetch job data", "details": str(e)}), 500

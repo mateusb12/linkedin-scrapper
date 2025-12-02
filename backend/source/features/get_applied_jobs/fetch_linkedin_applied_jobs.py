@@ -2,21 +2,17 @@ import time
 import os
 import re
 import json
-from pathlib import Path
-
 import requests
 import logging
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Tuple, Optional
 
-# Conditional imports to allow standalone execution without DB
 try:
     from models import Job
     from source.features.job_population.job_repository import JobRepository
     from source.features.get_applied_jobs.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
     from utils.date_parser import parse_relative_date
 except ImportError:
-    # Mocks for standalone testing
     Job = Any
     JobRepository = Any
     get_linkedin_fetch_artefacts = Any
@@ -25,35 +21,24 @@ except ImportError:
 
 # --- 1. THE GOLDEN ENRICHER FUNCTION ---
 def fetch_exact_applied_date(session: requests.Session, job_urn: str) -> Optional[datetime]:
-    """
-    Hits the specific job entity endpoint to get the raw timestamp.
-    Endpoint: /voyager/api/jobs/jobPostings/{job_id}
-    """
     try:
-        # Extract ID (handles 'urn:li:jobPosting:123' or just '123')
         job_id = job_urn.split(":")[-1]
-
         url = f"https://www.linkedin.com/voyager/api/jobs/jobPostings/{job_id}"
 
-        # Ensure we ask for JSON
         headers = {
             'accept': 'application/json',
             'x-restli-protocol-version': '2.0.0'
         }
 
-        # Respectful delay
-        time.sleep(0.5)
+        time.sleep(0.5) # Throttle
 
         response = session.get(url, headers=headers, timeout=10)
 
         if response.status_code == 200:
             data = response.json()
-            # The Golden Path found in your Bash script
             timestamp_ms = data.get("applyingInfo", {}).get("appliedAt")
-
             if timestamp_ms:
                 return datetime.fromtimestamp(timestamp_ms / 1000.0, tz=timezone.utc)
-
     except Exception as e:
         print(f"   [Timestamp Fetch Error] {e}")
 
@@ -81,46 +66,38 @@ def _structure_job_from_entity(item: Dict[str, Any]) -> Any:
     company = item.get('primarySubtitle', {}).get('text', 'Unknown Company').strip()
     location = item.get('secondarySubtitle', {}).get('text', 'Unknown Location').strip()
 
-    status_text = 'N/A'
-    insights = item.get('insightsResolutionResults', [])
-    if insights and isinstance(insights, list):
-        status_text = insights[0].get('simpleInsight', {}).get('title', {}).get('text', 'N/A').strip()
-
     return {
         'title': title,
         'company': company,
         'location': location,
         'url': navigation_url,
-        'status': status_text,
         'urn': urn_id
     }
 
 
 def _enrich_and_save_new_job(job_data: Dict[str, str], job_repo: JobRepository, session: requests.Session) -> Job:
-    """
-    Saves basic data and immediately fetches the golden timestamp.
-    """
+    """Only called for BRAND NEW jobs."""
     job_repo.add_job_by_dict(job_data)
     job = job_repo.get_by_urn(job_data['urn'])
 
     if job:
+        print(f"   ✨ New Job Detected! Fetching timestamp for {job.urn}...", end=" ")
         job.has_applied = True
-
-        # Fetch exact date immediately
         exact_date = fetch_exact_applied_date(session, job.urn)
         if exact_date:
             job.applied_on = exact_date
-
+            print(f"✅ {exact_date}")
+        else:
+            print("⚠️ Date not found")
         job_repo.commit()
 
     return job
 
 
-# --- 3. CORE: Fetch Logic (Updated to pass session) ---
+# --- 3. CORE: Fetch Logic ---
 def fetch_all_linkedin_jobs() -> List[Job]:
     job_repo = JobRepository()
 
-    # Load Config from DB
     print("--- ⚙️ Loading config ---")
     artefacts = get_linkedin_fetch_artefacts()
     if not artefacts:
@@ -131,67 +108,35 @@ def fetch_all_linkedin_jobs() -> List[Job]:
     base_url = config.get('base_url')
     query_id = config.get('query_id')
 
-    if not query_id:
-        print("❌ Missing 'query_id'.")
-        return job_repo.fetch_applied_jobs()
-
     def build_url(start_index: int) -> str:
         variables = f"(start:{start_index},query:(flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER))"
         return f"{base_url}?variables={variables}&queryId={query_id}"
 
-    # Fetch Page 1
-    print(f"\n--- 🚀 Fetching Page 1 (QueryID: {query_id}) ---")
+    # Fetch List (Page 1) - We ALWAYS need to do this to check for new items
+    print(f"\n--- 🚀 Checking LinkedIn for updates... ---")
     try:
         url = build_url(0)
         response = session.get(url)
         response.raise_for_status()
         data = response.json()
     except Exception as e:
-        print(f"❌ Failed to fetch: {e}")
+        print(f"❌ Failed to fetch list: {e}")
         return job_repo.fetch_applied_jobs()
 
-    # Pagination logic
-    try:
-        paging = data.get('data', {}).get('data', {}).get('searchDashClustersByAll', {}).get('paging', {})
-        total_jobs = paging.get('total', 0)
-        print(f"✅ Connection Successful. Total Applied Jobs: {total_jobs}")
-    except AttributeError:
-        total_jobs = 0
-
-    if total_jobs == 0:
-        return job_repo.fetch_applied_jobs()
-
-    page_size = 10
     all_jobs_processed = []
 
-    # Process Page 1 (Passing session!)
-    parsed_count, new_count = _process_page_data(data, job_repo, all_jobs_processed, session)
-    print(f"   -> Page 1: Parsed {parsed_count} jobs ({new_count} new).")
+    # --- PROCESS PAGE 1 (Standard Mode) ---
+    # force_update is REMOVED here. It defaults to False.
+    new_count, updated_count = _process_page_data(data, job_repo, all_jobs_processed, session)
 
-    # Fetch Remaining Pages
-    for start in range(page_size, total_jobs, page_size):
-        print(f"   -> Fetching page start {start}...", end=" ")
-        try:
-            time.sleep(1.0)
-            url = build_url(start)
-            response = session.get(url)
-
-            if response.status_code != 200:
-                print(f"⚠️ Failed ({response.status_code})")
-                continue
-
-            parsed_count, new_count = _process_page_data(response.json(), job_repo, all_jobs_processed, session)
-            print(f"Parsed {parsed_count} ({new_count} new).")
-
-        except Exception as e:
-            print(f"❌ Error: {e}")
+    print(f"   -> Summary: {new_count} new jobs added, {updated_count} existing jobs updated.")
 
     return job_repo.fetch_applied_jobs()
 
 
-def _process_page_data(data: Dict, repo: JobRepository, out_list: List, session: requests.Session) -> Tuple[int, int]:
-    count_before = len(out_list)
+def _process_page_data(data: Dict, repo: JobRepository, out_list: List, session: requests.Session, force_update: bool = False) -> Tuple[int, int]:
     new_jobs_counter = 0
+    updated_jobs_counter = 0
 
     included_map = {item.get('entityUrn'): item for item in data.get('included', [])}
 
@@ -217,23 +162,39 @@ def _process_page_data(data: Dict, repo: JobRepository, out_list: List, session:
                     existing = repo.get_by_urn(structured['urn'])
 
                     if not existing:
+                        # CASE 1: It's brand new. Fetch it.
                         _enrich_and_save_new_job(structured, repo, session)
                         new_jobs_counter += 1
                     else:
-                        # Fix existing jobs missing timestamps
-                        if not existing.applied_on:
-                            print(f"   ♻️ Backfilling timestamp for {structured['urn']}...", end=" ")
+                        # CASE 2: It exists. Do we need to update it?
+
+                        # Only update if forced OR if date is missing
+                        needs_date = existing.applied_on is None
+
+                        if force_update or needs_date:
+                            print(f"   ♻️  Backfilling timestamp for {structured['urn']}...", end=" ")
                             exact_date = fetch_exact_applied_date(session, structured['urn'])
                             if exact_date:
                                 existing.applied_on = exact_date
+                                existing.has_applied = True
+                                repo.commit()
+                                updated_jobs_counter += 1
                                 print(f"✅ {exact_date}")
                             else:
-                                print("❌")
+                                print("❌ Not found")
+                        else:
+                            # CASE 3: Data is already in DB. DO NOTHING.
+                            # This implies we skip the extra API call.
+                            pass
+
+                        # Ensure 'has_applied' is true (no cost operation)
+                        if not existing.has_applied:
+                            existing.has_applied = True
                             repo.commit()
 
                     out_list.append(structured)
 
-    return (len(out_list) - count_before), new_jobs_counter
+    return new_jobs_counter, updated_jobs_counter
 
 
 # ==============================================================================

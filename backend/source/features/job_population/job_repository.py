@@ -99,7 +99,6 @@ class JobRepository:
             .options(joinedload(Job.company))
             .filter(
                 Job.has_applied.is_(True),
-                Job.description_full != "No description provided",
                 Job.disabled.is_(False)
             )
             .all()
