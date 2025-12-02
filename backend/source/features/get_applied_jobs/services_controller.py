@@ -1,4 +1,5 @@
 # backend/controllers/services_controller.py
+import json
 from datetime import timezone
 from flask import Blueprint, jsonify, request
 from dateutil.parser import parse as parse_datetime
@@ -43,7 +44,7 @@ def normalize_linkedin_job(job_data) -> dict:
             "appliedAt": applied_at,
             "source": "LinkedIn",
             "url": job_data.get("job_url"),
-            "urn": job_data.get("urn") # Ensure URN is passed for deduplication
+            "urn": job_data.get("urn")  # Ensure URN is passed for deduplication
         }
     except KeyError as e:
         print("Key error on LinkedIn job normalization:", job_data)
@@ -151,6 +152,7 @@ def get_sql_jobs():
     finally:
         repo.close()
 
+
 def _get_record_by_identifier(identifier: str) -> FetchCurl | None:
     """
     Finds a FetchCurl record by its ID or name.
@@ -170,6 +172,7 @@ def _get_record_by_identifier(identifier: str) -> FetchCurl | None:
         return session.query(FetchCurl).filter_by(name=identifier).one_or_none()
     finally:
         session.close()
+
 
 @services_bp.route("/cookies", methods=["GET", "PUT"])
 def manage_cookies():
@@ -224,6 +227,62 @@ def manage_cookies():
             session.commit()
             return jsonify({
                 "message": "Cookies saved successfully",
+                "identifier": identifier,
+                "cookies": new_cookies
+            }), 200
+        except Exception as e:
+            session.rollback()
+            return jsonify({"error": "Database error", "details": str(e)}), 500
+
+    return jsonify({"error": "Method not allowed"}), 405
+
+
+@services_bp.route("/cookies", methods=["GET", "PUT"])
+def manage_cookies():
+    session = get_db_session()
+
+    # GET logic remains the same
+    if request.method == "GET":
+        identifier = request.args.get("identifier")
+        if not identifier:
+            return jsonify({"error": "Missing 'identifier'"}), 400
+        record = session.query(FetchCurl).filter_by(name=identifier).one_or_none()
+        if not record:
+            return jsonify({"error": "Record not found"}), 404
+        return jsonify({"identifier": identifier, "cookies": record.cookies}), 200
+
+    # PUT Logic - UPDATED for CSRF handling
+    if request.method == "PUT":
+        data = request.get_json()
+        if not data or "identifier" not in data or "cookies" not in data:
+            return jsonify({"error": "Missing required fields"}), 400
+
+        identifier = data["identifier"]
+        new_cookies = data["cookies"]
+        csrf_token = data.get("csrfToken")  # Optional new field
+
+        record = session.query(FetchCurl).filter_by(name=identifier).one_or_none()
+
+        if not record:
+            record = FetchCurl(name=identifier, cookies=new_cookies)
+            session.add(record)
+        else:
+            record.cookies = new_cookies
+
+            # Update CSRF token in headers if provided
+            if csrf_token and record.headers:
+                try:
+                    headers = json.loads(record.headers)
+                    headers["csrf-token"] = csrf_token
+                    record.headers = json.dumps(headers)
+                    print(f"✅ Updated CSRF token in headers to: {csrf_token}")
+                except json.JSONDecodeError:
+                    print("❌ Failed to parse headers JSON for CSRF update")
+
+        try:
+            session.commit()
+            return jsonify({
+                "message": "Credentials updated successfully",
                 "identifier": identifier,
                 "cookies": new_cookies
             }), 200

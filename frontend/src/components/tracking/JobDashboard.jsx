@@ -1,6 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Bar, Doughnut } from 'react-chartjs-2';
+import axios from 'axios';
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -11,18 +12,14 @@ import {
     Legend,
     ArcElement,
 } from 'chart.js';
-import { RefreshCcw, Settings, Lock, Unlock, ExternalLink, HelpCircle, Terminal } from 'lucide-react';
+import { RefreshCcw, Settings, Lock, ExternalLink, Terminal, Upload, FileJson } from 'lucide-react';
 import { fetchAppliedJobs } from '../../services/jobService.js';
-// --- CHANGED: Imported the new service function ---
-import { updateScraperConfig } from '../../services/fetchLinkedinService.js';
-
-// --- ADDED: Import the reusable CopyableCodeBlock ---
 import { CopyableCodeBlock } from '../data-fetching/CopyableCodeBlock.jsx';
 
 // Register Chart.js components
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
-// --- START: Skeleton Components ---
+// --- SKELETON COMPONENTS ---
 const DashboardHeaderSkeleton = () => (
     <div className="mb-6 animate-pulse">
         <div className="h-9 bg-gray-700 rounded w-1/2 mb-4"></div>
@@ -71,9 +68,8 @@ const TableSkeleton = ({ rows = 5 }) => (
         </div>
     </div>
 );
-// --- END: Skeleton Components ---
 
-// Theme colors
+// --- THEME COLORS ---
 const themeColors = {
     textPrimary: '#e5e7eb',
     textSecondary: '#9ca3af',
@@ -82,8 +78,7 @@ const themeColors = {
     emerald: '#10b981',
 };
 
-// ... [Keep existing Date Helpers and Formatting functions exactly as they were] ...
-// Format date like "1 ago 2025"
+// --- DATE HELPERS ---
 const formatPtDate = (isoDateStr) => {
     if (!isoDateStr) return 'N/A';
     const date = new Date(isoDateStr);
@@ -96,7 +91,6 @@ const formatPtDate = (isoDateStr) => {
     return `${dayNum} ${monthStr} ${yearNum}`;
 };
 
-// Format date and time for the table
 const formatPtDateTime = (isoDateStr) => {
     if (!isoDateStr) return 'N/A';
     const date = new Date(isoDateStr);
@@ -104,10 +98,8 @@ const formatPtDateTime = (isoDateStr) => {
 
     const day = String(date.getUTCDate()).padStart(2, '0');
     const year = date.getUTCFullYear();
-
     const monthDate = new Date(Date.UTC(year, date.getUTCMonth(), 1));
     const month = monthDate.toLocaleString('pt-BR', { month: 'short', timeZone: 'UTC' }).replace('.', '').toLowerCase();
-
     const hours = String(date.getUTCHours()).padStart(2, '0');
     const minutes = String(date.getUTCMinutes()).padStart(2, '0');
     const seconds = String(date.getUTCSeconds()).padStart(2, '0');
@@ -115,8 +107,6 @@ const formatPtDateTime = (isoDateStr) => {
     return `${day}/${month}/${year}, ${hours}:${minutes}:${seconds}`;
 };
 
-
-// --- DATE HELPERS ---
 const toYYYYMMDD = (date) => {
     const y = date.getUTCFullYear();
     const m = String(date.getUTCMonth() + 1).padStart(2, '0');
@@ -137,14 +127,12 @@ const getMonthStartDate = (date) => {
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
 };
 
-// Helper to filter jobs by a date range
 const filterJobsByDateRange = (jobs, range) => {
     if (!jobs || range === 'all') {
         return jobs;
     }
 
     const now = new Date();
-    // Use UTC for all date calculations to be consistent with other helpers
     const nowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
     let startDateUtc;
 
@@ -173,10 +161,7 @@ const filterJobsByDateRange = (jobs, range) => {
         return appliedDate >= startDateUtc;
     });
 };
-// --- END DATE HELPERS ---
 
-
-// Chart data processor
 const processChartData = (jobs, timePeriod = 'daily') => {
     if (!jobs || jobs.length === 0) {
         return {
@@ -272,7 +257,7 @@ const processChartData = (jobs, timePeriod = 'daily') => {
     };
 };
 
-// --- COLLAPSIBLE TABLE COMPONENT ---
+// --- JOBS TABLE COMPONENT ---
 const JobsTable = ({ jobs }) => {
     const [isOpen, setIsOpen] = React.useState(true);
 
@@ -329,32 +314,76 @@ const JobsTable = ({ jobs }) => {
     );
 };
 
-// --- REDESIGNED SETTINGS COMPONENT: FULL CURL IMPORTER ---
+// --- SETTINGS COMPONENT WITH HAR UPLOAD ---
 const ScraperSettings = ({ onClose, onSaveSuccess }) => {
-    const [curlData, setCurlData] = React.useState('');
-    const [isSaving, setIsSaving] = React.useState(false);
     const [statusMessage, setStatusMessage] = React.useState('');
+    const [isSaving, setIsSaving] = React.useState(false);
+    const fileInputRef = React.useRef(null);
 
-    const handleSave = async () => {
-        if (!curlData.trim()) return;
+    // 1. Handle File Upload & Parsing
+    const handleFileUpload = (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        setStatusMessage('Reading file...');
+        const reader = new FileReader();
+
+        reader.onload = async (e) => {
+            const content = e.target.result;
+            try {
+                // Regex Extraction (Fast & Robust)
+                // Looks for: li_at=VALUE...
+                const liAtMatch = content.match(/li_at=([^;"]+)/);
+                // Looks for: JSESSIONID="ajax:NUMBER" or JSESSIONID=\"ajax:NUMBER\"
+                const jsessionMatch = content.match(/JSESSIONID=?[\\"]*ajax:([0-9]+)/);
+
+                if (liAtMatch && jsessionMatch) {
+                    const li_at = liAtMatch[1];
+                    const csrf_token = `ajax:${jsessionMatch[1]}`;
+                    const cookieStr = `li_at=${li_at}; JSESSIONID="${csrf_token}"`;
+
+                    await saveCredentials(cookieStr, csrf_token);
+                } else {
+                    setStatusMessage('❌ Error: Could not find li_at or JSESSIONID in file.');
+                }
+            } catch (err) {
+                setStatusMessage('❌ Parsing Error: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    // 2. Send to Backend
+    const saveCredentials = async (cookies, csrfToken) => {
         setIsSaving(true);
-        setStatusMessage('Parsing & Saving...');
+        setStatusMessage('Saving credentials...');
+
         try {
-            const response = await updateScraperConfig(curlData);
-            setStatusMessage(`✅ Success! ${response.message || 'Updated.'}`);
+            // Using direct Axios PUT to the cookies endpoint we created
+            await axios.put('http://localhost:5000/services/cookies', {
+                identifier: 'LinkedIn_Saved_Jobs_Scraper',
+                cookies: cookies,
+                csrfToken: csrfToken
+            });
+
+            setStatusMessage('✅ Credentials Updated! Syncing jobs...');
+
+            // Trigger refresh
+            onSaveSuccess();
+
             setTimeout(() => {
-                onSaveSuccess();
                 onClose();
-            }, 1000);
+            }, 1500);
         } catch (error) {
-            setStatusMessage(`❌ Error: ${error.message}`);
+            console.error(error);
+            setStatusMessage(`❌ API Error: ${error.response?.data?.error || error.message}`);
         } finally {
             setIsSaving(false);
         }
     };
 
     return (
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg mt-6 mb-6 border border-gray-700">
+        <div className="bg-gray-800 p-6 rounded-lg shadow-lg mt-6 mb-6 border border-gray-700 animate-in fade-in slide-in-from-top-4">
             <div className="flex justify-between items-start mb-6">
                 <div>
                     <h3 className="text-xl font-bold text-white flex items-center gap-2">
@@ -362,94 +391,87 @@ const ScraperSettings = ({ onClose, onSaveSuccess }) => {
                         Update LinkedIn Credentials
                     </h3>
                     <p className="text-gray-400 text-sm mt-1">
-                        Paste a fresh cURL command to refresh your session cookies and tokens.
+                        Upload your <code>linkedin.har</code> file to automatically refresh your session.
                     </p>
                 </div>
                 <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
             </div>
 
-            {/* --- INSTRUCTION STEPS --- */}
-            <div className="bg-gray-900/50 p-4 rounded-lg mb-6 text-sm text-gray-300 space-y-3 border border-gray-700">
-                <div className="flex items-start gap-3">
-                    <div className="bg-purple-900/50 text-purple-300 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border border-purple-700">1</div>
-                    <p>
-                        Go to <a href="https://www.linkedin.com/my-items/saved-jobs/?cardType=APPLIED" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline flex items-center inline-flex gap-1">LinkedIn Applied Jobs <ExternalLink size={12} /></a>.
-                    </p>
-                </div>
-                <div className="flex items-start gap-3">
-                    <div className="bg-purple-900/50 text-purple-300 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border border-purple-700">2</div>
-                    <p>Open <b>Developer Tools</b> (F12) → <b>Network</b> tab.</p>
-                </div>
-                <div className="flex items-start gap-3">
-                    <div className="bg-purple-900/50 text-purple-300 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border border-purple-700">3</div>
-                    <div>
-                        <p className="mb-1">Filter for the request matching the keyword below:</p>
-                        <CopyableCodeBlock text="SEARCH_MY_ITEMS_JOB_SEEKER" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Manual Instructions */}
+                <div className="bg-gray-900/50 p-4 rounded-lg text-sm text-gray-300 space-y-3 border border-gray-700">
+                    <h4 className="font-semibold text-white mb-2">How to get the file:</h4>
+                    <div className="flex items-start gap-3">
+                        <div className="bg-purple-900/50 text-purple-300 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border border-purple-700">1</div>
+                        <p>Go to <a href="https://www.linkedin.com/my-items/saved-jobs/" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">LinkedIn Jobs</a>.</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                        <div className="bg-purple-900/50 text-purple-300 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border border-purple-700">2</div>
+                        <p>Open <b>DevTools</b> (F12) → <b>Network</b> tab.</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                        <div className="bg-purple-900/50 text-purple-300 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border border-purple-700">3</div>
+                        <p>Reload the page.</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                        <div className="bg-purple-900/50 text-purple-300 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border border-purple-700">4</div>
+                        <p>Click the download icon ⬇️ (Export HAR).</p>
                     </div>
                 </div>
-                <div className="flex items-start gap-3">
-                    <div className="bg-purple-900/50 text-purple-300 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold border border-purple-700">4</div>
-                    <p>Right-click the request → <b>Copy</b> → <b>Copy as cURL (bash)</b>.</p>
-                </div>
-            </div>
 
-            {/* --- INPUT AREA --- */}
-            <div className="mb-4">
-                <label htmlFor="curl-input" className="block text-sm font-medium text-gray-300 mb-2">
-                    Paste cURL Command
-                </label>
-                <textarea
-                    id="curl-input"
-                    value={curlData}
-                    onChange={(e) => setCurlData(e.target.value)}
-                    className="w-full p-3 bg-gray-900 border border-gray-600 text-green-400 font-mono text-xs rounded-lg focus:ring-purple-500 focus:border-purple-500 min-h-[120px]"
-                    placeholder="curl 'https://www.linkedin.com/voyager/api/graphql?variables=...' -H 'csrf-token: ...' ..."
-                />
-                {statusMessage && (
-                    <p className={`mt-2 text-sm ${statusMessage.startsWith('✅') ? 'text-green-400' : 'text-amber-400'}`}>
-                        {statusMessage}
+                {/* Upload Area */}
+                <div className="flex flex-col justify-center items-center border-2 border-dashed border-gray-600 rounded-lg p-6 bg-gray-800/50 hover:bg-gray-800 hover:border-purple-500 transition-colors">
+                    <FileJson size={48} className="text-gray-500 mb-3" />
+
+                    <input
+                        type="file"
+                        accept=".har,.json"
+                        ref={fileInputRef}
+                        className="hidden"
+                        onChange={handleFileUpload}
+                    />
+
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isSaving}
+                        className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg shadow-lg transition-all flex items-center gap-2 mb-2"
+                    >
+                        {isSaving ? <RefreshCcw size={18} className="animate-spin" /> : <Upload size={18} />}
+                        Upload .HAR File
+                    </button>
+
+                    <p className="text-xs text-gray-500">
+                        Supports .har files exported from Chrome/Edge/Firefox
                     </p>
-                )}
-            </div>
 
-            {/* --- ACTIONS --- */}
-            <div className="flex justify-end gap-3">
-                <button
-                    onClick={onClose}
-                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg transition-colors"
-                >
-                    Cancel
-                </button>
-                <button
-                    onClick={handleSave}
-                    disabled={isSaving || !curlData}
-                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                    {isSaving ? <RefreshCcw size={16} className="animate-spin" /> : null}
-                    Save & Refresh
-                </button>
+                    {statusMessage && (
+                        <div className={`mt-4 p-2 rounded text-sm w-full text-center ${statusMessage.includes('✅') ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>
+                            {statusMessage}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
 };
 
-// --- REFACTORED Main Dashboard Component ---
+// --- MAIN COMPONENT ---
 export const JobDashboard = () => {
     const [timePeriod, setTimePeriod] = React.useState('daily');
     const [dateRange, setDateRange] = React.useState('all');
     const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
 
-    const { data: jobs, isLoading, isError, error, refetch, isFetching } = useQuery({
+    // Using staleTime: 0 ensures manual refetch always hits the server
+    const { data: jobs, isLoading, isError, refetch, isFetching } = useQuery({
         queryKey: ['appliedJobs'],
         queryFn: fetchAppliedJobs,
-        staleTime: 5 * 60 * 1000,
+        staleTime: 0,
         retry: false
     });
 
     const filteredJobs = filterJobsByDateRange(jobs, dateRange);
     const chartData = (filteredJobs && Array.isArray(filteredJobs)) ? processChartData(filteredJobs, timePeriod) : null;
 
-    // ... (Chart Options remain same as before) ...
     const barChartOptions = {
         responsive: true,
         maintainAspectRatio: false,
@@ -490,7 +512,30 @@ export const JobDashboard = () => {
     return (
         <div className="p-6 bg-gray-900 text-gray-200 min-h-screen">
             <div className="mb-6">
-                <h2 className="text-3xl font-bold text-white mb-4">Job Application Dashboard</h2>
+                <div className="flex justify-between items-end mb-4">
+                    <div>
+                        <h2 className="text-3xl font-bold text-white mb-2">Job Application Dashboard</h2>
+                        <p className="text-gray-400 text-sm">Track your automated applications</p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => refetch()}
+                            disabled={isFetching}
+                            className="h-10 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium"
+                        >
+                            <RefreshCcw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+                            {isFetching ? 'Syncing...' : 'Sync'}
+                        </button>
+                        <button
+                            onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                            className={`h-10 px-3 text-white rounded-lg shadow-lg transition-all border flex items-center gap-2 ${isSettingsOpen ? 'bg-purple-900 border-purple-500' : 'bg-gray-800 border-gray-700 hover:bg-gray-700'}`}
+                        >
+                            <Settings size={18} />
+                            <span className="hidden sm:inline">Settings</span>
+                        </button>
+                    </div>
+                </div>
 
                 <div className="flex flex-wrap items-center gap-4">
                     <select
@@ -506,29 +551,9 @@ export const JobDashboard = () => {
                         <option value="last_6_months">Last 6 Months</option>
                         <option value="last_year">Last Year</option>
                     </select>
-
-                    <div className="flex items-center gap-2 ml-auto">
-                        <button
-                            onClick={() => refetch()}
-                            disabled={isFetching}
-                            className="h-10 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow-lg transition-all disabled:bg-gray-700 disabled:cursor-not-allowed flex items-center gap-2 font-medium"
-                            title="Refresh data"
-                        >
-                            <RefreshCcw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-                            {isFetching ? 'Syncing...' : 'Sync'}
-                        </button>
-                        <button
-                            onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                            className={`h-10 w-10 text-white rounded-lg shadow-lg transition-all flex items-center justify-center border ${isSettingsOpen ? 'bg-purple-900 border-purple-500 ring-2 ring-purple-500/50' : 'bg-gray-800 border-gray-700 hover:bg-gray-700'}`}
-                            title="Update Credentials"
-                        >
-                            <Settings className="w-5 h-5" />
-                        </button>
-                    </div>
                 </div>
             </div>
 
-            {/* --- CONFIGURATION PANEL (Replaced) --- */}
             {isSettingsOpen && (
                 <ScraperSettings
                     onClose={() => setIsSettingsOpen(false)}
@@ -538,19 +563,14 @@ export const JobDashboard = () => {
 
             <div className="mt-6">
                 {isError ? (
-                    <div className="bg-gray-800 border border-red-900/50 p-12 rounded-xl shadow-lg text-center">
-                        <div className="bg-red-900/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <Lock size={32} className="text-red-500" />
-                        </div>
-                        <h3 className="text-2xl text-white font-bold mb-2">Session Expired</h3>
-                        <p className="text-gray-400 max-w-md mx-auto mb-6">
-                            Your LinkedIn credentials have expired or are invalid. Please update your session to continue fetching data.
-                        </p>
+                    <div className="bg-red-900/20 border border-red-900 p-6 rounded-lg text-center">
+                        <Lock className="mx-auto text-red-500 w-12 h-12 mb-2" />
+                        <h3 className="text-xl font-bold text-white">Access Denied</h3>
+                        <p className="text-gray-400 mb-4">Your LinkedIn session has expired.</p>
                         <button
                             onClick={() => setIsSettingsOpen(true)}
-                            className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg shadow-lg transition-all flex items-center gap-2 mx-auto"
+                            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg"
                         >
-                            <Settings size={18} />
                             Update Credentials
                         </button>
                     </div>
