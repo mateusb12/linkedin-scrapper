@@ -1,37 +1,22 @@
 import time
-import os
 import re
-import json
 import requests
 import logging
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Tuple, Optional
 
-try:
-    from models import Job
-    from source.features.job_population.job_repository import JobRepository
-    from source.features.get_applied_jobs.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
-    from utils.date_parser import parse_relative_date
-except ImportError:
-    Job = Any
-    JobRepository = Any
-    get_linkedin_fetch_artefacts = Any
-    parse_relative_date = Any
-
+from models import Job, Company
+from source.features.job_population.job_repository import JobRepository
+from source.features.get_applied_jobs.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
+from utils.date_parser import parse_relative_date
 
 # --- 1. THE GOLDEN ENRICHER FUNCTION ---
 def fetch_exact_applied_date(session: requests.Session, job_urn: str) -> Optional[datetime]:
     try:
         job_id = job_urn.split(":")[-1]
         url = f"https://www.linkedin.com/voyager/api/jobs/jobPostings/{job_id}"
-
-        headers = {
-            'accept': 'application/json',
-            'x-restli-protocol-version': '2.0.0'
-        }
-
-        time.sleep(0.5) # Throttle
-
+        headers = {'accept': 'application/json', 'x-restli-protocol-version': '2.0.0'}
+        time.sleep(0.5)
         response = session.get(url, headers=headers, timeout=10)
 
         if response.status_code == 200:
@@ -41,11 +26,9 @@ def fetch_exact_applied_date(session: requests.Session, job_urn: str) -> Optiona
                 return datetime.fromtimestamp(timestamp_ms / 1000.0, tz=timezone.utc)
     except Exception as e:
         print(f"   [Timestamp Fetch Error] {e}")
-
     return None
 
-
-# --- 2. EXISTING HELPER: Parse Entity ---
+# --- 2. UPDATED PARSER: Now Extracts Company Info ---
 def _structure_job_from_entity(item: Dict[str, Any]) -> Any:
     urn_id = item.get('entityUrn')
     if urn_id:
@@ -63,20 +46,63 @@ def _structure_job_from_entity(item: Dict[str, Any]) -> Any:
         return None
 
     title = item.get('title', {}).get('text', 'Unknown Title').strip()
-    company = item.get('primarySubtitle', {}).get('text', 'Unknown Company').strip()
+    company_name = item.get('primarySubtitle', {}).get('text', 'Unknown Company').strip()
     location = item.get('secondarySubtitle', {}).get('text', 'Unknown Location').strip()
+
+    # --- NEW: Extract Company URN and Logo ---
+    company_urn = None
+    company_logo = None
+
+    # Try to find company logo/urn in the 'image' field
+    image_data = item.get('image', {}).get('attributes', [])
+    if image_data:
+        detail_data = image_data[0].get('detailData', {})
+        # This is usually the Company URN (e.g. urn:li:fsd_company:12345)
+        raw_company_ref = detail_data.get('*companyLogo')
+
+        if raw_company_ref:
+            # Normalize to standard URN if needed, or keep as is if it matches DB format
+            company_urn = raw_company_ref
 
     return {
         'title': title,
-        'company': company,
+        'company': company_name,     # String name
+        'company_urn': company_urn,  # URN for DB Link
         'location': location,
         'url': navigation_url,
         'urn': urn_id
     }
 
+def _ensure_company_exists(session, name: str, urn: str):
+    """Upserts the company into the DB so the Foreign Key works."""
+    if not urn:
+        return
+
+    # Check if exists
+    existing = session.query(Company).filter_by(urn=urn).first()
+    if not existing:
+        print(f"   🏭 Creating new company: {name} ({urn})")
+        new_company = Company(
+            urn=urn,
+            name=name,
+            logo_url=None, # We could fetch this, but for now getting the link is priority
+            url=f"https://www.linkedin.com/company/{urn.split(':')[-1]}"
+        )
+        session.add(new_company)
+        try:
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            print(f"   ⚠️ Failed to save company: {e}")
 
 def _enrich_and_save_new_job(job_data: Dict[str, str], job_repo: JobRepository, session: requests.Session) -> Job:
     """Only called for BRAND NEW jobs."""
+
+    # 1. CRITICAL: Ensure Company Exists BEFORE saving job
+    if job_data.get('company_urn'):
+        _ensure_company_exists(job_repo.session, job_data['company'], job_data['company_urn'])
+
+    # 2. Add Job
     job_repo.add_job_by_dict(job_data)
     job = job_repo.get_by_urn(job_data['urn'])
 
@@ -89,10 +115,14 @@ def _enrich_and_save_new_job(job_data: Dict[str, str], job_repo: JobRepository, 
             print(f"✅ {exact_date}")
         else:
             print("⚠️ Date not found")
+
+        # 3. Double Check Company Link (just in case add_job_by_dict missed it)
+        if job_data.get('company_urn') and not job.company_urn:
+            job.company_urn = job_data['company_urn']
+
         job_repo.commit()
 
     return job
-
 
 # --- 3. CORE: Fetch Logic ---
 def fetch_all_linkedin_jobs() -> List[Job]:
@@ -112,7 +142,7 @@ def fetch_all_linkedin_jobs() -> List[Job]:
         variables = f"(start:{start_index},query:(flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER))"
         return f"{base_url}?variables={variables}&queryId={query_id}"
 
-    # Fetch List (Page 1) - We ALWAYS need to do this to check for new items
+    # Fetch List (Page 1)
     print(f"\n--- 🚀 Checking LinkedIn for updates... ---")
     try:
         url = build_url(0)
@@ -125,16 +155,14 @@ def fetch_all_linkedin_jobs() -> List[Job]:
 
     all_jobs_processed = []
 
-    # --- PROCESS PAGE 1 (Standard Mode) ---
-    # force_update is REMOVED here. It defaults to False.
+    # Process Page 1
     new_count, updated_count = _process_page_data(data, job_repo, all_jobs_processed, session)
 
     print(f"   -> Summary: {new_count} new jobs added, {updated_count} existing jobs updated.")
 
     return job_repo.fetch_applied_jobs()
 
-
-def _process_page_data(data: Dict, repo: JobRepository, out_list: List, session: requests.Session, force_update: bool = False) -> Tuple[int, int]:
+def _process_page_data(data: Dict, repo: JobRepository, out_list: List, session: requests.Session) -> Tuple[int, int]:
     new_jobs_counter = 0
     updated_jobs_counter = 0
 
@@ -162,16 +190,20 @@ def _process_page_data(data: Dict, repo: JobRepository, out_list: List, session:
                     existing = repo.get_by_urn(structured['urn'])
 
                     if not existing:
-                        # CASE 1: It's brand new. Fetch it.
                         _enrich_and_save_new_job(structured, repo, session)
                         new_jobs_counter += 1
                     else:
-                        # CASE 2: It exists. Do we need to update it?
+                        # Fix for existing jobs with missing companies
+                        if structured.get('company_urn') and not existing.company_urn:
+                            print(f"   🔧 Fixing missing company for {structured['urn']}...")
+                            _ensure_company_exists(repo.session, structured['company'], structured['company_urn'])
+                            existing.company_urn = structured['company_urn']
+                            repo.commit()
+                            updated_jobs_counter += 1
 
-                        # Only update if forced OR if date is missing
+                        # Logic for timestamps (existing)
                         needs_date = existing.applied_on is None
-
-                        if force_update or needs_date:
+                        if needs_date:
                             print(f"   ♻️  Backfilling timestamp for {structured['urn']}...", end=" ")
                             exact_date = fetch_exact_applied_date(session, structured['urn'])
                             if exact_date:
@@ -182,12 +214,7 @@ def _process_page_data(data: Dict, repo: JobRepository, out_list: List, session:
                                 print(f"✅ {exact_date}")
                             else:
                                 print("❌ Not found")
-                        else:
-                            # CASE 3: Data is already in DB. DO NOTHING.
-                            # This implies we skip the extra API call.
-                            pass
 
-                        # Ensure 'has_applied' is true (no cost operation)
                         if not existing.has_applied:
                             existing.has_applied = True
                             repo.commit()

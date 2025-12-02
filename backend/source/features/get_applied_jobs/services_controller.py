@@ -176,69 +176,6 @@ def _get_record_by_identifier(identifier: str) -> FetchCurl | None:
 
 @services_bp.route("/cookies", methods=["GET", "PUT"])
 def manage_cookies():
-    """
-    A unified endpoint to get or set cookies for a FetchCurl record.
-
-    GET /fetch-curl/cookies?identifier=<id_or_name>
-      - Retrieves the cookies for the specified record.
-
-    PUT /fetch-curl/cookies
-      - Updates the cookies for the record specified in the JSON body.
-      - Body: {"identifier": "<id_or_name>", "cookies": "new_cookie_string"}
-    """
-    # --- Setter (Update) Logic ---
-    session = get_db_session()
-
-    # GET ---------------------------------------------------
-    if request.method == "GET":
-        identifier = request.args.get("identifier")
-        if not identifier:
-            return jsonify({"error": "Missing 'identifier' query parameter"}), 400
-
-        record = session.query(FetchCurl).filter_by(name=identifier).one_or_none()
-        if not record:
-            return jsonify({"error": f"Record with identifier '{identifier}' not found"}), 404
-
-        return jsonify({
-            "identifier": identifier,
-            "cookies": record.cookies
-        }), 200
-
-    # PUT ---------------------------------------------------
-    if request.method == "PUT":
-        data = request.get_json()
-
-        if not data or "identifier" not in data or "cookies" not in data:
-            return jsonify({"error": "Missing 'identifier' or 'cookies' in request body"}), 400
-
-        identifier = data["identifier"]
-        new_cookies = data["cookies"]
-
-        record = session.query(FetchCurl).filter_by(name=identifier).one_or_none()
-
-        # UPSERT logic
-        if not record:
-            record = FetchCurl(name=identifier, cookies=new_cookies)
-            session.add(record)
-        else:
-            record.cookies = new_cookies
-
-        try:
-            session.commit()
-            return jsonify({
-                "message": "Cookies saved successfully",
-                "identifier": identifier,
-                "cookies": new_cookies
-            }), 200
-        except Exception as e:
-            session.rollback()
-            return jsonify({"error": "Database error", "details": str(e)}), 500
-
-    return jsonify({"error": "Method not allowed"}), 405
-
-
-@services_bp.route("/cookies", methods=["GET", "PUT"])
-def manage_cookies():
     session = get_db_session()
 
     # GET logic remains the same
