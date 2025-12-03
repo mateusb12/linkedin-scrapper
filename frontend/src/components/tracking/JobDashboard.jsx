@@ -26,9 +26,12 @@ import {
     Upload,
     FileJson,
     Target,
-    Calendar,
-    TrendingUp,
-    Award
+    Calendar as CalendarIcon, // Renamed to avoid conflict
+    Check,
+    Coffee,
+    X,
+    ChevronLeft,
+    ChevronRight
 } from 'lucide-react';
 import { fetchAppliedJobs } from '../../services/jobService.js';
 
@@ -163,29 +166,49 @@ const processHistoryData = (jobs, timePeriod) => {
 };
 
 const processCurrentFormData = (jobs) => {
-    const last7Days = getLast7DaysKeys();
-    const dailyCounts = {};
-    last7Days.forEach(k => dailyCounts[k] = 0);
-
+    // 1. Create a map of ALL dates with applications
+    const allDailyCounts = {};
     jobs.forEach(job => {
         const k = new Date(job.appliedAt).toISOString().split('T')[0];
-        if (dailyCounts[k] !== undefined) {
-            dailyCounts[k]++;
-        }
+        allDailyCounts[k] = (allDailyCounts[k] || 0) + 1;
     });
 
-    const dataValues = last7Days.map(k => dailyCounts[k]);
+    // 2. Prepare Last 7 Days for the chart
+    const last7Days = getLast7DaysKeys();
+    const dataValues = last7Days.map(k => allDailyCounts[k] || 0);
     const todayKey = last7Days[last7Days.length - 1];
-    const todayCount = dailyCounts[todayKey];
+    const todayCount = allDailyCounts[todayKey] || 0;
 
+    // 3. Smart Streak Logic (Ignores Weekends)
     let streak = 0;
-    for (let i = last7Days.length - 1; i >= 0; i--) {
-        if (i === last7Days.length - 1 && dailyCounts[last7Days[i]] < GOAL_PER_DAY) continue;
-        if (dailyCounts[last7Days[i]] >= GOAL_PER_DAY) {
+    const checkDate = getStartOfToday();
+
+    // Safety break loop limit (e.g. 365 days)
+    for (let i = 0; i < 365; i++) {
+        const dateKey = checkDate.toISOString().split('T')[0];
+        const count = allDailyCounts[dateKey] || 0;
+        const dayOfWeek = checkDate.getUTCDay(); // 0 = Sun, 6 = Sat
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+        if (i === 0 && count < GOAL_PER_DAY) {
+            // If checking TODAY and we haven't met goal yet,
+            // don't break streak, just move to yesterday.
+            checkDate.setUTCDate(checkDate.getUTCDate() - 1);
+            continue;
+        }
+
+        if (count >= GOAL_PER_DAY) {
+            // Met goal -> Add to streak
             streak++;
+        } else if (isWeekend) {
+            // Didn't meet goal, BUT it's weekend -> Maintain streak (don't add, don't break)
         } else {
+            // Didn't meet goal and it's a weekday -> Streak broken
             break;
         }
+
+        // Move one day back
+        checkDate.setUTCDate(checkDate.getUTCDate() - 1);
     }
 
     return {
@@ -195,41 +218,131 @@ const processCurrentFormData = (jobs) => {
         }),
         data: dataValues,
         todayCount,
-        streak
+        streak,
+        allDailyCounts // Return this for the calendar
     };
 };
 
-// --- REDESIGNED STAT CARD (3D POP EFFECT) ---
+// --- COMPONENTS ---
+
 const StatCard = ({ title, value, suffix, subtext, iconSrc, colorClass }) => {
-    // Create a subtle pill background based on the text color
     const pillClass = colorClass.replace('text-', 'bg-').replace('400', '400/10') + ' ' + colorClass;
 
     return (
         <div className="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-lg flex items-center gap-5 transition-transform duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-gray-600">
-
-            {/* Icon: Contained within flow, no longer absolute floating */}
             <div className="w-16 h-16 flex-shrink-0 drop-shadow-md">
-                <img
-                    src={iconSrc}
-                    alt={title}
-                    className="w-full h-full object-contain"
-                />
+                <img src={iconSrc} alt={title} className="w-full h-full object-contain" />
             </div>
-
-            {/* Content: Removed left margin (ml-12) since we are using flex gap */}
             <div className="flex flex-col justify-center">
                 <p className="text-gray-400 text-[11px] font-bold uppercase tracking-wider mb-1">{title}</p>
-
                 <div className="flex items-baseline mb-1.5">
                     <span className="text-3xl font-extrabold text-white tracking-tight">{value}</span>
                     {suffix && <span className="text-sm font-medium text-gray-500 ml-1.5">{suffix}</span>}
                 </div>
-
                 {subtext && (
                     <div className={`text-[10px] font-bold px-2 py-0.5 rounded w-fit ${pillClass}`}>
                         {subtext}
                     </div>
                 )}
+            </div>
+        </div>
+    );
+};
+
+// --- NEW COMPONENT: STREAK CALENDAR ---
+const StreakCalendar = ({ dailyCounts }) => {
+    const today = new Date();
+    const [currentMonth, setCurrentMonth] = useState(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)));
+
+    const daysInMonth = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() + 1, 0)).getUTCDate();
+    const startDayOffset = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth(), 1)).getUTCDay();
+
+    // Generate Calendar Grid
+    const calendarDays = [];
+    // Padding for start of month
+    for (let i = 0; i < startDayOffset; i++) calendarDays.push(null);
+    // Actual days
+    for (let i = 1; i <= daysInMonth; i++) {
+        const d = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth(), i));
+        calendarDays.push(d);
+    }
+
+    const changeMonth = (offset) => {
+        const newMonth = new Date(currentMonth);
+        newMonth.setUTCMonth(newMonth.getUTCMonth() + offset);
+        setCurrentMonth(newMonth);
+    };
+
+    return (
+        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl mt-6">
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                    <CalendarIcon className="text-amber-400" size={20} />
+                    Streak Calendar
+                </h3>
+                <div className="flex items-center gap-4">
+                    <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-gray-700 rounded"><ChevronLeft size={20}/></button>
+                    <span className="text-sm font-bold w-32 text-center">
+                        {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    </span>
+                    <button onClick={() => changeMonth(1)} className="p-1 hover:bg-gray-700 rounded"><ChevronRight size={20}/></button>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-7 gap-2 mb-2">
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+                    <div key={d} className="text-center text-xs text-gray-500 font-bold uppercase">{d}</div>
+                ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-2">
+                {calendarDays.map((date, idx) => {
+                    if (!date) return <div key={idx} className="h-12 w-full"></div>;
+
+                    const dateKey = date.toISOString().split('T')[0];
+                    const count = dailyCounts[dateKey] || 0;
+                    const isGoalMet = count >= GOAL_PER_DAY;
+                    const isWeekend = date.getUTCDay() === 0 || date.getUTCDay() === 6;
+                    const isFuture = date > today;
+
+                    // Style determination
+                    let baseClass = "h-12 w-full rounded-lg flex flex-col items-center justify-center border transition-all relative group";
+                    let content = null;
+
+                    if (isFuture) {
+                        baseClass += " border-gray-800 bg-gray-900/50 opacity-50";
+                    } else if (isGoalMet) {
+                        // GOLD STAMP
+                        baseClass += " bg-gradient-to-br from-amber-400 to-amber-600 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.3)] transform hover:scale-105 z-10";
+                        content = <Check className="text-white drop-shadow-md" size={24} strokeWidth={4} />;
+                    } else if (isWeekend) {
+                        // REST DAY (Weekend not met)
+                        baseClass += " bg-gray-800 border-gray-700 opacity-60";
+                        content = <Coffee className="text-gray-600" size={18} />;
+                    } else {
+                        // MISSED GOAL
+                        baseClass += " bg-gray-900 border-gray-800 hover:border-gray-700";
+                    }
+
+                    return (
+                        <div key={idx} className={baseClass}>
+                            <span className={`absolute top-1 left-1.5 text-[10px] font-bold ${isGoalMet ? 'text-amber-900' : 'text-gray-600'}`}>
+                                {date.getUTCDate()}
+                            </span>
+                            {content}
+
+                            {/* Tooltip */}
+                            <div className="absolute opacity-0 group-hover:opacity-100 bottom-full mb-2 bg-gray-900 text-xs px-2 py-1 rounded border border-gray-700 whitespace-nowrap z-20 pointer-events-none transition-opacity">
+                                {count} Applications
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            <div className="flex gap-6 justify-center mt-6 text-xs text-gray-400">
+                <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-amber-500"></div> Goal Met</div>
+                <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-gray-700"></div> Rest / Missed</div>
             </div>
         </div>
     );
@@ -304,7 +417,7 @@ const CurrentFormTab = ({ jobs }) => {
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Stats Grid - Added gap-y-10 to accommodate popping icons */}
+            {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 gap-y-10 pt-4">
                 <StatCard
                     title="Today's Progress"
@@ -318,7 +431,7 @@ const CurrentFormTab = ({ jobs }) => {
                     title="Current Streak"
                     value={stats.streak}
                     suffix={stats.streak === 1 ? "Day" : "Days"}
-                    subtext="Consecutive Goal"
+                    subtext="Weekends Excluded"
                     iconSrc={fireIcon}
                     colorClass="text-blue-400"
                 />
@@ -343,6 +456,9 @@ const CurrentFormTab = ({ jobs }) => {
                     <Bar data={chartData} options={options} />
                 </div>
             </div>
+
+            {/* Streak Calendar - Added at bottom of current form */}
+            <StreakCalendar dailyCounts={stats.allDailyCounts} />
         </div>
     );
 };
@@ -557,7 +673,7 @@ export const JobDashboard = () => {
                                     : 'text-gray-400 hover:text-white hover:bg-gray-700'
                             }`}
                         >
-                            <Calendar size={16} />
+                            <CalendarIcon size={16} />
                             Past Form
                         </button>
                     </div>
