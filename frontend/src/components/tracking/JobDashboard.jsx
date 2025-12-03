@@ -54,24 +54,20 @@ const themeColors = {
     textSecondary: '#9ca3af',
     background: '#1f2937',
     cardBg: '#111827',
-
-    // Vibrant Palette
-    linkedin: '#8b5cf6', // Violet 500
-    huntr: '#10b981',    // Emerald 500
-    sql: '#3b82f6',      // Blue 500 (No more gray!)
-
-    // Status Colors
-    success: '#22c55e',  // Green 500
-    warning: '#f59e0b',  // Amber 500
-    danger: '#ef4444',   // Red 500
-    neutral: '#6b7280',  // Gray 500
+    linkedin: '#8b5cf6',
+    huntr: '#10b981',
+    sql: '#3b82f6',
+    success: '#22c55e',
+    warning: '#f59e0b',
+    danger: '#ef4444',
+    neutral: '#6b7280',
 };
 
 // --- SKELETON COMPONENTS ---
 const DashboardSkeleton = () => (
     <div className="p-6 bg-gray-900 min-h-screen animate-pulse">
         <div className="h-10 bg-gray-800 rounded w-1/3 mb-8"></div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-8 mt-8">
             <div className="h-32 bg-gray-800 rounded-lg"></div>
             <div className="h-32 bg-gray-800 rounded-lg"></div>
             <div className="h-32 bg-gray-800 rounded-lg"></div>
@@ -105,18 +101,15 @@ const processHistoryData = (jobs, timePeriod) => {
     const appsPerPeriod = {};
 
     jobs.forEach(job => {
-        // Source Counts
         const source = job.source || 'Unknown';
         appsBySource[source] = (appsBySource[source] || 0) + 1;
 
-        // Timeline Counts
         const date = new Date(job.appliedAt);
         let key;
 
         if (timePeriod === 'monthly') {
             key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
         } else if (timePeriod === 'weekly') {
-            // Simple weekly grouping key (approx)
             const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
             const dayNum = d.getUTCDay() || 7;
             d.setUTCDate(d.getUTCDate() + 4 - dayNum);
@@ -131,13 +124,12 @@ const processHistoryData = (jobs, timePeriod) => {
         appsPerPeriod[key][source] = (appsPerPeriod[key][source] || 0) + 1;
     });
 
-    // Prepare Doughnut Data
     const sources = Object.keys(appsBySource);
     const doughnutColors = sources.map(s => {
         const lower = s.toLowerCase();
         if (lower.includes('linkedin')) return themeColors.linkedin;
         if (lower.includes('huntr')) return themeColors.huntr;
-        return themeColors.sql; // Default to vibrant blue
+        return themeColors.sql;
     });
 
     const doughnutData = {
@@ -150,7 +142,6 @@ const processHistoryData = (jobs, timePeriod) => {
         }]
     };
 
-    // Prepare Bar Data
     const sortedKeys = Object.keys(appsPerPeriod).sort();
     const datasets = sources.map((source, index) => {
         let color = themeColors.sql;
@@ -167,21 +158,15 @@ const processHistoryData = (jobs, timePeriod) => {
 
     return {
         doughnutData,
-        barData: {
-            labels: sortedKeys,
-            datasets
-        }
+        barData: { labels: sortedKeys, datasets }
     };
 };
 
 const processCurrentFormData = (jobs) => {
-    const last7Days = getLast7DaysKeys(); // Array of YYYY-MM-DD
+    const last7Days = getLast7DaysKeys();
     const dailyCounts = {};
-
-    // Init with 0
     last7Days.forEach(k => dailyCounts[k] = 0);
 
-    // Count jobs
     jobs.forEach(job => {
         const k = new Date(job.appliedAt).toISOString().split('T')[0];
         if (dailyCounts[k] !== undefined) {
@@ -193,12 +178,9 @@ const processCurrentFormData = (jobs) => {
     const todayKey = last7Days[last7Days.length - 1];
     const todayCount = dailyCounts[todayKey];
 
-    // Calculate Streak (consecutive days >= GOAL_PER_DAY counting backwards)
     let streak = 0;
     for (let i = last7Days.length - 1; i >= 0; i--) {
-        // If today is incomplete, don't break streak yet unless it's yesterday that failed
         if (i === last7Days.length - 1 && dailyCounts[last7Days[i]] < GOAL_PER_DAY) continue;
-
         if (dailyCounts[last7Days[i]] >= GOAL_PER_DAY) {
             streak++;
         } else {
@@ -217,30 +199,41 @@ const processCurrentFormData = (jobs) => {
     };
 };
 
-// --- SUB-COMPONENTS ---
+// --- REDESIGNED STAT CARD (3D POP EFFECT) ---
+const StatCard = ({ title, value, suffix, subtext, iconSrc, colorClass }) => {
+    // Create a subtle pill background based on the text color
+    const pillClass = colorClass.replace('text-', 'bg-').replace('400', '400/10') + ' ' + colorClass;
 
-const StatCard = ({ title, value, subtext, icon: Icon, iconSrc, colorClass }) => (
-    <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg flex items-center justify-between">
-        <div>
-            <p className="text-gray-400 text-sm font-medium mb-1">{title}</p>
-            <h3 className="text-3xl font-bold text-white mb-1">{value}</h3>
-            {subtext && <p className={`text-xs ${colorClass}`}>{subtext}</p>}
-        </div>
+    return (
+        <div className="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-lg flex items-center gap-5 transition-transform duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-gray-600">
 
-        {/* ICON */}
-        <div className="w-16 h-16 rounded-full bg-gray-900/70 flex items-center justify-center overflow-hidden">
-            {iconSrc ? (
+            {/* Icon: Contained within flow, no longer absolute floating */}
+            <div className="w-16 h-16 flex-shrink-0 drop-shadow-md">
                 <img
                     src={iconSrc}
-                    alt={`${title} icon`}
-                    className="w-full h-full object-cover"  // 🔥 fills the circle
+                    alt={title}
+                    className="w-full h-full object-contain"
                 />
-            ) : Icon ? (
-                <Icon size={28} className={colorClass} />
-            ) : null}
+            </div>
+
+            {/* Content: Removed left margin (ml-12) since we are using flex gap */}
+            <div className="flex flex-col justify-center">
+                <p className="text-gray-400 text-[11px] font-bold uppercase tracking-wider mb-1">{title}</p>
+
+                <div className="flex items-baseline mb-1.5">
+                    <span className="text-3xl font-extrabold text-white tracking-tight">{value}</span>
+                    {suffix && <span className="text-sm font-medium text-gray-500 ml-1.5">{suffix}</span>}
+                </div>
+
+                {subtext && (
+                    <div className={`text-[10px] font-bold px-2 py-0.5 rounded w-fit ${pillClass}`}>
+                        {subtext}
+                    </div>
+                )}
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
 const CurrentFormTab = ({ jobs }) => {
     const stats = useMemo(() => processCurrentFormData(jobs || []), [jobs]);
@@ -304,44 +297,46 @@ const CurrentFormTab = ({ jobs }) => {
 
     const getMotivation = () => {
         const remaining = GOAL_PER_DAY - stats.todayCount;
-        if (remaining <= 0) return "You crushed it today! Great job.";
-        if (remaining <= 3) return "Almost there! Just a final push.";
-        return "Let's get to work! Consistency is key.";
+        if (remaining <= 0) return "Goal Crushed!";
+        if (remaining <= 3) return "Almost There";
+        return "Keep Pushing";
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Stats Grid - Added gap-y-10 to accommodate popping icons */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 gap-y-10 pt-4">
                 <StatCard
                     title="Today's Progress"
-                    value={`${stats.todayCount} / ${GOAL_PER_DAY}`}
+                    value={stats.todayCount}
+                    suffix={`/ ${GOAL_PER_DAY}`}
                     subtext={getMotivation()}
-                    iconSrc={targetIcon}                       // ⬅️ custom target icon
+                    iconSrc={targetIcon}
                     colorClass={stats.todayCount >= GOAL_PER_DAY ? "text-green-400" : "text-amber-400"}
                 />
                 <StatCard
                     title="Current Streak"
-                    value={`${stats.streak} Days`}
-                    subtext="Consecutive days hitting goal"
-                    iconSrc={fireIcon}                         // ⬅️ custom fire icon
+                    value={stats.streak}
+                    suffix={stats.streak === 1 ? "Day" : "Days"}
+                    subtext="Consecutive Goal"
+                    iconSrc={fireIcon}
                     colorClass="text-blue-400"
                 />
                 <StatCard
                     title="Weekly Total"
                     value={stats.data.reduce((a, b) => a + b, 0)}
-                    subtext="Last 7 days"
-                    iconSrc={calendarIcon}                     // ⬅️ custom calendar icon
+                    subtext="Last 7 Days"
+                    iconSrc={calendarIcon}
                     colorClass="text-purple-400"
                 />
             </div>
 
             {/* Main Chart */}
-            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl mt-4">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-xl font-bold text-white">Daily Performance (Last 7 Days)</h3>
+                    <h3 className="text-xl font-bold text-white">Daily Performance</h3>
                     <span className="text-xs text-gray-400 px-3 py-1 bg-gray-900 rounded-full border border-gray-700">
-                        Goal: {GOAL_PER_DAY} apps/day
+                        Goal: {GOAL_PER_DAY}/day
                     </span>
                 </div>
                 <div className="h-80 w-full">
@@ -359,7 +354,7 @@ const PastFormTab = ({ jobs }) => {
     if (!barData) return <div className="text-gray-400 p-10 text-center">No data available</div>;
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 mt-6">
             <div className="lg:col-span-2 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="text-xl font-bold text-white">Application History</h3>
@@ -424,12 +419,6 @@ const PastFormTab = ({ jobs }) => {
 
 // --- SETTINGS COMPONENT ---
 const ScraperSettings = ({ onClose, onSaveSuccess }) => {
-    // (Kept exactly the same as your provided code, just wrapped for brevity)
-    // ... Assume existing implementation of ScraperSettings
-    // For the sake of the file length limit, I will include the core logic again below
-    // in the full file output.
-
-    // --- RE-IMPLEMENTING SETTINGS LOGIC BRIEFLY FOR COMPLETENESS ---
     const [statusMessage, setStatusMessage] = React.useState('');
     const [isSaving, setIsSaving] = React.useState(false);
     const fileInputRef = React.useRef(null);
@@ -508,24 +497,24 @@ export const JobDashboard = () => {
     return (
         <div className="p-6 bg-gray-900 text-gray-200 min-h-screen">
             {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-end mb-8 border-b border-gray-800 pb-6">
-                <div>
-                    <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">Job Application Dashboard</h2>
-                    <p className="text-gray-400">Track metrics, monitor goals, and analyze history.</p>
+            <div className="flex flex-col md:flex-row justify-between items-center mb-8 border-b border-gray-800 pb-6">
+                <div className="mb-4 md:mb-0">
+                    <h2 className="text-3xl font-bold text-white mb-1 tracking-tight">Job Application Dashboard</h2>
+                    <p className="text-gray-400 text-sm">Track metrics, monitor goals, and analyze history.</p>
                 </div>
-                <div className="flex items-center gap-3 mt-4 md:mt-0">
+                <div className="flex items-center gap-3">
                     <button
                         onClick={() => refetch()}
                         disabled={isFetching}
-                        className="h-10 px-4 bg-gray-800 hover:bg-gray-700 text-white rounded-lg border border-gray-700 transition-all flex items-center gap-2 text-sm font-medium"
+                        className="h-9 px-4 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg border border-gray-700 transition-all flex items-center gap-2 text-sm font-medium"
                     >
                         <RefreshCcw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
                         {isFetching ? 'Syncing...' : 'Sync Data'}
                     </button>
                     <button
                         onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                        className={`h-10 px-4 rounded-lg border flex items-center gap-2 text-sm font-medium transition-all ${
-                            isSettingsOpen ? 'bg-blue-900/30 border-blue-500 text-blue-400' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                        className={`h-9 px-4 rounded-lg border flex items-center gap-2 text-sm font-medium transition-all ${
+                            isSettingsOpen ? 'bg-blue-900/30 border-blue-500 text-blue-400' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white'
                         }`}
                     >
                         <Settings size={16} />
@@ -548,13 +537,13 @@ export const JobDashboard = () => {
             ) : (
                 <>
                     {/* Tabs */}
-                    <div className="flex space-x-1 bg-gray-800/50 p-1 rounded-xl w-fit mb-8 border border-gray-800">
+                    <div className="flex space-x-1 bg-gray-800 p-1 rounded-xl w-fit mb-4 border border-gray-800">
                         <button
                             onClick={() => setActiveTab('current')}
                             className={`px-6 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                                 activeTab === 'current'
                                     ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50'
-                                    : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
                             }`}
                         >
                             <Target size={16} />
@@ -565,7 +554,7 @@ export const JobDashboard = () => {
                             className={`px-6 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                                 activeTab === 'past'
                                     ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50'
-                                    : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
                             }`}
                         >
                             <Calendar size={16} />
