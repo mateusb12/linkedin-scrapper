@@ -2,6 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import axios from 'axios';
+import targetIcon from '../../assets/ui_icons/target.png';
+import fireIcon from '../../assets/ui_icons/fire.png';
+import calendarIcon from '../../assets/ui_icons/calendar.png';
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -216,15 +219,25 @@ const processCurrentFormData = (jobs) => {
 
 // --- SUB-COMPONENTS ---
 
-const StatCard = ({ title, value, subtext, icon: Icon, colorClass }) => (
+const StatCard = ({ title, value, subtext, icon: Icon, iconSrc, colorClass }) => (
     <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg flex items-center justify-between">
         <div>
             <p className="text-gray-400 text-sm font-medium mb-1">{title}</p>
             <h3 className="text-3xl font-bold text-white mb-1">{value}</h3>
             {subtext && <p className={`text-xs ${colorClass}`}>{subtext}</p>}
         </div>
-        <div className={`p-4 rounded-full bg-opacity-20 ${colorClass.replace('text-', 'bg-')}`}>
-            <Icon size={24} className={colorClass} />
+
+        {/* ICON */}
+        <div className="w-16 h-16 rounded-full bg-gray-900/70 flex items-center justify-center overflow-hidden">
+            {iconSrc ? (
+                <img
+                    src={iconSrc}
+                    alt={`${title} icon`}
+                    className="w-full h-full object-cover"  // 🔥 fills the circle
+                />
+            ) : Icon ? (
+                <Icon size={28} className={colorClass} />
+            ) : null}
         </div>
     </div>
 );
@@ -304,21 +317,21 @@ const CurrentFormTab = ({ jobs }) => {
                     title="Today's Progress"
                     value={`${stats.todayCount} / ${GOAL_PER_DAY}`}
                     subtext={getMotivation()}
-                    icon={Target}
+                    iconSrc={targetIcon}                       // ⬅️ custom target icon
                     colorClass={stats.todayCount >= GOAL_PER_DAY ? "text-green-400" : "text-amber-400"}
                 />
                 <StatCard
                     title="Current Streak"
                     value={`${stats.streak} Days`}
                     subtext="Consecutive days hitting goal"
-                    icon={TrendingUp}
+                    iconSrc={fireIcon}                         // ⬅️ custom fire icon
                     colorClass="text-blue-400"
                 />
                 <StatCard
                     title="Weekly Total"
                     value={stats.data.reduce((a, b) => a + b, 0)}
                     subtext="Last 7 days"
-                    icon={Award}
+                    iconSrc={calendarIcon}                     // ⬅️ custom calendar icon
                     colorClass="text-purple-400"
                 />
             </div>
