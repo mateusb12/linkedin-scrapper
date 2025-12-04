@@ -59,7 +59,9 @@ def normalize_sql_job(job: Job) -> dict:
         "appliedAt": job.applied_on,
         "source": "LinkedIn" if "linkedin" in (job.job_url or "") else "SQL",
         "url": job.job_url or None,
-        "urn": job.urn
+        "urn": job.urn,
+        "location": job.location,
+        "description_full": job.description_full
     }
 
 
