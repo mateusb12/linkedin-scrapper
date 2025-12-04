@@ -35,7 +35,11 @@ import {
     Coffee,
     X,
     ChevronLeft,
-    ChevronRight
+    ChevronRight,
+    ExternalLink,
+    MapPin,
+    Building,
+    AlignLeft
 } from 'lucide-react';
 import { fetchAppliedJobs } from '../../services/jobService.js';
 
@@ -70,6 +74,7 @@ const themeColors = {
     neutral: '#6b7280',
 };
 
+// --- COMPONENT: BACKFILL MODAL (SSE STREAM) ---
 const BackfillModal = ({ onClose, onComplete }) => {
     const [progress, setProgress] = React.useState({
         current: 0,
@@ -83,6 +88,8 @@ const BackfillModal = ({ onClose, onComplete }) => {
     const [isFinished, setIsFinished] = React.useState(false);
 
     React.useEffect(() => {
+        //
+        // We use EventSource to listen to the backend stream without polling
         const eventSource = new EventSource('http://localhost:5000/pipeline/backfill-descriptions-stream');
 
         eventSource.onmessage = (event) => {
@@ -104,7 +111,6 @@ const BackfillModal = ({ onClose, onComplete }) => {
 
         eventSource.addEventListener('error', (e) => {
             console.error("Stream error", e);
-            // Don't close immediately on generic error, but you might want to handle specific error events
             if (e.data) {
                 const errData = JSON.parse(e.data);
                 setLogs(prev => [{ id: Date.now(), text: `🚨 Error: ${errData.error}`, type: 'error' }, ...prev]);
@@ -207,6 +213,188 @@ const BackfillModal = ({ onClose, onComplete }) => {
                         {isFinished ? 'Close' : 'Processing...'}
                     </button>
                 </div>
+            </div>
+        </div>
+    );
+};
+
+// --- COMPONENT: JOB DETAILS SIDE PANEL ---
+const JobDetailsPanel = ({ job, onClose }) => {
+    if (!job) return null;
+
+    // Helper to render HTML description safely
+    const createMarkup = (htmlContent) => {
+        return { __html: htmlContent || '<p class="text-gray-500 italic">No description available.</p>' };
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex justify-end">
+            {/* Backdrop */}
+            <div
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300"
+                onClick={onClose}
+            />
+
+            {/* Slide-over Panel */}
+            <div className="relative w-full max-w-2xl bg-gray-900 border-l border-gray-700 h-full shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col">
+
+                {/* Header */}
+                <div className="p-6 border-b border-gray-800 bg-gray-900 z-10">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h2 className="text-2xl font-bold text-white leading-tight mb-1">{job.title}</h2>
+                            <div className="flex items-center gap-2 text-blue-400 font-medium">
+                                <Building size={16} />
+                                {job.company}
+                            </div>
+                        </div>
+                        <button
+                            onClick={onClose}
+                            className="p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+                        >
+                            <X size={24} />
+                        </button>
+                    </div>
+
+                    {/* Metadata Tags */}
+                    <div className="flex flex-wrap gap-3 text-xs text-gray-300">
+                        <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700">
+                            <CalendarIcon size={14} className="text-gray-400" />
+                            <span>Applied: {new Date(job.appliedAt).toLocaleDateString()}</span>
+                        </div>
+                        {job.location && (
+                            <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700">
+                                <MapPin size={14} className="text-gray-400" />
+                                <span>{job.location}</span>
+                            </div>
+                        )}
+                        <a
+                            href={job.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 bg-blue-900/20 text-blue-300 px-3 py-1.5 rounded-full border border-blue-800 hover:bg-blue-900/40 transition-colors"
+                        >
+                            <ExternalLink size={14} />
+                            View on {job.source}
+                        </a>
+                    </div>
+                </div>
+
+                {/* Scrollable Content */}
+                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                    <div className="flex items-center gap-2 mb-4 text-sm font-bold text-gray-400 uppercase tracking-wider">
+                        <AlignLeft size={16} />
+                        Job Description
+                    </div>
+
+                    {/* HTML Content Renderer */}
+                    <div
+                        className="prose prose-invert prose-sm max-w-none text-gray-300 [&>ul]:list-disc [&>ul]:pl-5 [&>ol]:list-decimal [&>ol]:pl-5"
+                        dangerouslySetInnerHTML={createMarkup(job.description_full)}
+                    />
+                </div>
+
+                {/* Footer Status */}
+                <div className="p-4 border-t border-gray-800 bg-gray-900/50 text-xs text-gray-500 flex justify-between items-center">
+                    <span>URN: {job.urn}</span>
+                    <span className={job.description_full && job.description_full !== "No description provided" ? "text-green-500" : "text-amber-500"}>
+                        {job.description_full && job.description_full !== "No description provided" ? "● Description Backfilled" : "● Description Missing"}
+                    </span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- COMPONENT: RECENT JOBS TABLE ---
+const RecentJobsTable = ({ jobs, onSelectJob }) => {
+    const [searchTerm, setSearchTerm] = React.useState('');
+
+    // Sort by date desc
+    const filteredJobs = useMemo(() => {
+        if (!jobs) return [];
+        return jobs
+            .filter(j =>
+                j.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                j.company.toLowerCase().includes(searchTerm.toLowerCase())
+            )
+            .sort((a, b) => new Date(b.appliedAt) - new Date(a.appliedAt));
+    }, [jobs, searchTerm]);
+
+    return (
+        <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-xl overflow-hidden mt-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
+            {/* Table Header / Toolbar */}
+            <div className="p-6 border-b border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4">
+                <h3 className="text-xl font-bold text-white">Recent Applications</h3>
+                <div className="relative w-full md:w-64">
+                    <input
+                        type="text"
+                        placeholder="Search jobs..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-gray-900 border border-gray-700 text-gray-200 text-sm rounded-lg pl-4 pr-10 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    />
+                    <div className="absolute right-3 top-2.5 text-gray-500">
+                        <Terminal size={14} />
+                    </div>
+                </div>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                    <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
+                    <tr>
+                        <th className="px-6 py-4">Company</th>
+                        <th className="px-6 py-4">Role</th>
+                        <th className="px-6 py-4">Applied</th>
+                        <th className="px-6 py-4 text-center">Status</th>
+                        <th className="px-6 py-4 text-right">Action</th>
+                    </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-700">
+                    {filteredJobs.slice(0, 10).map((job) => (
+                        <tr
+                            key={job.urn}
+                            onClick={() => onSelectJob(job)}
+                            className="group hover:bg-gray-700/30 transition-colors cursor-pointer"
+                        >
+                            <td className="px-6 py-4">
+                                <div className="font-bold text-white">{job.company}</div>
+                                <div className="text-xs text-gray-500">{job.source}</div>
+                            </td>
+                            <td className="px-6 py-4 text-gray-300 font-medium group-hover:text-blue-400 transition-colors">
+                                {job.title}
+                            </td>
+                            <td className="px-6 py-4 text-gray-400 text-sm">
+                                {new Date(job.appliedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                <span className="text-xs text-gray-600 block">
+                                        {new Date(job.appliedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                    </span>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                                {job.description_full && job.description_full !== "No description provided" ? (
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900/30 text-green-400 border border-green-800">
+                                            Enriched
+                                        </span>
+                                ) : (
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-700 text-gray-400 border border-gray-600">
+                                            Basic
+                                        </span>
+                                )}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                                <button className="text-gray-500 hover:text-white p-2 rounded-full hover:bg-gray-700">
+                                    <ChevronRight size={16} />
+                                </button>
+                            </td>
+                        </tr>
+                    ))}
+                    </tbody>
+                </table>
+                {filteredJobs.length === 0 && (
+                    <div className="p-8 text-center text-gray-500">No jobs found matching your search.</div>
+                )}
             </div>
         </div>
     );
@@ -395,7 +583,7 @@ const StatCard = ({ title, value, suffix, subtext, iconSrc, colorClass }) => {
     );
 };
 
-// --- NEW COMPONENT: STREAK CALENDAR ---
+// --- COMPONENT: STREAK CALENDAR ---
 const StreakCalendar = ({ dailyCounts }) => {
     const today = new Date();
     // Ensure we work with UTC dates to match data processing
@@ -789,6 +977,7 @@ export const JobDashboard = () => {
     const [activeTab, setActiveTab] = useState('current'); // 'current' | 'past'
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isBackfillOpen, setIsBackfillOpen] = useState(false);
+    const [selectedJob, setSelectedJob] = useState(null);
 
     const { data: jobs, isLoading, isError, refetch, isFetching } = useQuery({
         queryKey: ['appliedJobs'],
@@ -847,6 +1036,13 @@ export const JobDashboard = () => {
                 />
             )}
 
+            {selectedJob && (
+                <JobDetailsPanel
+                    job={selectedJob}
+                    onClose={() => setSelectedJob(null)}
+                />
+            )}
+
             {isError ? (
                 <div className="bg-red-900/10 border border-red-900/50 p-8 rounded-xl text-center max-w-lg mx-auto mt-10">
                     <Lock className="mx-auto text-red-500 w-12 h-12 mb-4" />
@@ -892,6 +1088,12 @@ export const JobDashboard = () => {
                             <PastFormTab jobs={jobs} />
                         )}
                     </div>
+
+                    {/* NEW: Recent Jobs Table (Below Charts) */}
+                    <RecentJobsTable
+                        jobs={jobs}
+                        onSelectJob={setSelectedJob}
+                    />
                 </>
             )}
         </div>
