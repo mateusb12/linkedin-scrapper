@@ -1,15 +1,19 @@
-import json
 import math
 import time
+import json
+import traceback
+from datetime import datetime
 from typing import Dict, Any, Generator
 
-from database.database_connection import get_db_session
+from sqlalchemy import or_
+
 from source.features.fetch_curl.fetch_service import FetchService
-from source.features.get_applied_jobs.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
 from source.features.job_population.job_repository import JobRepository
 from models import Company, Job
 from source.features.job_population.linkedin_parser import parse_job_entries
 from source.features.job_population.enrichment_service import EnrichmentService
+from source.features.get_applied_jobs.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
+from database.database_connection import get_db_session
 
 class PopulationService:
 
@@ -38,13 +42,6 @@ class PopulationService:
             print("[Population] ❌ Network request failed.")
             return {"success": False, "message": "Network request failed"}
 
-        import json
-        import os
-        debug_file = "debug_linkedin_response.json"
-        print(f"   [DEBUG] Saving raw response to {debug_file}...")
-        with open(debug_file, 'w', encoding='utf-8') as f:
-            json.dump(raw_data, f, indent=2, ensure_ascii=False)
-
         # 2. PARSE SUMMARIES
         job_entries = parse_job_entries(raw_data)
         if not job_entries:
@@ -63,16 +60,12 @@ class PopulationService:
             if not repo.get_by_urn(job['urn']):
                 new_jobs.append(job)
 
-        print(f"[Population] Step 3: Identified {len(new_jobs)} NEW jobs (out of {len(job_entries)}).")
-
         # 4. BATCH ENRICHMENT (The Magic Step)
         if new_jobs:
             # Extract IDs for the batch call
             job_ids = [j['job_id'] for j in new_jobs]
 
             print(f"[Population] Step 4: Batch Enriching {len(job_ids)} IDs...")
-            # print(f"             IDs: {job_ids}") # Uncomment if you want to see exact IDs
-
             enriched_results = EnrichmentService.fetch_batch_job_details(job_ids)
             print(f"[Population] ✅ Batch returned data for {len(enriched_results)} jobs.")
 
@@ -84,11 +77,6 @@ class PopulationService:
                 if job_id in enriched_results:
                     details = enriched_results[job_id]
                     job.update(details)
-
-                    # Debug Data Quality
-                    desc_len = len(details.get('description_full', ''))
-                    has_logo = 'Yes' if details.get('company_logo') else 'No'
-                    print(f"   > [Merged] Job {job_id} | Desc Length: {desc_len} chars | Logo: {has_logo} | Company: {details.get('company_name')}")
                 else:
                     print(f"   > [⚠️ Missing] No batch details for Job {job_id}. Marking unprocessed.")
                     job['description_full'] = "No description provided"
@@ -97,30 +85,19 @@ class PopulationService:
                 # --- Company Handling ---
                 c_urn = job.get('company_urn')
                 if c_urn:
-                    # Check if company exists
                     comp = session.query(Company).filter_by(urn=c_urn).first()
-
                     c_name = job.get('company_name', 'Unknown')
-                    c_logo = job.get('company_logo') # Extracted from enrichment
+                    c_logo = job.get('company_logo')
 
                     if not comp:
-                        # Create new company with logo
                         print(f"     -> Creating NEW Company: {c_name} ({c_urn})")
-                        new_comp = Company(
-                            urn=c_urn,
-                            name=c_name,
-                            logo_url=c_logo
-                        )
+                        new_comp = Company(urn=c_urn, name=c_name, logo_url=c_logo)
                         session.add(new_comp)
-                        session.flush() # Flush to ensure ID exists for foreign key
+                        session.flush()
                     else:
-                        # Optional: Update logo if we didn't have it before
                         if c_logo and not comp.logo_url:
-                            print(f"     -> Updating Logo for Existing Company: {c_name}")
                             comp.logo_url = c_logo
-                            session.add(comp) # Mark for update
-                        # else:
-                        #     print(f"     -> Company {c_name} exists and has logo. Skipping update.")
+                            session.add(comp)
 
                 repo.add_job_by_dict(job)
                 saved_count += 1
@@ -142,68 +119,124 @@ class PopulationService:
         Generator that processes missing descriptions one by one and yields
         SSE-compatible JSON events for the frontend.
         """
-        db = get_db_session()
+        print("[DEBUG] 🟢 Starting stream_description_backfill generator...", flush=True)
 
-        # 1. Setup Session
-        session_artefacts = get_linkedin_fetch_artefacts()
-        if not session_artefacts:
-            yield f"event: error\ndata: {json.dumps({'error': 'Could not load LinkedIn session. Update cookies.'})}\n\n"
-            return
+        try:
+            db = get_db_session()
+            print("[DEBUG] Database session created.", flush=True)
 
-        requests_session, _ = session_artefacts
+            # 1. Setup Session
+            print("[DEBUG] Loading LinkedIn configuration...", flush=True)
+            session_artefacts = get_linkedin_fetch_artefacts()
 
-        # 2. Get Targets
-        target_jobs = db.query(Job).filter(
-            Job.description_full == "No description provided"
-        ).order_by(Job.posted_on.desc()).all()
+            if not session_artefacts:
+                print("[DEBUG] ❌ Failed to load LinkedIn configuration.", flush=True)
+                yield f"event: error\ndata: {json.dumps({'error': 'Could not load LinkedIn session. Update cookies.'})}\n\n"
+                return
 
-        total = len(target_jobs)
-        if total == 0:
-            yield f"event: complete\ndata: {json.dumps({'message': 'No jobs to backfill.'})}\n\n"
-            return
+            requests_session, _ = session_artefacts
+            print("[DEBUG] LinkedIn session loaded successfully.", flush=True)
 
-        start_time = time.time()
-        processed = 0
-        success_count = 0
+            # 2. Get Targets
+            print("[DEBUG] Querying database for jobs with missing descriptions...", flush=True)
+            target_jobs = db.query(Job).filter(
+                or_(
+                    Job.description_full == "No description provided",
+                    Job.applicants == 0,    # If default is 0
+                    Job.applicants.is_(None) # If null
+                )
+            ).order_by(Job.posted_on.desc()).all()
 
-        # 3. Iterate and Stream
-        for job in target_jobs:
-            processed += 1
+            total = len(target_jobs)
+            print(f"[DEBUG] Found {total} jobs to backfill.", flush=True)
 
-            # --- Metrics Calculation ---
-            elapsed = time.time() - start_time
-            avg_time = elapsed / processed
-            remaining_jobs = total - processed
-            eta_seconds = remaining_jobs * avg_time
+            if total == 0:
+                print("[DEBUG] No jobs found. Sending complete event.", flush=True)
+                yield f"event: complete\ndata: {json.dumps({'message': 'No jobs to backfill.'})}\n\n"
+                return
 
-            # 4. Fetch
-            description = EnrichmentService.fetch_single_job_description(requests_session, job.urn)
-            status = "failed"
+            start_time = time.time()
+            processed = 0
+            success_count = 0
 
-            if description:
-                job.description_full = description
-                # Reset processed flag so AI keyword extraction runs again later
-                job.processed = False
-                db.commit()
-                status = "success"
-                success_count += 1
+            # 3. Iterate and Stream
+            for job in target_jobs:
+                processed += 1
+                print(f"[DEBUG] Processing {processed}/{total}: URN={job.urn} Title='{job.title}'", flush=True)
 
-            # 5. Build Payload
-            payload = {
-                "current": processed,
-                "total": total,
-                "job_title": job.title,
-                "company": job.company.name if job.company else "Unknown",
-                "status": status,
-                "eta_seconds": round(eta_seconds),
-                "success_count": success_count
-            }
+                # Metrics
+                elapsed = time.time() - start_time
+                avg_time = elapsed / processed
+                remaining_jobs = total - processed
+                eta_seconds = remaining_jobs * avg_time
 
-            # 6. Yield Event
-            yield f"data: {json.dumps(payload)}\n\n"
+                # 4. Fetch
+                # Use the new enrichment method (returns Dict)
+                print(f"[DEBUG] Fetching enrichment data for {job.urn}...", flush=True)
+                try:
+                    enrichment_data = EnrichmentService.fetch_single_job_details_enrichment(requests_session, job.urn)
+                except Exception as e:
+                    print(f"[DEBUG] ❌ Error calling EnrichmentService: {e}", flush=True)
+                    traceback.print_exc()
+                    enrichment_data = {}
 
-            # 7. Safety Sleep (Essential)
-            time.sleep(2.0)
+                description = enrichment_data.get("description")
+                applicants = enrichment_data.get("applicants")
 
-        db.close()
-        yield f"event: complete\ndata: {json.dumps({'message': 'Backfill finished'})}\n\n"
+                status = "failed"
+                should_save = False
+
+                if description:
+                    # Update description if it was missing or different
+                    if job.description_full != description:
+                        job.description_full = description
+                        should_save = True
+
+                    # Update applicants if found
+                    if applicants is not None and job.applicants != applicants:
+                        job.applicants = applicants
+                        print(f"[DEBUG] ✅ Updating Applicants: {job.applicants} -> {applicants}", flush=True)
+                        should_save = True
+
+                    if should_save:
+                        job.processed = False
+                        db.commit()
+                        status = "success"
+                        success_count += 1
+                        print(f"[DEBUG] 💾 Job saved.", flush=True)
+                    else:
+                        # Even if we didn't save (data matched), we count it as a "success" for the UI
+                        status = "success"
+                        print(f"[DEBUG] 🤷 No changes needed.", flush=True)
+
+                else:
+                    print(f"[DEBUG] ⚠️ No description returned.", flush=True)
+
+                # 5. Build Payload
+                payload = {
+                    "current": processed,
+                    "total": total,
+                    "job_title": job.title,
+                    "company": job.company.name if job.company else "Unknown",
+                    "status": status,
+                    "eta_seconds": round(eta_seconds),
+                    "success_count": success_count,
+                    "applicants_found": applicants
+                }
+
+                # 6. Yield Event
+                print(f"[DEBUG] Yielding event for {job.title}...", flush=True)
+                yield f"data: {json.dumps(payload)}\n\n"
+
+                # 7. Safety Sleep
+                print("[DEBUG] Sleeping for 2.0s...", flush=True)
+                time.sleep(2.0)
+
+            db.close()
+            print("[DEBUG] 🏁 Stream finished. Closing DB session.", flush=True)
+            yield f"event: complete\ndata: {json.dumps({'message': 'Backfill finished'})}\n\n"
+
+        except Exception as e:
+            print(f"[DEBUG] 💥 CRITICAL ERROR in stream: {e}", flush=True)
+            traceback.print_exc()
+            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"

@@ -61,7 +61,8 @@ def normalize_sql_job(job: Job) -> dict:
         "url": job.job_url or None,
         "urn": job.urn,
         "location": job.location,
-        "description_full": job.description_full
+        "description_full": job.description_full,
+        "applicants": job.applicants
     }
 
 

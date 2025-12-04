@@ -111,16 +111,22 @@ def _enrich_and_save_new_job(job_data: Dict[str, str], job_repo: JobRepository, 
         else:
             print("⚠️ Not found")
 
-        # 4. 👇 NEW: Fetch Description Immediately
         print(f"      📝 Fetching description...", end=" ")
-        description = EnrichmentService.fetch_single_job_description(session, job.urn)
+        enrichment_data = EnrichmentService.fetch_single_job_details_enrichment(session, job.urn)
+
+        description = enrichment_data.get("description")
+        applicants = enrichment_data.get("applicants")
         if description:
             job.description_full = description
-            # Force processed=False so AI runs on it later
+
+            if applicants is not None:
+                job.applicants = applicants
+                print(f" (Applicants: {applicants})", end="")
+
             job.processed = False
-            print(f"✅ Saved ({len(description)} chars)")
+            print(f" ✅ Saved")
         else:
-            print("⚠️ Failed to fetch description")
+            print(" ⚠️ Failed to fetch description")
 
         # 5. Double Check Company Link
         if job_data.get('company_urn') and not job.company_urn:

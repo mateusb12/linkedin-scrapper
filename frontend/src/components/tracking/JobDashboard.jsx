@@ -39,7 +39,8 @@ import {
     ExternalLink,
     MapPin,
     Building,
-    AlignLeft
+    AlignLeft,
+    Users // <--- Added for Applicant Count
 } from 'lucide-react';
 import { fetchAppliedJobs } from '../../services/jobService.js';
 
@@ -88,9 +89,7 @@ const BackfillModal = ({ onClose, onComplete }) => {
     const [isFinished, setIsFinished] = React.useState(false);
 
     React.useEffect(() => {
-        //
-        // We use EventSource to listen to the backend stream without polling
-        const eventSource = new EventSource('http://localhost:5000/pipeline/backfill-descriptions-stream');
+                const eventSource = new EventSource('http://localhost:5000/pipeline/backfill-descriptions-stream');
 
         eventSource.onmessage = (event) => {
             const data = JSON.parse(event.data);
@@ -227,6 +226,8 @@ const JobDetailsPanel = ({ job, onClose }) => {
         return { __html: htmlContent || '<p class="text-gray-500 italic">No description available.</p>' };
     };
 
+    const isEnriched = job.description_full && job.description_full !== "No description provided";
+
     return (
         <div className="fixed inset-0 z-50 flex justify-end">
             {/* Backdrop */}
@@ -268,6 +269,13 @@ const JobDetailsPanel = ({ job, onClose }) => {
                                 <span>{job.location}</span>
                             </div>
                         )}
+                        {/* Applicant Count Badge */}
+                        {job.applicants > 0 && (
+                            <div className="flex items-center gap-1.5 bg-purple-900/20 text-purple-300 px-3 py-1.5 rounded-full border border-purple-800">
+                                <Users size={14} />
+                                <span>{job.applicants.toLocaleString()} Applicants</span>
+                            </div>
+                        )}
                         <a
                             href={job.url}
                             target="_blank"
@@ -297,8 +305,8 @@ const JobDetailsPanel = ({ job, onClose }) => {
                 {/* Footer Status */}
                 <div className="p-4 border-t border-gray-800 bg-gray-900/50 text-xs text-gray-500 flex justify-between items-center">
                     <span>URN: {job.urn}</span>
-                    <span className={job.description_full && job.description_full !== "No description provided" ? "text-green-500" : "text-amber-500"}>
-                        {job.description_full && job.description_full !== "No description provided" ? "● Description Backfilled" : "● Description Missing"}
+                    <span className={isEnriched ? "text-green-500" : "text-amber-500"}>
+                        {isEnriched ? "● Description Backfilled" : "● Description Missing"}
                     </span>
                 </div>
             </div>
@@ -348,48 +356,66 @@ const RecentJobsTable = ({ jobs, onSelectJob }) => {
                         <th className="px-6 py-4">Company</th>
                         <th className="px-6 py-4">Role</th>
                         <th className="px-6 py-4">Applied</th>
+                        {/* 👇 NEW HEADER */}
+                        <th className="px-6 py-4">Applicants</th>
                         <th className="px-6 py-4 text-center">Status</th>
                         <th className="px-6 py-4 text-right">Action</th>
                     </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-700">
-                    {filteredJobs.slice(0, 10).map((job) => (
-                        <tr
-                            key={job.urn}
-                            onClick={() => onSelectJob(job)}
-                            className="group hover:bg-gray-700/30 transition-colors cursor-pointer"
-                        >
-                            <td className="px-6 py-4">
-                                <div className="font-bold text-white">{job.company}</div>
-                                <div className="text-xs text-gray-500">{job.source}</div>
-                            </td>
-                            <td className="px-6 py-4 text-gray-300 font-medium group-hover:text-blue-400 transition-colors">
-                                {job.title}
-                            </td>
-                            <td className="px-6 py-4 text-gray-400 text-sm">
-                                {new Date(job.appliedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                <span className="text-xs text-gray-600 block">
+                    {filteredJobs.slice(0, 10).map((job) => {
+                        const isEnriched = job.description_full && job.description_full !== "No description provided";
+                        const hasApplicants = job.applicants !== null && job.applicants !== undefined;
+
+                        return (
+                            <tr
+                                key={job.urn}
+                                onClick={() => onSelectJob(job)}
+                                className="group hover:bg-gray-700/30 transition-colors cursor-pointer"
+                            >
+                                <td className="px-6 py-4">
+                                    <div className="font-bold text-white">{job.company}</div>
+                                    <div className="text-xs text-gray-500">{job.source}</div>
+                                </td>
+                                <td className="px-6 py-4 text-gray-300 font-medium group-hover:text-blue-400 transition-colors">
+                                    {job.title}
+                                </td>
+                                <td className="px-6 py-4 text-gray-400 text-sm">
+                                    {new Date(job.appliedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    <span className="text-xs text-gray-600 block">
                                         {new Date(job.appliedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                     </span>
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                                {job.description_full && job.description_full !== "No description provided" ? (
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900/30 text-green-400 border border-green-800">
+                                </td>
+                                {/* 👇 NEW COLUMN DATA */}
+                                <td className="px-6 py-4">
+                                    {hasApplicants ? (
+                                        <div className="flex items-center gap-2 text-gray-300 font-mono">
+                                            <Users size={14} className="text-purple-400" />
+                                            {job.applicants.toLocaleString()}
+                                        </div>
+                                    ) : (
+                                        <span className="text-gray-600 text-xs italic">None</span>
+                                    )}
+                                </td>
+                                <td className="px-6 py-4 text-center">
+                                    {isEnriched ? (
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900/30 text-green-400 border border-green-800 shadow-sm">
                                             Enriched
                                         </span>
-                                ) : (
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-700 text-gray-400 border border-gray-600">
+                                    ) : (
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-700 text-gray-400 border border-gray-600">
                                             Basic
                                         </span>
-                                )}
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                                <button className="text-gray-500 hover:text-white p-2 rounded-full hover:bg-gray-700">
-                                    <ChevronRight size={16} />
-                                </button>
-                            </td>
-                        </tr>
-                    ))}
+                                    )}
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                    <button className="text-gray-500 hover:text-white p-2 rounded-full hover:bg-gray-700">
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </td>
+                            </tr>
+                        );
+                    })}
                     </tbody>
                 </table>
                 {filteredJobs.length === 0 && (

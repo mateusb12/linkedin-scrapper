@@ -9,6 +9,7 @@ from source.features.fetch_curl.fetch_service import FetchService
 
 class EnrichmentService:
     QUERY_ID = "voyagerJobsDashJobCards.174f05382121bd73f2f133da2e4af893"
+    DETAIL_QUERY_ID = "voyagerJobsDashJobPostingDetailSections.5b0469809f45002e8d68c712fd6e6285"
 
     @staticmethod
     def fetch_batch_job_details(job_ids: List[str]) -> Dict[str, Dict[str, Any]]:
@@ -84,8 +85,6 @@ class EnrichmentService:
                 if urn:
                     company_map[urn] = {"name": name, "logo_url": logo_url}
 
-        # Debug: Print how many companies we found
-        # print(f"   [Enrichment] Built Company Map with {len(company_map)} entries.")
         return company_map
 
     @staticmethod
@@ -208,48 +207,81 @@ class EnrichmentService:
     def fetch_single_job_description(session: requests.Session, job_urn: str) -> Optional[str]:
         """
         Fetches the full HTML description for a single job using the 'JOB_DESCRIPTION_CARD' query.
+        Wrapper around the more comprehensive method.
+        """
+        data = EnrichmentService.fetch_single_job_details_enrichment(session, job_urn)
+        return data.get("description")
+
+    @staticmethod
+    def fetch_single_job_details_enrichment(session: requests.Session, job_urn: str) -> Dict[str, Any]:
+        """
+        Fetches:
+        1. Full HTML description
+        2. Premium Applicant Insights (Count) - Optional/Best Effort
         """
         clean_id = job_urn.split(':')[-1]
         target_urn = f"urn:li:fsd_jobPosting:{clean_id}"
 
-        # Variables for the "Golden Query"
+        # FIX: Removed '_CARD' suffix from JOB_APPLICANT_INSIGHTS
         variables = (
-            f"(cardSectionTypes:List(JOB_DESCRIPTION_CARD),"
+            f"(cardSectionTypes:List(JOB_DESCRIPTION_CARD,JOB_APPLICANT_INSIGHTS),"
             f"jobPostingUrn:{urllib.parse.quote(target_urn)},"
             f"includeSecondaryActionsV2:true)"
         )
 
-        query_id = "voyagerJobsDashJobPostingDetailSections.5b0469809f45002e8d68c712fd6e6285"
+        query_id = EnrichmentService.DETAIL_QUERY_ID
         base_url = "https://www.linkedin.com/voyager/api/graphql"
         url = f"{base_url}?variables={variables}&queryId={query_id}"
 
+        result = {
+            "description": None,
+            "applicants": None
+        }
+
         try:
-            print(f"   🕵️ Fetching description for {clean_id}...", end=" ")
-            # Use a slightly higher timeout for safety
+            print(f"   🕵️ Enriching {clean_id}...", end=" ")
             response = session.get(url, timeout=15)
 
             if response.status_code != 200:
                 print(f"❌ HTTP {response.status_code}")
-                return None
+                return result
 
             data = response.json()
-
-            # --- 🎯 NEW PARSING LOGIC ---
-            # The description is always in the 'included' list with a specific type.
             included_items = data.get("included", [])
 
+            # --- PARSING LOOP ---
+            found_desc = False
+            found_insights = False
+
             for item in included_items:
-                # Look for the JobDescription entity
-                if item.get("$type") == "com.linkedin.voyager.dash.jobs.JobDescription":
-                    # Extract the text
+                type_id = item.get("$type")
+
+                # 1. Capture Description
+                if type_id == "com.linkedin.voyager.dash.jobs.JobDescription":
                     description = item.get("descriptionText", {}).get("text")
                     if description:
-                        print("✅ Found (in 'included')")
-                        return description
+                        result["description"] = description
+                        found_desc = True
 
-            print("⚠️ Description not found in response")
-            return None
+                # 2. Capture Applicant Count (Premium Insight)
+                if type_id == "com.linkedin.voyager.dash.jobs.JobApplicantInsights":
+                    # Looks for "applicantCount" integer
+                    count = item.get("applicantCount")
+                    if count is not None:
+                        result["applicants"] = int(count)
+                        found_insights = True
+
+            # Log results
+            status_msg = []
+            if found_desc: status_msg.append("Desc ✅")
+            else: status_msg.append("Desc ❌")
+
+            if found_insights: status_msg.append(f"Applicants: {result['applicants']} 💎")
+            else: status_msg.append("No Premium Data ⚪")
+
+            print(f"-> {', '.join(status_msg)}")
+            return result
 
         except Exception as e:
             print(f"❌ Error: {e}")
-            return None
+            return result
