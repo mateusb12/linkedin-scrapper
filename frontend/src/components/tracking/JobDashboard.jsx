@@ -19,6 +19,10 @@ import {
     Filler
 } from 'chart.js';
 import {
+    Database,
+    DownloadCloud,
+    Clock,
+    AlertCircle,
     RefreshCcw,
     Settings,
     Lock,
@@ -64,6 +68,148 @@ const themeColors = {
     warning: '#f59e0b',
     danger: '#ef4444',
     neutral: '#6b7280',
+};
+
+const BackfillModal = ({ onClose, onComplete }) => {
+    const [progress, setProgress] = React.useState({
+        current: 0,
+        total: 0,
+        job_title: 'Initializing...',
+        company: '',
+        eta_seconds: 0,
+        success_count: 0
+    });
+    const [logs, setLogs] = React.useState([]);
+    const [isFinished, setIsFinished] = React.useState(false);
+
+    React.useEffect(() => {
+        const eventSource = new EventSource('http://localhost:5000/pipeline/backfill-descriptions-stream');
+
+        eventSource.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            setProgress(data);
+
+            // Add to logs (keep last 5)
+            setLogs(prev => [
+                { id: Date.now(), text: `${data.status === 'success' ? '✅' : '❌'} ${data.job_title}`, type: data.status },
+                ...prev
+            ].slice(0, 5));
+        };
+
+        eventSource.addEventListener('complete', () => {
+            setIsFinished(true);
+            eventSource.close();
+            if(onComplete) onComplete();
+        });
+
+        eventSource.addEventListener('error', (e) => {
+            console.error("Stream error", e);
+            // Don't close immediately on generic error, but you might want to handle specific error events
+            if (e.data) {
+                const errData = JSON.parse(e.data);
+                setLogs(prev => [{ id: Date.now(), text: `🚨 Error: ${errData.error}`, type: 'error' }, ...prev]);
+            }
+        });
+
+        return () => eventSource.close();
+    }, []);
+
+    const percentage = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
+
+    const formatTime = (seconds) => {
+        if (!seconds) return 'Calculating...';
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        return `${m}m ${s}s`;
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
+                {/* Header */}
+                <div className="p-6 border-b border-gray-700 bg-gray-900/50">
+                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                        <DownloadCloud className="text-blue-400 animate-pulse" />
+                        Backfilling Descriptions
+                    </h3>
+                    <p className="text-gray-400 text-xs mt-1">Fetching full HTML content for missing jobs.</p>
+                </div>
+
+                {/* Body */}
+                <div className="p-6 space-y-6">
+                    {/* Progress Bar */}
+                    <div>
+                        <div className="flex justify-between text-sm mb-2">
+                            <span className="text-white font-mono">{progress.current} / {progress.total} Jobs</span>
+                            <span className="text-blue-400 font-bold">{percentage}%</span>
+                        </div>
+                        <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-500 ease-out"
+                                style={{ width: `${percentage}%` }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Stats Grid */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
+                            <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
+                                <Clock size={14} /> Est. Time Remaining
+                            </div>
+                            <div className="text-lg font-bold text-white font-mono">
+                                {formatTime(progress.eta_seconds)}
+                            </div>
+                        </div>
+                        <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
+                            <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
+                                <AlertCircle size={14} /> Success Rate
+                            </div>
+                            <div className="text-lg font-bold text-green-400 font-mono">
+                                {progress.success_count} found
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Current Job Info */}
+                    <div className="bg-blue-900/20 border border-blue-900/50 rounded-lg p-4">
+                        <p className="text-xs text-blue-300 uppercase font-bold tracking-wider mb-1">Processing Now</p>
+                        <p className="text-white font-medium truncate">{progress.job_title}</p>
+                        <p className="text-gray-400 text-sm truncate">{progress.company}</p>
+                    </div>
+
+                    {/* Mini Log */}
+                    <div className="space-y-2">
+                        <p className="text-xs text-gray-500 uppercase font-bold">Recent Activity</p>
+                        <div className="space-y-1.5">
+                            {logs.map(log => (
+                                <div key={log.id} className="text-xs flex items-center gap-2 animate-in slide-in-from-left-2">
+                                    <span className={log.type === 'success' ? 'text-green-400' : 'text-red-400'}>
+                                        {log.text}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 bg-gray-900/50 border-t border-gray-700 flex justify-end">
+                    <button
+                        onClick={onClose}
+                        disabled={!isFinished}
+                        className={`px-6 py-2 rounded-lg font-medium transition-all ${
+                            isFinished
+                                ? 'bg-green-600 hover:bg-green-700 text-white'
+                                : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                        }`}
+                    >
+                        {isFinished ? 'Close' : 'Processing...'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 // --- SKELETON COMPONENTS ---
@@ -642,6 +788,7 @@ const ScraperSettings = ({ onClose, onSaveSuccess }) => {
 export const JobDashboard = () => {
     const [activeTab, setActiveTab] = useState('current'); // 'current' | 'past'
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isBackfillOpen, setIsBackfillOpen] = useState(false);
 
     const { data: jobs, isLoading, isError, refetch, isFetching } = useQuery({
         queryKey: ['appliedJobs'],
@@ -661,6 +808,13 @@ export const JobDashboard = () => {
                     <p className="text-gray-400 text-sm">Track metrics, monitor goals, and analyze history.</p>
                 </div>
                 <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => setIsBackfillOpen(true)}
+                        className="h-9 px-4 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 hover:border-indigo-500 rounded-lg transition-all flex items-center gap-2 text-sm font-medium"
+                    >
+                        <Database className="w-4 h-4" />
+                        Fix Descriptions
+                    </button>
                     <button
                         onClick={() => refetch()}
                         disabled={isFetching}
@@ -682,6 +836,16 @@ export const JobDashboard = () => {
             </div>
 
             {isSettingsOpen && <ScraperSettings onClose={() => setIsSettingsOpen(false)} onSaveSuccess={refetch} />}
+
+            {isBackfillOpen && (
+                <BackfillModal
+                    onClose={() => setIsBackfillOpen(false)}
+                    onComplete={() => {
+                        // Optional: Refetch jobs to update "SQL" data in charts
+                        // refetch();
+                    }}
+                />
+            )}
 
             {isError ? (
                 <div className="bg-red-900/10 border border-red-900/50 p-8 rounded-xl text-center max-w-lg mx-auto mt-10">

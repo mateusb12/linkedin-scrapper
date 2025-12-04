@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, Response, stream_with_context
 from source.features.job_population.population_service import PopulationService
 
 # ✅ NEW PREFIX: Distinct namespace for pipeline execution
@@ -21,3 +21,13 @@ def fetch_page_endpoint(page_number: int):
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+@population_bp.route('/backfill-descriptions-stream', methods=['GET'])
+def backfill_descriptions_stream():
+    """
+    Streams the progress of the description backfill process using SSE.
+    """
+    return Response(
+        stream_with_context(PopulationService.stream_description_backfill()),
+        mimetype='text/event-stream'
+    )

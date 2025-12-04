@@ -1,9 +1,13 @@
+import json
 import math
-from typing import Dict, Any
+import time
+from typing import Dict, Any, Generator
 
+from database.database_connection import get_db_session
 from source.features.fetch_curl.fetch_service import FetchService
+from source.features.get_applied_jobs.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
 from source.features.job_population.job_repository import JobRepository
-from models import Company
+from models import Company, Job
 from source.features.job_population.linkedin_parser import parse_job_entries
 from source.features.job_population.enrichment_service import EnrichmentService
 
@@ -33,6 +37,13 @@ class PopulationService:
         if not raw_data:
             print("[Population] ❌ Network request failed.")
             return {"success": False, "message": "Network request failed"}
+
+        import json
+        import os
+        debug_file = "debug_linkedin_response.json"
+        print(f"   [DEBUG] Saving raw response to {debug_file}...")
+        with open(debug_file, 'w', encoding='utf-8') as f:
+            json.dump(raw_data, f, indent=2, ensure_ascii=False)
 
         # 2. PARSE SUMMARIES
         job_entries = parse_job_entries(raw_data)
@@ -124,3 +135,75 @@ class PopulationService:
             "count": saved_count,
             "total_found": len(job_entries)
         }
+
+    @staticmethod
+    def stream_description_backfill() -> Generator[str, None, None]:
+        """
+        Generator that processes missing descriptions one by one and yields
+        SSE-compatible JSON events for the frontend.
+        """
+        db = get_db_session()
+
+        # 1. Setup Session
+        session_artefacts = get_linkedin_fetch_artefacts()
+        if not session_artefacts:
+            yield f"event: error\ndata: {json.dumps({'error': 'Could not load LinkedIn session. Update cookies.'})}\n\n"
+            return
+
+        requests_session, _ = session_artefacts
+
+        # 2. Get Targets
+        target_jobs = db.query(Job).filter(
+            Job.description_full == "No description provided"
+        ).order_by(Job.posted_on.desc()).all()
+
+        total = len(target_jobs)
+        if total == 0:
+            yield f"event: complete\ndata: {json.dumps({'message': 'No jobs to backfill.'})}\n\n"
+            return
+
+        start_time = time.time()
+        processed = 0
+        success_count = 0
+
+        # 3. Iterate and Stream
+        for job in target_jobs:
+            processed += 1
+
+            # --- Metrics Calculation ---
+            elapsed = time.time() - start_time
+            avg_time = elapsed / processed
+            remaining_jobs = total - processed
+            eta_seconds = remaining_jobs * avg_time
+
+            # 4. Fetch
+            description = EnrichmentService.fetch_single_job_description(requests_session, job.urn)
+            status = "failed"
+
+            if description:
+                job.description_full = description
+                # Reset processed flag so AI keyword extraction runs again later
+                job.processed = False
+                db.commit()
+                status = "success"
+                success_count += 1
+
+            # 5. Build Payload
+            payload = {
+                "current": processed,
+                "total": total,
+                "job_title": job.title,
+                "company": job.company.name if job.company else "Unknown",
+                "status": status,
+                "eta_seconds": round(eta_seconds),
+                "success_count": success_count
+            }
+
+            # 6. Yield Event
+            yield f"data: {json.dumps(payload)}\n\n"
+
+            # 7. Safety Sleep (Essential)
+            time.sleep(2.0)
+
+        db.close()
+        yield f"event: complete\ndata: {json.dumps({'message': 'Backfill finished'})}\n\n"

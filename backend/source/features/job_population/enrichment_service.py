@@ -1,6 +1,9 @@
+import json
 import re
 import urllib.parse
 from typing import Dict, Any, List, Optional
+
+import requests
 
 from source.features.fetch_curl.fetch_service import FetchService
 
@@ -200,3 +203,53 @@ class EnrichmentService:
             }
 
         return results
+
+    @staticmethod
+    def fetch_single_job_description(session: requests.Session, job_urn: str) -> Optional[str]:
+        """
+        Fetches the full HTML description for a single job using the 'JOB_DESCRIPTION_CARD' query.
+        """
+        clean_id = job_urn.split(':')[-1]
+        target_urn = f"urn:li:fsd_jobPosting:{clean_id}"
+
+        # Variables for the "Golden Query"
+        variables = (
+            f"(cardSectionTypes:List(JOB_DESCRIPTION_CARD),"
+            f"jobPostingUrn:{urllib.parse.quote(target_urn)},"
+            f"includeSecondaryActionsV2:true)"
+        )
+
+        query_id = "voyagerJobsDashJobPostingDetailSections.5b0469809f45002e8d68c712fd6e6285"
+        base_url = "https://www.linkedin.com/voyager/api/graphql"
+        url = f"{base_url}?variables={variables}&queryId={query_id}"
+
+        try:
+            print(f"   🕵️ Fetching description for {clean_id}...", end=" ")
+            # Use a slightly higher timeout for safety
+            response = session.get(url, timeout=15)
+
+            if response.status_code != 200:
+                print(f"❌ HTTP {response.status_code}")
+                return None
+
+            data = response.json()
+
+            # --- 🎯 NEW PARSING LOGIC ---
+            # The description is always in the 'included' list with a specific type.
+            included_items = data.get("included", [])
+
+            for item in included_items:
+                # Look for the JobDescription entity
+                if item.get("$type") == "com.linkedin.voyager.dash.jobs.JobDescription":
+                    # Extract the text
+                    description = item.get("descriptionText", {}).get("text")
+                    if description:
+                        print("✅ Found (in 'included')")
+                        return description
+
+            print("⚠️ Description not found in response")
+            return None
+
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            return None
