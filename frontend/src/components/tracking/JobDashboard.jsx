@@ -1,127 +1,85 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Bar, Doughnut, Line } from 'react-chartjs-2';
-import axios from 'axios';
-import targetIcon from '../../assets/ui_icons/target.png';
-import fireIcon from '../../assets/ui_icons/fire.png';
-import calendarIcon from '../../assets/ui_icons/calendar.png';
-import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    BarElement,
-    LineElement,
-    PointElement,
-    Title,
-    Tooltip,
-    Legend,
-    ArcElement,
-    Filler
-} from 'chart.js';
-import {
-    Database,
-    DownloadCloud,
-    Clock,
-    AlertCircle,
-    RefreshCcw,
-    Settings,
-    Lock,
-    Terminal,
-    Upload,
-    FileJson,
-    Target,
-    Calendar as CalendarIcon,
-    Check,
-    Coffee,
-    X,
-    ChevronLeft,
-    ChevronRight,
-    ExternalLink,
-    MapPin,
-    Building,
-    AlignLeft,
-    Users
-} from 'lucide-react';
+import { Doughnut, Bar } from 'react-chartjs-2';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
+import { Database, RefreshCcw, Settings, Target, Calendar as CalendarIcon } from 'lucide-react';
 import { fetchAppliedJobs } from '../../services/jobService.js';
 
-// Register Chart.js components
-ChartJS.register(
-    CategoryScale,
-    LinearScale,
-    BarElement,
-    LineElement,
-    PointElement,
-    Title,
-    Tooltip,
-    Legend,
-    ArcElement,
-    Filler
-);
+// --- FEATURE IMPORTS ---
+import StreakCalendar from './StreakCalendar';
+import RecentApplications from './RecentApplications';
+import PerformanceStats from './PerformanceStats';
+import { BackfillModal, ScraperSettings, JobDetailsPanel } from './DashboardModals';
 
-// --- THEME & CONSTANTS ---
+// Register Chart components
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
+
 const GOAL_PER_DAY = 10;
+const themeColors = { linkedin: '#8b5cf6', huntr: '#10b981', sql: '#3b82f6', textPrimary: '#f3f4f6', textSecondary: '#9ca3af' };
 
-const themeColors = {
-    textPrimary: '#f3f4f6',
-    textSecondary: '#9ca3af',
-    background: '#1f2937',
-    cardBg: '#111827',
-    linkedin: '#8b5cf6',
-    huntr: '#10b981',
-    sql: '#3b82f6',
-    success: '#22c55e',
-    warning: '#f59e0b',
-    danger: '#ef4444',
-    neutral: '#6b7280',
-};
+// --- DATA PROCESSING LOGIC ---
+const processCurrentFormData = (jobs) => {
+    const allDailyCounts = {};
+    const getLocalYMD = (d) => {
+        const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2,'0'); const day = String(d.getDate()).padStart(2,'0');
+        return `${y}-${m}-${day}`;
+    };
 
-// --- DATA PROCESSING HELPERS ---
-const getLocalYMD = (dateObj) => {
-    const year = dateObj.getFullYear();
-    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const day = String(dateObj.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-};
+    jobs.forEach(job => {
+        if (!job.appliedAt) return;
+        const k = getLocalYMD(new Date(job.appliedAt));
+        allDailyCounts[k] = (allDailyCounts[k] || 0) + 1;
+    });
 
-const getStartOfToday = () => {
-    return new Date();
-};
-
-const getLast7DaysKeys = () => {
-    const keys = [];
+    const last7Days = [];
     const today = new Date();
     for (let i = 6; i >= 0; i--) {
-        const d = new Date(today);
-        d.setDate(today.getDate() - i);
-        keys.push(getLocalYMD(d));
+        const d = new Date(today); d.setDate(today.getDate() - i);
+        last7Days.push(getLocalYMD(d));
     }
-    return keys;
+
+    const dataValues = last7Days.map(k => allDailyCounts[k] || 0);
+    const todayCount = allDailyCounts[last7Days[last7Days.length - 1]] || 0;
+
+    let streak = 0;
+    const checkDate = new Date();
+    for (let i = 0; i < 365; i++) {
+        const k = getLocalYMD(checkDate);
+        const count = allDailyCounts[k] || 0;
+        const isWeekend = checkDate.getDay() === 0 || checkDate.getDay() === 6;
+        if (i === 0 && count < GOAL_PER_DAY) { checkDate.setDate(checkDate.getDate() - 1); continue; }
+        if (count >= GOAL_PER_DAY) streak++;
+        else if (!isWeekend) break;
+        checkDate.setDate(checkDate.getDate() - 1);
+    }
+
+    return {
+        labels: last7Days.map(d => {
+            const [y, m, day] = d.split('-').map(Number);
+            return new Date(y, m - 1, day).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        }),
+        data: dataValues,
+        todayCount, streak, allDailyCounts
+    };
 };
 
 const processHistoryData = (jobs, timePeriod) => {
     if (!jobs?.length) return { barData: null, doughnutData: null };
-
-    const appsBySource = {};
-    const appsPerPeriod = {};
+    const appsBySource = {}; const appsPerPeriod = {};
 
     jobs.forEach(job => {
         const source = job.source || 'Unknown';
         appsBySource[source] = (appsBySource[source] || 0) + 1;
-
         const date = new Date(job.appliedAt);
-        let key;
+        let key = date.toISOString().split('T')[0];
 
-        if (timePeriod === 'monthly') {
-            key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-        } else if (timePeriod === 'weekly') {
+        if (timePeriod === 'monthly') key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+        else if (timePeriod === 'weekly') {
             const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
             const dayNum = d.getUTCDay() || 7;
             d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-            const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
-            const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1)/7);
+            const weekNo = Math.ceil((((d - new Date(Date.UTC(d.getUTCFullYear(),0,1))) / 86400000) + 1)/7);
             key = `${d.getUTCFullYear()}-W${weekNo}`;
-        } else {
-            key = date.toISOString().split('T')[0];
         }
 
         if (!appsPerPeriod[key]) appsPerPeriod[key] = {};
@@ -129,900 +87,27 @@ const processHistoryData = (jobs, timePeriod) => {
     });
 
     const sources = Object.keys(appsBySource);
-    const doughnutColors = sources.map(s => {
-        const lower = s.toLowerCase();
-        if (lower.includes('linkedin')) return themeColors.linkedin;
-        if (lower.includes('huntr')) return themeColors.huntr;
+    const colors = sources.map(s => {
+        if (s.toLowerCase().includes('linkedin')) return themeColors.linkedin;
+        if (s.toLowerCase().includes('huntr')) return themeColors.huntr;
         return themeColors.sql;
     });
 
-    const doughnutData = {
-        labels: sources,
-        datasets: [{
-            data: Object.values(appsBySource),
-            backgroundColor: doughnutColors,
-            borderWidth: 0,
-            hoverOffset: 4
-        }]
-    };
-
-    const sortedKeys = Object.keys(appsPerPeriod).sort();
-    const datasets = sources.map((source, index) => {
-        let color = themeColors.sql;
-        if (source.toLowerCase().includes('linkedin')) color = themeColors.linkedin;
-        if (source.toLowerCase().includes('huntr')) color = themeColors.huntr;
-
-        return {
-            label: source,
-            data: sortedKeys.map(k => appsPerPeriod[k][source] || 0),
-            backgroundColor: color,
-            stack: 'stack1',
-        };
-    });
-
     return {
-        doughnutData,
-        barData: { labels: sortedKeys, datasets }
-    };
-};
-
-const processCurrentFormData = (jobs) => {
-    const allDailyCounts = {};
-    jobs.forEach(job => {
-        if (!job.appliedAt) return;
-        const dateObj = new Date(job.appliedAt);
-        const k = getLocalYMD(dateObj);
-        allDailyCounts[k] = (allDailyCounts[k] || 0) + 1;
-    });
-
-    const last7Days = getLast7DaysKeys();
-    const dataValues = last7Days.map(k => allDailyCounts[k] || 0);
-    const todayKey = last7Days[last7Days.length - 1];
-    const todayCount = allDailyCounts[todayKey] || 0;
-
-    let streak = 0;
-    const checkDate = getStartOfToday();
-
-    for (let i = 0; i < 365; i++) {
-        const dateKey = getLocalYMD(checkDate);
-        const count = allDailyCounts[dateKey] || 0;
-        const dayOfWeek = checkDate.getDay();
-        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-
-        if (i === 0 && count < GOAL_PER_DAY) {
-            checkDate.setDate(checkDate.getDate() - 1);
-            continue;
-        }
-
-        if (count >= GOAL_PER_DAY) {
-            streak++;
-        } else if (isWeekend) {
-            // Weekend + No Goal = Maintain Streak
-        } else {
-            break;
-        }
-        checkDate.setDate(checkDate.getDate() - 1);
-    }
-
-    return {
-        labels: last7Days.map(d => {
-            const [y, m, day] = d.split('-').map(Number);
-            const date = new Date(y, m - 1, day);
-            return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        }),
-        data: dataValues,
-        todayCount,
-        streak,
-        allDailyCounts
-    };
-};
-
-// --- COMPONENT: PAGINATION CONTROLS ---
-const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
-    const getPageNumbers = () => {
-        const pages = [];
-        pages.push(1);
-
-        let start = Math.max(2, currentPage - 1);
-        let end = Math.min(totalPages - 1, currentPage + 1);
-
-        if (start > 2) pages.push('...');
-        for (let i = start; i <= end; i++) pages.push(i);
-        if (end < totalPages - 1) pages.push('...');
-
-        if (totalPages > 1) pages.push(totalPages);
-
-        return pages;
-    };
-
-    return (
-        <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-700 bg-gray-800">
-            <button
-                onClick={() => onPageChange(currentPage - 1)}
-                disabled={currentPage === 1}
-                className="p-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-400 hover:text-white transition-colors"
-            >
-                <ChevronLeft size={20} />
-            </button>
-
-            {getPageNumbers().map((page, idx) => (
-                <button
-                    key={idx}
-                    onClick={() => typeof page === 'number' ? onPageChange(page) : null}
-                    disabled={typeof page !== 'number'}
-                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                        page === currentPage
-                            ? 'bg-blue-600 text-white shadow-md'
-                            : typeof page === 'number'
-                                ? 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700'
-                                : 'text-gray-500 cursor-default'
-                    }`}
-                >
-                    {page}
-                </button>
-            ))}
-
-            <button
-                onClick={() => onPageChange(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                className="p-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-400 hover:text-white transition-colors"
-            >
-                <ChevronRight size={20} />
-            </button>
-        </div>
-    );
-};
-
-// --- COMPONENT: BACKFILL MODAL (SSE STREAM) ---
-const BackfillModal = ({ onClose, onComplete }) => {
-    const [progress, setProgress] = React.useState({
-        current: 0,
-        total: 0,
-        job_title: 'Initializing...',
-        company: '',
-        eta_seconds: 0,
-        success_count: 0
-    });
-    const [logs, setLogs] = React.useState([]);
-    const [isFinished, setIsFinished] = React.useState(false);
-
-    React.useEffect(() => {
-        const eventSource = new EventSource('http://localhost:5000/pipeline/backfill-descriptions-stream');
-
-        eventSource.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            setProgress(data);
-
-            setLogs(prev => [
-                { id: Date.now(), text: `${data.status === 'success' ? '✅' : '❌'} ${data.job_title}`, type: data.status },
-                ...prev
-            ].slice(0, 5));
-        };
-
-        eventSource.addEventListener('complete', () => {
-            setIsFinished(true);
-            eventSource.close();
-            if(onComplete) onComplete();
-        });
-
-        eventSource.addEventListener('error', (e) => {
-            console.error("Stream error", e);
-            if (e.data) {
-                const errData = JSON.parse(e.data);
-                setLogs(prev => [{ id: Date.now(), text: `🚨 Error: ${errData.error}`, type: 'error' }, ...prev]);
-            }
-        });
-
-        return () => eventSource.close();
-    }, []);
-
-    const percentage = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
-
-    const formatTime = (seconds) => {
-        if (!seconds) return 'Calculating...';
-        const m = Math.floor(seconds / 60);
-        const s = seconds % 60;
-        return `${m}m ${s}s`;
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm animate-in fade-in">
-            <div className="bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
-                <div className="p-6 border-b border-gray-700 bg-gray-900/50">
-                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                        <DownloadCloud className="text-blue-400 animate-pulse" />
-                        Backfilling Descriptions
-                    </h3>
-                    <p className="text-gray-400 text-xs mt-1">Fetching full HTML content for missing jobs.</p>
-                </div>
-
-                <div className="p-6 space-y-6">
-                    <div>
-                        <div className="flex justify-between text-sm mb-2">
-                            <span className="text-white font-mono">{progress.current} / {progress.total} Jobs</span>
-                            <span className="text-blue-400 font-bold">{percentage}%</span>
-                        </div>
-                        <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
-                            <div
-                                className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-500 ease-out"
-                                style={{ width: `${percentage}%` }}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
-                            <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
-                                <Clock size={14} /> Est. Time Remaining
-                            </div>
-                            <div className="text-lg font-bold text-white font-mono">
-                                {formatTime(progress.eta_seconds)}
-                            </div>
-                        </div>
-                        <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
-                            <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
-                                <AlertCircle size={14} /> Success Rate
-                            </div>
-                            <div className="text-lg font-bold text-green-400 font-mono">
-                                {progress.success_count} found
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-blue-900/20 border border-blue-900/50 rounded-lg p-4">
-                        <p className="text-xs text-blue-300 uppercase font-bold tracking-wider mb-1">Processing Now</p>
-                        <p className="text-white font-medium truncate">{progress.job_title}</p>
-                        <p className="text-gray-400 text-sm truncate">{progress.company}</p>
-                    </div>
-
-                    <div className="space-y-2">
-                        <p className="text-xs text-gray-500 uppercase font-bold">Recent Activity</p>
-                        <div className="space-y-1.5">
-                            {logs.map(log => (
-                                <div key={log.id} className="text-xs flex items-center gap-2 animate-in slide-in-from-left-2">
-                                    <span className={log.type === 'success' ? 'text-green-400' : 'text-red-400'}>
-                                        {log.text}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="p-4 bg-gray-900/50 border-t border-gray-700 flex justify-end">
-                    <button
-                        onClick={onClose}
-                        disabled={!isFinished}
-                        className={`px-6 py-2 rounded-lg font-medium transition-all ${
-                            isFinished
-                                ? 'bg-green-600 hover:bg-green-700 text-white'
-                                : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                        }`}
-                    >
-                        {isFinished ? 'Close' : 'Processing...'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- COMPONENT: JOB DETAILS SIDE PANEL ---
-const JobDetailsPanel = ({ job, onClose }) => {
-    if (!job) return null;
-
-    const createMarkup = (htmlContent) => {
-        return { __html: htmlContent || '<p class="text-gray-500 italic">No description available.</p>' };
-    };
-
-    const isEnriched = job.description_full && job.description_full !== "No description provided";
-
-    return (
-        <div className="fixed inset-0 z-50 flex justify-end">
-            <div
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300"
-                onClick={onClose}
-            />
-
-            <div className="relative w-full max-w-2xl bg-gray-900 border-l border-gray-700 h-full shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col">
-
-                <div className="p-6 border-b border-gray-800 bg-gray-900 z-10">
-                    <div className="flex justify-between items-start mb-4">
-                        <div>
-                            <h2 className="text-2xl font-bold text-white leading-tight mb-1">{job.title}</h2>
-                            <div className="flex items-center gap-2 text-blue-400 font-medium">
-                                <Building size={16} />
-                                {job.company}
-                            </div>
-                        </div>
-                        <button
-                            onClick={onClose}
-                            className="p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
-                        >
-                            <X size={24} />
-                        </button>
-                    </div>
-
-                    <div className="flex flex-wrap gap-3 text-xs text-gray-300">
-                        <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700">
-                            <CalendarIcon size={14} className="text-gray-400" />
-                            <span>Applied: {new Date(job.appliedAt).toLocaleDateString()}</span>
-                        </div>
-                        {job.location && (
-                            <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700">
-                                <MapPin size={14} className="text-gray-400" />
-                                <span>{job.location}</span>
-                            </div>
-                        )}
-                        {job.applicants > 0 && (
-                            <div className="flex items-center gap-1.5 bg-purple-900/20 text-purple-300 px-3 py-1.5 rounded-full border border-purple-800">
-                                <Users size={14} />
-                                <span>{job.applicants.toLocaleString()} Applicants</span>
-                            </div>
-                        )}
-                        <a
-                            href={job.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 bg-blue-900/20 text-blue-300 px-3 py-1.5 rounded-full border border-blue-800 hover:bg-blue-900/40 transition-colors"
-                        >
-                            <ExternalLink size={14} />
-                            View on {job.source}
-                        </a>
-                    </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-                    <div className="flex items-center gap-2 mb-4 text-sm font-bold text-gray-400 uppercase tracking-wider">
-                        <AlignLeft size={16} />
-                        Job Description
-                    </div>
-
-                    <div
-                        className="prose prose-invert prose-sm max-w-none text-gray-300 [&>ul]:list-disc [&>ul]:pl-5 [&>ol]:list-decimal [&>ol]:pl-5"
-                        dangerouslySetInnerHTML={createMarkup(job.description_full)}
-                    />
-                </div>
-
-                <div className="p-4 border-t border-gray-800 bg-gray-900/50 text-xs text-gray-500 flex justify-between items-center">
-                    <span>URN: {job.urn}</span>
-                    <span className={isEnriched ? "text-green-500" : "text-amber-500"}>
-                        {isEnriched ? "● Description Backfilled" : "● Description Missing"}
-                    </span>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- COMPONENT: STAT CARD ---
-const StatCard = ({ title, value, suffix, subtext, iconSrc, colorClass }) => {
-    const pillClass = colorClass.replace('text-', 'bg-').replace('400', '400/10') + ' ' + colorClass;
-
-    return (
-        <div className="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-lg flex items-center gap-5 transition-transform duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-gray-600">
-            <div className="w-16 h-16 flex-shrink-0 drop-shadow-md">
-                <img src={iconSrc} alt={title} className="w-full h-full object-contain" />
-            </div>
-            <div className="flex flex-col justify-center">
-                <p className="text-gray-400 text-[11px] font-bold uppercase tracking-wider mb-1">{title}</p>
-                <div className="flex items-baseline mb-1.5">
-                    <span className="text-3xl font-extrabold text-white tracking-tight">{value}</span>
-                    {suffix && <span className="text-sm font-medium text-gray-500 ml-1.5">{suffix}</span>}
-                </div>
-                {subtext && (
-                    <div className={`text-[10px] font-bold px-2 py-0.5 rounded w-fit ${pillClass}`}>
-                        {subtext}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
-
-// --- COMPONENT: STREAK CALENDAR ---
-const StreakCalendar = ({ dailyCounts }) => {
-    const today = new Date();
-    const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-
-    const [currentMonth, setCurrentMonth] = useState(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)));
-
-    const daysInMonth = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() + 1, 0)).getUTCDate();
-    const startDayOffset = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth(), 1)).getUTCDay();
-
-    const calendarDays = [];
-    for (let i = 0; i < startDayOffset; i++) calendarDays.push(null);
-    for (let i = 1; i <= daysInMonth; i++) {
-        calendarDays.push(new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth(), i)));
-    }
-
-    const changeMonth = (offset) => {
-        const newMonth = new Date(currentMonth);
-        newMonth.setUTCMonth(newMonth.getUTCMonth() + offset);
-        setCurrentMonth(newMonth);
-    };
-
-    return (
-        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl mt-6">
-            <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                    <CalendarIcon className="text-amber-400" size={20} />
-                    Streak Calendar
-                </h3>
-                <div className="flex items-center gap-4">
-                    <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-gray-700 rounded"><ChevronLeft size={20}/></button>
-                    <span className="text-sm font-bold w-32 text-center">
-                        {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                    </span>
-                    <button onClick={() => changeMonth(1)} className="p-1 hover:bg-gray-700 rounded"><ChevronRight size={20}/></button>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-7 gap-2 mb-2">
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-                    <div key={d} className="text-center text-xs text-gray-500 font-bold uppercase">{d}</div>
-                ))}
-            </div>
-
-            <div className="grid grid-cols-7 gap-2">
-                {calendarDays.map((date, idx) => {
-                    if (!date) return <div key={idx} className="h-12 w-full"></div>;
-
-                    const dateKey = date.toISOString().split('T')[0];
-                    const count = dailyCounts[dateKey] || 0;
-
-                    const isGoalMet = count >= GOAL_PER_DAY;
-                    const isWeekend = date.getUTCDay() === 0 || date.getUTCDay() === 6;
-                    const isFuture = date > todayUTC;
-
-                    let baseClass = "h-12 w-full rounded-lg flex flex-col items-center justify-center border transition-all relative group";
-                    let content = null;
-                    let numberColor = "text-gray-600";
-
-                    if (isFuture) {
-                        baseClass += " border-gray-800 bg-gray-900/30 opacity-40";
-                    }
-                    else if (isGoalMet) {
-                        baseClass += " bg-gradient-to-br from-amber-400 to-amber-600 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.3)] transform hover:scale-105 z-10";
-                        content = <Check className="text-white drop-shadow-md" size={24} strokeWidth={4} />;
-                        numberColor = "text-amber-900";
-                    }
-                    else if (count > 0) {
-                        numberColor = "text-blue-200";
-                        if (count >= 7) {
-                            baseClass += " bg-blue-600/60 border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.2)]";
-                        } else if (count >= 4) {
-                            baseClass += " bg-blue-800/60 border-blue-600";
-                        } else {
-                            baseClass += " bg-blue-900/40 border-blue-800";
-                        }
-                    }
-                    else if (isWeekend) {
-                        baseClass += " bg-gray-800 border-gray-700 opacity-60";
-                        content = <Coffee className="text-gray-600" size={18} />;
-                    }
-                    else {
-                        baseClass += " bg-gray-900 border-gray-800 hover:border-gray-700";
-                    }
-
-                    return (
-                        <div key={idx} className={baseClass}>
-                            <span className={`absolute top-1 left-1.5 text-[10px] font-bold ${numberColor}`}>
-                                {date.getUTCDate()}
-                            </span>
-                            {content}
-                            <div className="absolute opacity-0 group-hover:opacity-100 bottom-full mb-2 bg-gray-900 text-xs px-2 py-1 rounded border border-gray-700 whitespace-nowrap z-20 pointer-events-none transition-opacity shadow-lg">
-                                <span className="font-bold text-white">{count}</span> <span className="text-gray-400">Applications</span>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-
-            <div className="flex flex-wrap gap-4 justify-center mt-6 text-xs text-gray-400">
-                <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-sm bg-gray-900 border border-gray-800"></div> 0
-                </div>
-                <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-sm bg-blue-900/50 border border-blue-800"></div> 1-3
-                </div>
-                <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-sm bg-blue-800/60 border border-blue-600"></div> 4-6
-                </div>
-                <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-sm bg-blue-600/60 border border-blue-500"></div> 7-9
-                </div>
-                <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-sm bg-amber-500 border border-amber-400"></div> 10+
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- COMPONENT: CURRENT FORM TAB ---
-const CurrentFormTab = ({ jobs }) => {
-    const stats = useMemo(() => processCurrentFormData(jobs || []), [jobs]);
-
-    const chartData = {
-        labels: stats.labels,
-        datasets: [
-            {
-                type: 'line',
-                label: 'Goal',
-                data: stats.labels.map(() => GOAL_PER_DAY),
-                borderColor: themeColors.textSecondary,
-                borderWidth: 2,
-                borderDash: [5, 5],
-                pointRadius: 0,
-                fill: false,
-                order: 0
-            },
-            {
-                type: 'bar',
-                label: 'Applications',
-                data: stats.data,
-                backgroundColor: stats.data.map(val =>
-                    val >= GOAL_PER_DAY ? themeColors.success :
-                        val >= (GOAL_PER_DAY / 2) ? themeColors.warning : themeColors.danger
-                ),
-                borderRadius: 6,
-                order: 1
-            }
-        ]
-    };
-
-    const options = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: { display: true, labels: { color: themeColors.textSecondary } },
-            tooltip: {
-                mode: 'index',
-                intersect: false,
-                callbacks: {
-                    label: (ctx) => {
-                        if (ctx.dataset.type === 'line') return `Goal: ${ctx.raw}`;
-                        return `Applied: ${ctx.raw}`;
-                    }
-                }
-            }
+        doughnutData: {
+            labels: sources,
+            datasets: [{ data: Object.values(appsBySource), backgroundColor: colors, borderWidth: 0 }]
         },
-        scales: {
-            y: {
-                beginAtZero: true,
-                grid: { color: 'rgba(75, 85, 99, 0.2)' },
-                ticks: { color: themeColors.textSecondary }
-            },
-            x: {
-                grid: { display: false },
-                ticks: { color: themeColors.textSecondary }
-            }
+        barData: {
+            labels: Object.keys(appsPerPeriod).sort(),
+            datasets: sources.map((source, i) => ({
+                label: source,
+                data: Object.keys(appsPerPeriod).sort().map(k => appsPerPeriod[k][source] || 0),
+                backgroundColor: colors[i],
+                stack: 'stack1'
+            }))
         }
     };
-
-    const getMotivation = () => {
-        const remaining = GOAL_PER_DAY - stats.todayCount;
-        if (remaining <= 0) return "Goal Crushed!";
-        if (remaining <= 3) return "Almost There";
-        return "Keep Pushing";
-    };
-
-    return (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 gap-y-10 pt-4">
-                <StatCard
-                    title="Today's Progress"
-                    value={stats.todayCount}
-                    suffix={`/ ${GOAL_PER_DAY}`}
-                    subtext={getMotivation()}
-                    iconSrc={targetIcon}
-                    colorClass={stats.todayCount >= GOAL_PER_DAY ? "text-green-400" : "text-amber-400"}
-                />
-                <StatCard
-                    title="Current Streak"
-                    value={stats.streak}
-                    suffix={stats.streak === 1 ? "Day" : "Days"}
-                    subtext="Weekends Excluded"
-                    iconSrc={fireIcon}
-                    colorClass="text-blue-400"
-                />
-                <StatCard
-                    title="Weekly Total"
-                    value={stats.data.reduce((a, b) => a + b, 0)}
-                    subtext="Last 7 Days"
-                    iconSrc={calendarIcon}
-                    colorClass="text-purple-400"
-                />
-            </div>
-
-            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl mt-4">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-xl font-bold text-white">Daily Performance</h3>
-                    <span className="text-xs text-gray-400 px-3 py-1 bg-gray-900 rounded-full border border-gray-700">
-                        Goal: {GOAL_PER_DAY}/day
-                    </span>
-                </div>
-                <div className="h-80 w-full">
-                    <Bar data={chartData} options={options} />
-                </div>
-            </div>
-
-            <StreakCalendar dailyCounts={stats.allDailyCounts} />
-        </div>
-    );
-};
-
-// --- COMPONENT: PAST FORM TAB ---
-const PastFormTab = ({ jobs }) => {
-    const [timePeriod, setTimePeriod] = useState('daily');
-    const { barData, doughnutData } = useMemo(() => processHistoryData(jobs, timePeriod), [jobs, timePeriod]);
-
-    if (!barData) return <div className="text-gray-400 p-10 text-center">No data available</div>;
-
-    return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500 mt-6">
-            <div className="lg:col-span-2 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-xl font-bold text-white">Application History</h3>
-                    <div className="bg-gray-900 rounded-lg p-1 flex space-x-1">
-                        {['daily', 'weekly', 'monthly'].map(t => (
-                            <button
-                                key={t}
-                                onClick={() => setTimePeriod(t)}
-                                className={`px-3 py-1 text-xs rounded-md transition-all ${
-                                    timePeriod === t
-                                        ? 'bg-blue-600 text-white shadow'
-                                        : 'text-gray-400 hover:text-white'
-                                }`}
-                            >
-                                {t.charAt(0).toUpperCase() + t.slice(1)}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-                <div className="h-80">
-                    <Bar
-                        data={barData}
-                        options={{
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            scales: {
-                                x: { stacked: true, grid: { display: false }, ticks: { color: themeColors.textSecondary } },
-                                y: { stacked: true, grid: { color: 'rgba(75, 85, 99, 0.2)' }, ticks: { color: themeColors.textSecondary } }
-                            },
-                            plugins: { legend: { labels: { color: themeColors.textPrimary } } }
-                        }}
-                    />
-                </div>
-            </div>
-
-            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl flex flex-col">
-                <h3 className="text-xl font-bold text-white mb-6">Source Distribution</h3>
-                <div className="flex-grow flex items-center justify-center relative">
-                    <div className="w-full h-64">
-                        <Doughnut
-                            data={doughnutData}
-                            options={{
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                cutout: '70%',
-                                plugins: { legend: { position: 'bottom', labels: { color: themeColors.textPrimary } } }
-                            }}
-                        />
-                    </div>
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none pb-8">
-                        <div className="text-center">
-                            <p className="text-3xl font-bold text-white">{jobs.length}</p>
-                            <p className="text-xs text-gray-400">Total Apps</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- COMPONENT: RECENT JOBS TABLE ---
-const RecentJobsTable = ({ jobs, onSelectJob, pagination }) => {
-    const [searchTerm, setSearchTerm] = React.useState('');
-
-    const filteredJobs = useMemo(() => {
-        if (!jobs) return [];
-        return jobs
-            .filter(j =>
-                j.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                j.company.toLowerCase().includes(searchTerm.toLowerCase())
-            );
-        // Note: Data is already sorted by backend
-    }, [jobs, searchTerm]);
-
-    return (
-        <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-xl overflow-hidden mt-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-            <div className="p-6 border-b border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4">
-                <div className="flex items-center gap-4">
-                    <h3 className="text-xl font-bold text-white">Recent Applications</h3>
-                    {pagination && (
-                        <span className="text-xs font-mono text-gray-500 bg-gray-900 px-2 py-1 rounded border border-gray-700">
-                            Total: {pagination.total}
-                        </span>
-                    )}
-                </div>
-                <div className="relative w-full md:w-64">
-                    <input
-                        type="text"
-                        placeholder="Search current page..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-gray-900 border border-gray-700 text-gray-200 text-sm rounded-lg pl-4 pr-10 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                    />
-                    <div className="absolute right-3 top-2.5 text-gray-500">
-                        <Terminal size={14} />
-                    </div>
-                </div>
-            </div>
-
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                    <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
-                    <tr>
-                        <th className="px-6 py-4">Company</th>
-                        <th className="px-6 py-4">Role</th>
-                        <th className="px-6 py-4">Applied</th>
-                        <th className="px-6 py-4">Applicants</th>
-                        <th className="px-6 py-4 text-center">Status</th>
-                        <th className="px-6 py-4 text-right">Action</th>
-                    </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-700">
-                    {filteredJobs.length > 0 ? filteredJobs.map((job) => {
-                        const isEnriched = job.description_full && job.description_full !== "No description provided";
-                        const hasApplicants = job.applicants !== null && job.applicants !== undefined;
-
-                        return (
-                            <tr
-                                key={job.urn}
-                                onClick={() => onSelectJob(job)}
-                                className="group hover:bg-gray-700/30 transition-colors cursor-pointer"
-                            >
-                                <td className="px-6 py-4">
-                                    <div className="font-bold text-white">{job.company}</div>
-                                    <div className="text-xs text-gray-500">{job.source}</div>
-                                </td>
-                                <td className="px-6 py-4 text-gray-300 font-medium group-hover:text-blue-400 transition-colors">
-                                    {job.title}
-                                </td>
-                                <td className="px-6 py-4 text-gray-400 text-sm">
-                                    {new Date(job.appliedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                    <span className="text-xs text-gray-600 block">
-                                        {new Date(job.appliedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                    {hasApplicants ? (
-                                        <div className="flex items-center gap-2 text-gray-300 font-mono">
-                                            <Users size={14} className="text-purple-400" />
-                                            {job.applicants.toLocaleString()}
-                                        </div>
-                                    ) : (
-                                        <span className="text-gray-600 text-xs italic">None</span>
-                                    )}
-                                </td>
-                                <td className="px-6 py-4 text-center">
-                                    {isEnriched ? (
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900/30 text-green-400 border border-green-800 shadow-sm">
-                                            Enriched
-                                        </span>
-                                    ) : (
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-700 text-gray-400 border border-gray-600">
-                                            Basic
-                                        </span>
-                                    )}
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <button className="text-gray-500 hover:text-white p-2 rounded-full hover:bg-gray-700">
-                                        <ChevronRight size={16} />
-                                    </button>
-                                </td>
-                            </tr>
-                        );
-                    }) : (
-                        <tr>
-                            <td colSpan="6" className="p-8 text-center text-gray-500">
-                                No jobs found matching your search.
-                            </td>
-                        </tr>
-                    )}
-                    </tbody>
-                </table>
-            </div>
-
-            {/* Pagination Controls */}
-            {pagination && pagination.totalPages > 1 && (
-                <PaginationControls
-                    currentPage={pagination.page}
-                    totalPages={pagination.totalPages}
-                    onPageChange={pagination.onPageChange}
-                />
-            )}
-        </div>
-    );
-};
-
-// --- SKELETON COMPONENTS ---
-const DashboardSkeleton = () => (
-    <div className="p-6 bg-gray-900 min-h-screen animate-pulse">
-        <div className="h-10 bg-gray-800 rounded w-1/3 mb-8"></div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-8 mt-8">
-            <div className="h-32 bg-gray-800 rounded-lg"></div>
-            <div className="h-32 bg-gray-800 rounded-lg"></div>
-            <div className="h-32 bg-gray-800 rounded-lg"></div>
-        </div>
-        <div className="h-96 bg-gray-800 rounded-lg"></div>
-    </div>
-);
-
-// --- COMPONENT: SETTINGS ---
-const ScraperSettings = ({ onClose, onSaveSuccess }) => {
-    const [statusMessage, setStatusMessage] = React.useState('');
-    const [isSaving, setIsSaving] = React.useState(false);
-    const fileInputRef = React.useRef(null);
-
-    const handleFileUpload = (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-        setStatusMessage('Reading file...');
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            const content = e.target.result;
-            try {
-                const liAtMatch = content.match(/li_at=([^;"]+)/);
-                const jsessionMatch = content.match(/JSESSIONID=?[\\"]*ajax:([0-9]+)/);
-                if (liAtMatch && jsessionMatch) {
-                    await saveCredentials(`li_at=${liAtMatch[1]}; JSESSIONID="ajax:${jsessionMatch[1]}"`, `ajax:${jsessionMatch[1]}`);
-                } else {
-                    setStatusMessage('❌ Error: Could not find li_at or JSESSIONID in file.');
-                }
-            } catch (err) { setStatusMessage('❌ Parsing Error: ' + err.message); }
-        };
-        reader.readAsText(file);
-    };
-
-    const saveCredentials = async (cookies, csrfToken) => {
-        setIsSaving(true);
-        try {
-            await axios.put('http://localhost:5000/services/cookies', { identifier: 'LinkedIn_Saved_Jobs_Scraper', cookies, csrfToken });
-            setStatusMessage('✅ Credentials Updated! Syncing jobs...');
-            onSaveSuccess();
-            setTimeout(onClose, 1500);
-        } catch (error) {
-            setStatusMessage(`❌ API Error: ${error.response?.data?.error || error.message}`);
-        } finally { setIsSaving(false); }
-    };
-
-    return (
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg mb-8 border border-gray-700 animate-in fade-in slide-in-from-top-4">
-            <div className="flex justify-between items-start mb-6">
-                <div>
-                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                        <Terminal size={20} className="text-blue-400" />
-                        Update LinkedIn Credentials
-                    </h3>
-                    <p className="text-gray-400 text-sm mt-1">Upload <code>linkedin.har</code> to refresh session.</p>
-                </div>
-                <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
-            </div>
-            <div className="border-2 border-dashed border-gray-600 rounded-lg p-8 bg-gray-900/50 flex flex-col items-center">
-                <FileJson size={48} className="text-gray-500 mb-4" />
-                <input type="file" accept=".har,.json" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
-                <button onClick={() => fileInputRef.current?.click()} disabled={isSaving} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all flex items-center gap-2">
-                    {isSaving ? <RefreshCcw size={18} className="animate-spin" /> : <Upload size={18} />}
-                    Upload .HAR File
-                </button>
-                {statusMessage && <div className="mt-4 text-sm text-gray-300">{statusMessage}</div>}
-            </div>
-        </div>
-    );
 };
 
 // --- MAIN COMPONENT ---
@@ -1031,25 +116,20 @@ export const JobDashboard = () => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isBackfillOpen, setIsBackfillOpen] = useState(false);
     const [selectedJob, setSelectedJob] = useState(null);
-
-    // Pagination State
     const [page, setPage] = useState(1);
-    const ITEMS_PER_PAGE = 10;
+    const [historyPeriod, setHistoryPeriod] = useState('daily');
 
-    // --- QUERY 1: FETCH ALL (For Charts) ---
-    // This fetches *without* pagination to calculate streaks/history correctly
+    // 1. Fetch Data
     const {
         data: allJobsData,
         isLoading: isLoadingStats,
         refetch: refetchStats
     } = useQuery({
         queryKey: ['allJobs'],
-        queryFn: () => fetchAppliedJobs({}), // No params = fetch all
-        staleTime: 60000, // 1 minute cache
+        queryFn: () => fetchAppliedJobs({}),
+        staleTime: 60000
     });
 
-    // --- QUERY 2: FETCH PAGE (For Table) ---
-    // This fetches only the current page for the list view
     const {
         data: paginatedData,
         isLoading: isLoadingTable,
@@ -1057,113 +137,93 @@ export const JobDashboard = () => {
         isFetching: isFetchingTable
     } = useQuery({
         queryKey: ['appliedJobs', page],
-        queryFn: () => fetchAppliedJobs({ page, limit: ITEMS_PER_PAGE }),
-        keepPreviousData: true,
-        staleTime: 5000,
+        queryFn: () => fetchAppliedJobs({ page, limit: 10 }),
+        keepPreviousData: true
     });
 
-    // Combine loading states for skeleton
+    // 2. Process Data (MUST BE DONE BEFORE CONDITIONAL RETURNS)
+    const jobs = Array.isArray(allJobsData) ? allJobsData : [];
+
+    const currentStats = useMemo(() => processCurrentFormData(jobs), [jobs]);
+    const historyStats = useMemo(() => processHistoryData(jobs, historyPeriod), [jobs, historyPeriod]);
+
+    // 3. Conditional Loading State
     const isLoading = isLoadingStats || isLoadingTable;
+    const handleRefresh = () => { refetchStats(); refetchTable(); };
 
-    // Helper to refresh both queries
-    const handleRefresh = () => {
-        refetchStats();
-        refetchTable();
-    };
-
-    if (isLoading && !allJobsData && !paginatedData) return <DashboardSkeleton />;
-
-    // Prepare Data for components
-    const jobsForCharts = Array.isArray(allJobsData) ? allJobsData : [];
-
-    // Check if paginatedData exists before accessing
-    const tableJobs = paginatedData ? paginatedData.data : [];
-    const paginationConfig = paginatedData ? {
-        page: paginatedData.page,
-        totalPages: paginatedData.total_pages,
-        total: paginatedData.total,
-        onPageChange: setPage
-    } : null;
+    // Skeleton / Loading View
+    if (isLoading && !allJobsData) {
+        return (
+            <div className="p-6 bg-gray-900 min-h-screen text-white animate-pulse">
+                <div className="h-8 w-64 bg-gray-800 rounded mb-8"></div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div className="h-32 bg-gray-800 rounded-xl"></div>
+                    <div className="h-32 bg-gray-800 rounded-xl"></div>
+                    <div className="h-32 bg-gray-800 rounded-xl"></div>
+                </div>
+                <div className="h-96 bg-gray-800 rounded-xl"></div>
+            </div>
+        );
+    }
 
     return (
         <div className="p-6 bg-gray-900 text-gray-200 min-h-screen">
+            {/* Header & Settings-wise actions */}
             <div className="flex flex-col md:flex-row justify-between items-center mb-8 border-b border-gray-800 pb-6">
-                <div className="mb-4 md:mb-0">
-                    <h2 className="text-3xl font-bold text-white mb-1 tracking-tight">Job Application Dashboard</h2>
-                    <p className="text-gray-400 text-sm">Track metrics, monitor goals, and analyze history.</p>
-                </div>
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => setIsBackfillOpen(true)}
-                        className="h-9 px-4 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 hover:border-indigo-500 rounded-lg transition-all flex items-center gap-2 text-sm font-medium"
-                    >
-                        <Database className="w-4 h-4" />
-                        Fix Descriptions
-                    </button>
-                    <button
-                        onClick={handleRefresh}
-                        disabled={isFetchingTable}
-                        className="h-9 px-4 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg border border-gray-700 transition-all flex items-center gap-2 text-sm font-medium"
-                    >
-                        <RefreshCcw className={`w-4 h-4 ${isFetchingTable ? 'animate-spin' : ''}`} />
-                        {isFetchingTable ? 'Syncing...' : 'Sync Data'}
-                    </button>
-                    <button
-                        onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                        className={`h-9 px-4 rounded-lg border flex items-center gap-2 text-sm font-medium transition-all ${
-                            isSettingsOpen ? 'bg-blue-900/30 border-blue-500 text-blue-400' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white'
-                        }`}
-                    >
-                        <Settings size={16} />
-                        Settings
-                    </button>
+                <div><h2 className="text-3xl font-bold text-white mb-1">Job Application Dashboard</h2><p className="text-gray-400 text-sm">Track metrics and goals.</p></div>
+                <div className="flex gap-3">
+                    <button onClick={() => setIsBackfillOpen(true)} className="px-4 py-2 bg-indigo-900/40 text-indigo-300 border border-indigo-500/30 rounded-lg text-sm flex gap-2 items-center hover:bg-indigo-900/60"><Database size={16}/> Fix Descriptions</button>
+                    <button onClick={handleRefresh} disabled={isFetchingTable} className="px-4 py-2 bg-gray-800 text-gray-300 border border-gray-700 rounded-lg text-sm flex gap-2 items-center hover:bg-gray-700"><RefreshCcw size={16} className={isFetchingTable ? 'animate-spin' : ''}/> Sync Data</button>
+                    <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="px-4 py-2 bg-gray-800 text-gray-300 border border-gray-700 rounded-lg text-sm flex gap-2 items-center hover:bg-gray-700"><Settings size={16}/> Settings</button>
                 </div>
             </div>
 
+            {/* Modals */}
             {isSettingsOpen && <ScraperSettings onClose={() => setIsSettingsOpen(false)} onSaveSuccess={handleRefresh} />}
             {isBackfillOpen && <BackfillModal onClose={() => setIsBackfillOpen(false)} />}
             {selectedJob && <JobDetailsPanel job={selectedJob} onClose={() => setSelectedJob(null)} />}
 
             {/* Tabs */}
             <div className="flex space-x-1 bg-gray-800 p-1 rounded-xl w-fit mb-4 border border-gray-800">
-                <button
-                    onClick={() => setActiveTab('current')}
-                    className={`px-6 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                        activeTab === 'current'
-                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50'
-                            : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                    }`}
-                >
-                    <Target size={16} />
-                    Current Form
-                </button>
-                <button
-                    onClick={() => setActiveTab('past')}
-                    className={`px-6 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                        activeTab === 'past'
-                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50'
-                            : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                    }`}
-                >
-                    <CalendarIcon size={16} />
-                    Past Form
-                </button>
+                <button onClick={() => setActiveTab('current')} className={`px-6 py-2 rounded-lg text-sm font-medium flex gap-2 ${activeTab === 'current' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}><Target size={16} /> Current Form</button>
+                <button onClick={() => setActiveTab('past')} className={`px-6 py-2 rounded-lg text-sm font-medium flex gap-2 ${activeTab === 'past' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}><CalendarIcon size={16} /> Past Form</button>
             </div>
 
-            {/* Content Area - Uses Full Data Set */}
+            {/* Feature: Current Form vs Past Form */}
             <div className="min-h-[400px]">
                 {activeTab === 'current' ? (
-                    <CurrentFormTab jobs={jobsForCharts} />
+                    <div className="space-y-8">
+                        {/* Feature: Performance-wise */}
+                        <PerformanceStats stats={currentStats} />
+                        {/* Feature: Streak Calendar */}
+                        <StreakCalendar dailyCounts={currentStats.allDailyCounts} />
+                    </div>
                 ) : (
-                    <PastFormTab jobs={jobsForCharts} />
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6 animate-in fade-in">
+                        <div className="lg:col-span-2 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xl font-bold text-white">History</h3>
+                                <div className="bg-gray-900 rounded p-1 flex space-x-1">
+                                    {['daily', 'weekly', 'monthly'].map(t => (
+                                        <button key={t} onClick={() => setHistoryPeriod(t)} className={`px-3 py-1 text-xs rounded ${historyPeriod === t ? 'bg-blue-600 text-white' : 'text-gray-400'}`}>{t}</button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="h-80"><Bar data={historyStats.barData} options={{ maintainAspectRatio: false, scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, grid: { color: '#374151' } } } }} /></div>
+                        </div>
+                        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+                            <h3 className="text-xl font-bold text-white mb-6">Sources</h3>
+                            <div className="h-64"><Doughnut data={historyStats.doughnutData} options={{ maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'bottom' } } }} /></div>
+                        </div>
+                    </div>
                 )}
             </div>
 
-            {/* Recent Jobs Table - Uses Paginated Data Set */}
-            <RecentJobsTable
-                jobs={tableJobs}
+            {/* Feature: Recent Applications */}
+            <RecentApplications
+                jobs={paginatedData?.data || []}
                 onSelectJob={setSelectedJob}
-                pagination={paginationConfig}
+                pagination={paginatedData ? { page: paginatedData.page, totalPages: paginatedData.total_pages, total: paginatedData.total, onPageChange: setPage } : null}
             />
         </div>
     );
