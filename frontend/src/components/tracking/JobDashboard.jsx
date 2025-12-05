@@ -440,18 +440,27 @@ const DashboardSkeleton = () => (
 );
 
 // --- HELPER FUNCTIONS ---
+const getLocalYMD = (dateObj) => {
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+// 2. Returns today's Date OBJECT (Not a string, fixing the TypeError)
 const getStartOfToday = () => {
-    const now = new Date();
-    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    return new Date();
 };
 
 const getLast7DaysKeys = () => {
     const keys = [];
-    const today = getStartOfToday();
+    const today = new Date();
+
+    // Generate last 7 days based on local time subtraction
     for (let i = 6; i >= 0; i--) {
         const d = new Date(today);
-        d.setUTCDate(today.getUTCDate() - i);
-        keys.push(d.toISOString().split('T')[0]);
+        d.setDate(today.getDate() - i);
+        keys.push(getLocalYMD(d));
     }
     return keys;
 };
@@ -529,7 +538,12 @@ const processCurrentFormData = (jobs) => {
     // 1. Create a map of ALL dates with applications
     const allDailyCounts = {};
     jobs.forEach(job => {
-        const k = new Date(job.appliedAt).toISOString().split('T')[0];
+        // --- FIX: Use Local Time parsing instead of UTC ---
+        // New Date(job.appliedAt) correctly handles the UTC timestamp from DB,
+        // converting it to the browser's local timezone object.
+        const dateObj = new Date(job.appliedAt);
+        const k = getLocalYMD(dateObj);
+
         allDailyCounts[k] = (allDailyCounts[k] || 0) + 1;
     });
 
