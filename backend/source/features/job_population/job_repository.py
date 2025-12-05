@@ -236,3 +236,37 @@ class JobRepository:
                 isinstance(job.qualifications, list) and len(job.qualifications) > 0 and
                 isinstance(job.keywords, list) and len(job.keywords) > 0
         )
+
+    def fetch_paginated_applied_jobs(self, page: int, limit: int) -> dict:
+        """
+        Fetches applied jobs with pagination logic.
+        Returns a dict with data and metadata.
+        """
+        offset = (page - 1) * limit
+
+        # Base query: Applied jobs, not disabled, description exists (optional filter based on your previous logic)
+        base_query = self.session.query(Job).options(joinedload(Job.company)).filter(
+            Job.has_applied.is_(True),
+            Job.disabled.is_(False)
+            # You can uncomment this if you only want jobs with descriptions
+            # Job.description_full != "No description provided"
+        )
+
+        # Get total count for frontend math
+        total_count = base_query.count()
+
+        # Get the actual data sorted by Applied Date (Newest first)
+        jobs = (
+            base_query
+            .order_by(desc(Job.applied_on))
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
+        return {
+            "jobs": jobs,
+            "total": total_count,
+            "page": page,
+            "limit": limit
+        }

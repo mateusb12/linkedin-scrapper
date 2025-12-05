@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import axios from 'axios';
@@ -30,7 +30,7 @@ import {
     Upload,
     FileJson,
     Target,
-    Calendar as CalendarIcon, // Renamed to avoid conflict
+    Calendar as CalendarIcon,
     Check,
     Coffee,
     X,
@@ -40,7 +40,7 @@ import {
     MapPin,
     Building,
     AlignLeft,
-    Users // <--- Added for Applicant Count
+    Users
 } from 'lucide-react';
 import { fetchAppliedJobs } from '../../services/jobService.js';
 
@@ -75,371 +75,7 @@ const themeColors = {
     neutral: '#6b7280',
 };
 
-// --- COMPONENT: BACKFILL MODAL (SSE STREAM) ---
-const BackfillModal = ({ onClose, onComplete }) => {
-    const [progress, setProgress] = React.useState({
-        current: 0,
-        total: 0,
-        job_title: 'Initializing...',
-        company: '',
-        eta_seconds: 0,
-        success_count: 0
-    });
-    const [logs, setLogs] = React.useState([]);
-    const [isFinished, setIsFinished] = React.useState(false);
-
-    React.useEffect(() => {
-                const eventSource = new EventSource('http://localhost:5000/pipeline/backfill-descriptions-stream');
-
-        eventSource.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            setProgress(data);
-
-            // Add to logs (keep last 5)
-            setLogs(prev => [
-                { id: Date.now(), text: `${data.status === 'success' ? '✅' : '❌'} ${data.job_title}`, type: data.status },
-                ...prev
-            ].slice(0, 5));
-        };
-
-        eventSource.addEventListener('complete', () => {
-            setIsFinished(true);
-            eventSource.close();
-            if(onComplete) onComplete();
-        });
-
-        eventSource.addEventListener('error', (e) => {
-            console.error("Stream error", e);
-            if (e.data) {
-                const errData = JSON.parse(e.data);
-                setLogs(prev => [{ id: Date.now(), text: `🚨 Error: ${errData.error}`, type: 'error' }, ...prev]);
-            }
-        });
-
-        return () => eventSource.close();
-    }, []);
-
-    const percentage = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
-
-    const formatTime = (seconds) => {
-        if (!seconds) return 'Calculating...';
-        const m = Math.floor(seconds / 60);
-        const s = seconds % 60;
-        return `${m}m ${s}s`;
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm animate-in fade-in">
-            <div className="bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
-                {/* Header */}
-                <div className="p-6 border-b border-gray-700 bg-gray-900/50">
-                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                        <DownloadCloud className="text-blue-400 animate-pulse" />
-                        Backfilling Descriptions
-                    </h3>
-                    <p className="text-gray-400 text-xs mt-1">Fetching full HTML content for missing jobs.</p>
-                </div>
-
-                {/* Body */}
-                <div className="p-6 space-y-6">
-                    {/* Progress Bar */}
-                    <div>
-                        <div className="flex justify-between text-sm mb-2">
-                            <span className="text-white font-mono">{progress.current} / {progress.total} Jobs</span>
-                            <span className="text-blue-400 font-bold">{percentage}%</span>
-                        </div>
-                        <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
-                            <div
-                                className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-500 ease-out"
-                                style={{ width: `${percentage}%` }}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Stats Grid */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
-                            <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
-                                <Clock size={14} /> Est. Time Remaining
-                            </div>
-                            <div className="text-lg font-bold text-white font-mono">
-                                {formatTime(progress.eta_seconds)}
-                            </div>
-                        </div>
-                        <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
-                            <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
-                                <AlertCircle size={14} /> Success Rate
-                            </div>
-                            <div className="text-lg font-bold text-green-400 font-mono">
-                                {progress.success_count} found
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Current Job Info */}
-                    <div className="bg-blue-900/20 border border-blue-900/50 rounded-lg p-4">
-                        <p className="text-xs text-blue-300 uppercase font-bold tracking-wider mb-1">Processing Now</p>
-                        <p className="text-white font-medium truncate">{progress.job_title}</p>
-                        <p className="text-gray-400 text-sm truncate">{progress.company}</p>
-                    </div>
-
-                    {/* Mini Log */}
-                    <div className="space-y-2">
-                        <p className="text-xs text-gray-500 uppercase font-bold">Recent Activity</p>
-                        <div className="space-y-1.5">
-                            {logs.map(log => (
-                                <div key={log.id} className="text-xs flex items-center gap-2 animate-in slide-in-from-left-2">
-                                    <span className={log.type === 'success' ? 'text-green-400' : 'text-red-400'}>
-                                        {log.text}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Footer */}
-                <div className="p-4 bg-gray-900/50 border-t border-gray-700 flex justify-end">
-                    <button
-                        onClick={onClose}
-                        disabled={!isFinished}
-                        className={`px-6 py-2 rounded-lg font-medium transition-all ${
-                            isFinished
-                                ? 'bg-green-600 hover:bg-green-700 text-white'
-                                : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                        }`}
-                    >
-                        {isFinished ? 'Close' : 'Processing...'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- COMPONENT: JOB DETAILS SIDE PANEL ---
-const JobDetailsPanel = ({ job, onClose }) => {
-    if (!job) return null;
-
-    // Helper to render HTML description safely
-    const createMarkup = (htmlContent) => {
-        return { __html: htmlContent || '<p class="text-gray-500 italic">No description available.</p>' };
-    };
-
-    const isEnriched = job.description_full && job.description_full !== "No description provided";
-
-    return (
-        <div className="fixed inset-0 z-50 flex justify-end">
-            {/* Backdrop */}
-            <div
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300"
-                onClick={onClose}
-            />
-
-            {/* Slide-over Panel */}
-            <div className="relative w-full max-w-2xl bg-gray-900 border-l border-gray-700 h-full shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col">
-
-                {/* Header */}
-                <div className="p-6 border-b border-gray-800 bg-gray-900 z-10">
-                    <div className="flex justify-between items-start mb-4">
-                        <div>
-                            <h2 className="text-2xl font-bold text-white leading-tight mb-1">{job.title}</h2>
-                            <div className="flex items-center gap-2 text-blue-400 font-medium">
-                                <Building size={16} />
-                                {job.company}
-                            </div>
-                        </div>
-                        <button
-                            onClick={onClose}
-                            className="p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
-                        >
-                            <X size={24} />
-                        </button>
-                    </div>
-
-                    {/* Metadata Tags */}
-                    <div className="flex flex-wrap gap-3 text-xs text-gray-300">
-                        <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700">
-                            <CalendarIcon size={14} className="text-gray-400" />
-                            <span>Applied: {new Date(job.appliedAt).toLocaleDateString()}</span>
-                        </div>
-                        {job.location && (
-                            <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700">
-                                <MapPin size={14} className="text-gray-400" />
-                                <span>{job.location}</span>
-                            </div>
-                        )}
-                        {/* Applicant Count Badge */}
-                        {job.applicants > 0 && (
-                            <div className="flex items-center gap-1.5 bg-purple-900/20 text-purple-300 px-3 py-1.5 rounded-full border border-purple-800">
-                                <Users size={14} />
-                                <span>{job.applicants.toLocaleString()} Applicants</span>
-                            </div>
-                        )}
-                        <a
-                            href={job.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 bg-blue-900/20 text-blue-300 px-3 py-1.5 rounded-full border border-blue-800 hover:bg-blue-900/40 transition-colors"
-                        >
-                            <ExternalLink size={14} />
-                            View on {job.source}
-                        </a>
-                    </div>
-                </div>
-
-                {/* Scrollable Content */}
-                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-                    <div className="flex items-center gap-2 mb-4 text-sm font-bold text-gray-400 uppercase tracking-wider">
-                        <AlignLeft size={16} />
-                        Job Description
-                    </div>
-
-                    {/* HTML Content Renderer */}
-                    <div
-                        className="prose prose-invert prose-sm max-w-none text-gray-300 [&>ul]:list-disc [&>ul]:pl-5 [&>ol]:list-decimal [&>ol]:pl-5"
-                        dangerouslySetInnerHTML={createMarkup(job.description_full)}
-                    />
-                </div>
-
-                {/* Footer Status */}
-                <div className="p-4 border-t border-gray-800 bg-gray-900/50 text-xs text-gray-500 flex justify-between items-center">
-                    <span>URN: {job.urn}</span>
-                    <span className={isEnriched ? "text-green-500" : "text-amber-500"}>
-                        {isEnriched ? "● Description Backfilled" : "● Description Missing"}
-                    </span>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- COMPONENT: RECENT JOBS TABLE ---
-const RecentJobsTable = ({ jobs, onSelectJob }) => {
-    const [searchTerm, setSearchTerm] = React.useState('');
-
-    // Sort by date desc
-    const filteredJobs = useMemo(() => {
-        if (!jobs) return [];
-        return jobs
-            .filter(j =>
-                j.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                j.company.toLowerCase().includes(searchTerm.toLowerCase())
-            )
-            .sort((a, b) => new Date(b.appliedAt) - new Date(a.appliedAt));
-    }, [jobs, searchTerm]);
-
-    return (
-        <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-xl overflow-hidden mt-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-            {/* Table Header / Toolbar */}
-            <div className="p-6 border-b border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4">
-                <h3 className="text-xl font-bold text-white">Recent Applications</h3>
-                <div className="relative w-full md:w-64">
-                    <input
-                        type="text"
-                        placeholder="Search jobs..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-gray-900 border border-gray-700 text-gray-200 text-sm rounded-lg pl-4 pr-10 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                    />
-                    <div className="absolute right-3 top-2.5 text-gray-500">
-                        <Terminal size={14} />
-                    </div>
-                </div>
-            </div>
-
-            {/* Table */}
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                    <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
-                    <tr>
-                        <th className="px-6 py-4">Company</th>
-                        <th className="px-6 py-4">Role</th>
-                        <th className="px-6 py-4">Applied</th>
-                        {/* 👇 NEW HEADER */}
-                        <th className="px-6 py-4">Applicants</th>
-                        <th className="px-6 py-4 text-center">Status</th>
-                        <th className="px-6 py-4 text-right">Action</th>
-                    </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-700">
-                    {filteredJobs.slice(0, 10).map((job) => {
-                        const isEnriched = job.description_full && job.description_full !== "No description provided";
-                        const hasApplicants = job.applicants !== null && job.applicants !== undefined;
-
-                        return (
-                            <tr
-                                key={job.urn}
-                                onClick={() => onSelectJob(job)}
-                                className="group hover:bg-gray-700/30 transition-colors cursor-pointer"
-                            >
-                                <td className="px-6 py-4">
-                                    <div className="font-bold text-white">{job.company}</div>
-                                    <div className="text-xs text-gray-500">{job.source}</div>
-                                </td>
-                                <td className="px-6 py-4 text-gray-300 font-medium group-hover:text-blue-400 transition-colors">
-                                    {job.title}
-                                </td>
-                                <td className="px-6 py-4 text-gray-400 text-sm">
-                                    {new Date(job.appliedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                    <span className="text-xs text-gray-600 block">
-                                        {new Date(job.appliedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                    </span>
-                                </td>
-                                {/* 👇 NEW COLUMN DATA */}
-                                <td className="px-6 py-4">
-                                    {hasApplicants ? (
-                                        <div className="flex items-center gap-2 text-gray-300 font-mono">
-                                            <Users size={14} className="text-purple-400" />
-                                            {job.applicants.toLocaleString()}
-                                        </div>
-                                    ) : (
-                                        <span className="text-gray-600 text-xs italic">None</span>
-                                    )}
-                                </td>
-                                <td className="px-6 py-4 text-center">
-                                    {isEnriched ? (
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900/30 text-green-400 border border-green-800 shadow-sm">
-                                            Enriched
-                                        </span>
-                                    ) : (
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-700 text-gray-400 border border-gray-600">
-                                            Basic
-                                        </span>
-                                    )}
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <button className="text-gray-500 hover:text-white p-2 rounded-full hover:bg-gray-700">
-                                        <ChevronRight size={16} />
-                                    </button>
-                                </td>
-                            </tr>
-                        );
-                    })}
-                    </tbody>
-                </table>
-                {filteredJobs.length === 0 && (
-                    <div className="p-8 text-center text-gray-500">No jobs found matching your search.</div>
-                )}
-            </div>
-        </div>
-    );
-};
-
-// --- SKELETON COMPONENTS ---
-const DashboardSkeleton = () => (
-    <div className="p-6 bg-gray-900 min-h-screen animate-pulse">
-        <div className="h-10 bg-gray-800 rounded w-1/3 mb-8"></div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-8 mt-8">
-            <div className="h-32 bg-gray-800 rounded-lg"></div>
-            <div className="h-32 bg-gray-800 rounded-lg"></div>
-            <div className="h-32 bg-gray-800 rounded-lg"></div>
-        </div>
-        <div className="h-96 bg-gray-800 rounded-lg"></div>
-    </div>
-);
-
-// --- HELPER FUNCTIONS ---
+// --- DATA PROCESSING HELPERS ---
 const getLocalYMD = (dateObj) => {
     const year = dateObj.getFullYear();
     const month = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -447,7 +83,6 @@ const getLocalYMD = (dateObj) => {
     return `${year}-${month}-${day}`;
 };
 
-// Returns today's Date OBJECT (Not a string, allowing date math later)
 const getStartOfToday = () => {
     return new Date();
 };
@@ -455,8 +90,6 @@ const getStartOfToday = () => {
 const getLast7DaysKeys = () => {
     const keys = [];
     const today = new Date();
-
-    // Generate last 7 days based on LOCAL time subtraction
     for (let i = 6; i >= 0; i--) {
         const d = new Date(today);
         d.setDate(today.getDate() - i);
@@ -464,7 +97,7 @@ const getLast7DaysKeys = () => {
     }
     return keys;
 };
-// --- DATA PROCESSING ---
+
 const processHistoryData = (jobs, timePeriod) => {
     if (!jobs?.length) return { barData: null, doughnutData: null };
 
@@ -534,43 +167,29 @@ const processHistoryData = (jobs, timePeriod) => {
 };
 
 const processCurrentFormData = (jobs) => {
-    // 1. Create a map of ALL dates with applications using LOCAL TIME keys
     const allDailyCounts = {};
     jobs.forEach(job => {
         if (!job.appliedAt) return;
-
-        // Fix: Parse the UTC string into a Local Date Object
         const dateObj = new Date(job.appliedAt);
-        // Fix: Convert to YYYY-MM-DD using Local Time (matches Recent Apps table)
         const k = getLocalYMD(dateObj);
-
         allDailyCounts[k] = (allDailyCounts[k] || 0) + 1;
     });
 
-    // 2. Prepare Last 7 Days for the chart
     const last7Days = getLast7DaysKeys();
     const dataValues = last7Days.map(k => allDailyCounts[k] || 0);
     const todayKey = last7Days[last7Days.length - 1];
     const todayCount = allDailyCounts[todayKey] || 0;
 
-    // 3. Smart Streak Logic (Ignores Weekends)
     let streak = 0;
-
-    // Fix: checkDate is a Date Object (Local Now), so we can do math
     const checkDate = getStartOfToday();
 
-    // Safety break loop limit
     for (let i = 0; i < 365; i++) {
-        // Fix: Generate key from local date object
         const dateKey = getLocalYMD(checkDate);
-
         const count = allDailyCounts[dateKey] || 0;
-        const dayOfWeek = checkDate.getDay(); // 0 = Sun, 6 = Sat (Local time)
+        const dayOfWeek = checkDate.getDay();
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
         if (i === 0 && count < GOAL_PER_DAY) {
-            // If checking TODAY and goal not met, don't break streak yet.
-            // Just move checkDate to yesterday and continue loop.
             checkDate.setDate(checkDate.getDate() - 1);
             continue;
         }
@@ -578,19 +197,15 @@ const processCurrentFormData = (jobs) => {
         if (count >= GOAL_PER_DAY) {
             streak++;
         } else if (isWeekend) {
-            // Weekend + No Goal = Maintain Streak (don't add, don't break)
+            // Weekend + No Goal = Maintain Streak
         } else {
-            // Weekday + No Goal = Streak Broken
             break;
         }
-
-        // Move one day back (Local time)
         checkDate.setDate(checkDate.getDate() - 1);
     }
 
     return {
         labels: last7Days.map(d => {
-            // Robust parsing of YYYY-MM-DD string
             const [y, m, day] = d.split('-').map(Number);
             const date = new Date(y, m - 1, day);
             return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -602,8 +217,285 @@ const processCurrentFormData = (jobs) => {
     };
 };
 
-// --- COMPONENTS ---
+// --- COMPONENT: PAGINATION CONTROLS ---
+const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
+    const getPageNumbers = () => {
+        const pages = [];
+        pages.push(1);
 
+        let start = Math.max(2, currentPage - 1);
+        let end = Math.min(totalPages - 1, currentPage + 1);
+
+        if (start > 2) pages.push('...');
+        for (let i = start; i <= end; i++) pages.push(i);
+        if (end < totalPages - 1) pages.push('...');
+
+        if (totalPages > 1) pages.push(totalPages);
+
+        return pages;
+    };
+
+    return (
+        <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-700 bg-gray-800">
+            <button
+                onClick={() => onPageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="p-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-400 hover:text-white transition-colors"
+            >
+                <ChevronLeft size={20} />
+            </button>
+
+            {getPageNumbers().map((page, idx) => (
+                <button
+                    key={idx}
+                    onClick={() => typeof page === 'number' ? onPageChange(page) : null}
+                    disabled={typeof page !== 'number'}
+                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                        page === currentPage
+                            ? 'bg-blue-600 text-white shadow-md'
+                            : typeof page === 'number'
+                                ? 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700'
+                                : 'text-gray-500 cursor-default'
+                    }`}
+                >
+                    {page}
+                </button>
+            ))}
+
+            <button
+                onClick={() => onPageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="p-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-400 hover:text-white transition-colors"
+            >
+                <ChevronRight size={20} />
+            </button>
+        </div>
+    );
+};
+
+// --- COMPONENT: BACKFILL MODAL (SSE STREAM) ---
+const BackfillModal = ({ onClose, onComplete }) => {
+    const [progress, setProgress] = React.useState({
+        current: 0,
+        total: 0,
+        job_title: 'Initializing...',
+        company: '',
+        eta_seconds: 0,
+        success_count: 0
+    });
+    const [logs, setLogs] = React.useState([]);
+    const [isFinished, setIsFinished] = React.useState(false);
+
+    React.useEffect(() => {
+        const eventSource = new EventSource('http://localhost:5000/pipeline/backfill-descriptions-stream');
+
+        eventSource.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            setProgress(data);
+
+            setLogs(prev => [
+                { id: Date.now(), text: `${data.status === 'success' ? '✅' : '❌'} ${data.job_title}`, type: data.status },
+                ...prev
+            ].slice(0, 5));
+        };
+
+        eventSource.addEventListener('complete', () => {
+            setIsFinished(true);
+            eventSource.close();
+            if(onComplete) onComplete();
+        });
+
+        eventSource.addEventListener('error', (e) => {
+            console.error("Stream error", e);
+            if (e.data) {
+                const errData = JSON.parse(e.data);
+                setLogs(prev => [{ id: Date.now(), text: `🚨 Error: ${errData.error}`, type: 'error' }, ...prev]);
+            }
+        });
+
+        return () => eventSource.close();
+    }, []);
+
+    const percentage = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
+
+    const formatTime = (seconds) => {
+        if (!seconds) return 'Calculating...';
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        return `${m}m ${s}s`;
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
+                <div className="p-6 border-b border-gray-700 bg-gray-900/50">
+                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                        <DownloadCloud className="text-blue-400 animate-pulse" />
+                        Backfilling Descriptions
+                    </h3>
+                    <p className="text-gray-400 text-xs mt-1">Fetching full HTML content for missing jobs.</p>
+                </div>
+
+                <div className="p-6 space-y-6">
+                    <div>
+                        <div className="flex justify-between text-sm mb-2">
+                            <span className="text-white font-mono">{progress.current} / {progress.total} Jobs</span>
+                            <span className="text-blue-400 font-bold">{percentage}%</span>
+                        </div>
+                        <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-500 ease-out"
+                                style={{ width: `${percentage}%` }}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
+                            <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
+                                <Clock size={14} /> Est. Time Remaining
+                            </div>
+                            <div className="text-lg font-bold text-white font-mono">
+                                {formatTime(progress.eta_seconds)}
+                            </div>
+                        </div>
+                        <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
+                            <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
+                                <AlertCircle size={14} /> Success Rate
+                            </div>
+                            <div className="text-lg font-bold text-green-400 font-mono">
+                                {progress.success_count} found
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-blue-900/20 border border-blue-900/50 rounded-lg p-4">
+                        <p className="text-xs text-blue-300 uppercase font-bold tracking-wider mb-1">Processing Now</p>
+                        <p className="text-white font-medium truncate">{progress.job_title}</p>
+                        <p className="text-gray-400 text-sm truncate">{progress.company}</p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <p className="text-xs text-gray-500 uppercase font-bold">Recent Activity</p>
+                        <div className="space-y-1.5">
+                            {logs.map(log => (
+                                <div key={log.id} className="text-xs flex items-center gap-2 animate-in slide-in-from-left-2">
+                                    <span className={log.type === 'success' ? 'text-green-400' : 'text-red-400'}>
+                                        {log.text}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-4 bg-gray-900/50 border-t border-gray-700 flex justify-end">
+                    <button
+                        onClick={onClose}
+                        disabled={!isFinished}
+                        className={`px-6 py-2 rounded-lg font-medium transition-all ${
+                            isFinished
+                                ? 'bg-green-600 hover:bg-green-700 text-white'
+                                : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                        }`}
+                    >
+                        {isFinished ? 'Close' : 'Processing...'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- COMPONENT: JOB DETAILS SIDE PANEL ---
+const JobDetailsPanel = ({ job, onClose }) => {
+    if (!job) return null;
+
+    const createMarkup = (htmlContent) => {
+        return { __html: htmlContent || '<p class="text-gray-500 italic">No description available.</p>' };
+    };
+
+    const isEnriched = job.description_full && job.description_full !== "No description provided";
+
+    return (
+        <div className="fixed inset-0 z-50 flex justify-end">
+            <div
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300"
+                onClick={onClose}
+            />
+
+            <div className="relative w-full max-w-2xl bg-gray-900 border-l border-gray-700 h-full shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col">
+
+                <div className="p-6 border-b border-gray-800 bg-gray-900 z-10">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h2 className="text-2xl font-bold text-white leading-tight mb-1">{job.title}</h2>
+                            <div className="flex items-center gap-2 text-blue-400 font-medium">
+                                <Building size={16} />
+                                {job.company}
+                            </div>
+                        </div>
+                        <button
+                            onClick={onClose}
+                            className="p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+                        >
+                            <X size={24} />
+                        </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-3 text-xs text-gray-300">
+                        <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700">
+                            <CalendarIcon size={14} className="text-gray-400" />
+                            <span>Applied: {new Date(job.appliedAt).toLocaleDateString()}</span>
+                        </div>
+                        {job.location && (
+                            <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700">
+                                <MapPin size={14} className="text-gray-400" />
+                                <span>{job.location}</span>
+                            </div>
+                        )}
+                        {job.applicants > 0 && (
+                            <div className="flex items-center gap-1.5 bg-purple-900/20 text-purple-300 px-3 py-1.5 rounded-full border border-purple-800">
+                                <Users size={14} />
+                                <span>{job.applicants.toLocaleString()} Applicants</span>
+                            </div>
+                        )}
+                        <a
+                            href={job.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 bg-blue-900/20 text-blue-300 px-3 py-1.5 rounded-full border border-blue-800 hover:bg-blue-900/40 transition-colors"
+                        >
+                            <ExternalLink size={14} />
+                            View on {job.source}
+                        </a>
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                    <div className="flex items-center gap-2 mb-4 text-sm font-bold text-gray-400 uppercase tracking-wider">
+                        <AlignLeft size={16} />
+                        Job Description
+                    </div>
+
+                    <div
+                        className="prose prose-invert prose-sm max-w-none text-gray-300 [&>ul]:list-disc [&>ul]:pl-5 [&>ol]:list-decimal [&>ol]:pl-5"
+                        dangerouslySetInnerHTML={createMarkup(job.description_full)}
+                    />
+                </div>
+
+                <div className="p-4 border-t border-gray-800 bg-gray-900/50 text-xs text-gray-500 flex justify-between items-center">
+                    <span>URN: {job.urn}</span>
+                    <span className={isEnriched ? "text-green-500" : "text-amber-500"}>
+                        {isEnriched ? "● Description Backfilled" : "● Description Missing"}
+                    </span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- COMPONENT: STAT CARD ---
 const StatCard = ({ title, value, suffix, subtext, iconSrc, colorClass }) => {
     const pillClass = colorClass.replace('text-', 'bg-').replace('400', '400/10') + ' ' + colorClass;
 
@@ -631,7 +523,6 @@ const StatCard = ({ title, value, suffix, subtext, iconSrc, colorClass }) => {
 // --- COMPONENT: STREAK CALENDAR ---
 const StreakCalendar = ({ dailyCounts }) => {
     const today = new Date();
-    // Ensure we work with UTC dates to match data processing
     const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
 
     const [currentMonth, setCurrentMonth] = useState(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)));
@@ -639,7 +530,6 @@ const StreakCalendar = ({ dailyCounts }) => {
     const daysInMonth = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() + 1, 0)).getUTCDate();
     const startDayOffset = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth(), 1)).getUTCDay();
 
-    // Generate Calendar Grid
     const calendarDays = [];
     for (let i = 0; i < startDayOffset; i++) calendarDays.push(null);
     for (let i = 1; i <= daysInMonth; i++) {
@@ -668,14 +558,12 @@ const StreakCalendar = ({ dailyCounts }) => {
                 </div>
             </div>
 
-            {/* Day Labels */}
             <div className="grid grid-cols-7 gap-2 mb-2">
                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
                     <div key={d} className="text-center text-xs text-gray-500 font-bold uppercase">{d}</div>
                 ))}
             </div>
 
-            {/* Calendar Grid */}
             <div className="grid grid-cols-7 gap-2">
                 {calendarDays.map((date, idx) => {
                     if (!date) return <div key={idx} className="h-12 w-full"></div>;
@@ -687,58 +575,42 @@ const StreakCalendar = ({ dailyCounts }) => {
                     const isWeekend = date.getUTCDay() === 0 || date.getUTCDay() === 6;
                     const isFuture = date > todayUTC;
 
-                    // --- STYLE LOGIC ---
                     let baseClass = "h-12 w-full rounded-lg flex flex-col items-center justify-center border transition-all relative group";
                     let content = null;
-                    let numberColor = "text-gray-600"; // default number color
+                    let numberColor = "text-gray-600";
 
                     if (isFuture) {
-                        // FUTURE
                         baseClass += " border-gray-800 bg-gray-900/30 opacity-40";
                     }
                     else if (isGoalMet) {
-                        // 🏆 GOAL MET (GOLD)
                         baseClass += " bg-gradient-to-br from-amber-400 to-amber-600 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.3)] transform hover:scale-105 z-10";
                         content = <Check className="text-white drop-shadow-md" size={24} strokeWidth={4} />;
                         numberColor = "text-amber-900";
                     }
                     else if (count > 0) {
-                        // 📈 IN PROGRESS (BLUE SCALE)
-                        // This overrides weekend "Rest" if you actually did work
                         numberColor = "text-blue-200";
-
                         if (count >= 7) {
-                            // High Progress (7-9)
                             baseClass += " bg-blue-600/60 border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.2)]";
                         } else if (count >= 4) {
-                            // Medium Progress (4-6)
                             baseClass += " bg-blue-800/60 border-blue-600";
                         } else {
-                            // Low Progress (1-3)
                             baseClass += " bg-blue-900/40 border-blue-800";
                         }
                     }
                     else if (isWeekend) {
-                        // ☕ REST DAY (Weekend + 0 Apps)
                         baseClass += " bg-gray-800 border-gray-700 opacity-60";
                         content = <Coffee className="text-gray-600" size={18} />;
                     }
                     else {
-                        // ❌ MISSED (Weekday + 0 Apps)
                         baseClass += " bg-gray-900 border-gray-800 hover:border-gray-700";
                     }
 
                     return (
                         <div key={idx} className={baseClass}>
-                            {/* Day Number */}
                             <span className={`absolute top-1 left-1.5 text-[10px] font-bold ${numberColor}`}>
                                 {date.getUTCDate()}
                             </span>
-
-                            {/* Icon (Check or Coffee) */}
                             {content}
-
-                            {/* Tooltip */}
                             <div className="absolute opacity-0 group-hover:opacity-100 bottom-full mb-2 bg-gray-900 text-xs px-2 py-1 rounded border border-gray-700 whitespace-nowrap z-20 pointer-events-none transition-opacity shadow-lg">
                                 <span className="font-bold text-white">{count}</span> <span className="text-gray-400">Applications</span>
                             </div>
@@ -747,7 +619,6 @@ const StreakCalendar = ({ dailyCounts }) => {
                 })}
             </div>
 
-            {/* Legend */}
             <div className="flex flex-wrap gap-4 justify-center mt-6 text-xs text-gray-400">
                 <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-sm bg-gray-900 border border-gray-800"></div> 0
@@ -769,6 +640,7 @@ const StreakCalendar = ({ dailyCounts }) => {
     );
 };
 
+// --- COMPONENT: CURRENT FORM TAB ---
 const CurrentFormTab = ({ jobs }) => {
     const stats = useMemo(() => processCurrentFormData(jobs || []), [jobs]);
 
@@ -838,7 +710,6 @@ const CurrentFormTab = ({ jobs }) => {
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 gap-y-10 pt-4">
                 <StatCard
                     title="Today's Progress"
@@ -865,7 +736,6 @@ const CurrentFormTab = ({ jobs }) => {
                 />
             </div>
 
-            {/* Main Chart */}
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl mt-4">
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="text-xl font-bold text-white">Daily Performance</h3>
@@ -878,12 +748,12 @@ const CurrentFormTab = ({ jobs }) => {
                 </div>
             </div>
 
-            {/* Streak Calendar - Added at bottom of current form */}
             <StreakCalendar dailyCounts={stats.allDailyCounts} />
         </div>
     );
 };
 
+// --- COMPONENT: PAST FORM TAB ---
 const PastFormTab = ({ jobs }) => {
     const [timePeriod, setTimePeriod] = useState('daily');
     const { barData, doughnutData } = useMemo(() => processHistoryData(jobs, timePeriod), [jobs, timePeriod]);
@@ -941,7 +811,6 @@ const PastFormTab = ({ jobs }) => {
                             }}
                         />
                     </div>
-                    {/* Center Text */}
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none pb-8">
                         <div className="text-center">
                             <p className="text-3xl font-bold text-white">{jobs.length}</p>
@@ -954,7 +823,146 @@ const PastFormTab = ({ jobs }) => {
     );
 };
 
-// --- SETTINGS COMPONENT ---
+// --- COMPONENT: RECENT JOBS TABLE ---
+const RecentJobsTable = ({ jobs, onSelectJob, pagination }) => {
+    const [searchTerm, setSearchTerm] = React.useState('');
+
+    const filteredJobs = useMemo(() => {
+        if (!jobs) return [];
+        return jobs
+            .filter(j =>
+                j.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                j.company.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+        // Note: Data is already sorted by backend
+    }, [jobs, searchTerm]);
+
+    return (
+        <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-xl overflow-hidden mt-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
+            <div className="p-6 border-b border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div className="flex items-center gap-4">
+                    <h3 className="text-xl font-bold text-white">Recent Applications</h3>
+                    {pagination && (
+                        <span className="text-xs font-mono text-gray-500 bg-gray-900 px-2 py-1 rounded border border-gray-700">
+                            Total: {pagination.total}
+                        </span>
+                    )}
+                </div>
+                <div className="relative w-full md:w-64">
+                    <input
+                        type="text"
+                        placeholder="Search current page..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-gray-900 border border-gray-700 text-gray-200 text-sm rounded-lg pl-4 pr-10 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    />
+                    <div className="absolute right-3 top-2.5 text-gray-500">
+                        <Terminal size={14} />
+                    </div>
+                </div>
+            </div>
+
+            <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                    <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
+                    <tr>
+                        <th className="px-6 py-4">Company</th>
+                        <th className="px-6 py-4">Role</th>
+                        <th className="px-6 py-4">Applied</th>
+                        <th className="px-6 py-4">Applicants</th>
+                        <th className="px-6 py-4 text-center">Status</th>
+                        <th className="px-6 py-4 text-right">Action</th>
+                    </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-700">
+                    {filteredJobs.length > 0 ? filteredJobs.map((job) => {
+                        const isEnriched = job.description_full && job.description_full !== "No description provided";
+                        const hasApplicants = job.applicants !== null && job.applicants !== undefined;
+
+                        return (
+                            <tr
+                                key={job.urn}
+                                onClick={() => onSelectJob(job)}
+                                className="group hover:bg-gray-700/30 transition-colors cursor-pointer"
+                            >
+                                <td className="px-6 py-4">
+                                    <div className="font-bold text-white">{job.company}</div>
+                                    <div className="text-xs text-gray-500">{job.source}</div>
+                                </td>
+                                <td className="px-6 py-4 text-gray-300 font-medium group-hover:text-blue-400 transition-colors">
+                                    {job.title}
+                                </td>
+                                <td className="px-6 py-4 text-gray-400 text-sm">
+                                    {new Date(job.appliedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    <span className="text-xs text-gray-600 block">
+                                        {new Date(job.appliedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                    {hasApplicants ? (
+                                        <div className="flex items-center gap-2 text-gray-300 font-mono">
+                                            <Users size={14} className="text-purple-400" />
+                                            {job.applicants.toLocaleString()}
+                                        </div>
+                                    ) : (
+                                        <span className="text-gray-600 text-xs italic">None</span>
+                                    )}
+                                </td>
+                                <td className="px-6 py-4 text-center">
+                                    {isEnriched ? (
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900/30 text-green-400 border border-green-800 shadow-sm">
+                                            Enriched
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-700 text-gray-400 border border-gray-600">
+                                            Basic
+                                        </span>
+                                    )}
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                    <button className="text-gray-500 hover:text-white p-2 rounded-full hover:bg-gray-700">
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </td>
+                            </tr>
+                        );
+                    }) : (
+                        <tr>
+                            <td colSpan="6" className="p-8 text-center text-gray-500">
+                                No jobs found matching your search.
+                            </td>
+                        </tr>
+                    )}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Pagination Controls */}
+            {pagination && pagination.totalPages > 1 && (
+                <PaginationControls
+                    currentPage={pagination.page}
+                    totalPages={pagination.totalPages}
+                    onPageChange={pagination.onPageChange}
+                />
+            )}
+        </div>
+    );
+};
+
+// --- SKELETON COMPONENTS ---
+const DashboardSkeleton = () => (
+    <div className="p-6 bg-gray-900 min-h-screen animate-pulse">
+        <div className="h-10 bg-gray-800 rounded w-1/3 mb-8"></div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-8 mt-8">
+            <div className="h-32 bg-gray-800 rounded-lg"></div>
+            <div className="h-32 bg-gray-800 rounded-lg"></div>
+            <div className="h-32 bg-gray-800 rounded-lg"></div>
+        </div>
+        <div className="h-96 bg-gray-800 rounded-lg"></div>
+    </div>
+);
+
+// --- COMPONENT: SETTINGS ---
 const ScraperSettings = ({ onClose, onSaveSuccess }) => {
     const [statusMessage, setStatusMessage] = React.useState('');
     const [isSaving, setIsSaving] = React.useState(false);
@@ -1019,23 +1027,66 @@ const ScraperSettings = ({ onClose, onSaveSuccess }) => {
 
 // --- MAIN COMPONENT ---
 export const JobDashboard = () => {
-    const [activeTab, setActiveTab] = useState('current'); // 'current' | 'past'
+    const [activeTab, setActiveTab] = useState('current');
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isBackfillOpen, setIsBackfillOpen] = useState(false);
     const [selectedJob, setSelectedJob] = useState(null);
 
-    const { data: jobs, isLoading, isError, refetch, isFetching } = useQuery({
-        queryKey: ['appliedJobs'],
-        queryFn: fetchAppliedJobs,
-        staleTime: 0,
-        retry: false
+    // Pagination State
+    const [page, setPage] = useState(1);
+    const ITEMS_PER_PAGE = 10;
+
+    // --- QUERY 1: FETCH ALL (For Charts) ---
+    // This fetches *without* pagination to calculate streaks/history correctly
+    const {
+        data: allJobsData,
+        isLoading: isLoadingStats,
+        refetch: refetchStats
+    } = useQuery({
+        queryKey: ['allJobs'],
+        queryFn: () => fetchAppliedJobs({}), // No params = fetch all
+        staleTime: 60000, // 1 minute cache
     });
 
-    if (isLoading) return <DashboardSkeleton />;
+    // --- QUERY 2: FETCH PAGE (For Table) ---
+    // This fetches only the current page for the list view
+    const {
+        data: paginatedData,
+        isLoading: isLoadingTable,
+        refetch: refetchTable,
+        isFetching: isFetchingTable
+    } = useQuery({
+        queryKey: ['appliedJobs', page],
+        queryFn: () => fetchAppliedJobs({ page, limit: ITEMS_PER_PAGE }),
+        keepPreviousData: true,
+        staleTime: 5000,
+    });
+
+    // Combine loading states for skeleton
+    const isLoading = isLoadingStats || isLoadingTable;
+
+    // Helper to refresh both queries
+    const handleRefresh = () => {
+        refetchStats();
+        refetchTable();
+    };
+
+    if (isLoading && !allJobsData && !paginatedData) return <DashboardSkeleton />;
+
+    // Prepare Data for components
+    const jobsForCharts = Array.isArray(allJobsData) ? allJobsData : [];
+
+    // Check if paginatedData exists before accessing
+    const tableJobs = paginatedData ? paginatedData.data : [];
+    const paginationConfig = paginatedData ? {
+        page: paginatedData.page,
+        totalPages: paginatedData.total_pages,
+        total: paginatedData.total,
+        onPageChange: setPage
+    } : null;
 
     return (
         <div className="p-6 bg-gray-900 text-gray-200 min-h-screen">
-            {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-center mb-8 border-b border-gray-800 pb-6">
                 <div className="mb-4 md:mb-0">
                     <h2 className="text-3xl font-bold text-white mb-1 tracking-tight">Job Application Dashboard</h2>
@@ -1050,12 +1101,12 @@ export const JobDashboard = () => {
                         Fix Descriptions
                     </button>
                     <button
-                        onClick={() => refetch()}
-                        disabled={isFetching}
+                        onClick={handleRefresh}
+                        disabled={isFetchingTable}
                         className="h-9 px-4 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg border border-gray-700 transition-all flex items-center gap-2 text-sm font-medium"
                     >
-                        <RefreshCcw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-                        {isFetching ? 'Syncing...' : 'Sync Data'}
+                        <RefreshCcw className={`w-4 h-4 ${isFetchingTable ? 'animate-spin' : ''}`} />
+                        {isFetchingTable ? 'Syncing...' : 'Sync Data'}
                     </button>
                     <button
                         onClick={() => setIsSettingsOpen(!isSettingsOpen)}
@@ -1069,78 +1120,51 @@ export const JobDashboard = () => {
                 </div>
             </div>
 
-            {isSettingsOpen && <ScraperSettings onClose={() => setIsSettingsOpen(false)} onSaveSuccess={refetch} />}
+            {isSettingsOpen && <ScraperSettings onClose={() => setIsSettingsOpen(false)} onSaveSuccess={handleRefresh} />}
+            {isBackfillOpen && <BackfillModal onClose={() => setIsBackfillOpen(false)} />}
+            {selectedJob && <JobDetailsPanel job={selectedJob} onClose={() => setSelectedJob(null)} />}
 
-            {isBackfillOpen && (
-                <BackfillModal
-                    onClose={() => setIsBackfillOpen(false)}
-                    onComplete={() => {
-                        // Optional: Refetch jobs to update "SQL" data in charts
-                        // refetch();
-                    }}
-                />
-            )}
+            {/* Tabs */}
+            <div className="flex space-x-1 bg-gray-800 p-1 rounded-xl w-fit mb-4 border border-gray-800">
+                <button
+                    onClick={() => setActiveTab('current')}
+                    className={`px-6 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                        activeTab === 'current'
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50'
+                            : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                    }`}
+                >
+                    <Target size={16} />
+                    Current Form
+                </button>
+                <button
+                    onClick={() => setActiveTab('past')}
+                    className={`px-6 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                        activeTab === 'past'
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50'
+                            : 'text-gray-400 hover:text-white hover:bg-gray-700'
+                    }`}
+                >
+                    <CalendarIcon size={16} />
+                    Past Form
+                </button>
+            </div>
 
-            {selectedJob && (
-                <JobDetailsPanel
-                    job={selectedJob}
-                    onClose={() => setSelectedJob(null)}
-                />
-            )}
+            {/* Content Area - Uses Full Data Set */}
+            <div className="min-h-[400px]">
+                {activeTab === 'current' ? (
+                    <CurrentFormTab jobs={jobsForCharts} />
+                ) : (
+                    <PastFormTab jobs={jobsForCharts} />
+                )}
+            </div>
 
-            {isError ? (
-                <div className="bg-red-900/10 border border-red-900/50 p-8 rounded-xl text-center max-w-lg mx-auto mt-10">
-                    <Lock className="mx-auto text-red-500 w-12 h-12 mb-4" />
-                    <h3 className="text-xl font-bold text-white mb-2">Access Required</h3>
-                    <p className="text-gray-400 mb-6">Your LinkedIn session has expired. Please update your credentials to view data.</p>
-                    <button onClick={() => setIsSettingsOpen(true)} className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">
-                        Update Credentials
-                    </button>
-                </div>
-            ) : (
-                <>
-                    {/* Tabs */}
-                    <div className="flex space-x-1 bg-gray-800 p-1 rounded-xl w-fit mb-4 border border-gray-800">
-                        <button
-                            onClick={() => setActiveTab('current')}
-                            className={`px-6 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                                activeTab === 'current'
-                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50'
-                                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                            }`}
-                        >
-                            <Target size={16} />
-                            Current Form
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('past')}
-                            className={`px-6 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                                activeTab === 'past'
-                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50'
-                                    : 'text-gray-400 hover:text-white hover:bg-gray-700'
-                            }`}
-                        >
-                            <CalendarIcon size={16} />
-                            Past Form
-                        </button>
-                    </div>
-
-                    {/* Content */}
-                    <div className="min-h-[400px]">
-                        {activeTab === 'current' ? (
-                            <CurrentFormTab jobs={jobs} />
-                        ) : (
-                            <PastFormTab jobs={jobs} />
-                        )}
-                    </div>
-
-                    {/* NEW: Recent Jobs Table (Below Charts) */}
-                    <RecentJobsTable
-                        jobs={jobs}
-                        onSelectJob={setSelectedJob}
-                    />
-                </>
-            )}
+            {/* Recent Jobs Table - Uses Paginated Data Set */}
+            <RecentJobsTable
+                jobs={tableJobs}
+                onSelectJob={setSelectedJob}
+                pagination={paginationConfig}
+            />
         </div>
     );
 };

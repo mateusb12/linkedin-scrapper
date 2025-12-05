@@ -1,5 +1,6 @@
 # backend/controllers/services_controller.py
 import json
+import math
 from datetime import timezone
 from flask import Blueprint, jsonify, request
 from dateutil.parser import parse as parse_datetime
@@ -26,7 +27,6 @@ def normalize_huntr_job(job: dict) -> dict:
     }
 
 
-# --- THIS FUNCTION IS CORRECTED ---
 def normalize_linkedin_job(job_data) -> dict:
     """Normalizes a single LinkedIn job (can be dict or Job object)."""
     # Handle if fetch_all_linkedin_jobs returns ORM objects
@@ -66,64 +66,92 @@ def normalize_sql_job(job: Job) -> dict:
     }
 
 
-# --- THIS ENDPOINT IS MADE MORE ROBUST ---
+def apply_timezone_fix(job_dict):
+    """Helper to ensure dates are UTC aware for frontend conversion."""
+    applied_at = job_dict.get("appliedAt")
+    if applied_at:
+        # 1. Ensure it is a datetime object
+        if isinstance(applied_at, str):
+            try:
+                applied_at = parse_datetime(applied_at)
+            except:
+                pass  # Keep as string if parsing fails
+
+        # 2. If it is a datetime object, force UTC timezone if naive
+        if hasattr(applied_at, 'tzinfo'):
+            if applied_at.tzinfo is None:
+                applied_at = applied_at.replace(tzinfo=timezone.utc)
+
+            # 3. Format strictly
+            job_dict["formattedDate"] = applied_at.strftime("%d-%b-%Y").lower()
+            job_dict["appliedAt"] = applied_at.isoformat()
+    return job_dict
+
+
 @services_bp.route("/applied-jobs", methods=["GET"])
 def get_all_applied_jobs():
     """
-    Fetches and unifies job applications, de-duplicating to ensure correct source labeling.
+    Fetches job applications.
+    - If 'page' param is present: Returns paginated data from DB (FAST).
+    - If 'page' param is missing: Syncs with LinkedIn first, then returns ALL data (SLOW) for charts.
     """
     repo = JobRepository()
     try:
-        # 1. Trigger the sync (Updates DB with fresh timestamps)
-        print("Syncing LinkedIn jobs...")
-        fetch_all_linkedin_jobs()
-        print("Sync complete.")
+        page = request.args.get('page', type=int)
+        limit = request.args.get('limit', default=10, type=int)
 
-        # 2. Fetch ALL applied jobs from DB (Now includes those without descriptions)
-        all_jobs = repo.fetch_internal_sql_jobs()
+        if page:
+            # --- PAGINATED PATH (Table View) ---
+            result = repo.fetch_paginated_applied_jobs(page, limit)
 
-        normalized_jobs = [normalize_sql_job(job) for job in all_jobs]
+            normalized_jobs = []
+            for job in result['jobs']:
+                norm = normalize_sql_job(job)
+                # Apply Timezone fix
+                norm = apply_timezone_fix(norm)
+                normalized_jobs.append(norm)
 
-        # 3. Clean and Sort
-        final_list = []
-        for job in normalized_jobs:
-            applied_at = job.get("appliedAt")
+            return jsonify({
+                "data": normalized_jobs,
+                "total": result['total'],
+                "page": result['page'],
+                "limit": result['limit'],
+                "total_pages": math.ceil(result['total'] / limit)
+            }), 200
 
-            # Skip if no date
-            if not applied_at:
-                continue
+        else:
+            # --- FULL DATA PATH (Charts/Calendar View) ---
+            # Ideally, we should separate "Sync" from "Fetch All" to speed up charts,
+            # but for now we keep the existing logic.
+            print("Syncing LinkedIn jobs...")
+            fetch_all_linkedin_jobs()
+            print("Sync complete.")
 
-            try:
-                # Ensure we have a datetime object
-                if isinstance(applied_at, str):
-                    applied_at = parse_datetime(applied_at)
+            all_jobs = repo.fetch_internal_sql_jobs()
+            normalized_jobs = [normalize_sql_job(job) for job in all_jobs]
 
-                # Ensure Timezone Awareness (UTC) for consistent sorting
-                if applied_at.tzinfo is None:
-                    applied_at = applied_at.replace(tzinfo=timezone.utc)
+            # Clean, Sort, and Fix Timezones
+            final_list = []
+            for job in normalized_jobs:
+                if not job.get("appliedAt"):
+                    continue
 
-                job["appliedAt"] = applied_at
+                try:
+                    # Apply Timezone fix
+                    job = apply_timezone_fix(job)
+                    final_list.append(job)
+                except Exception as parse_err:
+                    print(f"Skipping job {job.get('title')} - invalid date ({parse_err})")
+                    continue
 
-                # Format for Frontend Display
-                # Example: 02-dec-2025
-                job["formattedDate"] = applied_at.strftime("%d-%b-%Y").lower()
+            # Sort Descending (Newest First)
+            all_jobs_sorted = sorted(
+                final_list,
+                key=lambda x: x["appliedAt"],
+                reverse=True
+            )
 
-                # ISO format for charts/sorting
-                job["appliedAt"] = applied_at.isoformat()
-
-                final_list.append(job)
-            except Exception as parse_err:
-                print(f"Skipping job {job.get('title')} - invalid date: {applied_at} ({parse_err})")
-                continue
-
-        # 4. Sort Descending (Newest First)
-        all_jobs_sorted = sorted(
-            final_list,
-            key=lambda x: x["appliedAt"],
-            reverse=True
-        )
-
-        return jsonify(all_jobs_sorted), 200
+            return jsonify(all_jobs_sorted), 200
 
     except Exception as e:
         print("An error occurred in /applied-jobs endpoint:")
@@ -133,7 +161,6 @@ def get_all_applied_jobs():
         repo.close()
 
 
-# You can keep the old endpoints for debugging or remove them
 @services_bp.route("/huntr", methods=["GET"])
 def get_huntr_jobs():
     jobs: list[dict] = get_huntr_jobs_data()
@@ -157,17 +184,6 @@ def get_sql_jobs():
 
 
 def _get_record_by_identifier(identifier: str) -> FetchCurl | None:
-    """
-    Finds a FetchCurl record by its ID or name.
-    - If the identifier is a digit, it searches by primary key (id).
-    - Otherwise, it searches by the 'name' field.
-
-    Args:
-        identifier: The ID or name of the record.
-
-    Returns:
-        The FetchCurl ORM instance or None if not found.
-    """
     session = get_db_session()
     try:
         if isinstance(identifier, int) or identifier.isdigit():
