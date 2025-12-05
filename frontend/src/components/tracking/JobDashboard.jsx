@@ -447,7 +447,7 @@ const getLocalYMD = (dateObj) => {
     return `${year}-${month}-${day}`;
 };
 
-// 2. Returns today's Date OBJECT (Not a string, fixing the TypeError)
+// Returns today's Date OBJECT (Not a string, allowing date math later)
 const getStartOfToday = () => {
     return new Date();
 };
@@ -456,7 +456,7 @@ const getLast7DaysKeys = () => {
     const keys = [];
     const today = new Date();
 
-    // Generate last 7 days based on local time subtraction
+    // Generate last 7 days based on LOCAL time subtraction
     for (let i = 6; i >= 0; i--) {
         const d = new Date(today);
         d.setDate(today.getDate() - i);
@@ -464,7 +464,6 @@ const getLast7DaysKeys = () => {
     }
     return keys;
 };
-
 // --- DATA PROCESSING ---
 const processHistoryData = (jobs, timePeriod) => {
     if (!jobs?.length) return { barData: null, doughnutData: null };
@@ -535,13 +534,14 @@ const processHistoryData = (jobs, timePeriod) => {
 };
 
 const processCurrentFormData = (jobs) => {
-    // 1. Create a map of ALL dates with applications
+    // 1. Create a map of ALL dates with applications using LOCAL TIME keys
     const allDailyCounts = {};
     jobs.forEach(job => {
-        // --- FIX: Use Local Time parsing instead of UTC ---
-        // New Date(job.appliedAt) correctly handles the UTC timestamp from DB,
-        // converting it to the browser's local timezone object.
+        if (!job.appliedAt) return;
+
+        // Fix: Parse the UTC string into a Local Date Object
         const dateObj = new Date(job.appliedAt);
+        // Fix: Convert to YYYY-MM-DD using Local Time (matches Recent Apps table)
         const k = getLocalYMD(dateObj);
 
         allDailyCounts[k] = (allDailyCounts[k] || 0) + 1;
@@ -555,45 +555,50 @@ const processCurrentFormData = (jobs) => {
 
     // 3. Smart Streak Logic (Ignores Weekends)
     let streak = 0;
+
+    // Fix: checkDate is a Date Object (Local Now), so we can do math
     const checkDate = getStartOfToday();
 
-    // Safety break loop limit (e.g. 365 days)
+    // Safety break loop limit
     for (let i = 0; i < 365; i++) {
-        const dateKey = checkDate.toISOString().split('T')[0];
+        // Fix: Generate key from local date object
+        const dateKey = getLocalYMD(checkDate);
+
         const count = allDailyCounts[dateKey] || 0;
-        const dayOfWeek = checkDate.getUTCDay(); // 0 = Sun, 6 = Sat
+        const dayOfWeek = checkDate.getDay(); // 0 = Sun, 6 = Sat (Local time)
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
         if (i === 0 && count < GOAL_PER_DAY) {
-            // If checking TODAY and we haven't met goal yet,
-            // don't break streak, just move to yesterday.
-            checkDate.setUTCDate(checkDate.getUTCDate() - 1);
+            // If checking TODAY and goal not met, don't break streak yet.
+            // Just move checkDate to yesterday and continue loop.
+            checkDate.setDate(checkDate.getDate() - 1);
             continue;
         }
 
         if (count >= GOAL_PER_DAY) {
-            // Met goal -> Add to streak
             streak++;
         } else if (isWeekend) {
-            // Didn't meet goal, BUT it's weekend -> Maintain streak (don't add, don't break)
+            // Weekend + No Goal = Maintain Streak (don't add, don't break)
         } else {
-            // Didn't meet goal and it's a weekday -> Streak broken
+            // Weekday + No Goal = Streak Broken
             break;
         }
 
-        // Move one day back
-        checkDate.setUTCDate(checkDate.getUTCDate() - 1);
+        // Move one day back (Local time)
+        checkDate.setDate(checkDate.getDate() - 1);
     }
 
     return {
         labels: last7Days.map(d => {
-            const date = new Date(d);
+            // Robust parsing of YYYY-MM-DD string
+            const [y, m, day] = d.split('-').map(Number);
+            const date = new Date(y, m - 1, day);
             return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
         }),
         data: dataValues,
         todayCount,
         streak,
-        allDailyCounts // Return this for the calendar
+        allDailyCounts
     };
 };
 
