@@ -7,6 +7,16 @@ import requests
 
 from source.features.fetch_curl.fetch_service import FetchService
 
+def extract_all_items(payload):
+    stack = [payload]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, dict):
+            yield item
+            stack.extend(item.values())
+        elif isinstance(item, list):
+            stack.extend(item)
+
 class EnrichmentService:
     QUERY_ID = "voyagerJobsDashJobCards.174f05382121bd73f2f133da2e4af893"
     DETAIL_QUERY_ID = "voyagerJobsDashJobPostingDetailSections.5b0469809f45002e8d68c712fd6e6285"
@@ -217,25 +227,25 @@ class EnrichmentService:
         """
         Fetches:
         1. Full HTML description
-        2. Premium Applicant Insights (Count) - Optional/Best Effort
+        2. Premium Applicant Insights (Count, applicantsInPastDay, rankPercentile)
         """
         clean_id = job_urn.split(':')[-1]
         target_urn = f"urn:li:fsd_jobPosting:{clean_id}"
 
-        # FIX: Removed '_CARD' suffix from JOB_APPLICANT_INSIGHTS
         variables = (
             f"(cardSectionTypes:List(JOB_DESCRIPTION_CARD,JOB_APPLICANT_INSIGHTS),"
             f"jobPostingUrn:{urllib.parse.quote(target_urn)},"
             f"includeSecondaryActionsV2:true)"
         )
 
-        query_id = EnrichmentService.DETAIL_QUERY_ID
         base_url = "https://www.linkedin.com/voyager/api/graphql"
-        url = f"{base_url}?variables={variables}&queryId={query_id}"
+        url = f"{base_url}?variables={variables}&queryId={EnrichmentService.DETAIL_QUERY_ID}"
 
         result = {
             "description": None,
-            "applicants": None
+            "applicants": None,
+            "applicants_in_past_day": None,
+            "applicant_rank_percentile": None
         }
 
         try:
@@ -247,39 +257,52 @@ class EnrichmentService:
                 return result
 
             data = response.json()
-            included_items = data.get("included", [])
 
-            # --- PARSING LOOP ---
+            # Save JSON snapshot for debugging
+            with open("response.json", "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+
             found_desc = False
             found_insights = False
 
-            for item in included_items:
-                type_id = item.get("$type")
+            # 🔍 UNIVERSAL RECURSIVE SCAN
+            for item in extract_all_items(data):
+                type_id = item.get("$type", "")
 
+                # ---------------------------------
                 # 1. Capture Description
+                # ---------------------------------
                 if type_id == "com.linkedin.voyager.dash.jobs.JobDescription":
-                    description = item.get("descriptionText", {}).get("text")
-                    if description:
-                        result["description"] = description
+                    desc = item.get("descriptionText", {}).get("text")
+                    if desc:
+                        result["description"] = desc
                         found_desc = True
 
-                # 2. Capture Applicant Count (Premium Insight)
-                if type_id == "com.linkedin.voyager.dash.jobs.JobApplicantInsights":
-                    # Looks for "applicantCount" integer
+                # ---------------------------------
+                # 2. Capture ALL Premium Applicant Insights
+                # ---------------------------------
+                if "JobApplicantInsights" in type_id:
                     count = item.get("applicantCount")
                     if count is not None:
                         result["applicants"] = int(count)
-                        found_insights = True
 
-            # Log results
-            status_msg = []
-            if found_desc: status_msg.append("Desc ✅")
-            else: status_msg.append("Desc ❌")
+                    result["applicants_in_past_day"] = item.get("applicantsInPastDay")
+                    result["applicant_rank_percentile"] = item.get("applicantRankPercentile")
 
-            if found_insights: status_msg.append(f"Applicants: {result['applicants']} 💎")
-            else: status_msg.append("No Premium Data ⚪")
+                    found_insights = True
 
-            print(f"-> {', '.join(status_msg)}")
+            # ---------------------------------
+            # Logging summary
+            # ---------------------------------
+            status = []
+            status.append("Desc ✅" if found_desc else "Desc ❌")
+
+            if found_insights:
+                status.append(f"Applicants: {result['applicants']} 💎")
+            else:
+                status.append("No Premium Data ⚪")
+
+            print(" -> " + ", ".join(status))
             return result
 
         except Exception as e:
