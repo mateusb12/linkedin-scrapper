@@ -46,6 +46,4 @@ def handle_bad_request(e):
 
 # --- Main Execution ---
 if __name__ == '__main__':
-    with app.app_context():
-        create_db_and_tables()
     app.run(debug=True, use_reloader=False)

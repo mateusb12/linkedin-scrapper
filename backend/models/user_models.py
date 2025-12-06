@@ -59,6 +59,8 @@ class Profile(Base):
     negative_keywords = Column(JSON, nullable=True)
     education = Column(JSON, nullable=True) # <-- ADDED HERE
     resumes = relationship("Resume", back_populates="profile", cascade="all, delete-orphan")
+    email_app_password = Column(String, nullable=True)
+
 
     def __repr__(self):
         return f"<Profile(id={self.id}, name={self.name}, email={self.email})>"
