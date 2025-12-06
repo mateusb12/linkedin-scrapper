@@ -1,6 +1,7 @@
 from werkzeug.exceptions import BadRequest
 
 from source.features.get_applied_jobs.services_controller import services_bp
+from source.features.gmail_service.gmail_controller import gmail_bp
 from source.features.profile.profile_controller import profile_bp
 from dotenv import load_dotenv
 from flask import Flask, request
@@ -27,6 +28,7 @@ app.register_blueprint(population_bp)
 app.register_blueprint(resume_bp)
 app.register_blueprint(profile_bp)
 app.register_blueprint(services_bp)
+app.register_blueprint(gmail_bp)
 
 
 # --- Routes ---

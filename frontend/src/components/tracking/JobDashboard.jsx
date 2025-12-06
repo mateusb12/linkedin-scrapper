@@ -2,12 +2,13 @@ import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
-import { Database, RefreshCcw, Settings, Target, Calendar as CalendarIcon } from 'lucide-react';
-import { fetchAppliedJobs } from '../../services/jobService.js';
+import { Database, RefreshCcw, Settings, Target, Calendar as CalendarIcon, Ban } from 'lucide-react'; // Added Ban icon
+import { fetchAppliedJobs, fetchJobFailures } from '../../services/jobService.js'; // Updated import
 
 // --- FEATURE IMPORTS ---
 import StreakCalendar from './StreakCalendar';
 import RecentApplications from './RecentApplications';
+import JobFailures from './JobFailures'; // NEW IMPORT
 import PerformanceStats from './PerformanceStats';
 import { BackfillModal, ScraperSettings, JobDetailsPanel } from './DashboardModals';
 
@@ -17,8 +18,11 @@ ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarEle
 const GOAL_PER_DAY = 10;
 const themeColors = { linkedin: '#8b5cf6', huntr: '#10b981', sql: '#3b82f6', textPrimary: '#f3f4f6', textSecondary: '#9ca3af' };
 
-// --- DATA PROCESSING LOGIC ---
+// ... [Keep processCurrentFormData and processHistoryData exactly as they were] ...
+// (Omitting them here for brevity, they are unchanged from your upload)
+
 const processCurrentFormData = (jobs) => {
+    // ... [Your existing logic]
     const allDailyCounts = {};
     const getLocalYMD = (d) => {
         const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2,'0'); const day = String(d.getDate()).padStart(2,'0');
@@ -110,71 +114,73 @@ const processHistoryData = (jobs, timePeriod) => {
     };
 };
 
+
 // --- MAIN COMPONENT ---
 export const JobDashboard = () => {
-    const [activeTab, setActiveTab] = useState('current');
+    const [activeTab, setActiveTab] = useState('current'); // 'current', 'past', 'rejections'
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isBackfillOpen, setIsBackfillOpen] = useState(false);
     const [selectedJob, setSelectedJob] = useState(null);
+    const [selectedFailure, setSelectedFailure] = useState(null); // For email details
+
+    // Pagination states
     const [page, setPage] = useState(1);
+    const [failPage, setFailPage] = useState(1);
     const [historyPeriod, setHistoryPeriod] = useState('daily');
 
-    // 1. Fetch Data
-    const {
-        data: allJobsData,
-        isLoading: isLoadingStats,
-        refetch: refetchStats
-    } = useQuery({
+    // 1. Fetch Stats & Applications
+    const { data: allJobsData, isLoading: isLoadingStats, refetch: refetchStats } = useQuery({
         queryKey: ['allJobs'],
         queryFn: () => fetchAppliedJobs({}),
         staleTime: 60000
     });
 
-    const {
-        data: paginatedData,
-        isLoading: isLoadingTable,
-        refetch: refetchTable,
-        isFetching: isFetchingTable
-    } = useQuery({
+    const { data: paginatedData, isLoading: isLoadingTable, refetch: refetchTable, isFetching: isFetchingTable } = useQuery({
         queryKey: ['appliedJobs', page],
         queryFn: () => fetchAppliedJobs({ page, limit: 10 }),
         keepPreviousData: true
     });
 
-    // 2. Process Data (MUST BE DONE BEFORE CONDITIONAL RETURNS)
-    const jobs = Array.isArray(allJobsData) ? allJobsData : [];
+    // 2. Fetch Failures (Rejections)
+    const { data: failureData, isLoading: isLoadingFailures, refetch: refetchFailures } = useQuery({
+        queryKey: ['jobFailures', failPage],
+        queryFn: () => fetchJobFailures({ page: failPage, limit: 10 }),
+        keepPreviousData: true
+    });
 
+    // 3. Process Data
+    const jobs = Array.isArray(allJobsData) ? allJobsData : [];
     const currentStats = useMemo(() => processCurrentFormData(jobs), [jobs]);
     const historyStats = useMemo(() => processHistoryData(jobs, historyPeriod), [jobs, historyPeriod]);
 
-    // 3. Conditional Loading State
-    const isLoading = isLoadingStats || isLoadingTable;
-    const handleRefresh = () => { refetchStats(); refetchTable(); };
+    const handleRefresh = () => {
+        refetchStats();
+        refetchTable();
+        refetchFailures();
+    };
 
-    // Skeleton / Loading View
-    if (isLoading && !allJobsData) {
-        return (
-            <div className="p-6 bg-gray-900 min-h-screen text-white animate-pulse">
-                <div className="h-8 w-64 bg-gray-800 rounded mb-8"></div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    <div className="h-32 bg-gray-800 rounded-xl"></div>
-                    <div className="h-32 bg-gray-800 rounded-xl"></div>
-                    <div className="h-32 bg-gray-800 rounded-xl"></div>
-                </div>
-                <div className="h-96 bg-gray-800 rounded-xl"></div>
-            </div>
-        );
+    if (isLoadingStats && !allJobsData) {
+        return <div className="p-6 bg-gray-900 min-h-screen text-white animate-pulse">Loading Dashboard...</div>;
     }
 
     return (
         <div className="p-6 bg-gray-900 text-gray-200 min-h-screen">
-            {/* Header & Settings-wise actions */}
+            {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-center mb-8 border-b border-gray-800 pb-6">
-                <div><h2 className="text-3xl font-bold text-white mb-1">Job Application Dashboard</h2><p className="text-gray-400 text-sm">Track metrics and goals.</p></div>
+                <div>
+                    <h2 className="text-3xl font-bold text-white mb-1">Job Application Dashboard</h2>
+                    <p className="text-gray-400 text-sm">Track metrics, goals, and outcomes.</p>
+                </div>
                 <div className="flex gap-3">
-                    <button onClick={() => setIsBackfillOpen(true)} className="px-4 py-2 bg-indigo-900/40 text-indigo-300 border border-indigo-500/30 rounded-lg text-sm flex gap-2 items-center hover:bg-indigo-900/60"><Database size={16}/> Fix Descriptions</button>
-                    <button onClick={handleRefresh} disabled={isFetchingTable} className="px-4 py-2 bg-gray-800 text-gray-300 border border-gray-700 rounded-lg text-sm flex gap-2 items-center hover:bg-gray-700"><RefreshCcw size={16} className={isFetchingTable ? 'animate-spin' : ''}/> Sync Data</button>
-                    <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="px-4 py-2 bg-gray-800 text-gray-300 border border-gray-700 rounded-lg text-sm flex gap-2 items-center hover:bg-gray-700"><Settings size={16}/> Settings</button>
+                    <button onClick={() => setIsBackfillOpen(true)} className="px-4 py-2 bg-indigo-900/40 text-indigo-300 border border-indigo-500/30 rounded-lg text-sm flex gap-2 items-center hover:bg-indigo-900/60">
+                        <Database size={16}/> Fix Descriptions
+                    </button>
+                    <button onClick={handleRefresh} disabled={isFetchingTable} className="px-4 py-2 bg-gray-800 text-gray-300 border border-gray-700 rounded-lg text-sm flex gap-2 items-center hover:bg-gray-700">
+                        <RefreshCcw size={16} className={isFetchingTable ? 'animate-spin' : ''}/> Sync Data
+                    </button>
+                    <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="px-4 py-2 bg-gray-800 text-gray-300 border border-gray-700 rounded-lg text-sm flex gap-2 items-center hover:bg-gray-700">
+                        <Settings size={16}/> Settings
+                    </button>
                 </div>
             </div>
 
@@ -182,23 +188,36 @@ export const JobDashboard = () => {
             {isSettingsOpen && <ScraperSettings onClose={() => setIsSettingsOpen(false)} onSaveSuccess={handleRefresh} />}
             {isBackfillOpen && <BackfillModal onClose={() => setIsBackfillOpen(false)} />}
             {selectedJob && <JobDetailsPanel job={selectedJob} onClose={() => setSelectedJob(null)} />}
+            {/* TODO: Add EmailDetailsModal for selectedFailure */}
 
             {/* Tabs */}
             <div className="flex space-x-1 bg-gray-800 p-1 rounded-xl w-fit mb-4 border border-gray-800">
-                <button onClick={() => setActiveTab('current')} className={`px-6 py-2 rounded-lg text-sm font-medium flex gap-2 ${activeTab === 'current' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}><Target size={16} /> Current Form</button>
-                <button onClick={() => setActiveTab('past')} className={`px-6 py-2 rounded-lg text-sm font-medium flex gap-2 ${activeTab === 'past' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}><CalendarIcon size={16} /> Past Form</button>
+                <button onClick={() => setActiveTab('current')} className={`px-6 py-2 rounded-lg text-sm font-medium flex gap-2 ${activeTab === 'current' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                    <Target size={16} /> Current Form
+                </button>
+                <button onClick={() => setActiveTab('past')} className={`px-6 py-2 rounded-lg text-sm font-medium flex gap-2 ${activeTab === 'past' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                    <CalendarIcon size={16} /> Past Form
+                </button>
+                <button onClick={() => setActiveTab('rejections')} className={`px-6 py-2 rounded-lg text-sm font-medium flex gap-2 ${activeTab === 'rejections' ? 'bg-red-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                    <Ban size={16} /> Rejections
+                </button>
             </div>
 
-            {/* Feature: Current Form vs Past Form */}
+            {/* Content Area */}
             <div className="min-h-[400px]">
-                {activeTab === 'current' ? (
-                    <div className="space-y-8">
-                        {/* Feature: Performance-wise */}
+                {activeTab === 'current' && (
+                    <div className="space-y-8 animate-in fade-in">
                         <PerformanceStats stats={currentStats} />
-                        {/* Feature: Streak Calendar */}
                         <StreakCalendar dailyCounts={currentStats.allDailyCounts} />
+                        <RecentApplications
+                            jobs={paginatedData?.data || []}
+                            onSelectJob={setSelectedJob}
+                            pagination={paginatedData ? { page: paginatedData.page, totalPages: paginatedData.total_pages, total: paginatedData.total, onPageChange: setPage } : null}
+                        />
                     </div>
-                ) : (
+                )}
+
+                {activeTab === 'past' && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6 animate-in fade-in">
                         <div className="lg:col-span-2 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
                             <div className="flex justify-between items-center mb-6">
@@ -217,14 +236,17 @@ export const JobDashboard = () => {
                         </div>
                     </div>
                 )}
-            </div>
 
-            {/* Feature: Recent Applications */}
-            <RecentApplications
-                jobs={paginatedData?.data || []}
-                onSelectJob={setSelectedJob}
-                pagination={paginatedData ? { page: paginatedData.page, totalPages: paginatedData.total_pages, total: paginatedData.total, onPageChange: setPage } : null}
-            />
+                {activeTab === 'rejections' && (
+                    <div className="animate-in fade-in">
+                        <JobFailures
+                            emails={failureData?.data || []}
+                            onSelectEmail={setSelectedFailure}
+                            pagination={failureData ? { page: failureData.page, totalPages: failureData.total_pages, total: failureData.total, onPageChange: setFailPage } : null}
+                        />
+                    </div>
+                )}
+            </div>
         </div>
     );
 };

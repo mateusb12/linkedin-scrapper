@@ -60,3 +60,8 @@ export const fetchAppliedJobs = async ({ page, limit } = {}) => {
     const response = await fetch(url);
     return handleResponse(response, 'Failed to fetch applied jobs');
 };
+
+export const fetchJobFailures = async ({ page = 1, limit = 10 }) => {
+    const response = await fetch(`${API_BASE}/emails/failures?page=${page}&limit=${limit}`);
+    return handleResponse(response, 'Failed to fetch job failures');
+};
