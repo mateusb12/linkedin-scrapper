@@ -84,3 +84,8 @@ export const syncApplicationStatus = async () => {
     });
     return handleResponse(response, 'Failed to sync application status');
 };
+
+export const fetchDashboardInsights = async () => {
+    const response = await fetch(`${API_BASE}/services/insights`);
+    return handleResponse(response, 'Failed to fetch dashboard insights');
+};

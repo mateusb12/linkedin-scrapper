@@ -280,3 +280,85 @@ def manage_cookies():
             return jsonify({"error": "Database error", "details": str(e)}), 500
 
     return jsonify({"error": "Method not allowed"}), 405
+
+@services_bp.route("/insights", methods=["GET"])
+def get_dashboard_insights():
+    """
+    Returns high-level metrics for the Insights Dashboard.
+    """
+    session = get_db_session()
+    try:
+        # Fetch all valid jobs
+        jobs = session.query(Job).filter(
+            Job.has_applied.is_(True),
+            Job.disabled.is_(False)
+        ).all()
+
+        total_applications = len(jobs)
+        if total_applications == 0:
+            return jsonify({
+                "overview": {"total": 0, "refused": 0, "waiting": 0, "refusal_rate": 0},
+                "competition": {"low": 0, "medium": 0, "high": 0, "avg_applicants": 0},
+                "funnel": []
+            }), 200
+
+        # --- Metric 1: Outcomes (Refusal Rate) ---
+        refused_count = sum(1 for j in jobs if j.application_status == 'Refused')
+        waiting_count = total_applications - refused_count
+        refusal_rate = round((refused_count / total_applications) * 100, 1)
+
+        # --- Metric 2: Competition Analysis (Applicants) ---
+        # Buckets: Low (<50), Medium (50-200), High (>200)
+        low_comp = 0
+        med_comp = 0
+        high_comp = 0
+        total_applicants_sum = 0
+        jobs_with_applicants_data = 0
+
+        for j in jobs:
+            count = j.applicants or 0
+            if count > 0:
+                total_applicants_sum += count
+                jobs_with_applicants_data += 1
+
+            if count <= 50:
+                low_comp += 1
+            elif count <= 200:
+                med_comp += 1
+            else:
+                high_comp += 1
+
+        avg_applicants = 0
+        if jobs_with_applicants_data > 0:
+            avg_applicants = round(total_applicants_sum / jobs_with_applicants_data)
+
+        # --- Metric 3: Refusals by Competition (Correlation) ---
+        # Do we get rejected more often when competition is high?
+        # We calculate the refusal rate specifically for High Competition jobs
+        high_comp_jobs = [j for j in jobs if (j.applicants or 0) > 200]
+        high_comp_refusals = sum(1 for j in high_comp_jobs if j.application_status == 'Refused')
+        high_comp_refusal_rate = 0
+        if len(high_comp_jobs) > 0:
+            high_comp_refusal_rate = round((high_comp_refusals / len(high_comp_jobs)) * 100, 1)
+
+        return jsonify({
+            "overview": {
+                "total": total_applications,
+                "refused": refused_count,
+                "waiting": waiting_count,
+                "refusal_rate": refusal_rate
+            },
+            "competition": {
+                "low": low_comp,       # < 50
+                "medium": med_comp,    # 50 - 200
+                "high": high_comp,     # > 200
+                "avg_applicants": avg_applicants,
+                "high_comp_refusal_rate": high_comp_refusal_rate
+            }
+        }), 200
+
+    except Exception as e:
+        print(traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()

@@ -2,14 +2,15 @@ import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
-import { Database, RefreshCcw, Settings, Target, Calendar as CalendarIcon, Ban, DownloadCloud } from 'lucide-react';
-import {fetchAppliedJobs, fetchJobFailures, syncApplicationStatus, syncEmails} from '../../services/jobService.js';
+import { Database, RefreshCcw, Settings, Target, Calendar as CalendarIcon, Ban, DownloadCloud, PieChart } from 'lucide-react';
+import { fetchAppliedJobs, fetchJobFailures, syncEmails, syncApplicationStatus, fetchDashboardInsights } from '../../services/jobService.js';
 
 // --- FEATURE IMPORTS ---
 import StreakCalendar from './StreakCalendar';
 import RecentApplications from './RecentApplications';
 import JobFailures from './JobFailures';
 import PerformanceStats from './PerformanceStats';
+import DashboardInsights from './DashboardInsights'; // Import new component
 import { BackfillModal, ScraperSettings, JobDetailsPanel } from './DashboardModals';
 
 // Register Chart components
@@ -116,7 +117,7 @@ const processHistoryData = (jobs, timePeriod) => {
 
 // --- MAIN COMPONENT ---
 export const JobDashboard = () => {
-    const [activeTab, setActiveTab] = useState('current'); // 'current', 'past', 'rejections'
+    const [activeTab, setActiveTab] = useState('current'); // 'current', 'past', 'insights', 'rejections'
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isBackfillOpen, setIsBackfillOpen] = useState(false);
     const [selectedJob, setSelectedJob] = useState(null);
@@ -127,20 +128,6 @@ export const JobDashboard = () => {
     const [page, setPage] = useState(1);
     const [failPage, setFailPage] = useState(1);
     const [historyPeriod, setHistoryPeriod] = useState('daily');
-
-    React.useEffect(() => {
-        const initSync = async () => {
-            try {
-                console.log("🔄 Auto-syncing application statuses...");
-                await syncApplicationStatus();
-                // After sync, refetch the table data to show new statuses
-                refetchTable();
-            } catch (err) {
-                console.error("Auto-sync failed:", err);
-            }
-        };
-        initSync();
-    }, []); // Empty dependency array = run once on mount
 
     // 1. Fetch Stats & Applications (Local DB)
     const { data: allJobsData, isLoading: isLoadingStats, refetch: refetchStats } = useQuery({
@@ -162,10 +149,34 @@ export const JobDashboard = () => {
         keepPreviousData: true
     });
 
-    // 3. Process Data
+    // 3. Fetch Insights Data (New Query)
+    const { data: insightsData, isLoading: isLoadingInsights, refetch: refetchInsights } = useQuery({
+        queryKey: ['dashboardInsights'],
+        queryFn: fetchDashboardInsights,
+        // Refetch when window focuses to keep stats fresh
+        refetchOnWindowFocus: true
+    });
+
+    // 4. Process Data
     const jobs = Array.isArray(allJobsData) ? allJobsData : [];
     const currentStats = useMemo(() => processCurrentFormData(jobs), [jobs]);
     const historyStats = useMemo(() => processHistoryData(jobs, historyPeriod), [jobs, historyPeriod]);
+
+    // --- INITIALIZATION EFFECT ---
+    // Runs once on mount to sync status columns
+    React.useEffect(() => {
+        const initSync = async () => {
+            try {
+                console.log("🔄 Auto-syncing application statuses...");
+                await syncApplicationStatus();
+                // After sync, refetch the table data to show new statuses
+                refetchTable();
+            } catch (err) {
+                console.error("Auto-sync failed:", err);
+            }
+        };
+        initSync();
+    }, []); // Empty dependency array = run once on mount
 
     // --- SYNC HANDLER ---
     const handleSyncData = async () => {
@@ -180,6 +191,7 @@ export const JobDashboard = () => {
                 // or you could add logic to sync LinkedIn jobs here too
                 await refetchStats();
                 await refetchTable();
+                await refetchInsights(); // Also refresh insights
             }
         } catch (error) {
             console.error("Sync failed", error);
@@ -234,15 +246,18 @@ export const JobDashboard = () => {
             {selectedJob && <JobDetailsPanel job={selectedJob} onClose={() => setSelectedJob(null)} />}
 
             {/* Tabs */}
-            <div className="flex space-x-1 bg-gray-800 p-1 rounded-xl w-fit mb-4 border border-gray-800">
-                <button onClick={() => setActiveTab('current')} className={`px-6 py-2 rounded-lg text-sm font-medium flex gap-2 ${activeTab === 'current' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
-                    <Target size={16} /> Current Form
+            <div className="flex space-x-1 bg-gray-800 p-1 rounded-xl w-fit mb-4 border border-gray-800 overflow-x-auto">
+                <button onClick={() => setActiveTab('current')} className={`px-4 md:px-6 py-2 rounded-lg text-sm font-medium flex gap-2 ${activeTab === 'current' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                    <Target size={16} /> <span className="hidden md:inline">Current Form</span>
                 </button>
-                <button onClick={() => setActiveTab('past')} className={`px-6 py-2 rounded-lg text-sm font-medium flex gap-2 ${activeTab === 'past' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
-                    <CalendarIcon size={16} /> Past Form
+                <button onClick={() => setActiveTab('past')} className={`px-4 md:px-6 py-2 rounded-lg text-sm font-medium flex gap-2 ${activeTab === 'past' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                    <CalendarIcon size={16} /> <span className="hidden md:inline">Past Form</span>
                 </button>
-                <button onClick={() => setActiveTab('rejections')} className={`px-6 py-2 rounded-lg text-sm font-medium flex gap-2 ${activeTab === 'rejections' ? 'bg-red-600 text-white' : 'text-gray-400 hover:text-white'}`}>
-                    <Ban size={16} /> Rejections
+                <button onClick={() => setActiveTab('insights')} className={`px-4 md:px-6 py-2 rounded-lg text-sm font-medium flex gap-2 ${activeTab === 'insights' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                    <PieChart size={16} /> <span className="hidden md:inline">Insights</span>
+                </button>
+                <button onClick={() => setActiveTab('rejections')} className={`px-4 md:px-6 py-2 rounded-lg text-sm font-medium flex gap-2 ${activeTab === 'rejections' ? 'bg-red-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+                    <Ban size={16} /> <span className="hidden md:inline">Rejections</span>
                 </button>
             </div>
 
@@ -278,6 +293,10 @@ export const JobDashboard = () => {
                             <div className="h-64"><Doughnut data={historyStats.doughnutData} options={{ maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'bottom' } } }} /></div>
                         </div>
                     </div>
+                )}
+
+                {activeTab === 'insights' && (
+                    <DashboardInsights insights={insightsData} />
                 )}
 
                 {activeTab === 'rejections' && (
