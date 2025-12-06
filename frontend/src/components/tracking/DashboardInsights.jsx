@@ -10,25 +10,42 @@ import {
     BarElement,
     Title
 } from 'chart.js';
-import { TrendingUp, Users, AlertTriangle, CheckCircle, Calendar, Filter } from 'lucide-react';
+import { TrendingUp, Users, AlertTriangle, CheckCircle, Calendar, Filter, ArrowUpRight, Activity } from 'lucide-react';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
 
-const StatCard = ({ title, value, subtext, icon: Icon, color }) => (
-    <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg flex items-center gap-4 transition-transform hover:scale-105 duration-300">
-        <div className={`p-3 rounded-lg bg-${color}-900/20 text-${color}-400`}>
-            <Icon size={24} />
+// --- Styled Stat Card ---
+const StatCard = ({ title, value, subtext, icon: Icon, color, trend }) => {
+    const colorClasses = {
+        blue: 'bg-blue-500/10 text-blue-400',
+        red: 'bg-red-500/10 text-red-400',
+        orange: 'bg-orange-500/10 text-orange-400',
+        yellow: 'bg-yellow-500/10 text-yellow-400',
+        purple: 'bg-purple-500/10 text-purple-400',
+    };
+
+    return (
+        <div className="relative group overflow-hidden bg-gray-800/60 backdrop-blur-sm p-6 rounded-2xl border border-gray-700/50 hover:border-gray-600 transition-all duration-300 hover:shadow-lg hover:shadow-gray-900/40">
+            <div className="flex justify-between items-start">
+                <div className="space-y-1">
+                    <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">{title}</p>
+                    <h3 className="text-3xl font-extrabold text-white tracking-tight">{value}</h3>
+                </div>
+                <div className={`p-3 rounded-xl ${colorClasses[color] || 'bg-gray-700 text-gray-300'} transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3`}>
+                    <Icon size={24} />
+                </div>
+            </div>
+            {subtext && (
+                <div className="mt-4 flex items-center gap-2">
+                    {trend && <span className="flex items-center text-xs font-bold text-green-400 bg-green-400/10 px-1.5 py-0.5 rounded"><ArrowUpRight size={12} className="mr-1"/>{trend}</span>}
+                    <p className="text-xs font-medium text-gray-500">{subtext}</p>
+                </div>
+            )}
         </div>
-        <div>
-            <p className="text-gray-400 text-sm font-medium uppercase tracking-wider">{title}</p>
-            <h3 className="text-2xl font-bold text-white">{value}</h3>
-            {subtext && <p className="text-xs text-gray-500 mt-1">{subtext}</p>}
-        </div>
-    </div>
-);
+    );
+};
 
 const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
-    // Ensure insights object exists to prevent crashes
     const safeInsights = insights || {
         overview: { total: 0, refused: 0, waiting: 0, refusal_rate: 0 },
         competition: { low: 0, medium: 0, high: 0, avg_applicants: 0, high_comp_refusal_rate: 0 }
@@ -36,71 +53,99 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
 
     const { overview, competition } = safeInsights;
 
-    // --- CHART DATA CONFIG ---
+    // --- Chart Data & Options ---
+
+    // Donut Data
     const statusData = {
         labels: ['Waiting', 'Refused'],
         datasets: [{
             data: [overview.waiting, overview.refused],
-            backgroundColor: ['#eab308', '#ef4444'],
-            borderWidth: 0,
-            hoverOffset: 4
+            backgroundColor: ['#fbbf24', '#f87171'], // Amber-400, Red-400
+            borderWidth: 4,
+            borderColor: '#1f2937',
+            hoverOffset: 8
         }]
     };
 
+    // Bar Data
     const competitionData = {
         labels: ['Low (<50)', 'Medium (50-200)', 'High (>200)'],
         datasets: [{
             label: 'Applications',
             data: [competition.low, competition.medium, competition.high],
-            backgroundColor: ['#10b981', '#3b82f6', '#f97316'],
-            borderRadius: 6,
+            backgroundColor: ['#34d399', '#60a5fa', '#f472b6'], // Emerald, Blue, Pink
+            borderRadius: 8, // Softer corners
+            // Remove fixed barThickness to let chart.js scale them better
+            // barThickness: 60,
+            barPercentage: 0.6, // Controls width relative to category width (0-1)
+            categoryPercentage: 0.8 // Controls category width (0-1)
         }]
     };
 
-    const barOptions = {
+    const commonOptions = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-            legend: { display: false },
-            tooltip: {
-                backgroundColor: '#1f2937',
-                padding: 12,
-                titleColor: '#f3f4f6',
-                bodyColor: '#d1d5db'
-            }
-        },
-        scales: {
-            y: {
-                beginAtZero: true,
-                grid: { color: '#374151' },
-                ticks: { color: '#9ca3af' }
+            legend: {
+                position: 'bottom',
+                labels: {
+                    color: '#9ca3af',
+                    usePointStyle: true,
+                    padding: 20,
+                    font: { size: 11, family: "'Inter', sans-serif" }
+                }
             },
-            x: {
-                grid: { display: false },
-                ticks: { color: '#9ca3af' }
+            tooltip: {
+                backgroundColor: '#111827',
+                titleColor: '#f3f4f6',
+                bodyColor: '#d1d5db',
+                padding: 12,
+                cornerRadius: 8,
+                displayColors: false,
+                borderWidth: 1,
+                borderColor: '#374151'
             }
         }
     };
 
-    return (
-        <div className="space-y-6 mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    const barOptions = {
+        ...commonOptions,
+        scales: {
+            y: {
+                beginAtZero: true,
+                grid: { color: '#374151', borderDash: [4, 4], drawBorder: false },
+                ticks: { color: '#6b7280', font: { size: 10 } }
+            },
+            x: {
+                grid: { display: false },
+                ticks: { color: '#9ca3af', font: { size: 11, weight: '500' } }
+            }
+        },
+        plugins: { ...commonOptions.plugins, legend: { display: false } }
+    };
 
-            {/* --- HEADER & FILTERS --- */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-800/50 p-4 rounded-xl border border-gray-700/50 backdrop-blur-sm">
-                <div>
-                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                        <TrendingUp size={20} className="text-purple-400" />
-                        Performance Analytics
-                    </h3>
-                    <p className="text-gray-400 text-sm">Analyze metrics across selected timeframe</p>
+    return (
+        <div className="space-y-6 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+
+            {/* --- Header / Filters --- */}
+            <div className="flex flex-col sm:flex-row justify-between items-center bg-gray-800/40 p-4 rounded-2xl border border-gray-700/50 backdrop-blur-md">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-500/10 rounded-lg text-purple-400">
+                        <Activity size={20} />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold text-white leading-none">Performance Analytics</h3>
+                        <p className="text-xs text-gray-400 mt-1">Metrics overview for <span className="text-purple-400 font-medium capitalize">{timeRange.replace(/_/g, ' ')}</span></p>
+                    </div>
                 </div>
 
-                <div className="mt-3 sm:mt-0 flex items-center gap-2">
-                    <Filter size={16} className="text-gray-500" />
+                <div className="mt-4 sm:mt-0 flex items-center gap-3 bg-gray-900 p-1 rounded-xl border border-gray-700/50 shadow-inner">
+                    <div className="pl-3 text-gray-500"><Filter size={14} /></div>
                     <select
                         value={timeRange}
                         onChange={(e) => onTimeRangeChange(e.target.value)}
-                        className="bg-gray-900 border border-gray-600 text-white text-sm rounded-lg focus:ring-purple-500 focus:border-purple-500 block p-2.5 outline-none hover:bg-gray-800 transition-colors cursor-pointer"
+                        // FIX: Added bg-gray-900 and text-gray-300 to ensure dark mode style
+                        className="bg-gray-900 border-none text-gray-300 text-sm focus:ring-0 cursor-pointer py-1.5 pr-8 pl-2 font-medium hover:text-white transition-colors rounded-r-xl outline-none"
                     >
                         <option value="current_week">Current Week</option>
                         <option value="last_2_weeks">Last 2 Weeks</option>
@@ -112,72 +157,81 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
                 </div>
             </div>
 
-            {/* Top Row: Key Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* --- Key Metrics Grid --- */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
                 <StatCard
                     title="Total Applied"
                     value={overview.total}
                     icon={Calendar}
                     color="blue"
+                    subtext="applications sent"
                 />
                 <StatCard
                     title="Refusal Rate"
                     value={`${overview.refusal_rate}%`}
-                    subtext={`${overview.refused} rejections found`}
                     icon={AlertTriangle}
                     color="red"
+                    subtext={`${overview.refused} rejections recorded`}
                 />
                 <StatCard
                     title="Avg Applicants"
                     value={competition.avg_applicants}
-                    subtext="Competition per job"
                     icon={Users}
                     color="orange"
+                    subtext="candidates per role"
                 />
                 <StatCard
                     title="Active Pipeline"
                     value={overview.waiting}
-                    subtext="Waiting for response"
                     icon={CheckCircle}
                     color="yellow"
+                    subtext="awaiting response"
                 />
             </div>
 
-            {/* Middle Row: Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* --- Charts Section --- */}
+            {/* FIX: Changed grid-cols to 2 for a 50/50 split */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[26rem]">
 
-                {/* Status Distribution */}
-                <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg flex flex-col h-80">
-                    <h3 className="text-lg font-bold text-white mb-4">Application Outcomes</h3>
+                {/* 1. Status Donut */}
+                <div className="bg-gray-800/60 backdrop-blur-sm p-6 rounded-2xl border border-gray-700/50 flex flex-col shadow-lg">
+                    <div className="flex justify-between items-start mb-2">
+                        <h4 className="font-bold text-white text-sm">Outcomes</h4>
+                        <div className="text-xs text-gray-500 font-mono bg-gray-900/50 px-2 py-1 rounded">Ratio</div>
+                    </div>
+
                     <div className="flex-1 relative flex justify-center items-center">
-                        <div className="w-48 h-48">
+                        <div className="w-56 h-56"> {/* Slightly constrained size for better centering */}
                             <Doughnut
                                 data={statusData}
-                                options={{
-                                    cutout: '75%',
-                                    plugins: { legend: { position: 'bottom', labels: { color: '#9ca3af', padding: 20 } } }
-                                }}
+                                options={{ ...commonOptions, cutout: '75%' }}
                             />
                         </div>
-                        {/* Center Text Overlay */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-2">
-                            <span className="text-3xl font-bold text-white">{overview.total}</span>
-                            <span className="text-xs text-gray-500 uppercase">Total</span>
+                        {/* Center Text */}
+                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-4">
+                            <span className="text-4xl font-black text-white tracking-tighter">{overview.total}</span>
+                            <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mt-1">Total</span>
                         </div>
                     </div>
                 </div>
 
-                {/* Competition Distribution */}
-                <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg flex flex-col h-80">
-                    <h3 className="text-lg font-bold text-white mb-2">Competition Levels</h3>
-                    <p className="text-sm text-gray-400 mb-4">Are you applying to overcrowded roles?</p>
-                    <div className="flex-1 min-h-0">
-                        <Bar data={competitionData} options={barOptions} />
+                {/* 2. Competition Bar */}
+                <div className="bg-gray-800/60 backdrop-blur-sm p-6 rounded-2xl border border-gray-700/50 flex flex-col shadow-lg">
+                    <div className="flex justify-between items-start mb-6">
+                        <div>
+                            <h4 className="font-bold text-white text-sm">Competition Levels</h4>
+                            <p className="text-xs text-gray-400 mt-1">Application distribution by applicant count</p>
+                        </div>
+                        {competition.high_comp_refusal_rate > 0 && (
+                            <div className="hidden sm:block text-right">
+                                <p className="text-[10px] uppercase text-gray-500 font-bold tracking-wider">High Comp Refusal</p>
+                                <p className="text-xl font-bold text-pink-400">{competition.high_comp_refusal_rate}%</p>
+                            </div>
+                        )}
                     </div>
-                    <div className="mt-2 p-2 bg-gray-900/50 rounded-lg border border-gray-700/50">
-                        <p className="text-xs text-gray-400">
-                            <span className="text-orange-400 font-bold">Insight:</span> Refusal rate on High Comp jobs (>200 apps) is <span className="text-white font-bold">{competition.high_comp_refusal_rate}%</span>.
-                        </p>
+
+                    <div className="flex-1 w-full min-h-0">
+                        <Bar data={competitionData} options={barOptions} />
                     </div>
                 </div>
             </div>
