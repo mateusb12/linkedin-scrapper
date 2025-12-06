@@ -10,7 +10,7 @@ import StreakCalendar from './StreakCalendar';
 import RecentApplications from './RecentApplications';
 import JobFailures from './JobFailures';
 import PerformanceStats from './PerformanceStats';
-import DashboardInsights from './DashboardInsights'; // Import new component
+import DashboardInsights from './DashboardInsights';
 import { BackfillModal, ScraperSettings, JobDetailsPanel } from './DashboardModals';
 
 // Register Chart components
@@ -19,9 +19,8 @@ ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarEle
 const GOAL_PER_DAY = 10;
 const themeColors = { linkedin: '#8b5cf6', huntr: '#10b981', sql: '#3b82f6', textPrimary: '#f3f4f6', textSecondary: '#9ca3af' };
 
-// ... [Keep processCurrentFormData and processHistoryData exactly as they were] ...
+// ... [Keep processCurrentFormData and processHistoryData helpers unchanged] ...
 const processCurrentFormData = (jobs) => {
-    // ... (No changes needed here, copy from previous version)
     const allDailyCounts = {};
     const getLocalYMD = (d) => {
         const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2,'0'); const day = String(d.getDate()).padStart(2,'0');
@@ -112,8 +111,6 @@ const processHistoryData = (jobs, timePeriod) => {
         }
     };
 };
-// ... (End of helper copy)
-
 
 // --- MAIN COMPONENT ---
 export const JobDashboard = () => {
@@ -122,12 +119,14 @@ export const JobDashboard = () => {
     const [isBackfillOpen, setIsBackfillOpen] = useState(false);
     const [selectedJob, setSelectedJob] = useState(null);
     const [selectedFailure, setSelectedFailure] = useState(null);
-    const [isSyncing, setIsSyncing] = useState(false); // New state for Server Sync
+    const [isSyncing, setIsSyncing] = useState(false);
 
-    // Pagination states
+    // --- STATES ---
     const [page, setPage] = useState(1);
     const [failPage, setFailPage] = useState(1);
     const [historyPeriod, setHistoryPeriod] = useState('daily');
+    // ✨ NEW STATE: Controls the Insights dropdown
+    const [insightsTimeRange, setInsightsTimeRange] = useState('all_time');
 
     // 1. Fetch Stats & Applications (Local DB)
     const { data: allJobsData, isLoading: isLoadingStats, refetch: refetchStats } = useQuery({
@@ -149,11 +148,12 @@ export const JobDashboard = () => {
         keepPreviousData: true
     });
 
-    // 3. Fetch Insights Data (New Query)
+    // 3. Fetch Insights Data
     const { data: insightsData, isLoading: isLoadingInsights, refetch: refetchInsights } = useQuery({
-        queryKey: ['dashboardInsights'],
-        queryFn: fetchDashboardInsights,
-        // Refetch when window focuses to keep stats fresh
+        // 🔑 KEY FIX: Added insightsTimeRange to queryKey so it refetches on change
+        queryKey: ['dashboardInsights', insightsTimeRange],
+        // 🔑 KEY FIX: Pass the state to the fetch function
+        queryFn: () => fetchDashboardInsights(insightsTimeRange),
         refetchOnWindowFocus: true
     });
 
@@ -163,39 +163,34 @@ export const JobDashboard = () => {
     const historyStats = useMemo(() => processHistoryData(jobs, historyPeriod), [jobs, historyPeriod]);
 
     // --- INITIALIZATION EFFECT ---
-    // Runs once on mount to sync status columns
     React.useEffect(() => {
         const initSync = async () => {
             try {
                 console.log("🔄 Auto-syncing application statuses...");
                 await syncApplicationStatus();
-                // After sync, refetch the table data to show new statuses
                 refetchTable();
             } catch (err) {
                 console.error("Auto-sync failed:", err);
             }
         };
         initSync();
-    }, []); // Empty dependency array = run once on mount
+    }, []);
 
     // --- SYNC HANDLER ---
     const handleSyncData = async () => {
         setIsSyncing(true);
         try {
-            // 1. Trigger Backend Gmail Sync (Fetch new emails)
             if(activeTab === 'rejections') {
                 await syncEmails("Job fails");
-                await refetchFailures(); // Update UI
+                await refetchFailures();
+            } else if (activeTab === 'insights') {
+                await refetchInsights(); // Refresh insights specifically
             } else {
-                // If on other tabs, maybe we just refresh stats,
-                // or you could add logic to sync LinkedIn jobs here too
                 await refetchStats();
                 await refetchTable();
-                await refetchInsights(); // Also refresh insights
             }
         } catch (error) {
             console.error("Sync failed", error);
-            // Optional: Show toast error
         } finally {
             setIsSyncing(false);
         }
@@ -218,7 +213,6 @@ export const JobDashboard = () => {
                         <Database size={16}/> Fix Descriptions
                     </button>
 
-                    {/* UPDATED SYNC BUTTON */}
                     <button
                         onClick={handleSyncData}
                         disabled={isSyncing || isFetchingTable}
@@ -296,7 +290,11 @@ export const JobDashboard = () => {
                 )}
 
                 {activeTab === 'insights' && (
-                    <DashboardInsights insights={insightsData} />
+                    <DashboardInsights
+                        insights={insightsData}
+                        timeRange={insightsTimeRange}
+                        onTimeRangeChange={setInsightsTimeRange}
+                    />
                 )}
 
                 {activeTab === 'rejections' && (

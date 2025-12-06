@@ -4,7 +4,7 @@ import json
 import math
 import re
 import traceback
-from datetime import timezone
+from datetime import timezone, datetime, timedelta
 from flask import Blueprint, jsonify, request
 from dateutil.parser import parse as parse_datetime
 from sqlalchemy import or_, func
@@ -284,22 +284,52 @@ def manage_cookies():
 @services_bp.route("/insights", methods=["GET"])
 def get_dashboard_insights():
     """
-    Returns high-level metrics for the Insights Dashboard.
+    Returns high-level metrics for the Insights Dashboard with optional Time Range filtering.
+    Query Param: time_range (current_week, last_2_weeks, last_month, last_6_months, last_year, all_time)
     """
     session = get_db_session()
     try:
-        # Fetch all valid jobs
-        jobs = session.query(Job).filter(
+        time_range = request.args.get('time_range', 'all_time')
+
+        # 1. Base Query
+        query = session.query(Job).filter(
             Job.has_applied.is_(True),
             Job.disabled.is_(False)
-        ).all()
+        )
+
+        # 2. Apply Time Filter
+        now = datetime.now(timezone.utc)
+        start_date = None
+
+        if time_range == 'current_week':
+            # Start of current week (Monday)
+            start_date = now - timedelta(days=now.weekday())
+            start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif time_range == 'last_2_weeks':
+            start_date = now - timedelta(weeks=2)
+        elif time_range == 'last_month':
+            start_date = now - timedelta(days=30)
+        elif time_range == 'last_6_months':
+            start_date = now - timedelta(days=180)
+        elif time_range == 'last_year':
+            start_date = now - timedelta(days=365)
+        # 'all_time' does nothing
+
+        if start_date:
+            # Ensure start_date is naive if your DB is naive, or aware if DB is aware.
+            # SQLite usually stores strings/naive. If you face issues, use .date() comparison
+            query = query.filter(Job.applied_on >= start_date)
+
+        jobs = query.all()
 
         total_applications = len(jobs)
+
+        # ... [KEEP THE REST OF THE LOGIC EXACTLY THE SAME: Outcome, Competition, etc.] ...
+
         if total_applications == 0:
             return jsonify({
                 "overview": {"total": 0, "refused": 0, "waiting": 0, "refusal_rate": 0},
-                "competition": {"low": 0, "medium": 0, "high": 0, "avg_applicants": 0},
-                "funnel": []
+                "competition": {"low": 0, "medium": 0, "high": 0, "avg_applicants": 0, "high_comp_refusal_rate": 0}
             }), 200
 
         # --- Metric 1: Outcomes (Refusal Rate) ---
@@ -332,9 +362,7 @@ def get_dashboard_insights():
         if jobs_with_applicants_data > 0:
             avg_applicants = round(total_applicants_sum / jobs_with_applicants_data)
 
-        # --- Metric 3: Refusals by Competition (Correlation) ---
-        # Do we get rejected more often when competition is high?
-        # We calculate the refusal rate specifically for High Competition jobs
+        # --- Metric 3: Refusals by Competition ---
         high_comp_jobs = [j for j in jobs if (j.applicants or 0) > 200]
         high_comp_refusals = sum(1 for j in high_comp_jobs if j.application_status == 'Refused')
         high_comp_refusal_rate = 0
@@ -349,9 +377,9 @@ def get_dashboard_insights():
                 "refusal_rate": refusal_rate
             },
             "competition": {
-                "low": low_comp,       # < 50
-                "medium": med_comp,    # 50 - 200
-                "high": high_comp,     # > 200
+                "low": low_comp,
+                "medium": med_comp,
+                "high": high_comp,
                 "avg_applicants": avg_applicants,
                 "high_comp_refusal_rate": high_comp_refusal_rate
             }

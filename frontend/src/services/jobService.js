@@ -85,7 +85,8 @@ export const syncApplicationStatus = async () => {
     return handleResponse(response, 'Failed to sync application status');
 };
 
-export const fetchDashboardInsights = async () => {
-    const response = await fetch(`${API_BASE}/services/insights`);
+export const fetchDashboardInsights = async (timeRange = 'all_time') => {
+    // This creates the URL like: /services/insights?time_range=last_month
+    const response = await fetch(`${API_BASE}/services/insights?time_range=${timeRange}`);
     return handleResponse(response, 'Failed to fetch dashboard insights');
 };
