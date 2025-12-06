@@ -1,191 +1,163 @@
 import imaplib
 import email
+import json
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 from datetime import datetime
 from flask import Blueprint, jsonify, request
+from sqlalchemy import desc
+
 from database.database_connection import get_db_session
 from models.user_models import Profile
+from models.email_models import Email  # Import the new generic model
 
 gmail_bp = Blueprint("gmail", __name__, url_prefix="/emails")
 
-def decode_mime_words(s):
-    """
-    Decodes MIME-encoded headers (e.g., '=?utf-8?q?...?=') into a readable string.
-    """
-    if not s:
-        return ""
+# --- Helpers ---
 
+def decode_mime_words(s):
+    if not s: return ""
     decoded_list = decode_header(s)
     text_parts = []
-
     for content, encoding in decoded_list:
         if isinstance(content, bytes):
-            if encoding:
-                try:
-                    text_parts.append(content.decode(encoding))
-                except LookupError:
-                    # Fallback if encoding is unknown
-                    text_parts.append(content.decode('utf-8', errors='ignore'))
-            else:
-                # Assume utf-8 if no encoding specified
+            try:
+                text_parts.append(content.decode(encoding or 'utf-8', errors='ignore'))
+            except LookupError:
                 text_parts.append(content.decode('utf-8', errors='ignore'))
         else:
             text_parts.append(str(content))
-
     return "".join(text_parts)
 
-def get_body_snippet(msg):
-    """
-    Extracts a short text snippet from the email body (preferring plain text).
-    """
+def get_body_text(msg):
     body = ""
     if msg.is_multipart():
         for part in msg.walk():
-            content_type = part.get_content_type()
-            content_disposition = str(part.get("Content-Disposition"))
-
-            # Look for text/plain and skip attachments
-            if content_type == "text/plain" and "attachment" not in content_disposition:
+            # Prioritize plain text, skip attachments
+            if part.get_content_type() == "text/plain" and "attachment" not in str(part.get("Content-Disposition")):
                 try:
                     payload = part.get_payload(decode=True)
-                    if payload:
-                        body = payload.decode(errors='ignore')
-                        break
-                except:
-                    pass
+                    if payload: body = payload.decode(errors='ignore')
+                except: pass
     else:
         try:
             payload = msg.get_payload(decode=True)
-            if payload:
-                body = payload.decode(errors='ignore')
-        except:
-            pass
+            if payload: body = payload.decode(errors='ignore')
+        except: pass
+    return body if body else "No readable content."
 
-    if not body:
-        return "No content preview available."
+def parse_email_address(raw_header):
+    """Returns (Full String, Email Only)"""
+    # e.g. "Google <no-reply@google.com>" -> ("Google <no-reply@google.com>", "no-reply@google.com")
+    if not raw_header: return "", ""
+    clean_header = decode_mime_words(raw_header)
+    email_only = clean_header
+    if "<" in clean_header and ">" in clean_header:
+        email_only = clean_header.split("<")[-1].strip(">")
+    return clean_header, email_only
 
-    # clean whitespace and truncate
-    clean_body = " ".join(body.split())
-    return clean_body[:120] + "..." if len(clean_body) > 120 else clean_body
+# --- Endpoints ---
 
-@gmail_bp.route("/failures", methods=["GET"])
-def get_job_failures():
+@gmail_bp.route("/sync", methods=["POST"])
+def sync_emails():
     """
-    Connects to Gmail via IMAP, selects the 'Job fails' label,
-    and returns paginated emails formatted for the UI.
+    Generic Sync.
+    Body: { "label": "Job fails" } or { "label": "Sent" }
     """
     session = get_db_session()
-
-    # Pagination parameters
-    page = int(request.args.get('page', 1))
-    limit = int(request.args.get('limit', 10))
-
     try:
-        # 1. Retrieve Credentials from Profile
+        data = request.get_json() or {}
+        target_label = data.get("label", "Job fails")  # Default to failures
+
         profile = session.query(Profile).first()
         if not profile or not profile.email or not profile.email_app_password:
-            return jsonify({
-                "error": "Gmail credentials not configured. Please add your Email and App Password in settings."
-            }), 400
+            return jsonify({"error": "Credentials missing"}), 400
 
-        user_email = profile.email
-        password = profile.email_app_password
-
-        # 2. Connect to Gmail IMAP
-        # Using a context manager ensures connection is closed if errors occur
+        # 1. Connect
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
+        mail.login(profile.email, profile.email_app_password)
 
-        try:
-            mail.login(user_email, password)
-        except imaplib.IMAP4.error:
-            return jsonify({"error": "Failed to login to Gmail. Check your App Password."}), 401
-
-        # 3. Select the 'Job fails' Label
-        # Quotes are required if the label name has spaces
-        status, _ = mail.select('"Job fails"')
-
+        # Quote label to handle spaces
+        status, _ = mail.select(f'"{target_label}"')
         if status != "OK":
-            return jsonify({
-                "error": "Label 'Job fails' not found. Please create this label in Gmail and tag your rejection emails."
-            }), 404
+            return jsonify({"error": f"Label '{target_label}' not found in Gmail"}), 404
 
-        # 4. Search for all emails in this label
-        status, search_data = mail.search(None, "ALL")
-        if status != "OK" or not search_data[0]:
-            # No emails found
-            mail.logout()
-            return jsonify({
-                "data": [], "total": 0, "page": page, "total_pages": 0
-            }), 200
+        # 2. Fetch All IDs
+        _, search_data = mail.search(None, "ALL")
+        email_ids = search_data[0].split()
 
-        # IDs come as a byte string list e.g. [b'1 2 3']
-        all_email_ids = search_data[0].split()
-        total_emails = len(all_email_ids)
+        synced_count = 0
 
-        # Reverse to show newest first
-        all_email_ids.reverse()
-
-        # 5. Apply Pagination
-        start_idx = (page - 1) * limit
-        end_idx = start_idx + limit
-        paged_ids = all_email_ids[start_idx:end_idx]
-
-        results = []
-
-        # 6. Fetch details for the specific page
-        for e_id in paged_ids:
-            # Fetch the email headers and body (RFC822)
+        # 3. Iterate
+        for e_id in email_ids:
+            # optimize: fetch headers only first to check existence?
+            # For now, fetching RFC822 is safer to get Message-ID reliably
             _, msg_data = mail.fetch(e_id, "(RFC822)")
+            raw_email = msg_data[0][1]
+            msg = email.message_from_bytes(raw_email)
 
-            for response_part in msg_data:
-                if isinstance(response_part, tuple):
-                    msg = email.message_from_bytes(response_part[1])
+            msg_id = msg.get("Message-ID", "").strip()
 
-                    # -- Parse Headers --
-                    subject = decode_mime_words(msg["Subject"])
-                    from_header = decode_mime_words(msg["From"])
-                    date_header = msg["Date"]
+            # Idempotency Check: Don't save if we already have it
+            exists = session.query(Email).filter_by(message_id=msg_id).first()
+            if exists:
+                continue
 
-                    # Separate Name and Email (e.g., "Google <noreply@google.com>")
-                    sender_name = from_header
-                    sender_email = from_header
-                    if "<" in from_header and ">" in from_header:
-                        parts = from_header.split("<")
-                        sender_name = parts[0].strip().strip('"')
-                        sender_email = parts[1].strip(">")
+            # Parse
+            subject = decode_mime_words(msg["Subject"])
+            sender_full, sender_email = parse_email_address(msg["From"])
 
-                    # Parse Date
-                    try:
-                        dt = parsedate_to_datetime(date_header)
-                        iso_date = dt.isoformat()
-                    except:
-                        iso_date = datetime.now().isoformat()
+            # Date
+            try:
+                received_dt = parsedate_to_datetime(msg["Date"])
+            except:
+                received_dt = datetime.now()
 
-                    # -- Get Snippet --
-                    snippet = get_body_snippet(msg)
+            # Content
+            full_body = get_body_text(msg)
+            snippet = " ".join(full_body.split())[:120] + "..."
 
-                    results.append({
-                        "id": int(e_id),
-                        "sender": sender_name,
-                        "sender_email": sender_email,
-                        "subject": subject,
-                        "snippet": snippet,
-                        "receivedAt": iso_date,
-                        "isRead": True # IMAP doesn't strictly track 'read' state unless we check \Seen flag
-                    })
+            # Raw Headers (for max details)
+            headers_dict = dict(msg.items())
 
-        mail.close()
+            new_email = Email(
+                profile_id=profile.id,
+                message_id=msg_id,
+                thread_id=msg.get("X-GM-THRID") or msg.get("Thread-Topic"), # Attempt to get thread ID
+                folder=target_label,
+                category="rejection" if target_label == "Job fails" else "general", # logic can be expanded
+                subject=subject,
+                sender=sender_full,
+                sender_email=sender_email,
+                recipient=decode_mime_words(msg["To"]),
+                body_text=full_body,
+                snippet=snippet,
+                received_at=received_dt,
+                created_at=datetime.now(),
+                headers_json=headers_dict, # Saving all SMTP headers
+                is_read=True
+            )
+            session.add(new_email)
+            synced_count += 1
+
+        session.commit()
         mail.logout()
-
-        return jsonify({
-            "data": results,
-            "total": total_emails,
-            "page": page,
-            "total_pages": (total_emails + limit - 1) // limit
-        }), 200
+        return jsonify({"message": f"Synced {synced_count} emails from '{target_label}'"}), 200
 
     except Exception as e:
+        session.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         session.close()
+
+
+@gmail_bp.route("/", methods=["GET"])
+def get_stored_emails():
+    """
+    Get emails from DB with optional filtering.
+    Query Params: page=1, limit=10, folder="Job fails"
+    """
+    session = get_db_session()
+    page = int(request.args.get('page', 1))
+    limit = int(request.args.get('limit', 10))
+    folder_filter = request.args.get('folder', None) # e.g.,

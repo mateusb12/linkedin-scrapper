@@ -2,13 +2,13 @@ import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
-import { Database, RefreshCcw, Settings, Target, Calendar as CalendarIcon, Ban } from 'lucide-react'; // Added Ban icon
-import { fetchAppliedJobs, fetchJobFailures } from '../../services/jobService.js'; // Updated import
+import { Database, RefreshCcw, Settings, Target, Calendar as CalendarIcon, Ban, DownloadCloud } from 'lucide-react';
+import { fetchAppliedJobs, fetchJobFailures, syncEmails } from '../../services/jobService.js';
 
 // --- FEATURE IMPORTS ---
 import StreakCalendar from './StreakCalendar';
 import RecentApplications from './RecentApplications';
-import JobFailures from './JobFailures'; // NEW IMPORT
+import JobFailures from './JobFailures';
 import PerformanceStats from './PerformanceStats';
 import { BackfillModal, ScraperSettings, JobDetailsPanel } from './DashboardModals';
 
@@ -19,10 +19,8 @@ const GOAL_PER_DAY = 10;
 const themeColors = { linkedin: '#8b5cf6', huntr: '#10b981', sql: '#3b82f6', textPrimary: '#f3f4f6', textSecondary: '#9ca3af' };
 
 // ... [Keep processCurrentFormData and processHistoryData exactly as they were] ...
-// (Omitting them here for brevity, they are unchanged from your upload)
-
 const processCurrentFormData = (jobs) => {
-    // ... [Your existing logic]
+    // ... (No changes needed here, copy from previous version)
     const allDailyCounts = {};
     const getLocalYMD = (d) => {
         const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2,'0'); const day = String(d.getDate()).padStart(2,'0');
@@ -113,6 +111,7 @@ const processHistoryData = (jobs, timePeriod) => {
         }
     };
 };
+// ... (End of helper copy)
 
 
 // --- MAIN COMPONENT ---
@@ -121,14 +120,15 @@ export const JobDashboard = () => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isBackfillOpen, setIsBackfillOpen] = useState(false);
     const [selectedJob, setSelectedJob] = useState(null);
-    const [selectedFailure, setSelectedFailure] = useState(null); // For email details
+    const [selectedFailure, setSelectedFailure] = useState(null);
+    const [isSyncing, setIsSyncing] = useState(false); // New state for Server Sync
 
     // Pagination states
     const [page, setPage] = useState(1);
     const [failPage, setFailPage] = useState(1);
     const [historyPeriod, setHistoryPeriod] = useState('daily');
 
-    // 1. Fetch Stats & Applications
+    // 1. Fetch Stats & Applications (Local DB)
     const { data: allJobsData, isLoading: isLoadingStats, refetch: refetchStats } = useQuery({
         queryKey: ['allJobs'],
         queryFn: () => fetchAppliedJobs({}),
@@ -141,7 +141,7 @@ export const JobDashboard = () => {
         keepPreviousData: true
     });
 
-    // 2. Fetch Failures (Rejections)
+    // 2. Fetch Failures (Local DB)
     const { data: failureData, isLoading: isLoadingFailures, refetch: refetchFailures } = useQuery({
         queryKey: ['jobFailures', failPage],
         queryFn: () => fetchJobFailures({ page: failPage, limit: 10 }),
@@ -153,10 +153,26 @@ export const JobDashboard = () => {
     const currentStats = useMemo(() => processCurrentFormData(jobs), [jobs]);
     const historyStats = useMemo(() => processHistoryData(jobs, historyPeriod), [jobs, historyPeriod]);
 
-    const handleRefresh = () => {
-        refetchStats();
-        refetchTable();
-        refetchFailures();
+    // --- SYNC HANDLER ---
+    const handleSyncData = async () => {
+        setIsSyncing(true);
+        try {
+            // 1. Trigger Backend Gmail Sync (Fetch new emails)
+            if(activeTab === 'rejections') {
+                await syncEmails("Job fails");
+                await refetchFailures(); // Update UI
+            } else {
+                // If on other tabs, maybe we just refresh stats,
+                // or you could add logic to sync LinkedIn jobs here too
+                await refetchStats();
+                await refetchTable();
+            }
+        } catch (error) {
+            console.error("Sync failed", error);
+            // Optional: Show toast error
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     if (isLoadingStats && !allJobsData) {
@@ -175,9 +191,23 @@ export const JobDashboard = () => {
                     <button onClick={() => setIsBackfillOpen(true)} className="px-4 py-2 bg-indigo-900/40 text-indigo-300 border border-indigo-500/30 rounded-lg text-sm flex gap-2 items-center hover:bg-indigo-900/60">
                         <Database size={16}/> Fix Descriptions
                     </button>
-                    <button onClick={handleRefresh} disabled={isFetchingTable} className="px-4 py-2 bg-gray-800 text-gray-300 border border-gray-700 rounded-lg text-sm flex gap-2 items-center hover:bg-gray-700">
-                        <RefreshCcw size={16} className={isFetchingTable ? 'animate-spin' : ''}/> Sync Data
+
+                    {/* UPDATED SYNC BUTTON */}
+                    <button
+                        onClick={handleSyncData}
+                        disabled={isSyncing || isFetchingTable}
+                        className="px-4 py-2 bg-gray-800 text-gray-300 border border-gray-700 rounded-lg text-sm flex gap-2 items-center hover:bg-gray-700 disabled:opacity-50"
+                    >
+                        {isSyncing ? (
+                            <RefreshCcw size={16} className="animate-spin text-blue-400"/>
+                        ) : activeTab === 'rejections' ? (
+                            <DownloadCloud size={16} />
+                        ) : (
+                            <RefreshCcw size={16} />
+                        )}
+                        {isSyncing ? 'Syncing...' : (activeTab === 'rejections' ? 'Import Emails' : 'Refresh Data')}
                     </button>
+
                     <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="px-4 py-2 bg-gray-800 text-gray-300 border border-gray-700 rounded-lg text-sm flex gap-2 items-center hover:bg-gray-700">
                         <Settings size={16}/> Settings
                     </button>
@@ -185,10 +215,9 @@ export const JobDashboard = () => {
             </div>
 
             {/* Modals */}
-            {isSettingsOpen && <ScraperSettings onClose={() => setIsSettingsOpen(false)} onSaveSuccess={handleRefresh} />}
+            {isSettingsOpen && <ScraperSettings onClose={() => setIsSettingsOpen(false)} onSaveSuccess={handleSyncData} />}
             {isBackfillOpen && <BackfillModal onClose={() => setIsBackfillOpen(false)} />}
             {selectedJob && <JobDetailsPanel job={selectedJob} onClose={() => setSelectedJob(null)} />}
-            {/* TODO: Add EmailDetailsModal for selectedFailure */}
 
             {/* Tabs */}
             <div className="flex space-x-1 bg-gray-800 p-1 rounded-xl w-fit mb-4 border border-gray-800">

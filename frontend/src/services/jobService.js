@@ -50,6 +50,15 @@ export const fetchLinkedinAppliedJobs = async () => {
     return handleResponse(response, 'Failed to fetch LinkedIn applied jobs');
 };
 
+export const syncEmails = async (label = "Job fails") => {
+    const response = await fetch(`${API_BASE}/emails/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label }),
+    });
+    return handleResponse(response, 'Failed to sync emails');
+};
+
 export const fetchAppliedJobs = async ({ page, limit } = {}) => {
     let url = `${API_BASE}/services/applied-jobs`;
 
@@ -62,6 +71,7 @@ export const fetchAppliedJobs = async ({ page, limit } = {}) => {
 };
 
 export const fetchJobFailures = async ({ page = 1, limit = 10 }) => {
-    const response = await fetch(`${API_BASE}/emails/failures?page=${page}&limit=${limit}`);
+    // Note: We use the generic endpoint with a folder filter
+    const response = await fetch(`${API_BASE}/emails/?folder=Job fails&page=${page}&limit=${limit}`);
     return handleResponse(response, 'Failed to fetch job failures');
 };
