@@ -6,7 +6,7 @@ import {
     savePaginationCurl,
     saveIndividualJobCurl,
     saveGmailToken, // Updated: Now imported
-    getProfiles     // Updated: Needed to get the Profile ID
+    getProfiles, testGmailConnection     // Updated: Needed to get the Profile ID
 } from "../../services/fetchLinkedinService.js";
 
 import gmailIcon from "../../assets/ui_icons/gmail.png";
@@ -129,12 +129,30 @@ export default function FetchConfig() {
     };
 
     const handleTestGmail = async () => {
-        setStatusMessage({ general: "Sending Test Email..." });
-        // Placeholder: Add await testGmailConnection(profileId) when backend route exists
-        setTimeout(() => {
-            setStatusMessage({ general: "⚠️ Test feature coming soon (Backend pending)" });
+        // 1. Validation: We need a profile ID
+        if (!profileId) {
+            setStatusMessage({ general: "❌ No Profile found. Cannot test connection." });
             clearStatusMessage();
-        }, 1000);
+            return;
+        }
+
+        setStatusMessage({ general: "⏳ Sending Test Email..." });
+
+        try {
+            // 2. Call the actual service
+            await testGmailConnection(profileId);
+
+            // 3. Success Feedback
+            setStatusMessage({ general: "✅ Test Email Sent! Check your inbox." });
+            setGmailStatus("success"); // Optional: visually confirm status
+            clearStatusMessage();
+        } catch (error) {
+            console.error(error);
+            // 4. Error Handling
+            const msg = error.response?.data?.error || "Failed to send test email";
+            setStatusMessage({ general: `❌ ${msg}` });
+            clearStatusMessage();
+        }
     };
 
     return (
