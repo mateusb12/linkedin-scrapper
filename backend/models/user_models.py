@@ -79,5 +79,6 @@ class Profile(Base):
             "positive_keywords": self.positive_keywords,
             "negative_keywords": self.negative_keywords,
             "education": self.education, # Include in response
-            "resumes": [resume.name for resume in self.resumes]
+            "resumes": [resume.name for resume in self.resumes],
+            "email_app_password": self.email_app_password
         }

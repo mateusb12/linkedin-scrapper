@@ -5,7 +5,7 @@ const API_BASE_URL = "http://localhost:5000";
 // Correct URL prefixes matching the backend Blueprints
 const PIPELINE_URL = `${API_BASE_URL}/pipeline`;
 const CONFIG_URL = `${API_BASE_URL}/config`;
-// const SERVICES_URL = `${API_BASE_URL}/services`; // Deprecated: We use /config now
+const PROFILES_URL = `${API_BASE_URL}/profiles`;
 
 // --- 1. CONFIGURATION (Generic Scrapers) ---
 
@@ -118,20 +118,39 @@ export const startKeywordExtractionStream = (onProgress, onComplete, onError) =>
     return eventSource;
 };
 
-// --- 4. SCRAPER AUTHENTICATION (Updated) ---
+// --- 4. PROFILE & INTEGRATIONS ---
 
 /**
- * Updates the 'LinkedIn_Saved_Jobs_Scraper' configuration.
- * Sends the raw cURL string to the backend, which extracts:
- * - The new 'queryId' (for the URL)
- * - The new 'csrf-token' header
- * - The new 'Cookie' header
+ * Fetch all profiles.
+ * Used to determine the current active user context.
  */
-export async function updateScraperConfig(curlString) {
-    // This hits the robust parser in the backend: fetch_curl/fetch_controller.py
-    // The backend endpoint is: /config/curl/<name>
-    const res = await axios.put(`${CONFIG_URL}/curl/LinkedIn_Saved_Jobs_Scraper`, {
-        curl: curlString
-    });
+export async function getProfiles() {
+    const res = await axios.get(`${PROFILES_URL}/`);
     return res.data;
 }
+
+/**
+ * Updates the SMTP password for a specific profile.
+ */
+export const saveGmailToken = async (profileId, token) => {
+    try {
+        const response = await axios.patch(`${PROFILES_URL}/${profileId}/smtp-password`, {
+            email_app_password: token
+        });
+        return response.data;
+    } catch (error) {
+        throw error;
+    }
+};
+
+/**
+ * Tests the Gmail connection by asking the backend to send a self-email.
+ */
+export const testGmailConnection = async (profileId) => {
+    try {
+        const response = await axios.post(`${PROFILES_URL}/${profileId}/test-smtp`);
+        return response.data;
+    } catch (error) {
+        throw error;
+    }
+};

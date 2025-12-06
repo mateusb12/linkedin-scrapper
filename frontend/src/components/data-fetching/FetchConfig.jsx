@@ -5,8 +5,8 @@ import { CopyableCodeBlock } from "./CopyableCodeBlock.jsx";
 import {
     savePaginationCurl,
     saveIndividualJobCurl,
-    // saveGmailToken, // TODO: You will need to create these service functions
-    // testGmailConnection
+    saveGmailToken, // Updated: Now imported
+    getProfiles     // Updated: Needed to get the Profile ID
 } from "../../services/fetchLinkedinService.js";
 
 import gmailIcon from "../../assets/ui_icons/gmail.png";
@@ -29,14 +29,38 @@ export default function FetchConfig() {
     const [showToken, setShowToken] = useState(false);
     const [gmailStatus, setGmailStatus] = useState("idle"); // idle, success, error
 
+    // --- State for Context ---
+    const [profileId, setProfileId] = useState(null);
+
     const clearStatusMessage = () =>
         setTimeout(() => setStatusMessage({}), 4000);
 
-    // Apply Dark Mode
+    // Apply Dark Mode & Fetch Profile Context
     useEffect(() => {
         const root = document.documentElement;
         if (isDark) root.classList.add("dark");
         else root.classList.remove("dark");
+
+        // Fetch the profile ID so we know who to update
+        const loadProfileContext = async () => {
+            try {
+                const profiles = await getProfiles();
+                // Assuming single user mode, we pick the first profile
+                if (profiles && profiles.length > 0) {
+                    const activeProfile = profiles[0];
+                    setProfileId(activeProfile.id);
+
+                    // FIXED: We now actually populate the input field
+                    if (activeProfile.email_app_password) {
+                        setGmailStatus("success");
+                        setGmailToken(activeProfile.email_app_password); // <--- ADDED THIS LINE
+                    }
+                }
+            } catch (error) {
+                console.error("Could not fetch profiles to set context:", error);
+            }
+        };
+        loadProfileContext();
     }, [isDark]);
 
     // --- Handlers: Scraper ---
@@ -73,31 +97,44 @@ export default function FetchConfig() {
         }
     };
 
-    // --- Handlers: Gmail (Placeholder Logic) ---
+    // --- Handlers: Gmail Integration ---
     const handleSaveGmail = async () => {
         if (!gmailToken.trim()) return;
+
+        // Guard clause: We need a profile ID to hit the backend route
+        if (!profileId) {
+            setStatusMessage({ general: "❌ No Profile found. Create a profile first." });
+            setGmailStatus("error");
+            clearStatusMessage();
+            return;
+        }
+
         setStatusMessage({ general: "Saving Gmail Token..." });
 
         try {
-            // await saveGmailToken(gmailToken); // TODO: Hook up your backend here
+            // Call service with the specific Profile ID
+            await saveGmailToken(profileId, gmailToken);
 
-            // Simulating success for UI demo
-            setTimeout(() => {
-                setStatusMessage({ general: "✅ Gmail Token Saved securely!" });
-                setGmailStatus("success");
-                clearStatusMessage();
-            }, 800);
+            setStatusMessage({ general: "✅ Gmail Token Saved securely!" });
+            setGmailStatus("success");
+            setGmailToken(""); // Clear input for security
+            clearStatusMessage();
         } catch (error) {
-            setStatusMessage({ general: `❌ Error saving token` });
+            const msg = error.response?.data?.error || "Error saving token";
+            setStatusMessage({ general: `❌ ${msg}` });
             setGmailStatus("error");
             console.error(error);
+            clearStatusMessage();
         }
     };
 
     const handleTestGmail = async () => {
         setStatusMessage({ general: "Sending Test Email..." });
-        // await testGmailConnection();
-        clearStatusMessage();
+        // Placeholder: Add await testGmailConnection(profileId) when backend route exists
+        setTimeout(() => {
+            setStatusMessage({ general: "⚠️ Test feature coming soon (Backend pending)" });
+            clearStatusMessage();
+        }, 1000);
     };
 
     return (
@@ -258,9 +295,10 @@ export default function FetchConfig() {
                         <div className="flex gap-3">
                             <button
                                 onClick={handleSaveGmail}
-                                className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded shadow-sm transition-colors text-sm"
+                                disabled={!profileId}
+                                className="flex-1 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-bold rounded shadow-sm transition-colors text-sm"
                             >
-                                Save Token
+                                {profileId ? "Save Token" : "Loading Profile..."}
                             </button>
                             <button
                                 onClick={handleTestGmail}
