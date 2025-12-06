@@ -10,11 +10,11 @@ import {
     BarElement,
     Title
 } from 'chart.js';
-import { TrendingUp, Users, AlertTriangle, CheckCircle, Calendar, Filter, ArrowUpRight, Activity } from 'lucide-react';
+import { Users, AlertTriangle, CheckCircle, Calendar, Filter, ArrowUpRight, Activity, PieChart, BarChart3 } from 'lucide-react';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
 
-// --- Styled Stat Card ---
+// --- Styled Stat Card (Kept mostly the same, just slight padding tweaks) ---
 const StatCard = ({ title, value, subtext, icon: Icon, color, trend }) => {
     const colorClasses = {
         blue: 'bg-blue-500/10 text-blue-400',
@@ -25,14 +25,14 @@ const StatCard = ({ title, value, subtext, icon: Icon, color, trend }) => {
     };
 
     return (
-        <div className="relative group overflow-hidden bg-gray-800/60 backdrop-blur-sm p-6 rounded-2xl border border-gray-700/50 hover:border-gray-600 transition-all duration-300 hover:shadow-lg hover:shadow-gray-900/40">
+        <div className="relative group overflow-hidden bg-gray-800/60 backdrop-blur-sm p-5 rounded-2xl border border-gray-700/50 hover:border-gray-600 transition-all duration-300 hover:shadow-lg hover:shadow-gray-900/40">
             <div className="flex justify-between items-start">
                 <div className="space-y-1">
                     <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">{title}</p>
                     <h3 className="text-3xl font-extrabold text-white tracking-tight">{value}</h3>
                 </div>
                 <div className={`p-3 rounded-xl ${colorClasses[color] || 'bg-gray-700 text-gray-300'} transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3`}>
-                    <Icon size={24} />
+                    <Icon size={22} />
                 </div>
             </div>
             {subtext && (
@@ -61,9 +61,8 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
         datasets: [{
             data: [overview.waiting, overview.refused],
             backgroundColor: ['#fbbf24', '#f87171'], // Amber-400, Red-400
-            borderWidth: 4,
-            borderColor: '#1f2937',
-            hoverOffset: 8
+            borderWidth: 0, // Cleaner look without borders
+            hoverOffset: 4
         }]
     };
 
@@ -74,11 +73,8 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
             label: 'Applications',
             data: [competition.low, competition.medium, competition.high],
             backgroundColor: ['#34d399', '#60a5fa', '#f472b6'], // Emerald, Blue, Pink
-            borderRadius: 8, // Softer corners
-            // Remove fixed barThickness to let chart.js scale them better
-            // barThickness: 60,
-            barPercentage: 0.6, // Controls width relative to category width (0-1)
-            categoryPercentage: 0.8 // Controls category width (0-1)
+            borderRadius: 6,
+            barThickness: 50, // FIX: Prevents the "Wall" effect
         }]
     };
 
@@ -86,22 +82,14 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-            legend: {
-                position: 'bottom',
-                labels: {
-                    color: '#9ca3af',
-                    usePointStyle: true,
-                    padding: 20,
-                    font: { size: 11, family: "'Inter', sans-serif" }
-                }
-            },
+            legend: { display: false }, // We build custom legends for better control
             tooltip: {
                 backgroundColor: '#111827',
                 titleColor: '#f3f4f6',
                 bodyColor: '#d1d5db',
                 padding: 12,
                 cornerRadius: 8,
-                displayColors: false,
+                displayColors: true,
                 borderWidth: 1,
                 borderColor: '#374151'
             }
@@ -113,15 +101,16 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
         scales: {
             y: {
                 beginAtZero: true,
-                grid: { color: '#374151', borderDash: [4, 4], drawBorder: false },
-                ticks: { color: '#6b7280', font: { size: 10 } }
+                grid: { display: false }, // Cleaner look
+                ticks: { color: '#6b7280', font: { size: 10 } },
+                border: { display: false }
             },
             x: {
                 grid: { display: false },
-                ticks: { color: '#9ca3af', font: { size: 11, weight: '500' } }
+                ticks: { color: '#9ca3af', font: { size: 11 } },
+                border: { display: false }
             }
-        },
-        plugins: { ...commonOptions.plugins, legend: { display: false } }
+        }
     };
 
     return (
@@ -144,14 +133,11 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
                     <select
                         value={timeRange}
                         onChange={(e) => onTimeRangeChange(e.target.value)}
-                        // FIX: Added bg-gray-900 and text-gray-300 to ensure dark mode style
                         className="bg-gray-900 border-none text-gray-300 text-sm focus:ring-0 cursor-pointer py-1.5 pr-8 pl-2 font-medium hover:text-white transition-colors rounded-r-xl outline-none"
                     >
                         <option value="current_week">Current Week</option>
                         <option value="last_2_weeks">Last 2 Weeks</option>
                         <option value="last_month">Last Month</option>
-                        <option value="last_6_months">Last 6 Months</option>
-                        <option value="last_year">Last Year</option>
                         <option value="all_time">All Time</option>
                     </select>
                 </div>
@@ -159,78 +145,77 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
 
             {/* --- Key Metrics Grid --- */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-                <StatCard
-                    title="Total Applied"
-                    value={overview.total}
-                    icon={Calendar}
-                    color="blue"
-                    subtext="applications sent"
-                />
-                <StatCard
-                    title="Refusal Rate"
-                    value={`${overview.refusal_rate}%`}
-                    icon={AlertTriangle}
-                    color="red"
-                    subtext={`${overview.refused} rejections recorded`}
-                />
-                <StatCard
-                    title="Avg Applicants"
-                    value={competition.avg_applicants}
-                    icon={Users}
-                    color="orange"
-                    subtext="candidates per role"
-                />
-                <StatCard
-                    title="Active Pipeline"
-                    value={overview.waiting}
-                    icon={CheckCircle}
-                    color="yellow"
-                    subtext="awaiting response"
-                />
+                <StatCard title="Total Applied" value={overview.total} icon={Calendar} color="blue" subtext="applications sent" />
+                <StatCard title="Refusal Rate" value={`${overview.refusal_rate}%`} icon={AlertTriangle} color="red" subtext={`${overview.refused} rejections recorded`} />
+                <StatCard title="Avg Applicants" value={competition.avg_applicants} icon={Users} color="orange" subtext="candidates per role" />
+                <StatCard title="Active Pipeline" value={overview.waiting} icon={CheckCircle} color="yellow" subtext="awaiting response" />
             </div>
 
             {/* --- Charts Section --- */}
-            {/* FIX: Changed grid-cols to 2 for a 50/50 split */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[26rem]">
+            {/* FIX: Reduced height to h-80 (20rem) for tighter UI */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-80">
 
-                {/* 1. Status Donut */}
+                {/* 1. Status Donut (Layout: Chart Left, Legend Right) */}
                 <div className="bg-gray-800/60 backdrop-blur-sm p-6 rounded-2xl border border-gray-700/50 flex flex-col shadow-lg">
-                    <div className="flex justify-between items-start mb-2">
-                        <h4 className="font-bold text-white text-sm">Outcomes</h4>
-                        <div className="text-xs text-gray-500 font-mono bg-gray-900/50 px-2 py-1 rounded">Ratio</div>
+                    {/* Header */}
+                    <div className="flex justify-between items-center mb-4 h-8">
+                        <div className="flex items-center gap-2">
+                            <div className="p-1.5 bg-gray-700/50 rounded-md text-gray-400"><PieChart size={14}/></div>
+                            <h4 className="font-bold text-white text-sm">Outcomes Distribution</h4>
+                        </div>
+                        <div className="text-xs text-gray-500 font-mono bg-gray-900/50 px-2 py-1 rounded border border-gray-700/30">
+                            Total: {overview.total}
+                        </div>
                     </div>
 
-                    <div className="flex-1 relative flex justify-center items-center">
-                        <div className="w-56 h-56"> {/* Slightly constrained size for better centering */}
-                            <Doughnut
-                                data={statusData}
-                                options={{ ...commonOptions, cutout: '75%' }}
-                            />
+                    <div className="flex-1 flex items-center justify-between gap-4 min-h-0">
+                        {/* Chart Area */}
+                        <div className="relative w-1/2 h-full flex justify-center items-center">
+                            <Doughnut data={statusData} options={{ ...commonOptions, cutout: '70%' }} />
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                <span className="text-2xl font-black text-white">{overview.refusal_rate}%</span>
+                                <span className="text-[10px] text-gray-500 uppercase font-bold">Refusal</span>
+                            </div>
                         </div>
-                        {/* Center Text */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-4">
-                            <span className="text-4xl font-black text-white tracking-tighter">{overview.total}</span>
-                            <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mt-1">Total</span>
+
+                        {/* Custom Legend Area (Right Side) */}
+                        <div className="w-1/2 flex flex-col justify-center space-y-4 pr-4">
+                            <div className="flex items-start justify-between group">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-3 h-3 rounded-full bg-yellow-400 shadow-[0_0_10px_rgba(251,191,36,0.3)]"></span>
+                                    <span className="text-sm font-medium text-gray-300 group-hover:text-white transition-colors">Waiting</span>
+                                </div>
+                                <span className="text-sm font-bold text-white">{overview.waiting}</span>
+                            </div>
+                            <div className="w-full h-px bg-gray-700/50"></div>
+                            <div className="flex items-start justify-between group">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-3 h-3 rounded-full bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.3)]"></span>
+                                    <span className="text-sm font-medium text-gray-300 group-hover:text-white transition-colors">Refused</span>
+                                </div>
+                                <span className="text-sm font-bold text-white">{overview.refused}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 {/* 2. Competition Bar */}
                 <div className="bg-gray-800/60 backdrop-blur-sm p-6 rounded-2xl border border-gray-700/50 flex flex-col shadow-lg">
-                    <div className="flex justify-between items-start mb-6">
-                        <div>
+                    {/* Header */}
+                    <div className="flex justify-between items-center mb-4 h-8">
+                        <div className="flex items-center gap-2">
+                            <div className="p-1.5 bg-gray-700/50 rounded-md text-gray-400"><BarChart3 size={14}/></div>
                             <h4 className="font-bold text-white text-sm">Competition Levels</h4>
-                            <p className="text-xs text-gray-400 mt-1">Application distribution by applicant count</p>
                         </div>
                         {competition.high_comp_refusal_rate > 0 && (
-                            <div className="hidden sm:block text-right">
-                                <p className="text-[10px] uppercase text-gray-500 font-bold tracking-wider">High Comp Refusal</p>
-                                <p className="text-xl font-bold text-pink-400">{competition.high_comp_refusal_rate}%</p>
+                            <div className="flex items-center gap-2 text-xs font-mono bg-pink-500/10 text-pink-400 px-2 py-1 rounded border border-pink-500/20">
+                                <span className="uppercase font-bold tracking-wider">High Comp Refusal:</span>
+                                <span className="font-bold">{competition.high_comp_refusal_rate}%</span>
                             </div>
                         )}
                     </div>
 
-                    <div className="flex-1 w-full min-h-0">
+                    <div className="flex-1 w-full min-h-0 flex items-end pb-2">
                         <Bar data={competitionData} options={barOptions} />
                     </div>
                 </div>
