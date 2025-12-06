@@ -1,5 +1,23 @@
 import React, { useState, useMemo } from 'react';
-import { Terminal, Users, ChevronRight, ChevronLeft } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Building2, Calendar, Users, Briefcase, Search } from 'lucide-react';
+
+const StatusBadge = ({ status }) => {
+    const styles = {
+        'Waiting': 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+        'Refused': 'bg-red-500/10 text-red-500 border-red-500/20',
+        'Interview': 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+        'Accepted': 'bg-green-500/10 text-green-500 border-green-500/20',
+    };
+
+    const defaultStyle = 'bg-gray-500/10 text-gray-500 border-gray-500/20';
+    const currentStatus = status || 'Waiting';
+
+    return (
+        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${styles[currentStatus] || defaultStyle}`}>
+            {currentStatus}
+        </span>
+    );
+};
 
 const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
     const getPageNumbers = () => {
@@ -61,20 +79,21 @@ const RecentApplications = ({ jobs, onSelectJob, pagination }) => {
 
     const filteredJobs = useMemo(() => {
         if (!jobs) return [];
-        return jobs
-            .filter(j =>
-                j.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                j.company.toLowerCase().includes(searchTerm.toLowerCase())
-            );
+        return jobs.filter(j =>
+            (j.title && j.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
+            (j.company && j.company.toLowerCase().includes(searchTerm.toLowerCase()))
+        );
     }, [jobs, searchTerm]);
 
     return (
         <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-xl overflow-hidden mt-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-            <div className="p-6 border-b border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="p-6 border-b border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-800">
                 <div className="flex items-center gap-4">
-                    <h3 className="text-xl font-bold text-white">Recent Applications</h3>
+                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                        Recent Applications
+                    </h3>
                     {pagination && (
-                        <span className="text-xs font-mono text-gray-500 bg-gray-900 px-2 py-1 rounded border border-gray-700">
+                        <span className="text-xs font-mono text-blue-300 bg-blue-900/30 px-2 py-1 rounded border border-blue-800/50">
                             Total: {pagination.total}
                         </span>
                     )}
@@ -82,13 +101,13 @@ const RecentApplications = ({ jobs, onSelectJob, pagination }) => {
                 <div className="relative w-full md:w-64">
                     <input
                         type="text"
-                        placeholder="Search current page..."
+                        placeholder="Search applications..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-gray-900 border border-gray-700 text-gray-200 text-sm rounded-lg pl-4 pr-10 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                        className="w-full bg-gray-900 border border-gray-700 text-gray-200 text-sm rounded-lg pl-10 pr-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                     />
-                    <div className="absolute right-3 top-2.5 text-gray-500">
-                        <Terminal size={14} />
+                    <div className="absolute left-3 top-2.5 text-gray-500">
+                        <Search size={14} />
                     </div>
                 </div>
             </div>
@@ -101,14 +120,13 @@ const RecentApplications = ({ jobs, onSelectJob, pagination }) => {
                         <th className="px-6 py-4">Role</th>
                         <th className="px-6 py-4">Applied</th>
                         <th className="px-6 py-4">Applicants</th>
-                        <th className="px-6 py-4 text-center">Status</th>
+                        <th className="px-6 py-4">App Status</th>
                         <th className="px-6 py-4 text-right">Action</th>
                     </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-700">
                     {filteredJobs.length > 0 ? filteredJobs.map((job) => {
-                        const isEnriched = job.description_full && job.description_full !== "No description provided";
-                        const hasApplicants = job.applicants !== null && job.applicants !== undefined;
+                        const hasApplicants = job.applicants !== null && job.applicants !== undefined && job.applicants > 0;
 
                         return (
                             <tr
@@ -117,41 +135,38 @@ const RecentApplications = ({ jobs, onSelectJob, pagination }) => {
                                 className="group hover:bg-gray-700/30 transition-colors cursor-pointer"
                             >
                                 <td className="px-6 py-4">
-                                    <div className="font-bold text-white">{job.company}</div>
-                                    <div className="text-xs text-gray-500">{job.source}</div>
+                                    <div className="font-bold text-gray-200 flex items-center gap-2">
+                                        <Building2 size={14} className="text-blue-400" />
+                                        {job.company}
+                                    </div>
+                                    <div className="text-xs text-gray-500 uppercase mt-1 pl-6">{job.source}</div>
                                 </td>
                                 <td className="px-6 py-4 text-gray-300 font-medium group-hover:text-blue-400 transition-colors">
-                                    {job.title}
+                                    <div className="flex items-center gap-2">
+                                        <Briefcase size={14} className="text-purple-400" />
+                                        {job.title}
+                                    </div>
                                 </td>
-                                <td className="px-6 py-4 text-gray-400 text-sm">
-                                    {new Date(job.appliedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                    <span className="text-xs text-gray-600 block">
+                                <td className="px-6 py-4 text-gray-400 text-sm whitespace-nowrap">
+                                    <div className="flex items-center gap-2">
+                                        <Calendar size={14} className="text-green-400" />
+                                        {job.formattedDate || new Date(job.appliedAt).toLocaleDateString()}
+                                    </div>
+                                    <div className="text-xs text-gray-600 mt-1 pl-6">
                                         {new Date(job.appliedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                    </span>
+                                    </div>
                                 </td>
                                 <td className="px-6 py-4">
-                                    {hasApplicants ? (
-                                        <div className="flex items-center gap-2 text-gray-300 font-mono">
-                                            <Users size={14} className="text-purple-400" />
-                                            {job.applicants.toLocaleString()}
-                                        </div>
-                                    ) : (
-                                        <span className="text-gray-600 text-xs italic">None</span>
-                                    )}
+                                    <div className="flex items-center gap-2 text-gray-400 font-mono text-sm">
+                                        <Users size={14} className={hasApplicants ? "text-gray-400" : "text-gray-600"} />
+                                        {hasApplicants ? job.applicants.toLocaleString() : '-'}
+                                    </div>
                                 </td>
-                                <td className="px-6 py-4 text-center">
-                                    {isEnriched ? (
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900/30 text-green-400 border border-green-800 shadow-sm">
-                                            Enriched
-                                        </span>
-                                    ) : (
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-700 text-gray-400 border border-gray-600">
-                                            Basic
-                                        </span>
-                                    )}
+                                <td className="px-6 py-4">
+                                    <StatusBadge status={job.application_status} />
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                    <button className="text-gray-500 hover:text-white p-2 rounded-full hover:bg-gray-700">
+                                    <button className="text-gray-500 hover:text-white p-2 rounded-full hover:bg-gray-600 transition-colors">
                                         <ChevronRight size={16} />
                                     </button>
                                 </td>
@@ -160,7 +175,7 @@ const RecentApplications = ({ jobs, onSelectJob, pagination }) => {
                     }) : (
                         <tr>
                             <td colSpan="6" className="p-8 text-center text-gray-500">
-                                No jobs found matching your search.
+                                No applications found matching your search.
                             </td>
                         </tr>
                     )}

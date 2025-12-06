@@ -75,3 +75,12 @@ export const fetchJobFailures = async ({ page = 1, limit = 10 }) => {
     const response = await fetch(`${API_BASE}/emails/?folder=Job fails&page=${page}&limit=${limit}`);
     return handleResponse(response, 'Failed to fetch job failures');
 };
+
+export const syncApplicationStatus = async () => {
+    const response = await fetch(`${API_BASE}/services/sync-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    });
+    return handleResponse(response, 'Failed to sync application status');
+};

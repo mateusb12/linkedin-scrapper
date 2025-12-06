@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
 import { Database, RefreshCcw, Settings, Target, Calendar as CalendarIcon, Ban, DownloadCloud } from 'lucide-react';
-import { fetchAppliedJobs, fetchJobFailures, syncEmails } from '../../services/jobService.js';
+import {fetchAppliedJobs, fetchJobFailures, syncApplicationStatus, syncEmails} from '../../services/jobService.js';
 
 // --- FEATURE IMPORTS ---
 import StreakCalendar from './StreakCalendar';
@@ -127,6 +127,20 @@ export const JobDashboard = () => {
     const [page, setPage] = useState(1);
     const [failPage, setFailPage] = useState(1);
     const [historyPeriod, setHistoryPeriod] = useState('daily');
+
+    React.useEffect(() => {
+        const initSync = async () => {
+            try {
+                console.log("🔄 Auto-syncing application statuses...");
+                await syncApplicationStatus();
+                // After sync, refetch the table data to show new statuses
+                refetchTable();
+            } catch (err) {
+                console.error("Auto-sync failed:", err);
+            }
+        };
+        initSync();
+    }, []); // Empty dependency array = run once on mount
 
     // 1. Fetch Stats & Applications (Local DB)
     const { data: allJobsData, isLoading: isLoadingStats, refetch: refetchStats } = useQuery({

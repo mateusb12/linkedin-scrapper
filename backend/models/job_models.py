@@ -61,6 +61,7 @@ class Job(Base):
 
     has_applied = Column(Boolean, default=False)
     applied_on = Column(DateTime, nullable=True, default=None)
+    application_status = Column(String, default="Waiting")
 
     # Foreign Key to link to the 'companies' table
     company_urn = Column(String, ForeignKey('companies.urn'))
@@ -96,6 +97,7 @@ class Job(Base):
             "programming_languages": self.programming_languages or [],
             "keywords": self.keywords or [],
             "disabled": self.disabled,
+            "application_status": self.application_status or "Waiting",
         }
         if include_company and self.company is not None:
             data["company"] = self.company.to_dict(include_jobs=False)

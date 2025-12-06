@@ -1,13 +1,16 @@
-# backend/controllers/services_controller.py
+# backend/source/features/get_applied_jobs/services_controller.py
+
 import json
 import math
+import re
+import traceback
 from datetime import timezone
 from flask import Blueprint, jsonify, request
 from dateutil.parser import parse as parse_datetime
-import traceback
+from sqlalchemy import or_, func
 
 from exceptions.service_exceptions import LinkedInScrapingException
-from models import Job, FetchCurl
+from models import Job, FetchCurl, Email, Company
 from source.features.job_population.job_repository import JobRepository
 from services.job_tracking.huntr_service import get_huntr_jobs_data
 from database.database_connection import get_db_session
@@ -29,22 +32,18 @@ def normalize_huntr_job(job: dict) -> dict:
 
 def normalize_linkedin_job(job_data) -> dict:
     """Normalizes a single LinkedIn job (can be dict or Job object)."""
-    # Handle if fetch_all_linkedin_jobs returns ORM objects
     if isinstance(job_data, Job):
         return normalize_sql_job(job_data)
 
-    # Handle if it returns dicts
     try:
-        # Check if 'applied_on' is already a datetime object or string
         applied_at = job_data.get("applied_on")
-
         return {
             "company": job_data.get("company"),
             "title": job_data.get("title", "").strip(),
             "appliedAt": applied_at,
             "source": "LinkedIn",
             "url": job_data.get("job_url"),
-            "urn": job_data.get("urn")  # Ensure URN is passed for deduplication
+            "urn": job_data.get("urn")
         }
     except KeyError as e:
         print("Key error on LinkedIn job normalization:", job_data)
@@ -62,7 +61,8 @@ def normalize_sql_job(job: Job) -> dict:
         "urn": job.urn,
         "location": job.location,
         "description_full": job.description_full,
-        "applicants": job.applicants
+        "applicants": job.applicants,
+        "application_status": job.application_status or "Waiting"  # Default for frontend
     }
 
 
@@ -70,19 +70,16 @@ def apply_timezone_fix(job_dict):
     """Helper to ensure dates are UTC aware for frontend conversion."""
     applied_at = job_dict.get("appliedAt")
     if applied_at:
-        # 1. Ensure it is a datetime object
         if isinstance(applied_at, str):
             try:
                 applied_at = parse_datetime(applied_at)
             except:
-                pass  # Keep as string if parsing fails
+                pass
 
-        # 2. If it is a datetime object, force UTC timezone if naive
         if hasattr(applied_at, 'tzinfo'):
             if applied_at.tzinfo is None:
                 applied_at = applied_at.replace(tzinfo=timezone.utc)
 
-            # 3. Format strictly
             job_dict["formattedDate"] = applied_at.strftime("%d-%b-%Y").lower()
             job_dict["appliedAt"] = applied_at.isoformat()
     return job_dict
@@ -92,8 +89,6 @@ def apply_timezone_fix(job_dict):
 def get_all_applied_jobs():
     """
     Fetches job applications.
-    - If 'page' param is present: Returns paginated data from DB (FAST).
-    - If 'page' param is missing: Syncs with LinkedIn first, then returns ALL data (SLOW) for charts.
     """
     repo = JobRepository()
     try:
@@ -101,13 +96,11 @@ def get_all_applied_jobs():
         limit = request.args.get('limit', default=10, type=int)
 
         if page:
-            # --- PAGINATED PATH (Table View) ---
             result = repo.fetch_paginated_applied_jobs(page, limit)
 
             normalized_jobs = []
             for job in result['jobs']:
                 norm = normalize_sql_job(job)
-                # Apply Timezone fix
                 norm = apply_timezone_fix(norm)
                 normalized_jobs.append(norm)
 
@@ -120,9 +113,6 @@ def get_all_applied_jobs():
             }), 200
 
         else:
-            # --- FULL DATA PATH (Charts/Calendar View) ---
-            # Ideally, we should separate "Sync" from "Fetch All" to speed up charts,
-            # but for now we keep the existing logic.
             print("Syncing LinkedIn jobs...")
             fetch_all_linkedin_jobs()
             print("Sync complete.")
@@ -130,21 +120,17 @@ def get_all_applied_jobs():
             all_jobs = repo.fetch_internal_sql_jobs()
             normalized_jobs = [normalize_sql_job(job) for job in all_jobs]
 
-            # Clean, Sort, and Fix Timezones
             final_list = []
             for job in normalized_jobs:
                 if not job.get("appliedAt"):
                     continue
-
                 try:
-                    # Apply Timezone fix
                     job = apply_timezone_fix(job)
                     final_list.append(job)
                 except Exception as parse_err:
                     print(f"Skipping job {job.get('title')} - invalid date ({parse_err})")
                     continue
 
-            # Sort Descending (Newest First)
             all_jobs_sorted = sorted(
                 final_list,
                 key=lambda x: x["appliedAt"],
@@ -159,6 +145,68 @@ def get_all_applied_jobs():
         return jsonify({"error": "Failed to fetch job data", "details": str(e)}), 500
     finally:
         repo.close()
+
+
+@services_bp.route("/sync-status", methods=["POST"])
+def sync_application_status():
+    """
+    Cross-references 'Job fails' emails with Jobs table to update status to 'Refused'.
+    """
+    session = get_db_session()
+    try:
+        rejection_emails = session.query(Email).filter(Email.folder == "Job fails").all()
+        updated_count = 0
+
+        for email in rejection_emails:
+            target_company_name = None
+
+            # 1. Parse Subject (Ascendion case)
+            subject_match = re.search(r"application to .*? at (.*)", email.subject, re.IGNORECASE)
+
+            if subject_match:
+                target_company_name = subject_match.group(1).strip().rstrip('.')
+
+            # 2. Fallback to Sender
+            if not target_company_name:
+                sender_clean = email.sender.split(' via ')[0].split('<')[0].strip().replace('"', '')
+                if "linkedin" not in sender_clean.lower():
+                    target_company_name = sender_clean
+
+            if not target_company_name:
+                continue
+
+            print(f"   [Status Sync] Email: '{email.subject}' -> Detected Company: '{target_company_name}'")
+
+            # 3. Find matching jobs
+            # CRITICAL FIX: Allow application_status to be NULL or "Waiting"
+            candidate_jobs = session.query(Job).join(Company).filter(
+                or_(
+                    Job.application_status == "Waiting",
+                    Job.application_status.is_(None)
+                ),
+                or_(
+                    func.lower(Company.name).contains(func.lower(target_company_name)),
+                    func.lower(target_company_name).contains(func.lower(Company.name))
+                )
+            ).all()
+
+            if not candidate_jobs:
+                print(f"      -> ⚠️ NO MATCH found for '{target_company_name}' in DB (or already refused).")
+
+            for job in candidate_jobs:
+                job.application_status = "Refused"
+                updated_count += 1
+                print(f"      -> ✅ UPDATING: Marked '{job.title}' at '{job.company.name}' as Refused.")
+
+        session.commit()
+        return jsonify({"message": f"Sync complete. Updated {updated_count} jobs to 'Refused'."}), 200
+
+    except Exception as e:
+        session.rollback()
+        print(traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
 
 
 @services_bp.route("/huntr", methods=["GET"])
@@ -183,21 +231,10 @@ def get_sql_jobs():
         repo.close()
 
 
-def _get_record_by_identifier(identifier: str) -> FetchCurl | None:
-    session = get_db_session()
-    try:
-        if isinstance(identifier, int) or identifier.isdigit():
-            return session.query(FetchCurl).filter_by(id=int(identifier)).one_or_none()
-        return session.query(FetchCurl).filter_by(name=identifier).one_or_none()
-    finally:
-        session.close()
-
-
 @services_bp.route("/cookies", methods=["GET", "PUT"])
 def manage_cookies():
     session = get_db_session()
 
-    # GET logic remains the same
     if request.method == "GET":
         identifier = request.args.get("identifier")
         if not identifier:
@@ -207,7 +244,6 @@ def manage_cookies():
             return jsonify({"error": "Record not found"}), 404
         return jsonify({"identifier": identifier, "cookies": record.cookies}), 200
 
-    # PUT Logic - UPDATED for CSRF handling
     if request.method == "PUT":
         data = request.get_json()
         if not data or "identifier" not in data or "cookies" not in data:
@@ -215,7 +251,7 @@ def manage_cookies():
 
         identifier = data["identifier"]
         new_cookies = data["cookies"]
-        csrf_token = data.get("csrfToken")  # Optional new field
+        csrf_token = data.get("csrfToken")
 
         record = session.query(FetchCurl).filter_by(name=identifier).one_or_none()
 
@@ -224,16 +260,13 @@ def manage_cookies():
             session.add(record)
         else:
             record.cookies = new_cookies
-
-            # Update CSRF token in headers if provided
             if csrf_token and record.headers:
                 try:
                     headers = json.loads(record.headers)
                     headers["csrf-token"] = csrf_token
                     record.headers = json.dumps(headers)
-                    print(f"✅ Updated CSRF token in headers to: {csrf_token}")
                 except json.JSONDecodeError:
-                    print("❌ Failed to parse headers JSON for CSRF update")
+                    pass
 
         try:
             session.commit()
