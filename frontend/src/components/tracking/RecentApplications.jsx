@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { ChevronRight, ChevronLeft, Building2, Calendar, Users, Briefcase, Search } from 'lucide-react';
+import { formatCustomDate } from '../../utils/dateUtils';
 
 const StatusBadge = ({ status }) => {
     const styles = {
@@ -150,7 +151,7 @@ const RecentApplications = ({ jobs, onSelectJob, pagination }) => {
                                 <td className="px-6 py-4 text-gray-400 text-sm whitespace-nowrap">
                                     <div className="flex items-center gap-2">
                                         <Calendar size={14} className="text-green-400" />
-                                        {job.formattedDate || new Date(job.appliedAt).toLocaleDateString()}
+                                        {formatCustomDate(job.appliedAt)}
                                     </div>
                                     <div className="text-xs text-gray-600 mt-1 pl-6">
                                         {new Date(job.appliedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}

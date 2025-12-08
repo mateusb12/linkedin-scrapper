@@ -5,6 +5,7 @@ import {
     Building, X, Calendar as CalendarIcon, MapPin, Users, ExternalLink, AlignLeft,
     Terminal, FileJson, RefreshCcw, Upload, ArrowRight, TrendingUp, Filter
 } from 'lucide-react';
+import { formatCustomDate } from '../../utils/dateUtils';
 
 // --- MODAL 1: ENRICHMENT (Action) ---
 export const BackfillModal = ({ onClose, onComplete }) => {
@@ -190,7 +191,6 @@ export const BackfillModal = ({ onClose, onComplete }) => {
     );
 };
 
-// ... Rest of the file (ScraperSettings, JobDetailsPanel) remains the same ...
 export const ScraperSettings = ({ onClose, onSaveSuccess }) => {
     const [statusMessage, setStatusMessage] = useState('');
     const [isSaving, setIsSaving] = useState(false);
@@ -253,7 +253,10 @@ export const JobDetailsPanel = ({ job, onClose }) => {
                         <button onClick={onClose} className="p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white"><X size={24} /></button>
                     </div>
                     <div className="flex flex-wrap gap-3 text-xs text-gray-300">
-                        <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700"><CalendarIcon size={14} /> {new Date(job.appliedAt).toLocaleDateString()}</div>
+                        <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700">
+                            <CalendarIcon size={14} />
+                            {formatCustomDate(job.appliedAt)}
+                        </div>
                         {job.location && <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700"><MapPin size={14} /> {job.location}</div>}
                         <a href={job.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 bg-blue-900/20 text-blue-300 px-3 py-1.5 rounded-full border border-blue-800 hover:bg-blue-900/40"><ExternalLink size={14} /> View on {job.source}</a>
                     </div>
