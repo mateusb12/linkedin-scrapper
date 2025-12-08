@@ -19,49 +19,110 @@ ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarEle
 const GOAL_PER_DAY = 10;
 const themeColors = { linkedin: '#8b5cf6', huntr: '#10b981', sql: '#3b82f6', textPrimary: '#f3f4f6', textSecondary: '#9ca3af' };
 
-// ... [Keep processCurrentFormData and processHistoryData helpers unchanged] ...
+// --- HELPER: Process Data with "Offensive Protection" Logic (n+1 Shift) ---
 const processCurrentFormData = (jobs) => {
     const allDailyCounts = {};
     const getLocalYMD = (d) => {
-        const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2,'0'); const day = String(d.getDate()).padStart(2,'0');
+        const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0');
         return `${y}-${m}-${day}`;
     };
 
+    // 1. Map raw DB counts
     jobs.forEach(job => {
         if (!job.appliedAt) return;
         const k = getLocalYMD(new Date(job.appliedAt));
         allDailyCounts[k] = (allDailyCounts[k] || 0) + 1;
     });
 
-    const last7Days = [];
+    const last7DaysLabels = [];
+    const realDataValues = [];
+    const bonusDataValues = [];
     const today = new Date();
-    for (let i = 6; i >= 0; i--) {
-        const d = new Date(today); d.setDate(today.getDate() - i);
-        last7Days.push(getLocalYMD(d));
+
+    // Variables to capture "Today's" specific stats for the Cards (since the loop now goes to tomorrow)
+    let capturedTodayTotal = 0;
+    let capturedTodayReal = 0;
+
+    // 2. Calculate Rollover (Iterate chronologically)
+    // We start 8 days ago to calculate the initial overflow for the start of our window
+    let previousDayOverflow = 0;
+    let previousDayUsedBonus = false;
+
+    // Check Day -8 (The day before our chart starts)
+    const dayMinus8 = new Date(today);
+    dayMinus8.setDate(today.getDate() - 7);
+    const dayMinus8Key = getLocalYMD(dayMinus8);
+    const dayMinus8Count = allDailyCounts[dayMinus8Key] || 0;
+
+    // Initial overflow seed
+    if (dayMinus8Count > GOAL_PER_DAY) {
+        previousDayOverflow = Math.min(dayMinus8Count - GOAL_PER_DAY, GOAL_PER_DAY);
     }
 
-    const dataValues = last7Days.map(k => allDailyCounts[k] || 0);
-    const todayCount = allDailyCounts[last7Days[last7Days.length - 1]] || 0;
+    // Iterate from 6 days ago (i=6) to TOMORROW (i=-1)
+    for (let i = 6; i >= -1; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const key = getLocalYMD(d);
+        const realCount = allDailyCounts[key] || 0;
 
+        // A. Determine Bonus for THIS day
+        // Rule: If we used bonus yesterday, we can't inherit more today (though this variable tracks usage)
+        const currentBonus = previousDayOverflow;
+        const usedProtection = currentBonus > 0;
+
+        // B. Push to arrays for Chart
+        last7DaysLabels.push(d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }));
+        realDataValues.push(realCount);
+        bonusDataValues.push(currentBonus);
+
+        // Capture TODAY'S data specifically (when i === 0) for the Stat Cards
+        if (i === 0) {
+            capturedTodayReal = realCount;
+            capturedTodayTotal = realCount + currentBonus;
+        }
+
+        // C. Calculate Overflow for TOMORROW
+        // You only generate overflow if:
+        // 1. You exceeded the goal with REAL applications (realCount > Goal)
+        // 2. You did NOT rely on protection today (Cooldown rule)
+        if (realCount > GOAL_PER_DAY && !usedProtection) {
+            previousDayOverflow = Math.min(realCount - GOAL_PER_DAY, GOAL_PER_DAY);
+            previousDayUsedBonus = false;
+        } else {
+            // Either we didn't hit goal, OR we used protection. No new overflow.
+            previousDayOverflow = 0;
+            previousDayUsedBonus = usedProtection;
+        }
+    }
+
+    // 3. Streak Calculation (Standard Logic)
     let streak = 0;
     const checkDate = new Date();
     for (let i = 0; i < 365; i++) {
         const k = getLocalYMD(checkDate);
-        const count = allDailyCounts[k] || 0;
+        const rawCount = allDailyCounts[k] || 0;
+
+        // Use effective count for today, raw for history
+        const effectiveCount = (i === 0) ? capturedTodayTotal : rawCount;
+
         const isWeekend = checkDate.getDay() === 0 || checkDate.getDay() === 6;
-        if (i === 0 && count < GOAL_PER_DAY) { checkDate.setDate(checkDate.getDate() - 1); continue; }
-        if (count >= GOAL_PER_DAY) streak++;
+        if (i === 0 && effectiveCount < GOAL_PER_DAY) { checkDate.setDate(checkDate.getDate() - 1); continue; }
+
+        if (effectiveCount >= GOAL_PER_DAY) streak++;
         else if (!isWeekend) break;
+
         checkDate.setDate(checkDate.getDate() - 1);
     }
 
     return {
-        labels: last7Days.map(d => {
-            const [y, m, day] = d.split('-').map(Number);
-            return new Date(y, m - 1, day).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        }),
-        data: dataValues,
-        todayCount, streak, allDailyCounts
+        labels: last7DaysLabels, // Now includes Tomorrow
+        realData: realDataValues,
+        bonusData: bonusDataValues,
+        todayCount: capturedTodayTotal, // Ensures Cards show TODAY'S progress
+        todayReal: capturedTodayReal,
+        streak,
+        allDailyCounts
     };
 };
 
@@ -114,7 +175,7 @@ const processHistoryData = (jobs, timePeriod) => {
 
 // --- MAIN COMPONENT ---
 export const JobDashboard = () => {
-    const [activeTab, setActiveTab] = useState('current'); // 'current', 'past', 'insights', 'rejections'
+    const [activeTab, setActiveTab] = useState('current');
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isBackfillOpen, setIsBackfillOpen] = useState(false);
     const [selectedJob, setSelectedJob] = useState(null);
@@ -125,7 +186,6 @@ export const JobDashboard = () => {
     const [page, setPage] = useState(1);
     const [failPage, setFailPage] = useState(1);
     const [historyPeriod, setHistoryPeriod] = useState('daily');
-    // ✨ NEW STATE: Controls the Insights dropdown
     const [insightsTimeRange, setInsightsTimeRange] = useState('all_time');
 
     // 1. Fetch Stats & Applications (Local DB)
@@ -150,9 +210,7 @@ export const JobDashboard = () => {
 
     // 3. Fetch Insights Data
     const { data: insightsData, isLoading: isLoadingInsights, refetch: refetchInsights } = useQuery({
-        // 🔑 KEY FIX: Added insightsTimeRange to queryKey so it refetches on change
         queryKey: ['dashboardInsights', insightsTimeRange],
-        // 🔑 KEY FIX: Pass the state to the fetch function
         queryFn: () => fetchDashboardInsights(insightsTimeRange),
         refetchOnWindowFocus: true
     });
@@ -184,7 +242,7 @@ export const JobDashboard = () => {
                 await syncEmails("Job fails");
                 await refetchFailures();
             } else if (activeTab === 'insights') {
-                await refetchInsights(); // Refresh insights specifically
+                await refetchInsights();
             } else {
                 await refetchStats();
                 await refetchTable();
