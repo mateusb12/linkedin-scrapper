@@ -3,39 +3,50 @@ import axios from 'axios';
 import {
     DownloadCloud, Clock, AlertCircle,
     Building, X, Calendar as CalendarIcon, MapPin, Users, ExternalLink, AlignLeft,
-    Terminal, FileJson, RefreshCcw, Upload
+    Terminal, FileJson, RefreshCcw, Upload, ArrowRight, TrendingUp // Added Icons
 } from 'lucide-react';
 
-// --- MODAL 1: BACKFILL (Action) ---
+// --- MODAL 1: ENRICHMENT (Action) ---
 export const BackfillModal = ({ onClose, onComplete }) => {
     const [progress, setProgress] = useState({
-        current: 0, total: 0, job_title: 'Initializing...', company: '', eta_seconds: 0, success_count: 0
+        current: 0, total: 0, job_title: 'Initializing...', company: '', eta_seconds: 0, success_count: 0, changes: []
     });
     const [logs, setLogs] = useState([]);
     const [isFinished, setIsFinished] = useState(false);
 
     useEffect(() => {
         const eventSource = new EventSource('http://localhost:5000/pipeline/backfill-descriptions-stream');
+
         eventSource.onmessage = (event) => {
             const data = JSON.parse(event.data);
             setProgress(data);
-            setLogs(prev => [{ id: Date.now(), text: `${data.status === 'success' ? '✅' : '❌'} ${data.job_title}`, type: data.status }, ...prev].slice(0, 5));
+
+            // Construct a log entry that includes the diffs
+            setLogs(prev => [{
+                id: Date.now(),
+                title: data.job_title,
+                status: data.status,
+                changes: data.changes || [] // Capture changes from backend
+            }, ...prev].slice(0, 7)); // Keep last 7 logs
         };
+
         eventSource.addEventListener('complete', () => {
             setIsFinished(true);
             eventSource.close();
             if(onComplete) onComplete();
         });
+
         eventSource.addEventListener('error', (e) => {
             if (e.data) {
                 const errData = JSON.parse(e.data);
-                setLogs(prev => [{ id: Date.now(), text: `🚨 Error: ${errData.error}`, type: 'error' }, ...prev]);
+                setLogs(prev => [{ id: Date.now(), title: `🚨 Error: ${errData.error}`, status: 'error', changes: [] }, ...prev]);
             }
         });
         return () => eventSource.close();
     }, []);
 
     const percentage = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
+
     const formatTime = (seconds) => {
         if (!seconds) return 'Calculating...';
         const m = Math.floor(seconds / 60);
@@ -44,52 +55,100 @@ export const BackfillModal = ({ onClose, onComplete }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 backdrop-blur-sm animate-in fade-in">
-            <div className="bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
-                <div className="p-6 border-b border-gray-700 bg-gray-900/50">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+
+                {/* Header */}
+                <div className="p-6 border-b border-gray-800 bg-gray-900">
                     <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                        <DownloadCloud className="text-blue-400 animate-pulse" /> Backfilling Descriptions
+                        <TrendingUp className="text-blue-500 animate-pulse" /> Enriching Job Data
                     </h3>
+                    <p className="text-xs text-gray-500 mt-1">Updating applicants, descriptions, and premium insights.</p>
                 </div>
-                <div className="p-6 space-y-6">
+
+                <div className="p-6 space-y-6 flex-1 overflow-y-auto custom-scrollbar">
+                    {/* Progress Bar */}
                     <div>
                         <div className="flex justify-between text-sm mb-2">
-                            <span className="text-white font-mono">{progress.current} / {progress.total} Jobs</span>
+                            <span className="text-gray-300 font-mono">{progress.current} / {progress.total} Jobs</span>
                             <span className="text-blue-400 font-bold">{percentage}%</span>
                         </div>
-                        <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
-                            <div className="h-full bg-gradient-to-r from-blue-600 to-cyan-400" style={{ width: `${percentage}%` }} />
+                        <div className="h-2 bg-gray-800 rounded-full overflow-hidden border border-gray-700">
+                            <div className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-300 ease-out" style={{ width: `${percentage}%` }} />
                         </div>
                     </div>
+
+                    {/* Stats Grid */}
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
+                        <div className="bg-gray-800/50 p-3 rounded-lg border border-gray-700">
                             <div className="flex items-center gap-2 text-gray-400 text-xs mb-1"><Clock size={14} /> Est. Time</div>
-                            <div className="text-lg font-bold text-white font-mono">{formatTime(progress.eta_seconds)}</div>
+                            <div className="text-xl font-bold text-white font-mono">{formatTime(progress.eta_seconds)}</div>
                         </div>
-                        <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700">
-                            <div className="flex items-center gap-2 text-gray-400 text-xs mb-1"><AlertCircle size={14} /> Success Rate</div>
-                            <div className="text-lg font-bold text-green-400 font-mono">{progress.success_count} found</div>
+                        <div className="bg-gray-800/50 p-3 rounded-lg border border-gray-700">
+                            <div className="flex items-center gap-2 text-gray-400 text-xs mb-1"><AlertCircle size={14} /> Updates Found</div>
+                            <div className="text-xl font-bold text-green-400 font-mono">{progress.success_count}</div>
                         </div>
                     </div>
-                    <div className="bg-blue-900/20 border border-blue-900/50 rounded-lg p-4">
-                        <p className="text-xs text-blue-300 uppercase font-bold tracking-wider mb-1">Processing Now</p>
-                        <p className="text-white font-medium truncate">{progress.job_title}</p>
+
+                    {/* Active Job Card */}
+                    <div className="bg-blue-950/30 border border-blue-900/50 rounded-lg p-4 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-2 opacity-20"><RefreshCcw size={40} className="animate-spin text-blue-400"/></div>
+                        <p className="text-xs text-blue-400 uppercase font-bold tracking-wider mb-1">Processing Now</p>
+                        <p className="text-white font-medium truncate pr-8">{progress.job_title}</p>
                         <p className="text-gray-400 text-sm truncate">{progress.company}</p>
                     </div>
-                    <div className="space-y-1.5">
-                        {logs.map(log => <div key={log.id} className={`text-xs ${log.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{log.text}</div>)}
+
+                    {/* Live Logs with Diffs */}
+                    <div className="space-y-2 bg-black/20 p-3 rounded-lg border border-gray-800 max-h-48 overflow-y-auto">
+                        {logs.map(log => (
+                            <div key={log.id} className="text-xs border-b border-gray-800/50 pb-2 last:border-0 last:pb-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className={log.status === 'success' ? 'text-green-500' : 'text-gray-500'}>
+                                        {log.status === 'success' ? '●' : '○'}
+                                    </span>
+                                    <span className="text-gray-300 font-medium truncate">{log.title}</span>
+                                </div>
+
+                                {/* Render Specific Changes */}
+                                {log.changes && log.changes.length > 0 ? (
+                                    <div className="pl-5 space-y-1">
+                                        {log.changes.map((change, idx) => (
+                                            <div key={idx} className="flex items-center gap-1.5 text-gray-400 font-mono text-[10px]">
+                                                <span className="text-blue-300">{change.field}:</span>
+                                                <span className="line-through opacity-60">{change.old}</span>
+                                                <ArrowRight size={10} className="text-gray-600" />
+                                                <span className="text-green-400 font-bold">{change.new}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="pl-5 text-[10px] text-gray-600 italic">No changes detected</div>
+                                )}
+                            </div>
+                        ))}
                     </div>
                 </div>
-                <div className="p-4 bg-gray-900/50 border-t border-gray-700 flex justify-end">
-                    <button onClick={onClose} disabled={!isFinished} className={`px-6 py-2 rounded-lg font-medium ${isFinished ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-gray-700 text-gray-500'}`}>{isFinished ? 'Close' : 'Processing...'}</button>
+
+                {/* Footer */}
+                <div className="p-4 bg-gray-900 border-t border-gray-800 flex justify-end">
+                    <button
+                        onClick={onClose}
+                        disabled={!isFinished}
+                        className={`px-6 py-2 rounded-lg font-medium transition-colors ${isFinished ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-900/20' : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'}`}
+                    >
+                        {isFinished ? 'Close' : 'Processing...'}
+                    </button>
                 </div>
             </div>
         </div>
     );
 };
 
+// ... ScraperSettings and JobDetailsPanel remain unchanged ...
+// (Include the rest of the file content for ScraperSettings and JobDetailsPanel here to maintain file integrity if copy-pasting)
 // --- MODAL 2: SETTINGS (Action) ---
 export const ScraperSettings = ({ onClose, onSaveSuccess }) => {
+    // ... (Existing code)
     const [statusMessage, setStatusMessage] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const fileInputRef = useRef(null);

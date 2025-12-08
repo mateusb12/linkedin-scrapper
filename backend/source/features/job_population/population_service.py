@@ -116,43 +116,35 @@ class PopulationService:
     @staticmethod
     def stream_description_backfill() -> Generator[str, None, None]:
         """
-        Generator that processes missing descriptions one by one and yields
-        SSE-compatible JSON events for the frontend.
+        Generator that processes jobs and yields SSE-compatible JSON events
+        with detailed diffs on what changed.
         """
         print("[DEBUG] 🟢 Starting stream_description_backfill generator...", flush=True)
 
         try:
             db = get_db_session()
-            print("[DEBUG] Database session created.", flush=True)
 
             # 1. Setup Session
-            print("[DEBUG] Loading LinkedIn configuration...", flush=True)
             session_artefacts = get_linkedin_fetch_artefacts()
-
             if not session_artefacts:
-                print("[DEBUG] ❌ Failed to load LinkedIn configuration.", flush=True)
                 yield f"event: error\ndata: {json.dumps({'error': 'Could not load LinkedIn session. Update cookies.'})}\n\n"
                 return
 
             requests_session, _ = session_artefacts
-            print("[DEBUG] LinkedIn session loaded successfully.", flush=True)
 
-            # 2. Get Targets
-            print("[DEBUG] Querying database for jobs with missing descriptions...", flush=True)
+            # 2. Get Targets (Broadened scope since we are checking applicants too)
             target_jobs = db.query(Job).filter(
                 or_(
                     Job.description_full == "No description provided",
-                    Job.applicants == 0,    # If default is 0
-                    Job.applicants.is_(None) # If null
+                    Job.applicants == 0,
+                    Job.applicants.is_(None)
                 )
             ).order_by(Job.posted_on.desc()).all()
 
             total = len(target_jobs)
-            print(f"[DEBUG] Found {total} jobs to backfill.", flush=True)
 
             if total == 0:
-                print("[DEBUG] No jobs found. Sending complete event.", flush=True)
-                yield f"event: complete\ndata: {json.dumps({'message': 'No jobs to backfill.'})}\n\n"
+                yield f"event: complete\ndata: {json.dumps({'message': 'No jobs need enrichment.'})}\n\n"
                 return
 
             start_time = time.time()
@@ -162,7 +154,6 @@ class PopulationService:
             # 3. Iterate and Stream
             for job in target_jobs:
                 processed += 1
-                print(f"[DEBUG] Processing {processed}/{total}: URN={job.urn} Title='{job.title}'", flush=True)
 
                 # Metrics
                 elapsed = time.time() - start_time
@@ -170,47 +161,53 @@ class PopulationService:
                 remaining_jobs = total - processed
                 eta_seconds = remaining_jobs * avg_time
 
-                # 4. Fetch
-                # Use the new enrichment method (returns Dict)
-                print(f"[DEBUG] Fetching enrichment data for {job.urn}...", flush=True)
+                # 4. Fetch Enrichment
                 try:
                     enrichment_data = EnrichmentService.fetch_single_job_details_enrichment(requests_session, job.urn)
                 except Exception as e:
-                    print(f"[DEBUG] ❌ Error calling EnrichmentService: {e}", flush=True)
-                    traceback.print_exc()
                     enrichment_data = {}
 
-                description = enrichment_data.get("description")
-                applicants = enrichment_data.get("applicants")
+                new_desc = enrichment_data.get("description")
+                new_applicants = enrichment_data.get("applicants")
 
                 status = "failed"
                 should_save = False
+                changes = [] # List to store specific updates
 
-                if description:
-                    # Update description if it was missing or different
-                    if job.description_full != description:
-                        job.description_full = description
-                        should_save = True
+                # --- Diff Logic ---
 
-                    # Update applicants if found
-                    if applicants is not None and job.applicants != applicants:
-                        job.applicants = applicants
-                        print(f"[DEBUG] ✅ Updating Applicants: {job.applicants} -> {applicants}", flush=True)
-                        should_save = True
+                # Check Description
+                if new_desc and job.description_full != new_desc:
+                    changes.append({
+                        "field": "Description",
+                        "old": "Missing" if job.description_full == "No description provided" else "Outdated",
+                        "new": "Updated"
+                    })
+                    job.description_full = new_desc
+                    should_save = True
 
-                    if should_save:
-                        job.processed = False
-                        db.commit()
-                        status = "success"
-                        success_count += 1
-                        print(f"[DEBUG] 💾 Job saved.", flush=True)
-                    else:
-                        # Even if we didn't save (data matched), we count it as a "success" for the UI
-                        status = "success"
-                        print(f"[DEBUG] 🤷 No changes needed.", flush=True)
+                # Check Applicants
+                # Handle None/0 logic carefully
+                old_applicants = job.applicants if job.applicants is not None else 0
+                incoming_applicants = new_applicants if new_applicants is not None else 0
 
-                else:
-                    print(f"[DEBUG] ⚠️ No description returned.", flush=True)
+                if new_applicants is not None and old_applicants != incoming_applicants:
+                    changes.append({
+                        "field": "Applicants",
+                        "old": old_applicants,
+                        "new": incoming_applicants
+                    })
+                    job.applicants = incoming_applicants
+                    should_save = True
+
+                if should_save:
+                    job.processed = False # Mark for re-indexing by AI if needed
+                    db.commit()
+                    status = "success"
+                    success_count += 1
+                elif new_desc or new_applicants:
+                    # Found data, but it matched DB (Success, but no update needed)
+                    status = "success"
 
                 # 5. Build Payload
                 payload = {
@@ -221,22 +218,15 @@ class PopulationService:
                     "status": status,
                     "eta_seconds": round(eta_seconds),
                     "success_count": success_count,
-                    "applicants_found": applicants
+                    "changes": changes # <--- Sending the Diff to frontend
                 }
 
-                # 6. Yield Event
-                print(f"[DEBUG] Yielding event for {job.title}...", flush=True)
                 yield f"data: {json.dumps(payload)}\n\n"
-
-                # 7. Safety Sleep
-                print("[DEBUG] Sleeping for 2.0s...", flush=True)
-                time.sleep(2.0)
+                time.sleep(1.5) # Gentle rate limit
 
             db.close()
-            print("[DEBUG] 🏁 Stream finished. Closing DB session.", flush=True)
-            yield f"event: complete\ndata: {json.dumps({'message': 'Backfill finished'})}\n\n"
+            yield f"event: complete\ndata: {json.dumps({'message': 'Enrichment finished'})}\n\n"
 
         except Exception as e:
-            print(f"[DEBUG] 💥 CRITICAL ERROR in stream: {e}", flush=True)
             traceback.print_exc()
             yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
