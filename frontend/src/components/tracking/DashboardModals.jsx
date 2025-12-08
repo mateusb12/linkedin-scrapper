@@ -3,22 +3,26 @@ import axios from 'axios';
 import {
     DownloadCloud, Clock, AlertCircle,
     Building, X, Calendar as CalendarIcon, MapPin, Users, ExternalLink, AlignLeft,
-    Terminal, FileJson, RefreshCcw, Upload, ArrowRight, TrendingUp, Filter
+    Terminal, FileJson, RefreshCcw, Upload, ArrowRight, TrendingUp, Filter, Play
 } from 'lucide-react';
 import { formatCustomDate } from '../../utils/dateUtils';
 
 // --- MODAL 1: ENRICHMENT (Action) ---
 export const BackfillModal = ({ onClose, onComplete }) => {
     const [timeRange, setTimeRange] = useState('past_month');
+    const [hasStarted, setHasStarted] = useState(false); // ✨ NEW: Controls start
 
     const [progress, setProgress] = useState({
-        current: 0, total: 0, job_title: 'Initializing...', company: '', eta_seconds: 0, success_count: 0, changes: []
+        current: 0, total: 0, job_title: 'Waiting to start...', company: '', eta_seconds: 0, success_count: 0, changes: []
     });
     const [logs, setLogs] = useState([]);
     const [isFinished, setIsFinished] = useState(false);
 
     useEffect(() => {
-        // Reset UI state when filter changes
+        // 🛑 Block execution until user clicks Start
+        if (!hasStarted) return;
+
+        // Reset UI state
         setProgress({
             current: 0, total: 0, job_title: 'Initializing...', company: '', eta_seconds: 0, success_count: 0, changes: []
         });
@@ -36,20 +40,16 @@ export const BackfillModal = ({ onClose, onComplete }) => {
                 title: data.job_title,
                 status: data.status,
                 changes: data.changes || []
-            }, ...prev].slice(0, 50)); // Increased log history
+            }, ...prev].slice(0, 50));
         };
 
-        // ✅ FIX: Read message from complete event to update UI
         eventSource.addEventListener('complete', (e) => {
             const data = e.data ? JSON.parse(e.data) : { message: 'Finished' };
-
-            // If we finished with 0 jobs, update the title so it doesn't say "Initializing"
             setProgress(prev => ({
                 ...prev,
                 job_title: data.message || 'Process Complete',
                 company: ''
             }));
-
             setIsFinished(true);
             eventSource.close();
             if(onComplete) onComplete();
@@ -60,13 +60,12 @@ export const BackfillModal = ({ onClose, onComplete }) => {
                 const errData = JSON.parse(e.data);
                 setLogs(prev => [{ id: Date.now(), title: `🚨 Error: ${errData.error}`, status: 'error', changes: [] }, ...prev]);
             }
-            // Optional: Close on error to prevent infinite loop of error toasts
             eventSource.close();
             setIsFinished(true);
         });
 
         return () => eventSource.close();
-    }, [timeRange]);
+    }, [hasStarted]); // ⚡ Only run when hasStarted changes to true
 
     const percentage = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : (isFinished ? 100 : 0);
 
@@ -86,9 +85,10 @@ export const BackfillModal = ({ onClose, onComplete }) => {
                 <div className="p-6 border-b border-gray-800 bg-gray-900 flex justify-between items-center">
                     <div>
                         <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                            <TrendingUp className="text-blue-500 animate-pulse" /> Enriching Job Data
+                            <TrendingUp className={`text-blue-500 ${hasStarted && !isFinished ? 'animate-pulse' : ''}`} />
+                            Enriching Job Data
                         </h3>
-                        <p className="text-xs text-gray-500 mt-1">Updating applicants & descriptions.</p>
+                        <p className="text-xs text-gray-500 mt-1">Updates applicants, descriptions & statuses.</p>
                     </div>
 
                     {/* Time Range Dropdown */}
@@ -97,8 +97,8 @@ export const BackfillModal = ({ onClose, onComplete }) => {
                         <select
                             value={timeRange}
                             onChange={(e) => setTimeRange(e.target.value)}
-                            disabled={!isFinished && progress.total > 0 && progress.current < progress.total} // Disable only if actually running
-                            className="bg-gray-800 text-xs text-gray-300 border border-gray-700 rounded-lg pl-8 pr-3 py-1.5 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50 cursor-pointer hover:bg-gray-750 transition-colors"
+                            disabled={hasStarted} // 🔒 Disable while running
+                            className="bg-gray-800 text-xs text-gray-300 border border-gray-700 rounded-lg pl-8 pr-3 py-1.5 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:bg-gray-750 transition-colors"
                         >
                             <option value="past_24h">Past 24 Hours</option>
                             <option value="past_week">Past Week</option>
@@ -110,81 +110,109 @@ export const BackfillModal = ({ onClose, onComplete }) => {
                 </div>
 
                 <div className="p-6 space-y-6 flex-1 overflow-y-auto custom-scrollbar">
-                    {/* Progress Bar */}
-                    <div>
-                        <div className="flex justify-between text-sm mb-2">
-                            <span className="text-gray-300 font-mono">{progress.current} / {progress.total} Jobs</span>
-                            <span className="text-blue-400 font-bold">{percentage}%</span>
-                        </div>
-                        <div className="h-2 bg-gray-800 rounded-full overflow-hidden border border-gray-700">
-                            <div className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-300 ease-out" style={{ width: `${percentage}%` }} />
-                        </div>
-                    </div>
 
-                    {/* Stats Grid */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-gray-800/50 p-3 rounded-lg border border-gray-700">
-                            <div className="flex items-center gap-2 text-gray-400 text-xs mb-1"><Clock size={14} /> Est. Time</div>
-                            <div className="text-xl font-bold text-white font-mono">{formatTime(progress.eta_seconds)}</div>
-                        </div>
-                        <div className="bg-gray-800/50 p-3 rounded-lg border border-gray-700">
-                            <div className="flex items-center gap-2 text-gray-400 text-xs mb-1"><AlertCircle size={14} /> Updates Found</div>
-                            <div className="text-xl font-bold text-green-400 font-mono">{progress.success_count}</div>
-                        </div>
-                    </div>
-
-                    {/* Active Job Card / Status Box */}
-                    <div className={`border rounded-lg p-4 relative overflow-hidden transition-colors ${isFinished ? 'bg-gray-800/50 border-gray-700' : 'bg-blue-950/30 border-blue-900/50'}`}>
-                        {!isFinished && <div className="absolute top-0 right-0 p-2 opacity-20"><RefreshCcw size={40} className="animate-spin text-blue-400"/></div>}
-                        <p className={`text-xs uppercase font-bold tracking-wider mb-1 ${isFinished ? 'text-gray-500' : 'text-blue-400'}`}>
-                            {isFinished ? 'Status' : 'Processing Now'}
-                        </p>
-                        <p className="text-white font-medium truncate pr-8">{progress.job_title}</p>
-                        <p className="text-gray-400 text-sm truncate">{progress.company}</p>
-                    </div>
-
-                    {/* Live Logs with Diffs */}
-                    <div className="space-y-2 bg-black/20 p-3 rounded-lg border border-gray-800 max-h-48 overflow-y-auto">
-                        {logs.length === 0 && isFinished && (
-                            <div className="text-center text-gray-500 text-xs py-4">No activity to report.</div>
-                        )}
-                        {logs.map(log => (
-                            <div key={log.id} className="text-xs border-b border-gray-800/50 pb-2 last:border-0 last:pb-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className={log.status === 'success' ? 'text-green-500' : 'text-gray-500'}>
-                                        {log.status === 'success' ? '●' : '○'}
-                                    </span>
-                                    <span className="text-gray-300 font-medium truncate">{log.title}</span>
-                                </div>
-
-                                {log.changes && log.changes.length > 0 ? (
-                                    <div className="pl-5 space-y-1">
-                                        {log.changes.map((change, idx) => (
-                                            <div key={idx} className="flex items-center gap-1.5 text-gray-400 font-mono text-[10px]">
-                                                <span className="text-blue-300">{change.field}:</span>
-                                                <span className="line-through opacity-60">{change.old}</span>
-                                                <ArrowRight size={10} className="text-gray-600" />
-                                                <span className="text-green-400 font-bold">{change.new}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="pl-5 text-[10px] text-gray-600 italic">No changes detected</div>
-                                )}
+                    {/* ✨ Start Screen vs Progress Screen */}
+                    {!hasStarted ? (
+                        <div className="flex flex-col items-center justify-center py-10 space-y-4 text-center">
+                            <div className="p-4 bg-blue-500/10 rounded-full">
+                                <TrendingUp size={48} className="text-blue-500" />
                             </div>
-                        ))}
-                    </div>
+                            <h4 className="text-lg font-semibold text-white">Ready to Enrich</h4>
+                            <p className="text-sm text-gray-400 max-w-xs">
+                                Select a time range above and click Start. This will scan your saved jobs for updated applicant counts and statuses.
+                            </p>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Progress Bar */}
+                            <div>
+                                <div className="flex justify-between text-sm mb-2">
+                                    <span className="text-gray-300 font-mono">{progress.current} / {progress.total} Jobs</span>
+                                    <span className="text-blue-400 font-bold">{percentage}%</span>
+                                </div>
+                                <div className="h-2 bg-gray-800 rounded-full overflow-hidden border border-gray-700">
+                                    <div className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-300 ease-out" style={{ width: `${percentage}%` }} />
+                                </div>
+                            </div>
+
+                            {/* Stats Grid */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-gray-800/50 p-3 rounded-lg border border-gray-700">
+                                    <div className="flex items-center gap-2 text-gray-400 text-xs mb-1"><Clock size={14} /> Est. Time</div>
+                                    <div className="text-xl font-bold text-white font-mono">{formatTime(progress.eta_seconds)}</div>
+                                </div>
+                                <div className="bg-gray-800/50 p-3 rounded-lg border border-gray-700">
+                                    <div className="flex items-center gap-2 text-gray-400 text-xs mb-1"><AlertCircle size={14} /> Updates Found</div>
+                                    <div className="text-xl font-bold text-green-400 font-mono">{progress.success_count}</div>
+                                </div>
+                            </div>
+
+                            {/* Active Job Card / Status Box */}
+                            <div className={`border rounded-lg p-4 relative overflow-hidden transition-colors ${isFinished ? 'bg-gray-800/50 border-gray-700' : 'bg-blue-950/30 border-blue-900/50'}`}>
+                                {!isFinished && <div className="absolute top-0 right-0 p-2 opacity-20"><RefreshCcw size={40} className="animate-spin text-blue-400"/></div>}
+                                <p className={`text-xs uppercase font-bold tracking-wider mb-1 ${isFinished ? 'text-gray-500' : 'text-blue-400'}`}>
+                                    {isFinished ? 'Status' : 'Processing Now'}
+                                </p>
+                                <p className="text-white font-medium truncate pr-8">{progress.job_title}</p>
+                                <p className="text-gray-400 text-sm truncate">{progress.company}</p>
+                            </div>
+
+                            {/* Live Logs with Diffs */}
+                            <div className="space-y-2 bg-black/20 p-3 rounded-lg border border-gray-800 max-h-48 overflow-y-auto">
+                                {logs.length === 0 && isFinished && (
+                                    <div className="text-center text-gray-500 text-xs py-4">No activity to report.</div>
+                                )}
+                                {logs.map(log => (
+                                    <div key={log.id} className="text-xs border-b border-gray-800/50 pb-2 last:border-0 last:pb-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className={log.status === 'success' ? 'text-green-500' : 'text-gray-500'}>
+                                                {log.status === 'success' ? '●' : '○'}
+                                            </span>
+                                            <span className="text-gray-300 font-medium truncate">{log.title}</span>
+                                        </div>
+
+                                        {log.changes && log.changes.length > 0 ? (
+                                            <div className="pl-5 space-y-1">
+                                                {log.changes.map((change, idx) => (
+                                                    <div key={idx} className="flex items-center gap-1.5 text-gray-400 font-mono text-[10px]">
+                                                        <span className="text-blue-300">{change.field}:</span>
+                                                        <span className="line-through opacity-60">{change.old}</span>
+                                                        <ArrowRight size={10} className="text-gray-600" />
+                                                        <span className="text-green-400 font-bold">{change.new}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="pl-5 text-[10px] text-gray-600 italic">No changes detected</div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 bg-gray-900 border-t border-gray-800 flex justify-end">
-                    <button
-                        onClick={onClose}
-                        disabled={!isFinished}
-                        className={`px-6 py-2 rounded-lg font-medium transition-colors ${isFinished ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-900/20' : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'}`}
-                    >
-                        {isFinished ? 'Close' : 'Processing...'}
-                    </button>
+                <div className="p-4 bg-gray-900 border-t border-gray-800 flex justify-end gap-3">
+                    {!hasStarted ? (
+                        <>
+                            <button onClick={onClose} className="px-4 py-2 rounded-lg text-gray-400 hover:text-white transition-colors">Cancel</button>
+                            <button
+                                onClick={() => setHasStarted(true)}
+                                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-lg shadow-blue-900/20 flex items-center gap-2 transition-all"
+                            >
+                                <Play size={16} fill="currentColor" /> Start Enrichment
+                            </button>
+                        </>
+                    ) : (
+                        <button
+                            onClick={onClose}
+                            disabled={!isFinished}
+                            className={`px-6 py-2 rounded-lg font-medium transition-colors ${isFinished ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-900/20' : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'}`}
+                        >
+                            {isFinished ? 'Close' : 'Processing...'}
+                        </button>
+                    )}
                 </div>
             </div>
         </div>
