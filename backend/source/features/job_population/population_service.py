@@ -179,9 +179,11 @@ class PopulationService:
             success_count = 0
 
             # 4. Iterate and Stream
-            for job in target_jobs:
-                if job.urn == "urn:li:jobPosting:4034670521":
-                    print(f"[DEBUG] Skipping known problematic job {job.urn}", flush=True)
+            for index, job in enumerate(target_jobs, start=1):
+                print(
+                    f"[DEBUG] Processing job {index}/{total} | Company: {job.company.name if job.company else 'Unknown'} | URN: {job.urn}",
+                    flush=True
+                )
                 processed += 1
 
                 # Metrics calculation

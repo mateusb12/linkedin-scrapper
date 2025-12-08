@@ -226,15 +226,16 @@ class EnrichmentService:
         """
         Fetches:
         1. Full HTML description
-        2. Premium Applicant Insights (Count, applicantsInPastDay, rankPercentile)
-        3. Job Status (Actively Reviewing / No Longer Accepting)
-        4. Date Text (Posted on ...)
+        2. Premium Applicant Insights
+        3. TOP_CARD (Title, Company, Closed Status)
+        4. JOB_ACTIVITY_CARD (Application status, "Actively Reviewing")
         """
         clean_id = job_urn.split(':')[-1]
         target_urn = f"urn:li:fsd_jobPosting:{clean_id}"
 
+        # 🚀 UPDATED: Added TOP_CARD and JOB_ACTIVITY_CARD to the request
         variables = (
-            f"(cardSectionTypes:List(JOB_DESCRIPTION_CARD,JOB_APPLICANT_INSIGHTS),"
+            f"(cardSectionTypes:List(JOB_DESCRIPTION_CARD,JOB_APPLICANT_INSIGHTS,TOP_CARD,JOB_ACTIVITY_CARD),"
             f"jobPostingUrn:{urllib.parse.quote(target_urn)},"
             f"includeSecondaryActionsV2:true)"
         )
@@ -261,9 +262,16 @@ class EnrichmentService:
 
             data = response.json()
 
-            # Save JSON snapshot for debugging
-            with open("response.json", "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=4)
+            # --- 🎯 TARGETED DEBUGGING: Nearsure Job ---
+            if "4325505914" in job_urn:
+                print(f"\n[DEBUG] 🚨 CAUGHT NEARSURE JOB! Dumping response.json...")
+                try:
+                    with open("response.json", "w", encoding="utf-8") as f:
+                        json.dump(data, f, ensure_ascii=False, indent=4)
+                    print(f"[DEBUG] ✅ Saved response.json successfully. Check your root folder.")
+                except Exception as save_err:
+                    print(f"[DEBUG] ❌ Failed to save JSON: {save_err}")
+            # -------------------------------------------
 
             found_description = False
             found_insights = False
@@ -301,16 +309,16 @@ class EnrichmentService:
 
                     found_insights = True
 
-                # --- ✨ 3. CAPTURE STATUS TEXT ---
+                # --- ✨ 3. CAPTURE STATUS TEXT (Enhanced) ---
 
                 # Check A: Explicit Job State (CLOSED)
                 if type_id == "com.linkedin.voyager.dash.jobs.JobPosting":
                     if item.get("jobState") == "CLOSED":
                         detected_status = "No Longer Accepting"
-                        # print(f"   [DEBUG] Found CLOSED state")
 
-                # Check B: Text Scrape for "Actively reviewing" / "No longer accepting"
-                # We scan ALL text fields because this tag moves around in the JSON structure
+                # Check B: Text Scrape
+                # Now that we requested TOP_CARD and JOB_ACTIVITY_CARD, these strings
+                # will actually be present in the response!
                 text_content = ""
                 if "text" in item and isinstance(item["text"], str):
                     text_content = item["text"]
@@ -323,13 +331,11 @@ class EnrichmentService:
                     # Priority 1: Closed/No longer accepting
                     if "no longer accepting applications" in lower_text:
                         detected_status = "No Longer Accepting"
-                        # print(f"   [DEBUG] Found 'No Longer Accepting' text")
 
-                    # Priority 2: Actively reviewing (Only if not already detected as closed)
+                    # Priority 2: Actively reviewing (Only if not already closed)
                     elif "actively reviewing applicants" in lower_text:
                         if detected_status != "No Longer Accepting":
                             detected_status = "Actively Reviewing"
-                            # print(f"   [DEBUG] Found 'Actively Reviewing' text")
 
             # Store the discovered data
             result["application_status"] = detected_status
@@ -343,8 +349,6 @@ class EnrichmentService:
 
             if found_insights:
                 status.append(f"Applicants: {result['applicants']} 💎")
-            else:
-                status.append("No Premium Data ⚪")
 
             if detected_status:
                 status.append(f"Status: {detected_status} 🏷️")

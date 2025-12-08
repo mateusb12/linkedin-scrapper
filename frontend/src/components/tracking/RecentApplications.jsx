@@ -1,21 +1,58 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronRight, ChevronLeft, Building2, Calendar, Users, Briefcase, Search } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Building2, Calendar, Users, Briefcase, Search, AlertCircle, Eye } from 'lucide-react';
 import { formatCustomDate } from '../../utils/dateUtils';
 
+// ✨ UPDATED: Enhanced Status Badge with new states
 const StatusBadge = ({ status }) => {
+    // Normalize status to handle potential case variations
+    const normalizedStatus = (status || 'Waiting').toLowerCase();
+
     const styles = {
-        'Waiting': 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-        'Refused': 'bg-red-500/10 text-red-500 border-red-500/20',
-        'Interview': 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-        'Accepted': 'bg-green-500/10 text-green-500 border-green-500/20',
+        'waiting': {
+            css: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+            icon: null
+        },
+        'refused': {
+            css: 'bg-red-500/10 text-red-500 border-red-500/20',
+            icon: null
+        },
+        'interview': {
+            css: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+            icon: null
+        },
+        'accepted': {
+            css: 'bg-green-500/10 text-green-500 border-green-500/20',
+            icon: null
+        },
+        // 🚀 NEW STATE: Actively Reviewing
+        'actively reviewing': {
+            css: 'bg-purple-500/10 text-purple-400 border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.2)]',
+            icon: <Eye size={12} className="mr-1 inline-block" />
+        },
+        'actively reviewing applicants': { // Handle full text variation
+            css: 'bg-purple-500/10 text-purple-400 border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.2)]',
+            icon: <Eye size={12} className="mr-1 inline-block" />
+        },
+        // ⛔ NEW STATE: No Longer Accepting
+        'no longer accepting': {
+            css: 'bg-gray-700/50 text-gray-400 border-gray-600/50',
+            icon: <AlertCircle size={12} className="mr-1 inline-block" />
+        },
+        'no longer accepting applications': { // Handle full text variation
+            css: 'bg-gray-700/50 text-gray-400 border-gray-600/50',
+            icon: <AlertCircle size={12} className="mr-1 inline-block" />
+        }
     };
 
-    const defaultStyle = 'bg-gray-500/10 text-gray-500 border-gray-500/20';
-    const currentStatus = status || 'Waiting';
+    const config = styles[normalizedStatus] || styles['waiting'];
+
+    // Helper to shorten long text for the badge
+    const displayLabel = status && status.length > 20 ? status.substring(0, 18) + '...' : status;
 
     return (
-        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${styles[currentStatus] || defaultStyle}`}>
-            {currentStatus}
+        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border flex items-center w-fit ${config.css}`}>
+            {config.icon}
+            {displayLabel || 'Waiting'}
         </span>
     );
 };
@@ -140,7 +177,7 @@ const RecentApplications = ({ jobs, onSelectJob, pagination }) => {
                                         <Building2 size={14} className="text-blue-400" />
                                         {job.company}
                                     </div>
-                                    <div className="text-xs text-gray-500 uppercase mt-1 pl-6">{job.source}</div>
+                                    <div className="text-xs text-gray-500 uppercase mt-1 pl-6">{job.source || 'Linkedin'}</div>
                                 </td>
                                 <td className="px-6 py-4 text-gray-300 font-medium group-hover:text-blue-400 transition-colors">
                                     <div className="flex items-center gap-2">
