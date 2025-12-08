@@ -143,7 +143,6 @@ class EnrichmentService:
 
         for card in elements:
             job_card = card.get("jobCard", {})
-
             entity_urn = card.get("entityUrn") or job_card.get("*jobPostingCard")
             if not entity_urn: continue
             match = re.search(r'\((\d+),', entity_urn)
@@ -228,6 +227,8 @@ class EnrichmentService:
         Fetches:
         1. Full HTML description
         2. Premium Applicant Insights (Count, applicantsInPastDay, rankPercentile)
+        3. Job Status (Actively Reviewing / No Longer Accepting)
+        4. Date Text (Posted on ...)
         """
         clean_id = job_urn.split(':')[-1]
         target_urn = f"urn:li:fsd_jobPosting:{clean_id}"
@@ -245,7 +246,9 @@ class EnrichmentService:
             "description": None,
             "applicants": None,
             "applicants_in_past_day": None,
-            "applicant_rank_percentile": None
+            "applicant_rank_percentile": None,
+            "application_status": None,
+            "posted_date_text": None
         }
 
         try:
@@ -262,21 +265,28 @@ class EnrichmentService:
             with open("response.json", "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
 
-            found_desc = False
+            found_description = False
             found_insights = False
+            detected_status = None
+            posted_date_text = None
 
             # 🔍 UNIVERSAL RECURSIVE SCAN
             for item in extract_all_items(data):
                 type_id = item.get("$type", "")
 
                 # ---------------------------------
-                # 1. Capture Description
+                # 1. Capture Description & Date
                 # ---------------------------------
                 if type_id == "com.linkedin.voyager.dash.jobs.JobDescription":
+                    # Capture Description
                     desc = item.get("descriptionText", {}).get("text")
                     if desc:
                         result["description"] = desc
-                        found_desc = True
+                        found_description = True
+
+                    # Capture Date Text (e.g. "Posted on Oct 15, 2025.")
+                    if item.get("postedOnText"):
+                        posted_date_text = item.get("postedOnText")
 
                 # ---------------------------------
                 # 2. Capture ALL Premium Applicant Insights
@@ -291,16 +301,56 @@ class EnrichmentService:
 
                     found_insights = True
 
+                # --- ✨ 3. CAPTURE STATUS TEXT ---
+
+                # Check A: Explicit Job State (CLOSED)
+                if type_id == "com.linkedin.voyager.dash.jobs.JobPosting":
+                    if item.get("jobState") == "CLOSED":
+                        detected_status = "No Longer Accepting"
+                        # print(f"   [DEBUG] Found CLOSED state")
+
+                # Check B: Text Scrape for "Actively reviewing" / "No longer accepting"
+                # We scan ALL text fields because this tag moves around in the JSON structure
+                text_content = ""
+                if "text" in item and isinstance(item["text"], str):
+                    text_content = item["text"]
+                elif "text" in item and isinstance(item["text"], dict):
+                    text_content = item["text"].get("text", "")
+
+                if text_content:
+                    lower_text = text_content.lower()
+
+                    # Priority 1: Closed/No longer accepting
+                    if "no longer accepting applications" in lower_text:
+                        detected_status = "No Longer Accepting"
+                        # print(f"   [DEBUG] Found 'No Longer Accepting' text")
+
+                    # Priority 2: Actively reviewing (Only if not already detected as closed)
+                    elif "actively reviewing applicants" in lower_text:
+                        if detected_status != "No Longer Accepting":
+                            detected_status = "Actively Reviewing"
+                            # print(f"   [DEBUG] Found 'Actively Reviewing' text")
+
+            # Store the discovered data
+            result["application_status"] = detected_status
+            result["posted_date_text"] = posted_date_text
+
             # ---------------------------------
             # Logging summary
             # ---------------------------------
             status = []
-            status.append("Desc ✅" if found_desc else "Desc ❌")
+            status.append("Desc ✅" if found_description else "Desc ❌")
 
             if found_insights:
                 status.append(f"Applicants: {result['applicants']} 💎")
             else:
                 status.append("No Premium Data ⚪")
+
+            if detected_status:
+                status.append(f"Status: {detected_status} 🏷️")
+
+            if posted_date_text:
+                status.append(f"Date Found 📅")
 
             print(" -> " + ", ".join(status))
             return result

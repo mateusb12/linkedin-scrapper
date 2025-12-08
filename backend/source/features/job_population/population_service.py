@@ -4,6 +4,7 @@ import json
 import traceback
 from datetime import datetime, timedelta
 from typing import Dict, Any, Generator
+from dateutil import parser as date_parser
 
 from sqlalchemy import or_
 
@@ -158,9 +159,11 @@ class PopulationService:
                 # Lexicographical comparison works for ISO dates
                 cutoff_str = cutoff_date.isoformat()
                 print(f"[DEBUG] Filtering jobs posted after: {cutoff_str}")
-                query = query.filter(Job.posted_on >= cutoff_str)
+                # [MODIFIED] Include jobs with missing dates so we can fix them!
+                query = query.filter(
+                    Job.posted_on.is_(None) | (Job.posted_on >= cutoff_str)
+                )
 
-            # Order by newest first so we see recent updates first
             target_jobs = query.order_by(Job.posted_on.desc()).all()
             total = len(target_jobs)
 
@@ -177,6 +180,8 @@ class PopulationService:
 
             # 4. Iterate and Stream
             for job in target_jobs:
+                if job.urn == "urn:li:jobPosting:4034670521":
+                    print(f"[DEBUG] Skipping known problematic job {job.urn}", flush=True)
                 processed += 1
 
                 # Metrics calculation
@@ -194,6 +199,8 @@ class PopulationService:
 
                 new_desc = enrichment_data.get("description")
                 new_applicants = enrichment_data.get("applicants")
+                new_status = enrichment_data.get("application_status")
+                posted_text = enrichment_data.get("posted_date_text")
 
                 status = "failed"
                 should_save = False
@@ -201,7 +208,36 @@ class PopulationService:
 
                 # --- Diff Logic ---
 
-                # Check Description
+                # 1. Check Status (NEW)
+                if new_status and job.application_status != new_status:
+                    changes.append({
+                        "field": "Status",
+                        "old": job.application_status,
+                        "new": new_status
+                    })
+                    job.application_status = new_status
+                    should_save = True
+
+                # 2. Fix Missing Date (NEW)
+                if (job.posted_on is None or job.posted_on == "") and posted_text:
+                    try:
+                        # Clean string "Posted on Oct 15, 2025." -> "Oct 15, 2025"
+                        clean_date_str = posted_text.replace("Posted on ", "").replace(".", "").strip()
+                        # Parse to ISO format using dateutil
+                        dt_object = date_parser.parse(clean_date_str)
+                        new_iso_date = dt_object.isoformat()
+
+                        changes.append({
+                            "field": "Date Fix",
+                            "old": "Missing",
+                            "new": f"Fixed to {clean_date_str}"
+                        })
+                        job.posted_on = new_iso_date
+                        should_save = True
+                    except Exception as e:
+                        print(f"[Warning] Date parse failed for {posted_text}: {e}")
+
+                # 3. Check Description
                 if new_desc and job.description_full != new_desc:
                     changes.append({
                         "field": "Description",
@@ -211,7 +247,7 @@ class PopulationService:
                     job.description_full = new_desc
                     should_save = True
 
-                # Check Applicants
+                # 4. Check Applicants
                 # Handle None/0 logic carefully
                 old_applicants = job.applicants if job.applicants is not None else 0
                 incoming_applicants = new_applicants if new_applicants is not None else 0
@@ -231,7 +267,7 @@ class PopulationService:
                     status = "success"
                     success_count += 1
                     print(f"[DEBUG] 💾 Job {job.urn} updated.", flush=True)
-                elif new_desc or new_applicants:
+                elif new_desc or new_applicants or new_status:
                     # Found data, but it matched DB (Success, but no update needed)
                     status = "success"
                     # print(f"[DEBUG] 🤷 Job {job.urn} is up to date.", flush=True)
