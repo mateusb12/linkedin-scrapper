@@ -1,5 +1,6 @@
 import imaplib
 import email
+import re  # <--- Added for Regex
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 from datetime import datetime
@@ -9,6 +10,7 @@ from sqlalchemy import desc
 from database.database_connection import get_db_session
 from models.user_models import Profile
 from models.email_models import Email
+from models.job_models import Job, Company # <--- Added for Job linking
 
 gmail_bp = Blueprint("gmail", __name__, url_prefix="/emails")
 
@@ -52,12 +54,78 @@ def parse_email_address(raw_header):
         email_only = clean_header.split("<")[-1].strip(">")
     return clean_header, email_only
 
+# --- Reconciliation Logic (The Fix) ---
+
+def _auto_reconcile_job(session, email_obj):
+    """
+    Robustly links rejection emails to jobs using fuzzy matching with DEEP DEBUGGING.
+    """
+    subject = email_obj.subject or ""
+    print(f"\n[Status Sync] Processing Email Subject: '{subject}'")
+
+    # 1. Improved Regex: Handles newlines (DOTALL) and varied formats
+    match = re.search(r"application to (.+?) at (.+)", subject, re.IGNORECASE | re.DOTALL)
+
+    if not match:
+        print(f"   -> ❌ Regex match FAILED for subject: '{subject}'")
+        return False
+
+    role_name = match.group(1).strip()
+    company_name_raw = match.group(2).strip()
+
+    # Clean up company name (remove trailing punctuation/newlines often found in emails)
+    # Example: "PDtec | Uma\n empresa B3" -> "PDtec"
+    company_name = company_name_raw.split('|')[0].split('(')[0].split('\n')[0].strip()
+
+    print(f"   -> Extracted Role: '{role_name}'")
+    print(f"   -> Extracted Company: '{company_name}'")
+
+    # 2. Strategy A: Direct Search
+    print(f"   -> Strategy A: Searching DB for exact company match: '%{company_name}%'...")
+    target_job = session.query(Job).join(Company).filter(
+        Company.name.ilike(f"%{company_name}%"),
+        Job.application_status != 'Refused'
+    ).first()
+
+    if target_job:
+        print(f"      ✅ EXACT MATCH FOUND! Job URN: {target_job.urn}")
+    else:
+        print(f"      ⚠️ No exact match. Trying fuzzy search...")
+
+        # 3. Strategy B: The "First Word" Fallback
+        if " " in company_name:
+            first_word = company_name.split(' ')[0]
+            if len(first_word) > 2: # Safety check
+                print(f"   -> Strategy B: Fuzzy searching for first word: '%{first_word}%' with role '%{role_name[:10]}%'...")
+
+                target_job = session.query(Job).join(Company).filter(
+                    Company.name.ilike(f"%{first_word}%"),
+                    # We add title check to ensure we don't match a different job at a similar company name
+                    Job.title.ilike(f"%{role_name[:15]}%"),
+                    Job.application_status != 'Refused'
+                ).first()
+
+                if target_job:
+                    print(f"      ✅ FUZZY MATCH FOUND! Job URN: {target_job.urn}")
+                else:
+                    print(f"      ❌ Fuzzy match failed.")
+            else:
+                print(f"      ⚠️ First word '{first_word}' too short for fuzzy search.")
+        else:
+            print(f"      ℹ️ Company name '{company_name}' is single word, skipping fuzzy split.")
+
+    # 4. Execute Update
+    if target_job:
+        print(f"   -> 🔄 Updating status for {target_job.company.name} from '{target_job.application_status}' to 'Refused'")
+        target_job.application_status = "Refused"
+        return True
+
+    print(f"   -> 🛑 FINAL RESULT: No matching active job found for '{company_name}'.")
+    return False
+
 # --- Core Logic (Reusable) ---
 
 def _perform_gmail_sync(session, profile, target_label):
-    """
-    Reusable sync logic. Returns (synced_count, skipped_count).
-    """
     print(f"[DEBUG] Connecting to IMAP for label: '{target_label}'...")
 
     mail = imaplib.IMAP4_SSL("imap.gmail.com")
@@ -68,7 +136,6 @@ def _perform_gmail_sync(session, profile, target_label):
         mail.logout()
         raise ValueError(f"Label '{target_label}' not found in Gmail")
 
-    # Fetch All IDs
     _, search_data = mail.search(None, "ALL")
     email_ids = search_data[0].split()
 
@@ -77,25 +144,19 @@ def _perform_gmail_sync(session, profile, target_label):
     synced_count = 0
     skipped_count = 0
 
-    # Process newest first
     email_ids.reverse()
 
     for e_id in email_ids:
-        # Optimization: Fetch headers only first to check Message-ID?
-        # For now, we stick to RFC822 for robustness.
         _, msg_data = mail.fetch(e_id, "(RFC822)")
         raw_email = msg_data[0][1]
         msg = email.message_from_bytes(raw_email)
-
         msg_id = msg.get("Message-ID", "").strip()
 
-        # Idempotency Check
         exists = session.query(Email).filter_by(message_id=msg_id).first()
         if exists:
             skipped_count += 1
             continue
 
-        # Parse Content
         subject = decode_mime_words(msg["Subject"])
         sender_full, sender_email = parse_email_address(msg["From"])
 
@@ -126,6 +187,11 @@ def _perform_gmail_sync(session, profile, target_label):
             is_read=True
         )
         session.add(new_email)
+
+        # Trigger reconciliation on NEW emails
+        if target_label == "Job fails":
+            _auto_reconcile_job(session, new_email)
+
         synced_count += 1
 
     session.commit()
@@ -136,9 +202,6 @@ def _perform_gmail_sync(session, profile, target_label):
 
 @gmail_bp.route("/sync", methods=["POST"])
 def sync_emails_endpoint():
-    """
-    Manual Sync Trigger.
-    """
     session = get_db_session()
     try:
         data = request.get_json() or {}
@@ -158,46 +221,52 @@ def sync_emails_endpoint():
     finally:
         session.close()
 
+# 🔥 NEW ENDPOINT TO FORCE UPDATE ON EXISTING EMAILS 🔥
+@gmail_bp.route("/reconcile-backlog", methods=["GET"])
+def reconcile_backlog():
+    session = get_db_session()
+    try:
+        # Fetch all rejection emails
+        emails = session.query(Email).filter(Email.folder == "Job fails").all()
+        print(f"\n[Backlog] Found {len(emails)} rejection emails to process.")
+
+        updated_count = 0
+        for em in emails:
+            if _auto_reconcile_job(session, em):
+                updated_count += 1
+
+        session.commit()
+        return jsonify({
+            "message": f"Processed {len(emails)} emails.",
+            "jobs_updated": updated_count
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        session.close()
 
 @gmail_bp.route("/", methods=["GET"])
 def get_stored_emails():
-    """
-    Get emails from DB.
-    Auto-triggers sync if 0 emails are found for the requested folder.
-    """
     session = get_db_session()
     try:
         page = int(request.args.get('page', 1))
         limit = int(request.args.get('limit', 10))
         folder_filter = request.args.get('folder', "Job fails")
 
-        # 1. Build Query
         query = session.query(Email)
         if folder_filter:
             query = query.filter(Email.folder == folder_filter)
 
         total = query.count()
-        print(f"[DEBUG] Initial DB Count: {total}")
 
-        # 2. AUTO-SYNC LOGIC
         if total == 0:
-            print(f"[DEBUG] 0 emails found for '{folder_filter}'. Auto-triggering Sync...")
             profile = session.query(Profile).first()
-
             if profile and profile.email and profile.email_app_password:
                 try:
                     synced, _ = _perform_gmail_sync(session, profile, folder_filter)
-                    print(f"[DEBUG] Auto-Sync finished. Found {synced} new emails.")
-                    # Re-run query count after sync
-                    # Query object needs to be rebuilt or re-executed?
-                    # Safer to just re-filter
                     total = session.query(Email).filter(Email.folder == folder_filter).count()
-                except Exception as sync_err:
-                    print(f"[DEBUG] Auto-sync failed: {sync_err}")
-            else:
-                print("[DEBUG] Cannot auto-sync: Credentials missing.")
+                except Exception: pass
 
-        # 3. Fetch Data
         emails = query.order_by(desc(Email.received_at)).offset((page - 1) * limit).limit(limit).all()
 
         return jsonify({
