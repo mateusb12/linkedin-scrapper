@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Check, Coffee } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Check, Coffee, Shield, ShieldCheck } from 'lucide-react';
 
 const GOAL_PER_DAY = 10;
 
-const StreakCalendar = ({ dailyCounts }) => {
+const StreakCalendar = ({ dailyStats }) => {
     const today = new Date();
+    // Normalize today to UTC for comparison
     const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
 
     const [currentMonth, setCurrentMonth] = useState(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)));
@@ -51,33 +52,47 @@ const StreakCalendar = ({ dailyCounts }) => {
                     if (!date) return <div key={idx} className="h-12 w-full"></div>;
 
                     const dateKey = date.toISOString().split('T')[0];
-                    const count = dailyCounts[dateKey] || 0;
+                    const stats = dailyStats[dateKey] || { real: 0, bonus: 0, effective: 0 };
 
+                    const count = stats.effective;
                     const isGoalMet = count >= GOAL_PER_DAY;
                     const isWeekend = date.getUTCDay() === 0 || date.getUTCDay() === 6;
-                    const isFuture = date > todayUTC;
+                    const isFuture = date > new Date(todayUTC.getTime() + 86400000);
 
                     let baseClass = "h-12 w-full rounded-lg flex flex-col items-center justify-center border transition-all relative group";
                     let content = null;
                     let numberColor = "text-gray-600";
 
+                    // --- RENDER LOGIC ---
+
                     if (isFuture) {
                         baseClass += " border-gray-800 bg-gray-900/30 opacity-40";
                     }
                     else if (isGoalMet) {
+                        // ✨ UNIFIED GOLD/AMBER STYLE (For both Real & Protected)
                         baseClass += " bg-gradient-to-br from-amber-400 to-amber-600 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.3)] transform hover:scale-105 z-10";
-                        content = <Check className="text-white drop-shadow-md" size={24} strokeWidth={4} />;
                         numberColor = "text-amber-900";
+
+                        // Distinguish ONLY via Icon
+                        if (stats.bonus > 0) {
+                            // Shield Icon for protected days
+                            content = <ShieldCheck className="text-white drop-shadow-md" size={24} strokeWidth={2.5} />;
+                        } else {
+                            // Check Icon for pure effort
+                            content = <Check className="text-white drop-shadow-md" size={24} strokeWidth={4} />;
+                        }
+                    }
+                    else if (stats.bonus > 0) {
+                        // Partial / Tomorrow's Shield (Goal NOT met yet) - Keeping Blue to show it's "Pending"
+                        baseClass += " bg-blue-900/40 border-blue-500/50 border-dashed";
+                        content = <Shield className="text-blue-400 opacity-80" size={18} />;
+                        numberColor = "text-blue-400";
                     }
                     else if (count > 0) {
                         numberColor = "text-blue-200";
-                        if (count >= 7) {
-                            baseClass += " bg-blue-600/60 border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.2)]";
-                        } else if (count >= 4) {
-                            baseClass += " bg-blue-800/60 border-blue-600";
-                        } else {
-                            baseClass += " bg-blue-900/40 border-blue-800";
-                        }
+                        if (count >= 7) baseClass += " bg-blue-600/60 border-blue-500";
+                        else if (count >= 4) baseClass += " bg-blue-800/60 border-blue-600";
+                        else baseClass += " bg-blue-900/40 border-blue-800";
                     }
                     else if (isWeekend) {
                         baseClass += " bg-gray-800 border-gray-700 opacity-60";
@@ -93,29 +108,42 @@ const StreakCalendar = ({ dailyCounts }) => {
                                 {date.getUTCDate()}
                             </span>
                             {content}
+
+                            {/* Hover Tooltip */}
                             <div className="absolute opacity-0 group-hover:opacity-100 bottom-full mb-2 bg-gray-900 text-xs px-2 py-1 rounded border border-gray-700 whitespace-nowrap z-20 pointer-events-none transition-opacity shadow-lg">
-                                <span className="font-bold text-white">{count}</span> <span className="text-gray-400">Applications</span>
+                                <div className="font-bold text-white mb-0.5">
+                                    {count} / {GOAL_PER_DAY}
+                                </div>
+                                {stats.bonus > 0 && (
+                                    <div className="text-[10px] text-blue-300">
+                                        ({stats.real} Real + {stats.bonus} Shield)
+                                    </div>
+                                )}
                             </div>
                         </div>
                     );
                 })}
             </div>
 
+            {/* Legend - Updated to reflect new styles */}
             <div className="flex flex-wrap gap-4 justify-center mt-6 text-xs text-gray-400">
                 <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-sm bg-gray-900 border border-gray-800"></div> 0
+                    <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
+                        <Check size={10} className="text-white" strokeWidth={4} />
+                    </div>
+                    Goal Met
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-sm bg-blue-900/50 border border-blue-800"></div> 1-3
+                    <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
+                        <ShieldCheck size={10} className="text-white" />
+                    </div>
+                    Streak Saved
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-sm bg-blue-800/60 border border-blue-600"></div> 4-6
-                </div>
-                <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-sm bg-blue-600/60 border border-blue-500"></div> 7-9
-                </div>
-                <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-sm bg-amber-500 border border-amber-400"></div> 10+
+                    <div className="w-3 h-3 rounded-sm bg-blue-900/40 border border-blue-800 border-dashed flex items-center justify-center">
+                        <Shield size={10} className="text-blue-400" />
+                    </div>
+                    Shield Building
                 </div>
             </div>
         </div>

@@ -19,7 +19,7 @@ ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarEle
 const GOAL_PER_DAY = 10;
 const themeColors = { linkedin: '#8b5cf6', huntr: '#10b981', sql: '#3b82f6', textPrimary: '#f3f4f6', textSecondary: '#9ca3af' };
 
-// --- HELPER: Process Data with "Offensive Protection" Logic (n+1 Shift) ---
+// --- HELPER: Process Data with "Offensive Protection" Logic (Full History + n+1 Chart) ---
 const processCurrentFormData = (jobs) => {
     const allDailyCounts = {};
     const getLocalYMD = (d) => {
@@ -27,102 +27,107 @@ const processCurrentFormData = (jobs) => {
         return `${y}-${m}-${day}`;
     };
 
-    // 1. Map raw DB counts
+    // 1. Map raw DB counts and find the earliest date
+    let minDate = new Date(); // Start with today
     jobs.forEach(job => {
         if (!job.appliedAt) return;
-        const k = getLocalYMD(new Date(job.appliedAt));
+        const d = new Date(job.appliedAt);
+        if (d < minDate) minDate = d;
+        const k = getLocalYMD(d);
         allDailyCounts[k] = (allDailyCounts[k] || 0) + 1;
     });
 
+    // Determine simulation range: Earliest Job -> Tomorrow (n+1)
+    const startDate = new Date(minDate);
+    startDate.setDate(startDate.getDate() - 1); // Buffer day
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + 1); // Include Tomorrow for the chart shift
+
+    // 2. Chronological Simulation (The "Game Logic")
+    const fullHistoryStats = {}; // Stores { real, bonus, effective } for every date
+    let previousDayOverflow = 0;
+
+    // Iterate day by day from start to end (covering entire history + tomorrow)
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+        const key = getLocalYMD(d);
+        const realCount = allDailyCounts[key] || 0;
+
+        // A. Apply Protection from yesterday
+        const currentBonus = previousDayOverflow;
+        const usedProtection = currentBonus > 0;
+        const effectiveCount = realCount + currentBonus;
+
+        // Store detailed stats for the Calendar & Chart lookup
+        fullHistoryStats[key] = {
+            real: realCount,
+            bonus: currentBonus,
+            effective: effectiveCount,
+            isProtected: usedProtection
+        };
+
+        // B. Calculate Carryover for TOMORROW
+        // Rule: Can only generate shield if you exceeded goal using REAL apps (Cooldown logic)
+        // If you used protection today, you cannot generate new protection for tomorrow.
+        if (realCount > GOAL_PER_DAY && !usedProtection) {
+            previousDayOverflow = Math.min(realCount - GOAL_PER_DAY, GOAL_PER_DAY);
+        } else {
+            previousDayOverflow = 0;
+        }
+    }
+
+    // 3. Extract Chart Data (Last 7 Days + Tomorrow)
     const last7DaysLabels = [];
     const realDataValues = [];
     const bonusDataValues = [];
     const today = new Date();
 
-    // Variables to capture "Today's" specific stats for the Cards (since the loop now goes to tomorrow)
-    let capturedTodayTotal = 0;
-    let capturedTodayReal = 0;
-
-    // 2. Calculate Rollover (Iterate chronologically)
-    // We start 8 days ago to calculate the initial overflow for the start of our window
-    let previousDayOverflow = 0;
-    let previousDayUsedBonus = false;
-
-    // Check Day -8 (The day before our chart starts)
-    const dayMinus8 = new Date(today);
-    dayMinus8.setDate(today.getDate() - 7);
-    const dayMinus8Key = getLocalYMD(dayMinus8);
-    const dayMinus8Count = allDailyCounts[dayMinus8Key] || 0;
-
-    // Initial overflow seed
-    if (dayMinus8Count > GOAL_PER_DAY) {
-        previousDayOverflow = Math.min(dayMinus8Count - GOAL_PER_DAY, GOAL_PER_DAY);
-    }
-
-    // Iterate from 6 days ago (i=6) to TOMORROW (i=-1)
+    // Loop from 6 days ago -> Tomorrow (i = -1)
     for (let i = 6; i >= -1; i--) {
         const d = new Date(today);
         d.setDate(today.getDate() - i);
         const key = getLocalYMD(d);
-        const realCount = allDailyCounts[key] || 0;
 
-        // A. Determine Bonus for THIS day
-        // Rule: If we used bonus yesterday, we can't inherit more today (though this variable tracks usage)
-        const currentBonus = previousDayOverflow;
-        const usedProtection = currentBonus > 0;
+        // Retrieve calculated stat from simulation
+        const stat = fullHistoryStats[key] || { real: 0, bonus: 0 };
 
-        // B. Push to arrays for Chart
         last7DaysLabels.push(d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }));
-        realDataValues.push(realCount);
-        bonusDataValues.push(currentBonus);
-
-        // Capture TODAY'S data specifically (when i === 0) for the Stat Cards
-        if (i === 0) {
-            capturedTodayReal = realCount;
-            capturedTodayTotal = realCount + currentBonus;
-        }
-
-        // C. Calculate Overflow for TOMORROW
-        // You only generate overflow if:
-        // 1. You exceeded the goal with REAL applications (realCount > Goal)
-        // 2. You did NOT rely on protection today (Cooldown rule)
-        if (realCount > GOAL_PER_DAY && !usedProtection) {
-            previousDayOverflow = Math.min(realCount - GOAL_PER_DAY, GOAL_PER_DAY);
-            previousDayUsedBonus = false;
-        } else {
-            // Either we didn't hit goal, OR we used protection. No new overflow.
-            previousDayOverflow = 0;
-            previousDayUsedBonus = usedProtection;
-        }
+        realDataValues.push(stat.real);
+        bonusDataValues.push(stat.bonus);
     }
 
-    // 3. Streak Calculation (Standard Logic)
+    // 4. Capture "Today's" specific stats for the Stat Cards
+    const todayKey = getLocalYMD(today);
+    const todayStats = fullHistoryStats[todayKey] || { real: 0, bonus: 0, effective: 0 };
+
+    // 5. Streak Calculation (Using Effective Counts from Simulation)
     let streak = 0;
     const checkDate = new Date();
     for (let i = 0; i < 365; i++) {
         const k = getLocalYMD(checkDate);
-        const rawCount = allDailyCounts[k] || 0;
-
-        // Use effective count for today, raw for history
-        const effectiveCount = (i === 0) ? capturedTodayTotal : rawCount;
-
+        const stat = fullHistoryStats[k] || { effective: 0 };
         const isWeekend = checkDate.getDay() === 0 || checkDate.getDay() === 6;
-        if (i === 0 && effectiveCount < GOAL_PER_DAY) { checkDate.setDate(checkDate.getDate() - 1); continue; }
 
-        if (effectiveCount >= GOAL_PER_DAY) streak++;
+        // Use effective count!
+        if (stat.effective >= GOAL_PER_DAY) streak++;
+        else if (i === 0 && stat.effective < GOAL_PER_DAY) {
+            // If today isn't done, don't break streak yet (standard logic)
+            checkDate.setDate(checkDate.getDate() - 1);
+            continue;
+        }
         else if (!isWeekend) break;
 
         checkDate.setDate(checkDate.getDate() - 1);
     }
 
     return {
-        labels: last7DaysLabels, // Now includes Tomorrow
+        labels: last7DaysLabels, // Includes Tomorrow
         realData: realDataValues,
         bonusData: bonusDataValues,
-        todayCount: capturedTodayTotal, // Ensures Cards show TODAY'S progress
-        todayReal: capturedTodayReal,
+        todayCount: todayStats.effective, // Used for Cards
+        todayReal: todayStats.real,       // Used for Cards
         streak,
-        allDailyCounts
+        dailyStats: fullHistoryStats, // Pass this enriched map to Calendar
+        allDailyCounts // Raw counts (legacy backup)
     };
 };
 
@@ -317,8 +322,10 @@ export const JobDashboard = () => {
             <div className="min-h-[400px]">
                 {activeTab === 'current' && (
                     <div className="space-y-8 animate-in fade-in">
+                        {/* Passes the enriched stats object */}
                         <PerformanceStats stats={currentStats} />
-                        <StreakCalendar dailyCounts={currentStats.allDailyCounts} />
+                        {/* Passes the Full History stats map to Calendar */}
+                        <StreakCalendar dailyStats={currentStats.dailyStats} />
                         <RecentApplications
                             jobs={paginatedData?.data || []}
                             onSelectJob={setSelectedJob}
