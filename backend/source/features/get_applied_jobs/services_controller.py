@@ -284,8 +284,9 @@ def manage_cookies():
 @services_bp.route("/insights", methods=["GET"])
 def get_dashboard_insights():
     """
-    Returns high-level metrics for the Insights Dashboard with optional Time Range filtering.
-    Query Param: time_range (current_week, last_2_weeks, last_month, last_6_months, last_year, all_time)
+    Returns high-level metrics including new granular statuses:
+    - Actively Reviewing
+    - No Longer Accepting
     """
     session = get_db_session()
     try:
@@ -297,12 +298,11 @@ def get_dashboard_insights():
             Job.disabled.is_(False)
         )
 
-        # 2. Apply Time Filter
+        # 2. Apply Time Filter (Same as before)
         now = datetime.now(timezone.utc)
         start_date = None
 
         if time_range == 'current_week':
-            # Start of current week (Monday)
             start_date = now - timedelta(days=now.weekday())
             start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
         elif time_range == 'last_2_weeks':
@@ -313,32 +313,41 @@ def get_dashboard_insights():
             start_date = now - timedelta(days=180)
         elif time_range == 'last_year':
             start_date = now - timedelta(days=365)
-        # 'all_time' does nothing
 
         if start_date:
-            # Ensure start_date is naive if your DB is naive, or aware if DB is aware.
-            # SQLite usually stores strings/naive. If you face issues, use .date() comparison
             query = query.filter(Job.applied_on >= start_date)
 
         jobs = query.all()
-
         total_applications = len(jobs)
-
-        # ... [KEEP THE REST OF THE LOGIC EXACTLY THE SAME: Outcome, Competition, etc.] ...
 
         if total_applications == 0:
             return jsonify({
-                "overview": {"total": 0, "refused": 0, "waiting": 0, "refusal_rate": 0},
+                "overview": {"total": 0, "refused": 0, "waiting": 0, "reviewing": 0, "closed": 0},
                 "competition": {"low": 0, "medium": 0, "high": 0, "avg_applicants": 0, "high_comp_refusal_rate": 0}
             }), 200
 
-        # --- Metric 1: Outcomes (Refusal Rate) ---
-        refused_count = sum(1 for j in jobs if j.application_status == 'Refused')
-        waiting_count = total_applications - refused_count
-        refusal_rate = round((refused_count / total_applications) * 100, 1)
+        # --- Metric 1: Granular Status Counts ---
+        status_counts = {
+            "waiting": 0,
+            "reviewing": 0, # Actively Reviewing
+            "closed": 0,    # No Longer Accepting
+            "refused": 0    # Explicit Rejection
+        }
 
-        # --- Metric 2: Competition Analysis (Applicants) ---
-        # Buckets: Low (<50), Medium (50-200), High (>200)
+        for j in jobs:
+            # Normalize DB string
+            status = (j.application_status or "waiting").lower()
+
+            if "refused" in status:
+                status_counts["refused"] += 1
+            elif "actively" in status or "reviewing" in status:
+                status_counts["reviewing"] += 1
+            elif "no longer" in status or "closed" in status:
+                status_counts["closed"] += 1
+            else:
+                status_counts["waiting"] += 1
+
+        # --- Metric 2: Competition Analysis (Same as before) ---
         low_comp = 0
         med_comp = 0
         high_comp = 0
@@ -362,9 +371,9 @@ def get_dashboard_insights():
         if jobs_with_applicants_data > 0:
             avg_applicants = round(total_applicants_sum / jobs_with_applicants_data)
 
-        # --- Metric 3: Refusals by Competition ---
+        # High competition refusal calculation
         high_comp_jobs = [j for j in jobs if (j.applicants or 0) > 200]
-        high_comp_refusals = sum(1 for j in high_comp_jobs if j.application_status == 'Refused')
+        high_comp_refusals = sum(1 for j in high_comp_jobs if "refused" in (j.application_status or "").lower())
         high_comp_refusal_rate = 0
         if len(high_comp_jobs) > 0:
             high_comp_refusal_rate = round((high_comp_refusals / len(high_comp_jobs)) * 100, 1)
@@ -372,9 +381,10 @@ def get_dashboard_insights():
         return jsonify({
             "overview": {
                 "total": total_applications,
-                "refused": refused_count,
-                "waiting": waiting_count,
-                "refusal_rate": refusal_rate
+                "refused": status_counts["refused"],
+                "waiting": status_counts["waiting"],
+                "reviewing": status_counts["reviewing"],
+                "closed": status_counts["closed"],
             },
             "competition": {
                 "low": low_comp,
