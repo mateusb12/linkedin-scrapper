@@ -3,11 +3,13 @@ import axios from 'axios';
 import {
     DownloadCloud, Clock, AlertCircle,
     Building, X, Calendar as CalendarIcon, MapPin, Users, ExternalLink, AlignLeft,
-    Terminal, FileJson, RefreshCcw, Upload, ArrowRight, TrendingUp // Added Icons
+    Terminal, FileJson, RefreshCcw, Upload, ArrowRight, TrendingUp, Filter
 } from 'lucide-react';
 
 // --- MODAL 1: ENRICHMENT (Action) ---
 export const BackfillModal = ({ onClose, onComplete }) => {
+    const [timeRange, setTimeRange] = useState('past_month');
+
     const [progress, setProgress] = useState({
         current: 0, total: 0, job_title: 'Initializing...', company: '', eta_seconds: 0, success_count: 0, changes: []
     });
@@ -15,22 +17,38 @@ export const BackfillModal = ({ onClose, onComplete }) => {
     const [isFinished, setIsFinished] = useState(false);
 
     useEffect(() => {
-        const eventSource = new EventSource('http://localhost:5000/pipeline/backfill-descriptions-stream');
+        // Reset UI state when filter changes
+        setProgress({
+            current: 0, total: 0, job_title: 'Initializing...', company: '', eta_seconds: 0, success_count: 0, changes: []
+        });
+        setLogs([]);
+        setIsFinished(false);
+
+        const eventSource = new EventSource(`http://localhost:5000/pipeline/backfill-descriptions-stream?time_range=${timeRange}`);
 
         eventSource.onmessage = (event) => {
             const data = JSON.parse(event.data);
             setProgress(data);
 
-            // Construct a log entry that includes the diffs
             setLogs(prev => [{
                 id: Date.now(),
                 title: data.job_title,
                 status: data.status,
-                changes: data.changes || [] // Capture changes from backend
-            }, ...prev].slice(0, 7)); // Keep last 7 logs
+                changes: data.changes || []
+            }, ...prev].slice(0, 50)); // Increased log history
         };
 
-        eventSource.addEventListener('complete', () => {
+        // ✅ FIX: Read message from complete event to update UI
+        eventSource.addEventListener('complete', (e) => {
+            const data = e.data ? JSON.parse(e.data) : { message: 'Finished' };
+
+            // If we finished with 0 jobs, update the title so it doesn't say "Initializing"
+            setProgress(prev => ({
+                ...prev,
+                job_title: data.message || 'Process Complete',
+                company: ''
+            }));
+
             setIsFinished(true);
             eventSource.close();
             if(onComplete) onComplete();
@@ -41,14 +59,19 @@ export const BackfillModal = ({ onClose, onComplete }) => {
                 const errData = JSON.parse(e.data);
                 setLogs(prev => [{ id: Date.now(), title: `🚨 Error: ${errData.error}`, status: 'error', changes: [] }, ...prev]);
             }
+            // Optional: Close on error to prevent infinite loop of error toasts
+            eventSource.close();
+            setIsFinished(true);
         });
-        return () => eventSource.close();
-    }, []);
 
-    const percentage = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
+        return () => eventSource.close();
+    }, [timeRange]);
+
+    const percentage = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : (isFinished ? 100 : 0);
 
     const formatTime = (seconds) => {
-        if (!seconds) return 'Calculating...';
+        if (!seconds && isFinished) return '0s';
+        if (!seconds) return '...';
         const m = Math.floor(seconds / 60);
         const s = seconds % 60;
         return `${m}m ${s}s`;
@@ -58,12 +81,31 @@ export const BackfillModal = ({ onClose, onComplete }) => {
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm animate-in fade-in">
             <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
 
-                {/* Header */}
-                <div className="p-6 border-b border-gray-800 bg-gray-900">
-                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                        <TrendingUp className="text-blue-500 animate-pulse" /> Enriching Job Data
-                    </h3>
-                    <p className="text-xs text-gray-500 mt-1">Updating applicants, descriptions, and premium insights.</p>
+                {/* Header with Filter */}
+                <div className="p-6 border-b border-gray-800 bg-gray-900 flex justify-between items-center">
+                    <div>
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                            <TrendingUp className="text-blue-500 animate-pulse" /> Enriching Job Data
+                        </h3>
+                        <p className="text-xs text-gray-500 mt-1">Updating applicants & descriptions.</p>
+                    </div>
+
+                    {/* Time Range Dropdown */}
+                    <div className="relative">
+                        <Filter size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                        <select
+                            value={timeRange}
+                            onChange={(e) => setTimeRange(e.target.value)}
+                            disabled={!isFinished && progress.total > 0 && progress.current < progress.total} // Disable only if actually running
+                            className="bg-gray-800 text-xs text-gray-300 border border-gray-700 rounded-lg pl-8 pr-3 py-1.5 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50 cursor-pointer hover:bg-gray-750 transition-colors"
+                        >
+                            <option value="past_24h">Past 24 Hours</option>
+                            <option value="past_week">Past Week</option>
+                            <option value="past_month">Past Month</option>
+                            <option value="past_6_months">Past 6 Months</option>
+                            <option value="all_time">All Time</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div className="p-6 space-y-6 flex-1 overflow-y-auto custom-scrollbar">
@@ -90,16 +132,21 @@ export const BackfillModal = ({ onClose, onComplete }) => {
                         </div>
                     </div>
 
-                    {/* Active Job Card */}
-                    <div className="bg-blue-950/30 border border-blue-900/50 rounded-lg p-4 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-2 opacity-20"><RefreshCcw size={40} className="animate-spin text-blue-400"/></div>
-                        <p className="text-xs text-blue-400 uppercase font-bold tracking-wider mb-1">Processing Now</p>
+                    {/* Active Job Card / Status Box */}
+                    <div className={`border rounded-lg p-4 relative overflow-hidden transition-colors ${isFinished ? 'bg-gray-800/50 border-gray-700' : 'bg-blue-950/30 border-blue-900/50'}`}>
+                        {!isFinished && <div className="absolute top-0 right-0 p-2 opacity-20"><RefreshCcw size={40} className="animate-spin text-blue-400"/></div>}
+                        <p className={`text-xs uppercase font-bold tracking-wider mb-1 ${isFinished ? 'text-gray-500' : 'text-blue-400'}`}>
+                            {isFinished ? 'Status' : 'Processing Now'}
+                        </p>
                         <p className="text-white font-medium truncate pr-8">{progress.job_title}</p>
                         <p className="text-gray-400 text-sm truncate">{progress.company}</p>
                     </div>
 
                     {/* Live Logs with Diffs */}
                     <div className="space-y-2 bg-black/20 p-3 rounded-lg border border-gray-800 max-h-48 overflow-y-auto">
+                        {logs.length === 0 && isFinished && (
+                            <div className="text-center text-gray-500 text-xs py-4">No activity to report.</div>
+                        )}
                         {logs.map(log => (
                             <div key={log.id} className="text-xs border-b border-gray-800/50 pb-2 last:border-0 last:pb-0">
                                 <div className="flex items-center gap-2 mb-1">
@@ -109,7 +156,6 @@ export const BackfillModal = ({ onClose, onComplete }) => {
                                     <span className="text-gray-300 font-medium truncate">{log.title}</span>
                                 </div>
 
-                                {/* Render Specific Changes */}
                                 {log.changes && log.changes.length > 0 ? (
                                     <div className="pl-5 space-y-1">
                                         {log.changes.map((change, idx) => (
@@ -144,11 +190,8 @@ export const BackfillModal = ({ onClose, onComplete }) => {
     );
 };
 
-// ... ScraperSettings and JobDetailsPanel remain unchanged ...
-// (Include the rest of the file content for ScraperSettings and JobDetailsPanel here to maintain file integrity if copy-pasting)
-// --- MODAL 2: SETTINGS (Action) ---
+// ... Rest of the file (ScraperSettings, JobDetailsPanel) remains the same ...
 export const ScraperSettings = ({ onClose, onSaveSuccess }) => {
-    // ... (Existing code)
     const [statusMessage, setStatusMessage] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const fileInputRef = useRef(null);
@@ -194,7 +237,6 @@ export const ScraperSettings = ({ onClose, onSaveSuccess }) => {
     );
 };
 
-// --- MODAL 3: JOB DETAILS (View) ---
 export const JobDetailsPanel = ({ job, onClose }) => {
     if (!job) return null;
     const isEnriched = job.description_full && job.description_full !== "No description provided";

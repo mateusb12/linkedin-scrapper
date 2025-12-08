@@ -1,7 +1,6 @@
-from flask import Blueprint, jsonify, Response, stream_with_context
+from flask import Blueprint, jsonify, Response, stream_with_context, request
 from source.features.job_population.population_service import PopulationService
 
-# ✅ NEW PREFIX: Distinct namespace for pipeline execution
 population_bp = Blueprint("job_population", __name__, url_prefix="/pipeline")
 
 @population_bp.route('/get-total-pages', methods=['GET'])
@@ -16,8 +15,6 @@ def get_total_pages():
 def fetch_page_endpoint(page_number: int):
     try:
         result = PopulationService.fetch_and_save_page(page_number)
-        # If success=False, we can still return 200 with the error message
-        # or return 500. Returning 200 allows the frontend to handle "soft" failures gracefully.
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -25,9 +22,11 @@ def fetch_page_endpoint(page_number: int):
 @population_bp.route('/backfill-descriptions-stream', methods=['GET'])
 def backfill_descriptions_stream():
     """
-    Streams the progress of the description backfill process using SSE.
+    Streams the progress of the enrichment process using SSE.
+    Accepts an optional 'time_range' query param.
     """
+    time_range = request.args.get('time_range', 'all_time')
     return Response(
-        stream_with_context(PopulationService.stream_description_backfill()),
+        stream_with_context(PopulationService.stream_description_backfill(time_range)),
         mimetype='text/event-stream'
     )

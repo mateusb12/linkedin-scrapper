@@ -2,7 +2,7 @@ import math
 import time
 import json
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any, Generator
 
 from sqlalchemy import or_
@@ -114,12 +114,12 @@ class PopulationService:
         }
 
     @staticmethod
-    def stream_description_backfill() -> Generator[str, None, None]:
+    def stream_description_backfill(time_range: str = 'all_time') -> Generator[str, None, None]:
         """
         Generator that processes jobs and yields SSE-compatible JSON events
         with detailed diffs on what changed.
         """
-        print("[DEBUG] 🟢 Starting stream_description_backfill generator...", flush=True)
+        print(f"[DEBUG] 🟢 Starting stream_description_backfill generator. Range: {time_range}", flush=True)
 
         try:
             db = get_db_session()
@@ -132,39 +132,64 @@ class PopulationService:
 
             requests_session, _ = session_artefacts
 
-            # 2. Get Targets (Broadened scope since we are checking applicants too)
-            target_jobs = db.query(Job).filter(
-                or_(
-                    Job.description_full == "No description provided",
-                    Job.applicants == 0,
-                    Job.applicants.is_(None)
-                )
-            ).order_by(Job.posted_on.desc()).all()
+            # 2. Date Filtering Logic
+            cutoff_date = None
+            now = datetime.now()
 
+            if time_range == 'past_24h':
+                cutoff_date = now - timedelta(days=1)
+            elif time_range == 'past_week':
+                cutoff_date = now - timedelta(weeks=1)
+            elif time_range == 'past_month':
+                cutoff_date = now - timedelta(days=30)
+            elif time_range == 'past_6_months':
+                cutoff_date = now - timedelta(days=180)
+            elif time_range == 'past_year':
+                cutoff_date = now - timedelta(days=365)
+            # 'all_time' leaves cutoff_date as None
+
+            # 3. Build Query
+            # We want to check ALL jobs for updates (applicants), not just ones missing descriptions
+            query = db.query(Job)
+
+            # Apply date filter if applicable
+            if cutoff_date:
+                # Assuming posted_on is stored as ISO string "YYYY-MM-DD..."
+                # Lexicographical comparison works for ISO dates
+                cutoff_str = cutoff_date.isoformat()
+                print(f"[DEBUG] Filtering jobs posted after: {cutoff_str}")
+                query = query.filter(Job.posted_on >= cutoff_str)
+
+            # Order by newest first so we see recent updates first
+            target_jobs = query.order_by(Job.posted_on.desc()).all()
             total = len(target_jobs)
 
+            print(f"[DEBUG] Found {total} jobs matching criteria.", flush=True)
+
             if total == 0:
-                yield f"event: complete\ndata: {json.dumps({'message': 'No jobs need enrichment.'})}\n\n"
+                # This event tells frontend we are done immediately
+                yield f"event: complete\ndata: {json.dumps({'message': 'No jobs found for this period.'})}\n\n"
                 return
 
             start_time = time.time()
             processed = 0
             success_count = 0
 
-            # 3. Iterate and Stream
+            # 4. Iterate and Stream
             for job in target_jobs:
                 processed += 1
 
-                # Metrics
+                # Metrics calculation
                 elapsed = time.time() - start_time
                 avg_time = elapsed / processed
                 remaining_jobs = total - processed
                 eta_seconds = remaining_jobs * avg_time
 
-                # 4. Fetch Enrichment
+                # 5. Fetch Enrichment Data
                 try:
                     enrichment_data = EnrichmentService.fetch_single_job_details_enrichment(requests_session, job.urn)
                 except Exception as e:
+                    print(f"[DEBUG] ❌ Error calling EnrichmentService: {e}", flush=True)
                     enrichment_data = {}
 
                 new_desc = enrichment_data.get("description")
@@ -205,11 +230,13 @@ class PopulationService:
                     db.commit()
                     status = "success"
                     success_count += 1
+                    print(f"[DEBUG] 💾 Job {job.urn} updated.", flush=True)
                 elif new_desc or new_applicants:
                     # Found data, but it matched DB (Success, but no update needed)
                     status = "success"
+                    # print(f"[DEBUG] 🤷 Job {job.urn} is up to date.", flush=True)
 
-                # 5. Build Payload
+                # 6. Build Payload
                 payload = {
                     "current": processed,
                     "total": total,
@@ -222,7 +249,9 @@ class PopulationService:
                 }
 
                 yield f"data: {json.dumps(payload)}\n\n"
-                time.sleep(1.5) # Gentle rate limit
+
+                # Gentle rate limit to avoid LinkedIn 429
+                time.sleep(1.5)
 
             db.close()
             yield f"event: complete\ndata: {json.dumps({'message': 'Enrichment finished'})}\n\n"
