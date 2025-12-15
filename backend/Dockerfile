@@ -21,7 +21,7 @@ ENV POETRY_VIRTUALENVS_CREATE=false \
 COPY pyproject.toml poetry.lock ./
 
 # Install deps (no dev groups in your project)
-RUN poetry install --no-root --only main --no-interaction --no-ansi
+RUN poetry install --no-root --no-interaction --no-ansi
 
 # Copy code
 COPY . .

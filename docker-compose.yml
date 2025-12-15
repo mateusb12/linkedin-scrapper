@@ -1,14 +1,22 @@
 services:
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: linkedin-backend-api
+    build: ./backend
+    container_name: linkedin-backend-dev
+    volumes:
+      - ./backend:/app
     ports:
       - "5000:5000"
     env_file:
       - ./backend/.env
     restart: unless-stopped
+    command: poetry run flask run --host=0.0.0.0 --port=5000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    pid: "host"
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
   frontend:
     build:
       context: ./frontend
@@ -23,4 +31,3 @@ services:
       - CHOKIDAR_USEPOLLING=true
     depends_on:
       - backend
-

@@ -37,6 +37,25 @@ def home():
     """A simple route to confirm the server is running."""
     return "Hello, Flask!"
 
+@app.route('/attach-debugger')
+def attach_debugger():
+    """
+    Call this route to connect the running app to PyCharm.
+    Make sure your 'Python Debug Server' is running in PyCharm first!
+    """
+    try:
+        import pydevd_pycharm
+        pydevd_pycharm.settrace(
+            'host.docker.internal',
+            port=5678,
+            stdout_to_server=True,
+            stderr_to_server=True,
+            suspend=False
+        )
+        return "Debugger Attached Successfully! Check PyCharm."
+    except Exception as e:
+        return f"Failed to attach debugger: {str(e)}", 500
+
 @app.errorhandler(BadRequest)
 def handle_bad_request(e):
     print("🔥 BAD REQUEST CAUGHT:")
@@ -48,4 +67,4 @@ def handle_bad_request(e):
 
 # --- Main Execution ---
 if __name__ == '__main__':
-    app.run(debug=True, use_reloader=False)
+    app.run(debug=True, use_reloader=False, host='0.0.0.0', port=5000)
