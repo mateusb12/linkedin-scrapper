@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+ENV PYTHONPATH=/app
+
 # Install Poetry
 RUN curl -sSL https://install.python-poetry.org | python3 -
 
@@ -27,4 +29,5 @@ COPY . .
 EXPOSE 5000
 
 # Flask run command (adjust if you use FastAPI instead)
-CMD ["poetry", "run", "flask", "--app", "app", "run", "--host=0.0.0.0", "--port=5000"]
+CMD ["poetry", "run", "flask", "--app", "app.py", "run", "--host=0.0.0.0", "--port=5000"]
+
