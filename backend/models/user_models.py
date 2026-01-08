@@ -12,7 +12,7 @@ class Resume(Base):
     summary = Column(Text, nullable=True)
     hard_skills = Column(JSON)
     professional_experience = Column(JSON)
-    # education = Column(JSON)  <-- REMOVED FROM HERE
+    education = Column(JSON)
     projects = Column(JSON, nullable=True)
     profile_id = Column(Integer, ForeignKey('profile.id', name='fk_resume_profile_id'), nullable=True)
     profile = relationship("Profile", back_populates="resumes")

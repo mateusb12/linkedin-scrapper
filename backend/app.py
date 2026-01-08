@@ -9,7 +9,7 @@ from source.features.get_applied_jobs.services_controller import services_bp
 from source.features.gmail_service.gmail_controller import gmail_bp
 from source.features.profile.profile_controller import profile_bp
 from source.features.job_population.job_controller import job_data_bp
-from controllers.resume_data import resume_bp
+from source.features.resume.resume_data import resume_bp
 from source.features.fetch_curl import fetch_curl_bp
 from source.features.job_population.population_controller import population_bp
 
