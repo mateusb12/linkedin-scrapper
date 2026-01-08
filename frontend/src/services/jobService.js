@@ -90,3 +90,15 @@ export const fetchDashboardInsights = async (timeRange = 'all_time') => {
     const response = await fetch(`${API_BASE}/services/insights?time_range=${timeRange}`);
     return handleResponse(response, 'Failed to fetch dashboard insights');
 };
+
+export const reconcileJobStatuses = async () => {
+    // This assumes you have a backend endpoint like POST /services/reconcile
+    // If you haven't built it yet, you can temporarily point this to syncEmails
+    // BUT the correct approach is a dedicated SQL update endpoint.
+    const response = await fetch(`${API_BASE}/services/reconcile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    });
+    return handleResponse(response, 'Failed to reconcile job statuses');
+};

@@ -1,37 +1,37 @@
 {
-  "remote": {
-    "url": "",
-    "branch": ""
+  "$schema": "https://repomix.com/schemas/latest/schema.json",
+  "input": {
+    "maxFileSize": 52428800
   },
   "output": {
-    "file_path": "repomix-frontend.md",
-    "header_text": "",
-    "instruction_file_path": "",
-    "remove_comments": false,
-    "remove_empty_lines": false,
-    "top_files_length": 5,
-    "show_line_numbers": false,
-    "copy_to_clipboard": false,
-    "include_empty_directories": false,
-    "calculate_tokens": false,
-    "show_file_stats": false,
-    "show_directory_structure": true,
-    "style": "markdown"
+    "filePath": "frontend.md",
+    "style": "markdown",
+    "parsableStyle": false,
+    "fileSummary": true,
+    "directoryStructure": true,
+    "files": true,
+    "removeComments": false,
+    "removeEmptyLines": false,
+    "compress": false,
+    "topFilesLength": 5,
+    "showLineNumbers": false,
+    "copyToClipboard": false,
+    "git": {
+      "sortByChanges": true,
+      "sortByChangesMaxCommits": 100,
+      "includeDiffs": false
+    }
+  },
+  "include": [],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": []
   },
   "security": {
-    "enable_security_check": true,
-    "exclude_suspicious_files": true
+    "enableSecurityCheck": true
   },
-  "compression": {
-    "enabled": false,
-    "keep_signatures": true,
-    "keep_docstrings": true,
-    "keep_interfaces": true
-  },
-  "ignore": {
-    "custom_patterns": [],
-    "use_gitignore": true,
-    "use_default_ignore": true
-  },
-  "include": []
+  "tokenCount": {
+    "encoding": "o200k_base"
+  }
 }

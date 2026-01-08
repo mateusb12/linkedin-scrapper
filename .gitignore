@@ -34,3 +34,4 @@
 repomix-output.*
 repomix-output.md
 *repomix-output*
+/frontend/frontend.md

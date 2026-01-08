@@ -10,7 +10,7 @@ from sqlalchemy import or_
 
 from source.features.fetch_curl.fetch_service import FetchService
 from source.features.job_population.job_repository import JobRepository
-from models import Company, Job
+from models import Company, Job, Email
 from source.features.job_population.linkedin_parser import parse_job_entries
 from source.features.job_population.enrichment_service import EnrichmentService
 from source.features.get_applied_jobs.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
@@ -209,9 +209,11 @@ class PopulationService:
                 changes = [] # List to store specific updates
 
                 # --- Diff Logic ---
-
-                # 1. Check Status (NEW)
-                if new_status and job.application_status != new_status:
+                TERMINAL_STATES = {"Refused", "Rejected", "Offer", "Hired", "Interviewing"}
+                if job.application_status in TERMINAL_STATES:
+                    print(f"[DEBUG] Skipping status update for {job.urn}. "
+                          f"Current: {job.application_status} (Protected) -> New: {new_status}")
+                else:
                     changes.append({
                         "field": "Status",
                         "old": job.application_status,
@@ -297,3 +299,76 @@ class PopulationService:
         except Exception as e:
             traceback.print_exc()
             yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+
+    @staticmethod
+    def reconcile_failures() -> Dict[str, Any]:
+        """
+        Cross-checks the 'Jobs' table against the 'Emails' table.
+        If a Job is 'Active' (not Refused) but we have a 'Job fails' email
+        matching the Company Name, we force the Job status to 'Refused'.
+        """
+        print("[Reconcile] Starting SQL Cross-Check...")
+        session = get_db_session()
+        updated_count = 0
+        updated_jobs = []
+
+        try:
+            # 1. Fetch all emails tagged as rejection
+            # Adjust 'Job fails' if your folder name is different in DB
+            rejection_emails = session.query(Email).filter(
+                or_(Email.folder == 'Job fails', Email.category == 'Rejection')
+            ).all()
+
+            # Pre-process emails into a search blob for speed?
+            # Actually, iterating jobs is safer to avoid false positives.
+
+            # 2. Fetch all jobs that are NOT already refused/rejected
+            # We don't want to waste time on closed jobs
+            active_jobs = session.query(Job).filter(
+                Job.application_status.notin_(['Refused', 'Rejected', 'Hired'])
+            ).all()
+
+            print(f"[Reconcile] Checking {len(active_jobs)} active jobs against {len(rejection_emails)} rejection emails...")
+
+            for job in active_jobs:
+                if not job.company or not job.company.name:
+                    continue
+
+                company_name = job.company.name.lower().strip()
+
+                # Skip very short names to avoid bad matches (e.g. "AI", "Go")
+                if len(company_name) < 3:
+                    continue
+
+                # 3. The Match Logic
+                # Does any rejection email contain this company name?
+                match_found = False
+                for email in rejection_emails:
+                    # Search in Sender Name, Sender Address, and Subject
+                    content_blob = f"{email.sender} {email.sender_email} {email.subject}".lower()
+
+                    if company_name in content_blob:
+                        match_found = True
+                        print(f"[Reconcile] ❌ FOUND MATCH! Job: {job.title} @ {job.company.name} <-> Email: {email.subject}")
+                        break
+
+                if match_found:
+                    job.application_status = "Refused"
+                    updated_count += 1
+                    updated_jobs.append(f"{job.company.name} - {job.title}")
+
+            session.commit()
+            print(f"[Reconcile] Done. Updated {updated_count} jobs.")
+            return {
+                "success": True,
+                "updated_count": updated_count,
+                "jobs_fixed": updated_jobs
+            }
+
+        except Exception as e:
+            session.rollback()
+            print(f"[Reconcile] Error: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": str(e)}
+        finally:
+            session.close()

@@ -8,3 +8,77 @@
 *.ipynb
 *.txt
 *.md
+
+# --------------------
+# Virtual environments
+# --------------------
+.venv/
+venv/
+env/
+.virtualenv/
+
+# --------------------
+# Python cache
+# --------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.pytype/
+
+# --------------------
+# IDEs
+# --------------------
+.idea/
+.vscode/
+
+# --------------------
+# Dependency & build junk
+# --------------------
+node_modules/
+dist/
+build/
+
+# --------------------
+# Logs & temp files
+# --------------------
+*.log
+*.tmp
+*.bak
+
+# --------------------
+# Lock files (slow to scan, low value)
+# --------------------
+poetry.lock
+package-lock.json
+yarn.lock
+
+# --------------------
+# Large / generated data
+# --------------------
+response.json
+*.ipynb
+*.csv
+*.parquet
+*.db
+
+# --------------------
+# Git / tooling
+# --------------------
+.git/
+.repomixignore
+
+# --------------------
+# Docker
+# --------------------
+.dockerignore
+
+# --------------------
+# OS junk
+# --------------------
+.DS_Store
+Thumbs.db
+migrations/
+utils/selenium_utils.py

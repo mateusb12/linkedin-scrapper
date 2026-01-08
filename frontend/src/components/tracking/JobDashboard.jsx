@@ -2,8 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
-import { Database, RefreshCcw, Settings, Target, Calendar as CalendarIcon, Ban, DownloadCloud, PieChart } from 'lucide-react';
-import { fetchAppliedJobs, fetchJobFailures, syncEmails, syncApplicationStatus, fetchDashboardInsights } from '../../services/jobService.js';
+import { Database, RefreshCcw, GitMerge, Settings, Target, Calendar as CalendarIcon, Ban, DownloadCloud, PieChart } from 'lucide-react';
+import { fetchAppliedJobs, fetchJobFailures, syncEmails, syncApplicationStatus, fetchDashboardInsights, reconcileJobStatuses } from '../../services/jobService.js';
 
 // --- FEATURE IMPORTS ---
 import StreakCalendar from './StreakCalendar';
@@ -239,6 +239,23 @@ export const JobDashboard = () => {
         initSync();
     }, []);
 
+    const handleCrossCheck = async () => {
+        setIsSyncing(true);
+        try {
+            console.log("🔀 Triggering SQL Cross-Check...");
+            await reconcileJobStatuses(); // Pings the backend to run the SQL update
+
+            // Refresh the UI to show the new "Refused" statuses
+            await refetchStats();
+            await refetchTable();
+            await refetchFailures();
+        } catch (error) {
+            console.error("Cross-check failed", error);
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
     // --- SYNC HANDLER ---
     const handleSyncData = async () => {
         setIsSyncing(true);
@@ -272,6 +289,14 @@ export const JobDashboard = () => {
                     <p className="text-gray-400 text-sm">Track metrics, goals, and outcomes.</p>
                 </div>
                 <div className="flex gap-3">
+                    <button
+                        onClick={handleCrossCheck}
+                        disabled={isSyncing}
+                        className="px-4 py-2 bg-orange-900/40 text-orange-300 border border-orange-500/30 rounded-lg text-sm flex gap-2 items-center hover:bg-orange-900/60 disabled:opacity-50"
+                        title="Force update Job Status based on Rejection Emails"
+                    >
+                        <GitMerge size={16}/> Cross-Check
+                    </button>
                     <button onClick={() => setIsBackfillOpen(true)} className="px-4 py-2 bg-indigo-900/40 text-indigo-300 border border-indigo-500/30 rounded-lg text-sm flex gap-2 items-center hover:bg-indigo-900/60">
                         <Database size={16}/> Fix Descriptions
                     </button>

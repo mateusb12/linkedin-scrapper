@@ -15,6 +15,7 @@ from source.features.job_population.job_repository import JobRepository
 from services.job_tracking.huntr_service import get_huntr_jobs_data
 from database.database_connection import get_db_session
 from source.features.get_applied_jobs.fetch_linkedin_applied_jobs import fetch_all_linkedin_jobs
+from source.features.job_population.population_service import PopulationService
 
 services_bp = Blueprint("services", __name__, url_prefix="/services")
 
@@ -400,3 +401,15 @@ def get_dashboard_insights():
         return jsonify({"error": str(e)}), 500
     finally:
         session.close()
+
+
+@services_bp.route('/reconcile', methods=['POST'])
+def reconcile_endpoints():
+    """
+    Triggers the SQL-to-SQL cross-check between Emails and Jobs.
+    """
+    try:
+        result = PopulationService.reconcile_failures()
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
