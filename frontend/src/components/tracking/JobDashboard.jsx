@@ -382,6 +382,7 @@ export const JobDashboard = () => {
                 {activeTab === 'insights' && (
                     <DashboardInsights
                         insights={insightsData}
+                        rawJobs={jobs}
                         timeRange={insightsTimeRange}
                         onTimeRangeChange={setInsightsTimeRange}
                     />
