@@ -43,6 +43,18 @@ dev = [
 line-length = 88
 target-version = ["py312"]
 
+# 🚫 DO NOT TOUCH THESE
+exclude = '''
+(
+  /(
+      \.venv
+    | migrations
+    | __pycache__
+    | \.pytest_cache
+  )/
+)
+'''
+
 # =====================================================
 # LINTER — RUFF
 # =====================================================

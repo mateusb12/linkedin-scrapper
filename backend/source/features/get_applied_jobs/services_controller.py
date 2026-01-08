@@ -288,6 +288,8 @@ def get_dashboard_insights():
     Returns high-level metrics including new granular statuses:
     - Actively Reviewing
     - No Longer Accepting
+
+    Includes 'competition_raw' for frontend-side dynamic histogram generation.
     """
     session = get_db_session()
     try:
@@ -324,7 +326,8 @@ def get_dashboard_insights():
         if total_applications == 0:
             return jsonify({
                 "overview": {"total": 0, "refused": 0, "waiting": 0, "reviewing": 0, "closed": 0},
-                "competition": {"low": 0, "medium": 0, "high": 0, "avg_applicants": 0, "high_comp_refusal_rate": 0}
+                "competition": {"low": 0, "medium": 0, "high": 0, "avg_applicants": 0, "high_comp_refusal_rate": 0},
+                "competition_raw": []
             }), 200
 
         # --- Metric 1: Granular Status Counts ---
@@ -335,8 +338,11 @@ def get_dashboard_insights():
             "refused": 0    # Explicit Rejection
         }
 
+        # --- Metric 2: Raw Competition Data (For Dynamic Histogram) ---
+        competition_raw = []
+
         for j in jobs:
-            # Normalize DB string
+            # 1. Populate Overview stats
             status = (j.application_status or "waiting").lower()
 
             if "refused" in status:
@@ -348,7 +354,16 @@ def get_dashboard_insights():
             else:
                 status_counts["waiting"] += 1
 
-        # --- Metric 2: Competition Analysis (Same as before) ---
+            # 2. Populate Raw Data
+            # We include only valid applicant numbers, but keep 0 to show low competition jobs
+            if j.applicants is not None:
+                competition_raw.append({
+                    "title": j.title,
+                    "applicants": j.applicants,
+                    "status": j.application_status or "Waiting"
+                })
+
+        # --- Metric 3: Aggregated Competition Analysis (Legacy Support) ---
         low_comp = 0
         med_comp = 0
         high_comp = 0
@@ -393,7 +408,8 @@ def get_dashboard_insights():
                 "high": high_comp,
                 "avg_applicants": avg_applicants,
                 "high_comp_refusal_rate": high_comp_refusal_rate
-            }
+            },
+            "competition_raw": competition_raw
         }), 200
 
     except Exception as e:

@@ -126,13 +126,9 @@ const BucketStepper = ({ value, onChange, min = 2, max = 20 }) => {
   );
 };
 
-const DashboardInsights = ({
-  insights,
-  rawJobs,
-  timeRange,
-  onTimeRangeChange,
-}) => {
+const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
   const safeInsights = insights || {};
+
   const overview = safeInsights.overview || {
     total: 0,
     refused: 0,
@@ -141,6 +137,8 @@ const DashboardInsights = ({
     closed: 0,
   };
   const rawComp = safeInsights.competition || {};
+
+  const rawCompData = safeInsights.competition_raw || [];
 
   const [bucketCount, setBucketCount] = useState(6);
 
@@ -152,9 +150,10 @@ const DashboardInsights = ({
       : 0;
 
   const competitionData = useMemo(() => {
-    if (!rawJobs || rawJobs.length === 0) return { labels: [], datasets: [] };
+    if (!rawCompData || rawCompData.length === 0)
+      return { labels: [], datasets: [] };
 
-    const validJobs = rawJobs.filter(
+    const validJobs = rawCompData.filter(
       (j) => j.applicants !== undefined && j.applicants !== null,
     );
     if (validJobs.length === 0) return { labels: [], datasets: [] };
@@ -165,10 +164,11 @@ const DashboardInsights = ({
 
     const p95Index = Math.floor(values.length * 0.95);
     const p95Value = values[p95Index];
-    const minVal = values[0];
+    const minVal = 0;
 
     const effectiveMax =
       p95Value > minVal ? p95Value : values[values.length - 1];
+
     const mainBucketCount = bucketCount - 1;
     const range = effectiveMax - minVal;
     const step = Math.max(1, Math.ceil(range / mainBucketCount));
@@ -251,7 +251,7 @@ const DashboardInsights = ({
         },
       ],
     };
-  }, [rawJobs, bucketCount]);
+  }, [rawCompData, bucketCount]);
 
   const statusData = {
     labels: ["Reviewing", "Waiting", "Closed", "Refused"],
@@ -387,7 +387,10 @@ const DashboardInsights = ({
               Insight Analytics
             </h3>
             <p className="text-xs text-gray-400 mt-1">
-              Deep dive into application states
+              Deep dive into application states for{" "}
+              <span className="text-purple-400 font-medium capitalize">
+                {timeRange.replace(/_/g, " ")}
+              </span>
             </p>
           </div>
         </div>

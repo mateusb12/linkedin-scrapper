@@ -63,6 +63,7 @@ response.json
 *.csv
 *.parquet
 *.db
+*.har
 
 # --------------------
 # Git / tooling
