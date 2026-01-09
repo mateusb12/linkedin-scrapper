@@ -17,6 +17,7 @@ from services.job_tracking.huntr_service import get_huntr_jobs_data
 from database.database_connection import get_db_session
 from source.features.get_applied_jobs.fetch_linkedin_applied_jobs import fetch_all_linkedin_jobs
 from source.features.job_population.population_service import PopulationService
+from source.services.experience_extractor import extract_years_experience
 
 services_bp = Blueprint("services", __name__, url_prefix="/services")
 
@@ -54,6 +55,7 @@ def normalize_linkedin_job(job_data) -> dict:
 
 def normalize_sql_job(job: Job) -> dict:
     """Normalizes a single SQL Job object for the frontend."""
+    experience = extract_years_experience(job.description_full)
     return {
         "company": job.company.name if job.company else "Unknown",
         "title": job.title.strip() if job.title else "Unknown Title",
@@ -64,7 +66,8 @@ def normalize_sql_job(job: Job) -> dict:
         "location": job.location,
         "description_full": job.description_full,
         "applicants": job.applicants,
-        "application_status": job.application_status or "Waiting"  # Default for frontend
+        "application_status": job.application_status or "Waiting",  # Default for frontend
+        "experience": experience
     }
 
 

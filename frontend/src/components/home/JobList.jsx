@@ -257,6 +257,18 @@ const JobDetailView = ({ job }) => {
     return `https://www.linkedin.com/jobs/view/${jobId}/`;
   };
 
+  const formatExperience = (experience) => {
+    if (!experience) return null;
+
+    const { min, max } = experience;
+
+    if (min && max) return `${min}–${max} years experience`;
+    if (min) return `${min}+ years experience`;
+    if (max) return `Up to ${max} years experience`;
+
+    return null;
+  };
+
   const skills = parseJsonArray(job.skills || job.keywords);
   const responsibilities = parseJsonArray(job.responsibilities);
   const requirements = parseJsonArray(job.requirements || job.qualifications);
@@ -377,6 +389,12 @@ const JobDetailView = ({ job }) => {
               : "Be the first to apply!"}
           </span>
         </div>
+        {job.experience && (
+          <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
+            <Target size={18} className="mr-3 text-gray-500 flex-shrink-0" />
+            <span>{formatExperience(job.experience)}</span>
+          </div>
+        )}
       </div>
 
       {job.description_snippet && (

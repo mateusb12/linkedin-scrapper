@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request, stream_with_context, Response
 from factory.core_instances import embedding_calculator
 from models import Job
 from services.model_orchestrator import LLMOrchestrator, AllLLMsFailed
+from source.services.experience_extractor import extract_years_experience
 from utils.metric_utils import JobConsoleProgress
 from source.features.job_population.job_repository import JobRepository
 
@@ -28,6 +29,7 @@ def _job_to_dict_with_status(job: Job) -> dict:
     """Converts a Job object to a dictionary and adds the calculated 'status' field."""
     job_dict = job.to_dict()
     job_dict["status"] = get_job_status(job)
+    job_dict["experience"] = extract_years_experience(job.description_full)
     return job_dict
 
 
