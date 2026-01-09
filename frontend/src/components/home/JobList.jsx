@@ -251,6 +251,12 @@ const JobDetailView = ({ job }) => {
     });
   };
 
+  const buildLinkedInJobUrl = (urn) => {
+    if (!urn) return null;
+    const jobId = urn.split(":").pop();
+    return `https://www.linkedin.com/jobs/view/${jobId}/`;
+  };
+
   const skills = parseJsonArray(job.skills || job.keywords);
   const responsibilities = parseJsonArray(job.responsibilities);
   const requirements = parseJsonArray(job.requirements || job.qualifications);
@@ -291,10 +297,14 @@ const JobDetailView = ({ job }) => {
 
       <div className="flex flex-wrap items-center gap-4 mb-6">
         <a
-          href={job.job_url}
+          href={buildLinkedInJobUrl(job.urn) || job.job_url}
           target="_blank"
           rel="noopener noreferrer"
-          className={`px-6 py-2 text-white font-semibold rounded-lg shadow-md transition-all duration-200 text-center ${job.has_applied ? "bg-gray-500 hover:bg-gray-600" : "bg-blue-600 hover:bg-blue-700"}`}
+          className={`px-6 py-2 text-white font-semibold rounded-lg shadow-md transition-all duration-200 ${
+            job.has_applied
+              ? "bg-gray-500 hover:bg-gray-600"
+              : "bg-blue-600 hover:bg-blue-700"
+          }`}
         >
           {job.has_applied ? "View Application" : "Apply Now"}
         </a>
