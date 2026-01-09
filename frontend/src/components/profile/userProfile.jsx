@@ -14,27 +14,18 @@ import {
   Code,
   Layout,
   BrainCircuit,
-  Calendar,
   Briefcase,
-  MapPinned,
+  FileJson,
+  GraduationCap,
+  Languages,
+  Link as LinkIcon,
 } from "lucide-react";
 
-import matter from "gray-matter";
-import yaml from "js-yaml";
-
-import {
-  generateEducationMarkdown,
-  generateExperienceMarkdown,
-  generateHardSkillsMarkdown,
-  generateProfileHeaderMarkdown,
-  generateProjectsMarkdown,
-} from "../../utils/markdownUtils.js";
 import { fetchProfiles, saveProfile } from "../../services/profileService.js";
 import { fetchAllResumes } from "../match-find/MatchLogic.jsx";
 import {
   createResume,
   deleteResume,
-  searchResumeByName,
   updateResume,
 } from "../../services/resumeService.js";
 
@@ -77,19 +68,19 @@ const palette = {
 };
 
 const styleguide = {
-  input: `w-full ${palette.bg.input} border ${palette.border.secondary} ${palette.text.primary} rounded-md shadow-sm py-2 px-3 focus:ring-2 ${palette.action.focusRing} ${palette.border.focus} outline-none transition`,
+  input: `w-full ${palette.bg.input} border ${palette.border.secondary} ${palette.text.primary} rounded-md shadow-sm py-2 px-3 focus:ring-2 ${palette.action.focusRing} ${palette.border.focus} outline-none transition text-sm`,
   button: {
     primary: `${palette.action.primary} ${palette.action.primaryHover} ${palette.text.light} font-bold py-2 px-6 rounded-md transition shadow-md`,
     secondary: `${palette.action.secondary} ${palette.action.secondaryHover} ${palette.text.light} font-bold py-2 px-4 rounded-md transition w-full md:w-auto`,
-    success: `mt-2 text-xs uppercase tracking-wider font-semibold ${palette.action.success} ${palette.action.successHover} ${palette.text.light} py-1.5 px-3 rounded-md transition`,
+    success: `mt-2 text-xs uppercase tracking-wider font-semibold ${palette.action.success} ${palette.action.successHover} ${palette.text.light} py-1.5 px-3 rounded-md transition flex items-center gap-1`,
     markdown: `${palette.action.markdown} ${palette.action.markdownHover} ${palette.text.light} font-bold py-2 px-4 rounded-md transition`,
   },
   iconButton: {
     remove: `ml-2 p-1 ${palette.text.secondary} ${palette.text.dangerHover} ${palette.state.disabled} ${palette.state.disabledTextHover} transition`,
-    delete: `absolute top-3 right-3 ${palette.text.secondary} ${palette.text.dangerHover} transition bg-gray-800 rounded-full p-1`,
+    delete: `absolute top-3 right-3 ${palette.text.secondary} ${palette.text.dangerHover} transition bg-gray-800/80 rounded-full p-1.5 hover:bg-gray-700`,
   },
   label: `block text-xs font-bold uppercase tracking-wider ${palette.text.secondary} mb-1`,
-  previewTextarea: `${palette.bg.previewTextarea} ${palette.border.previewTextarea} border ${palette.text.primary} font-mono text-xs leading-relaxed w-full rounded-md p-4 transition`,
+  previewTextarea: `${palette.bg.previewTextarea} ${palette.border.previewTextarea} border ${palette.text.primary} font-mono text-xs leading-relaxed w-full rounded-md p-4 transition text-green-400`,
 };
 const inputClasses = styleguide.input;
 
@@ -125,9 +116,7 @@ const MinusIcon = () => (
 const DynamicInputSection = ({ title, items, setItems, placeholder }) => {
   const handleAddItem = () => setItems([...items, ""]);
   const handleRemoveItem = (index) => {
-    if (items.length > 0) {
-      setItems(items.filter((_, i) => i !== index));
-    }
+    if (items.length > 0) setItems(items.filter((_, i) => i !== index));
   };
   const handleItemChange = (index, value) => {
     const newItems = [...items];
@@ -141,7 +130,7 @@ const DynamicInputSection = ({ title, items, setItems, placeholder }) => {
       {items.map((item, index) => (
         <div
           key={index}
-          className="flex items-center mb-2 animate-in fade-in slide-in-from-left-1 duration-200"
+          className="flex items-center mb-2 animate-in fade-in slide-in-from-left-1 duration-200 gap-2"
         >
           <input
             type="text"
@@ -153,7 +142,7 @@ const DynamicInputSection = ({ title, items, setItems, placeholder }) => {
           <button
             type="button"
             onClick={() => handleRemoveItem(index)}
-            className={styleguide.iconButton.remove}
+            className="text-gray-400 hover:text-red-500"
           >
             <MinusIcon />
           </button>
@@ -164,38 +153,8 @@ const DynamicInputSection = ({ title, items, setItems, placeholder }) => {
         onClick={handleAddItem}
         className={styleguide.button.success}
       >
-        <div className="flex items-center gap-1">
-          <PlusIcon /> Add Item
-        </div>
+        <PlusIcon /> Add Item
       </button>
-    </div>
-  );
-};
-
-const MarkdownPreview = ({ sectionTitle, markdownContent }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  if (!markdownContent) return null;
-  return (
-    <div className="mt-4 border-t border-gray-700 pt-4">
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="text-xs font-medium text-purple-400 hover:text-purple-300 flex items-center gap-1"
-      >
-        {isOpen ? <EyeOff size={14} /> : <Eye size={14} />}
-        {isOpen ? "Hide Markdown" : "View Markdown"}
-      </button>
-      {isOpen && (
-        <div className="mt-3">
-          <textarea
-            readOnly
-            value={markdownContent}
-            className={styleguide.previewTextarea}
-            rows={Math.max(5, markdownContent.split("\n").length + 1)}
-            style={{ resize: "vertical" }}
-          />
-        </div>
-      )}
     </div>
   );
 };
@@ -203,23 +162,31 @@ const MarkdownPreview = ({ sectionTitle, markdownContent }) => {
 const normalizeResume = (apiData) => {
   return {
     id: apiData.id,
-    name: apiData.internal_name || apiData.name || "Untitled Resume",
+
+    internal_name: apiData.internal_name || apiData.name || "Untitled Resume",
     summary: apiData.summary || "",
 
-    hard_skills: Array.isArray(apiData.skills)
-      ? { languages: apiData.skills }
-      : apiData.skills || {
-          languages: [],
-          frameworks: [],
-          cloud_and_infra: [],
-          databases: [],
-          concepts: [],
-        },
+    contacts: apiData.contacts ||
+      apiData.profile?.contacts || {
+        phone: "",
+        email: "",
+        linkedin: "",
+        github: "",
+        portfolio: "",
+      },
 
-    professional_experience: (apiData.experience || []).map((exp) => ({
-      id:
-        exp.id ||
-        `exp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    skills: apiData.skills || {
+      languages: [],
+      frameworks: [],
+      cloud_and_infra: [],
+      databases: [],
+      concepts: [],
+    },
+
+    languages: Array.isArray(apiData.languages) ? apiData.languages : [],
+
+    experience: (apiData.experience || []).map((exp) => ({
+      id: exp.id || `exp_${Date.now()}_${Math.random()}`,
       role: exp.role || exp.title || "",
       company: exp.company || "",
       location: exp.location || "",
@@ -230,33 +197,47 @@ const normalizeResume = (apiData) => {
     })),
 
     projects: (apiData.projects || []).map((proj) => ({
-      id:
-        proj.id ||
-        `proj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: proj.id || `proj_${Date.now()}_${Math.random()}`,
       name: proj.name || proj.title || "",
       description: proj.description || "",
       stack: proj.stack || [],
-      links: proj.links || {},
+      links: proj.links || { github: "", website: "" },
     })),
 
-    education: apiData.education || [],
+    education: (apiData.education || []).map((edu) => ({
+      id: edu.id || `edu_${Date.now()}_${Math.random()}`,
+      institution: edu.institution || "",
+      degree: edu.degree || "",
+      location: edu.location || "",
+      start_year: edu.start_year || "",
+      end_year: edu.end_year || "",
+      year: edu.year || "",
+    })),
+
     meta: apiData.meta || {
       language: "pt-BR",
       page: { size: "letter", font_size: 11 },
     },
-    contact_info: apiData.profile?.contacts || {},
   };
 };
 
 const denormalizeResume = (uiState) => {
   return {
     id: uiState.id,
-    internal_name: uiState.name,
+    internal_name: uiState.internal_name,
     summary: uiState.summary,
 
-    skills: uiState.hard_skills,
+    profile: {
+      name: uiState.internal_name,
+      contacts: uiState.contacts,
+    },
 
-    experience: uiState.professional_experience.map((exp) => ({
+    contacts: uiState.contacts,
+    languages: uiState.languages,
+
+    skills: uiState.skills,
+
+    experience: uiState.experience.map((exp) => ({
       company: exp.company,
       role: exp.role,
       location: exp.location,
@@ -266,13 +247,22 @@ const denormalizeResume = (uiState) => {
       stack: exp.stack,
     })),
 
-    projects: uiState.projects,
-    education: uiState.education,
+    projects: uiState.projects.map((proj) => ({
+      name: proj.name,
+      description: proj.description,
+      stack: proj.stack,
+      links: proj.links,
+    })),
 
-    profile: {
-      name: uiState.name,
-      contacts: uiState.contact_info,
-    },
+    education: uiState.education.map((edu) => ({
+      institution: edu.institution,
+      degree: edu.degree,
+      location: edu.location,
+      start_year: edu.start_year,
+      end_year: edu.end_year,
+      year: edu.year,
+    })),
+
     meta: uiState.meta,
   };
 };
@@ -284,7 +274,6 @@ const ProfileDetails = ({ profile, setProfile, onSave }) => {
   const handleArrayChange = (fieldName, newArray) => {
     setProfile({ ...profile, [fieldName]: newArray });
   };
-  const iconSize = 5;
 
   return (
     <div
@@ -297,7 +286,6 @@ const ProfileDetails = ({ profile, setProfile, onSave }) => {
       </h2>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {}
         {[
           { label: "Name", name: "name", icon: User },
           { label: "Email", name: "email", icon: Mail, type: "email" },
@@ -318,7 +306,6 @@ const ProfileDetails = ({ profile, setProfile, onSave }) => {
           </div>
         ))}
 
-        {}
         {[
           { label: "LinkedIn URL", name: "linkedin", icon: Linkedin },
           { label: "GitHub URL", name: "github", icon: Github },
@@ -338,13 +325,12 @@ const ProfileDetails = ({ profile, setProfile, onSave }) => {
           </div>
         ))}
 
-        {}
         <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
           <DynamicInputSection
-            title="Languages"
+            title="Languages (Global List)"
             items={profile.languages || []}
             setItems={(newItems) => handleArrayChange("languages", newItems)}
-            placeholder="e.g. English (C2)"
+            placeholder="e.g. English"
           />
           <DynamicInputSection
             title="Positive Keywords (ATS)"
@@ -410,6 +396,8 @@ const ResumeSection = ({
               professional_experience: [],
               projects: [],
               education: [],
+              languages: [],
+              contacts: {},
             };
             setResumes([newResume]);
             setSelectedResumeId(newResume.id);
@@ -430,9 +418,55 @@ const ResumeSection = ({
     );
   };
 
+  const updateContact = (key, value) => {
+    const currentContacts = selectedResume.contacts || {};
+    updateResumeField("contacts", { ...currentContacts, [key]: value });
+  };
+
   const updateSkillCategory = (category, items) => {
-    const currentSkills = selectedResume.hard_skills || {};
-    updateResumeField("hard_skills", { ...currentSkills, [category]: items });
+    const currentSkills = selectedResume.skills || {};
+    updateResumeField("skills", { ...currentSkills, [category]: items });
+  };
+
+  const addLanguage = () => {
+    updateResumeField("languages", [
+      ...(selectedResume.languages || []),
+      { name: "", level: "" },
+    ]);
+  };
+  const updateLanguage = (index, key, value) => {
+    const langs = [...(selectedResume.languages || [])];
+    langs[index] = { ...langs[index], [key]: value };
+    updateResumeField("languages", langs);
+  };
+  const removeLanguage = (index) => {
+    const langs = [...(selectedResume.languages || [])];
+    langs.splice(index, 1);
+    updateResumeField("languages", langs);
+  };
+
+  const addEducation = () => {
+    updateResumeField("education", [
+      ...(selectedResume.education || []),
+      {
+        id: Date.now(),
+        institution: "",
+        degree: "",
+        location: "",
+        start_year: "",
+        end_year: "",
+      },
+    ]);
+  };
+  const updateEducation = (index, key, value) => {
+    const edus = [...(selectedResume.education || [])];
+    edus[index] = { ...edus[index], [key]: value };
+    updateResumeField("education", edus);
+  };
+  const removeEducation = (index) => {
+    const edus = [...(selectedResume.education || [])];
+    edus.splice(index, 1);
+    updateResumeField("education", edus);
   };
 
   const addExperience = () => {
@@ -446,22 +480,20 @@ const ResumeSection = ({
       highlights: [],
       stack: [],
     };
-    updateResumeField("professional_experience", [
-      ...(selectedResume.professional_experience || []),
+    updateResumeField("experience", [
+      ...(selectedResume.experience || []),
       newExp,
     ]);
   };
-
   const updateExperience = (index, field, value) => {
-    const exps = [...(selectedResume.professional_experience || [])];
+    const exps = [...(selectedResume.experience || [])];
     exps[index] = { ...exps[index], [field]: value };
-    updateResumeField("professional_experience", exps);
+    updateResumeField("experience", exps);
   };
-
   const removeExperience = (index) => {
-    const exps = [...(selectedResume.professional_experience || [])];
+    const exps = [...(selectedResume.experience || [])];
     exps.splice(index, 1);
-    updateResumeField("professional_experience", exps);
+    updateResumeField("experience", exps);
   };
 
   const addProject = () => {
@@ -477,13 +509,17 @@ const ResumeSection = ({
       newProj,
     ]);
   };
-
   const updateProject = (index, field, value) => {
     const projs = [...(selectedResume.projects || [])];
     projs[index] = { ...projs[index], [field]: value };
     updateResumeField("projects", projs);
   };
-
+  const updateProjectLink = (index, linkKey, value) => {
+    const projs = [...(selectedResume.projects || [])];
+    const links = { ...(projs[index].links || {}), [linkKey]: value };
+    projs[index] = { ...projs[index], links };
+    updateResumeField("projects", projs);
+  };
   const removeProject = (index) => {
     const projs = [...(selectedResume.projects || [])];
     projs.splice(index, 1);
@@ -504,10 +540,10 @@ const ResumeSection = ({
           </div>
           <div>
             <h2 className={`text-2xl font-bold ${palette.text.light}`}>
-              Resumes
+              Resume Editor
             </h2>
             <p className="text-xs text-gray-400">
-              Manage your specific application versions
+              Customize specific application versions
             </p>
           </div>
         </div>
@@ -519,7 +555,7 @@ const ResumeSection = ({
           >
             {resumes.map((r) => (
               <option key={r.id} value={r.id}>
-                {r.name}
+                {r.internal_name}
               </option>
             ))}
           </select>
@@ -529,13 +565,14 @@ const ResumeSection = ({
       {selectedResume && (
         <div className="space-y-8 animate-in fade-in duration-500">
           {}
-          <div className="grid grid-cols-1 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className={styleguide.label}>Resume Internal Name</label>
               <input
-                type="text"
-                value={selectedResume.name}
-                onChange={(e) => updateResumeField("name", e.target.value)}
+                value={selectedResume.internal_name}
+                onChange={(e) =>
+                  updateResumeField("internal_name", e.target.value)
+                }
                 className={inputClasses}
               />
             </div>
@@ -545,9 +582,146 @@ const ResumeSection = ({
                 value={selectedResume.summary || ""}
                 onChange={(e) => updateResumeField("summary", e.target.value)}
                 className={inputClasses}
-                rows="4"
+                rows="3"
                 placeholder="Brief professional summary..."
               />
+            </div>
+          </div>
+
+          {}
+          <div className="bg-gray-700/30 p-4 rounded-lg border border-gray-700">
+            <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+              <User size={16} /> Resume Contacts
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {["email", "phone", "linkedin", "github", "portfolio"].map(
+                (key) => (
+                  <div key={key}>
+                    <label className={styleguide.label}>{key}</label>
+                    <input
+                      value={selectedResume.contacts?.[key] || ""}
+                      onChange={(e) => updateContact(key, e.target.value)}
+                      className={inputClasses}
+                    />
+                  </div>
+                ),
+              )}
+            </div>
+          </div>
+
+          {}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {}
+            <div className="bg-gray-700/30 p-4 rounded-lg border border-gray-700">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Languages size={16} /> Languages
+                </h3>
+                <button
+                  onClick={addLanguage}
+                  className={styleguide.button.success}
+                >
+                  + Add
+                </button>
+              </div>
+              {(selectedResume.languages || []).map((lang, idx) => (
+                <div key={idx} className="flex gap-2 mb-2">
+                  <input
+                    placeholder="Language"
+                    value={lang.name}
+                    onChange={(e) =>
+                      updateLanguage(idx, "name", e.target.value)
+                    }
+                    className={inputClasses}
+                  />
+                  <input
+                    placeholder="Level (e.g. C2)"
+                    value={lang.level}
+                    onChange={(e) =>
+                      updateLanguage(idx, "level", e.target.value)
+                    }
+                    className={inputClasses}
+                  />
+                  <button
+                    onClick={() => removeLanguage(idx)}
+                    className="text-red-400 hover:text-red-300"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {}
+            <div className="bg-gray-700/30 p-4 rounded-lg border border-gray-700">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <GraduationCap size={16} /> Education
+                </h3>
+                <button
+                  onClick={addEducation}
+                  className={styleguide.button.success}
+                >
+                  + Add
+                </button>
+              </div>
+              {(selectedResume.education || []).map((edu, idx) => (
+                <div
+                  key={idx}
+                  className="bg-gray-800 p-3 rounded mb-3 border border-gray-600 relative"
+                >
+                  <button
+                    onClick={() => removeEducation(idx)}
+                    className={styleguide.iconButton.delete}
+                  >
+                    ×
+                  </button>
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <input
+                      placeholder="Institution"
+                      value={edu.institution}
+                      onChange={(e) =>
+                        updateEducation(idx, "institution", e.target.value)
+                      }
+                      className={inputClasses}
+                    />
+                    <input
+                      placeholder="Degree"
+                      value={edu.degree}
+                      onChange={(e) =>
+                        updateEducation(idx, "degree", e.target.value)
+                      }
+                      className={inputClasses}
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <input
+                      placeholder="City"
+                      value={edu.location}
+                      onChange={(e) =>
+                        updateEducation(idx, "location", e.target.value)
+                      }
+                      className={inputClasses}
+                    />
+                    <input
+                      placeholder="Start"
+                      value={edu.start_year}
+                      onChange={(e) =>
+                        updateEducation(idx, "start_year", e.target.value)
+                      }
+                      className={inputClasses}
+                    />
+                    <input
+                      placeholder="End"
+                      value={edu.end_year}
+                      onChange={(e) =>
+                        updateEducation(idx, "end_year", e.target.value)
+                      }
+                      className={inputClasses}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -561,20 +735,16 @@ const ResumeSection = ({
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[
-                { key: "languages", label: "Languages", icon: Code },
-                { key: "frameworks", label: "Frameworks", icon: Layout },
-                {
-                  key: "cloud_and_infra",
-                  label: "Cloud & Infra",
-                  icon: Server,
-                },
-                { key: "databases", label: "Databases", icon: Database },
-                { key: "concepts", label: "Concepts", icon: BrainCircuit },
+                { key: "languages", label: "Prog. Languages" },
+                { key: "frameworks", label: "Frameworks" },
+                { key: "cloud_and_infra", label: "Cloud & Infra" },
+                { key: "databases", label: "Databases" },
+                { key: "concepts", label: "Concepts" },
               ].map((cat) => (
                 <DynamicInputSection
                   key={cat.key}
                   title={cat.label}
-                  items={selectedResume.hard_skills?.[cat.key] || []}
+                  items={selectedResume.skills?.[cat.key] || []}
                   setItems={(items) => updateSkillCategory(cat.key, items)}
                   placeholder={`Add ${cat.label}...`}
                 />
@@ -598,143 +768,118 @@ const ResumeSection = ({
                 + Add Role
               </button>
             </div>
-
             <div className="space-y-4">
-              {(selectedResume.professional_experience || []).map(
-                (exp, index) => (
-                  <div
-                    key={exp.id || index}
-                    className={`${palette.bg.nestedCard} p-5 rounded-lg border ${palette.border.secondary} relative group`}
+              {(selectedResume.experience || []).map((exp, index) => (
+                <div
+                  key={index}
+                  className={`${palette.bg.nestedCard} p-5 rounded-lg border ${palette.border.secondary} relative group`}
+                >
+                  <button
+                    onClick={() => removeExperience(index)}
+                    className={styleguide.iconButton.delete}
                   >
-                    <button
-                      onClick={() => removeExperience(index)}
-                      className={styleguide.iconButton.delete}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-5 w-5"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </button>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <label className={styleguide.label}>Company</label>
-                        <input
-                          type="text"
-                          value={exp.company}
-                          onChange={(e) =>
-                            updateExperience(index, "company", e.target.value)
-                          }
-                          className={inputClasses}
-                          placeholder="Company Name"
-                        />
-                      </div>
-                      <div>
-                        <label className={styleguide.label}>Role</label>
-                        <input
-                          type="text"
-                          value={exp.role}
-                          onChange={(e) =>
-                            updateExperience(index, "role", e.target.value)
-                          }
-                          className={inputClasses}
-                          placeholder="Job Title"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className={styleguide.label}>Start Date</label>
-                          <input
-                            type="text"
-                            value={exp.start_date}
-                            onChange={(e) =>
-                              updateExperience(
-                                index,
-                                "start_date",
-                                e.target.value,
-                              )
-                            }
-                            className={inputClasses}
-                            placeholder="YYYY-MM"
-                          />
-                        </div>
-                        <div>
-                          <label className={styleguide.label}>End Date</label>
-                          <input
-                            type="text"
-                            value={exp.end_date}
-                            onChange={(e) =>
-                              updateExperience(
-                                index,
-                                "end_date",
-                                e.target.value,
-                              )
-                            }
-                            className={inputClasses}
-                            placeholder="YYYY-MM or Present"
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className={styleguide.label}>Location</label>
-                        <input
-                          type="text"
-                          value={exp.location}
-                          onChange={(e) =>
-                            updateExperience(index, "location", e.target.value)
-                          }
-                          className={inputClasses}
-                          placeholder="City, Country"
-                        />
-                      </div>
-                    </div>
-
-                    {}
-                    <div className="pl-2 border-l-2 border-gray-600">
-                      <DynamicInputSection
-                        title="Highlights / Achievements"
-                        items={exp.highlights || []}
-                        setItems={(items) =>
-                          updateExperience(index, "highlights", items)
-                        }
-                        placeholder="Describe a key achievement..."
-                      />
-                    </div>
-
-                    {}
-                    <div className="mt-4">
-                      <label className={styleguide.label}>
-                        Tech Stack Used
-                      </label>
+                    ×
+                  </button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className={styleguide.label}>Company</label>
                       <input
                         type="text"
-                        value={
-                          Array.isArray(exp.stack)
-                            ? exp.stack.join(", ")
-                            : exp.stack
-                        }
+                        value={exp.company}
                         onChange={(e) =>
-                          updateExperience(
-                            index,
-                            "stack",
-                            e.target.value.split(",").map((s) => s.trim()),
-                          )
+                          updateExperience(index, "company", e.target.value)
                         }
                         className={inputClasses}
-                        placeholder="React, Python, AWS (comma separated)"
+                        placeholder="Company Name"
+                      />
+                    </div>
+                    <div>
+                      <label className={styleguide.label}>Role</label>
+                      <input
+                        type="text"
+                        value={exp.role}
+                        onChange={(e) =>
+                          updateExperience(index, "role", e.target.value)
+                        }
+                        className={inputClasses}
+                        placeholder="Job Title"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className={styleguide.label}>Start Date</label>
+                        <input
+                          type="text"
+                          value={exp.start_date}
+                          onChange={(e) =>
+                            updateExperience(
+                              index,
+                              "start_date",
+                              e.target.value,
+                            )
+                          }
+                          className={inputClasses}
+                          placeholder="YYYY-MM"
+                        />
+                      </div>
+                      <div>
+                        <label className={styleguide.label}>End Date</label>
+                        <input
+                          type="text"
+                          value={exp.end_date}
+                          onChange={(e) =>
+                            updateExperience(index, "end_date", e.target.value)
+                          }
+                          className={inputClasses}
+                          placeholder="YYYY-MM"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className={styleguide.label}>Location</label>
+                      <input
+                        type="text"
+                        value={exp.location}
+                        onChange={(e) =>
+                          updateExperience(index, "location", e.target.value)
+                        }
+                        className={inputClasses}
+                        placeholder="City, Country"
                       />
                     </div>
                   </div>
-                ),
-              )}
+                  <div className="pl-2 border-l-2 border-gray-600">
+                    <DynamicInputSection
+                      title="Highlights / Achievements"
+                      items={exp.highlights || []}
+                      setItems={(items) =>
+                        updateExperience(index, "highlights", items)
+                      }
+                      placeholder="Describe a key achievement..."
+                    />
+                  </div>
+                  <div className="mt-4">
+                    <label className={styleguide.label}>Tech Stack Used</label>
+                    <input
+                      type="text"
+                      value={
+                        Array.isArray(exp.stack)
+                          ? exp.stack.join(", ")
+                          : exp.stack
+                      }
+                      onChange={(e) =>
+                        updateExperience(
+                          index,
+                          "stack",
+                          e.target.value.split(",").map((s) => s.trim()),
+                        )
+                      }
+                      className={inputClasses}
+                      placeholder="React, Python, AWS (comma separated)"
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -753,31 +898,18 @@ const ResumeSection = ({
                 + Add Project
               </button>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {(selectedResume.projects || []).map((proj, index) => (
                 <div
-                  key={proj.id || index}
+                  key={index}
                   className={`${palette.bg.nestedCard} p-4 rounded-lg border ${palette.border.secondary} relative`}
                 >
                   <button
                     onClick={() => removeProject(index)}
                     className={styleguide.iconButton.delete}
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-4 w-4"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
+                    ×
                   </button>
-
                   <div className="space-y-3">
                     <input
                       type="text"
@@ -797,6 +929,28 @@ const ResumeSection = ({
                       rows="3"
                       placeholder="Project Description..."
                     />
+                    <div className="grid grid-cols-2 gap-2 mt-2 bg-gray-800 p-2 rounded">
+                      <div>
+                        <label className={styleguide.label}>Github</label>
+                        <input
+                          value={proj.links?.github || ""}
+                          onChange={(e) =>
+                            updateProjectLink(index, "github", e.target.value)
+                          }
+                          className={inputClasses}
+                        />
+                      </div>
+                      <div>
+                        <label className={styleguide.label}>Website</label>
+                        <input
+                          value={proj.links?.website || ""}
+                          onChange={(e) =>
+                            updateProjectLink(index, "website", e.target.value)
+                          }
+                          className={inputClasses}
+                        />
+                      </div>
+                    </div>
                     <input
                       type="text"
                       value={
@@ -826,13 +980,14 @@ const ResumeSection = ({
           >
             <button
               onClick={onToggleFullPreview}
-              className={`${styleguide.button.markdown} w-full sm:w-auto`}
+              className={`${styleguide.button.markdown} w-full sm:w-auto flex items-center justify-center gap-2`}
             >
-              Preview Full Resume
+              <FileJson size={16} /> Preview JSON Payload
             </button>
             <button
               onClick={() =>
-                window.confirm(`Delete "${selectedResume.name}"?`) && onDelete()
+                window.confirm(`Delete "${selectedResume.internal_name}"?`) &&
+                onDelete()
               }
               className="border border-red-900/50 text-red-500 hover:bg-red-900/20 font-bold py-2 px-4 rounded-md transition w-full sm:w-auto"
             >
@@ -856,7 +1011,7 @@ const UserProfile = () => {
   const [resumes, setResumes] = useState([]);
   const [selectedResumeId, setSelectedResumeId] = useState(null);
   const [showFullPreview, setShowFullPreview] = useState(false);
-  const [fullResumeMarkdown, setFullResumeMarkdown] = useState("");
+  const [previewContent, setPreviewContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -916,43 +1071,41 @@ const UserProfile = () => {
   };
 
   const handleSaveResume = async () => {
-    if (!selectedResume || !selectedResume.name) {
+    if (!selectedResume) {
       alert("Resume must have a name to be saved.");
       return;
     }
 
     try {
-      let existingResume;
-      if (selectedResume.id && String(selectedResume.id).length < 13) {
-        existingResume = { id: selectedResume.id };
-      }
-
       const payload = denormalizeResume(selectedResume);
 
       let savedResumeRaw;
-      if (existingResume) {
-        savedResumeRaw = await updateResume(existingResume.id, payload);
+      if (selectedResume.id && String(selectedResume.id).length < 13) {
+        savedResumeRaw = await updateResume(selectedResume.id, payload);
       } else {
         savedResumeRaw = await createResume(payload);
       }
 
       const savedResumeNormalized = normalizeResume(savedResumeRaw);
 
-      setResumes((prevResumes) =>
-        prevResumes.map((r) =>
-          r.id === selectedResume.id ? savedResumeNormalized : r,
-        ),
-      );
+      setResumes((prevResumes) => {
+        if (selectedResume.id === savedResumeNormalized.id) {
+          return prevResumes.map((r) =>
+            r.id === selectedResume.id ? savedResumeNormalized : r,
+          );
+        }
 
-      if (!existingResume) {
-        setResumes((prev) => [
-          ...prev.filter((r) => r.id !== selectedResume.id),
+        return [
+          ...prevResumes.filter((r) => r.id !== selectedResume.id),
           savedResumeNormalized,
-        ]);
-        setSelectedResumeId(savedResumeNormalized.id);
-      }
+        ];
+      });
 
-      alert(`Resume "${savedResumeNormalized.name}" saved successfully! ✅`);
+      setSelectedResumeId(savedResumeNormalized.id);
+
+      alert(
+        `Resume "${savedResumeNormalized.internal_name}" saved successfully! ✅`,
+      );
     } catch (error) {
       console.error("Failed to save resume:", error);
       alert(`Error saving resume: ${error.message} ❌`);
@@ -963,7 +1116,7 @@ const UserProfile = () => {
     if (!selectedResume || !selectedResume.id) return;
     if (
       !window.confirm(
-        `Are you sure you want to delete resume "${selectedResume.name}"?`,
+        `Are you sure you want to delete resume "${selectedResume.internal_name}"?`,
       )
     )
       return;
@@ -982,9 +1135,8 @@ const UserProfile = () => {
 
   const handleToggleFullPreview = () => {
     if (!showFullPreview) {
-      setFullResumeMarkdown(
-        "Preview generation for new template structure coming soon...",
-      );
+      const jsonPayload = denormalizeResume(selectedResume);
+      setPreviewContent(JSON.stringify(jsonPayload, null, 2));
     }
     setShowFullPreview(!showFullPreview);
   };
@@ -1030,22 +1182,25 @@ const UserProfile = () => {
         />
 
         {showFullPreview && (
-          <div className="mt-8 bg-gray-800 p-6 rounded-lg border border-gray-700">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-white font-bold">Markdown Preview</h3>
-              <button
-                onClick={() => setShowFullPreview(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                Close
-              </button>
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 animate-in fade-in">
+            <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 w-full max-w-4xl h-3/4 flex flex-col shadow-2xl">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-white font-bold font-mono text-sm flex items-center gap-2">
+                  <FileJson size={16} /> JSON Payload Preview
+                </h3>
+                <button
+                  onClick={() => setShowFullPreview(false)}
+                  className="text-gray-400 hover:text-white hover:bg-gray-700 p-1 rounded"
+                >
+                  Close
+                </button>
+              </div>
+              <textarea
+                readOnly
+                value={previewContent}
+                className={`${styleguide.previewTextarea} font-mono flex-1`}
+              />
             </div>
-            <textarea
-              readOnly
-              value={fullResumeMarkdown}
-              className={styleguide.previewTextarea}
-              rows={20}
-            />
           </div>
         )}
       </div>

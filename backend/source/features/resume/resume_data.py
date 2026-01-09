@@ -7,51 +7,43 @@ from services.model_orchestrator import LLMOrchestrator
 
 resume_bp = Blueprint("resumes", __name__, url_prefix="/resumes")
 
+def extract_resume_data(data):
+    """Helper to extract data from the specific JSON template structure"""
+    profile_section = data.get("profile", {})
+
+    return {
+        "name": data.get("internal_name") or data.get("name"),
+        "summary": data.get("summary"),
+        "meta": data.get("meta"),
+
+        # Flatten profile.contacts -> contact_info column
+        "contact_info": profile_section.get("contacts", {}),
+
+        "languages": data.get("languages", []),
+        "hard_skills": data.get("skills", {}),
+        "professional_experience": data.get("experience", []),
+        "education": data.get("education", []),
+        "projects": data.get("projects", []),
+        "profile_id": data.get("profile_id")
+    }
+
 @resume_bp.route("/", methods=["POST"])
 def create_resume():
     session = get_db_session()
     try:
         data = request.get_json()
+        clean_data = extract_resume_data(data)
 
-        # 1. Determine Profile ID
-        # If provided in JSON, use it. If not, try to find the first profile in DB.
-        profile_id = data.get("profile_id")
-        if not profile_id:
-            first_profile = session.query(Profile).first()
-            if first_profile:
-                profile_id = first_profile.id
+        if not clean_data["name"]:
+            return jsonify({"error": "Resume name is required"}), 400
 
-        # 2. Determine Name
-        profile_data = data.get("profile", {})
-        internal_name = data.get("internal_name") or profile_data.get("name") or "Novo Currículo"
-
-        # 3. Create Resume
-        # Note: We purposely might pass 'None' for fields like contact_info if we want
-        # to inherit from the profile dynamically.
-        resume = Resume(
-            name=internal_name,
-            meta=data.get("meta", {}),
-            contact_info=profile_data.get("contacts", None), # Pass None to allow fallback to Profile
-
-            professional_experience=data.get("experience", []),
-            education=data.get("education", []),
-            projects=data.get("projects", []),
-            hard_skills=data.get("skills", {}),
-            languages=data.get("languages", []),
-
-            profile_id=profile_id
-        )
-
+        resume = Resume(**clean_data)
         session.add(resume)
         session.commit()
-
-        # Return to_dict() which now contains the merged data (Profile + Resume)
         return jsonify(resume.to_dict()), 201
-
     except Exception as e:
         session.rollback()
         return jsonify({"error": str(e)}), 500
-
     finally:
         session.close()
 
@@ -96,36 +88,21 @@ def update_resume(resume_id):
     try:
         data = request.get_json()
         resume = session.query(Resume).filter_by(id=resume_id).first()
-
         if not resume:
             return jsonify({"error": "Resume not found"}), 404
 
-        # Update Logic
-        # If the frontend sends specific data, we save it to the Resume (overriding Profile).
-        # If the frontend sends null/empty, we save it as such (and to_dict will fallback).
+        clean_data = extract_resume_data(data)
 
-        if "meta" in data: resume.meta = data["meta"]
-        if "internal_name" in data: resume.name = data["internal_name"]
-
-        if "profile" in data:
-            profile_section = data["profile"]
-            if "name" in profile_section: resume.name = profile_section["name"]
-            if "contacts" in profile_section: resume.contact_info = profile_section["contacts"]
-
-        if "experience" in data: resume.professional_experience = data["experience"]
-        if "education" in data: resume.education = data["education"]
-        if "projects" in data: resume.projects = data["projects"]
-        if "skills" in data: resume.hard_skills = data["skills"]
-        if "languages" in data: resume.languages = data["languages"]
+        # Update fields
+        for key, value in clean_data.items():
+            if key != "profile_id": # Don't typically change profile ownership on edit
+                setattr(resume, key, value)
 
         session.commit()
-
         return jsonify(resume.to_dict()), 200
-
     except Exception as e:
         session.rollback()
         return jsonify({"error": str(e)}), 500
-
     finally:
         session.close()
 
