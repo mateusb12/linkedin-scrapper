@@ -8,7 +8,6 @@ from services.model_orchestrator import LLMOrchestrator
 
 resume_bp = Blueprint("resumes", __name__, url_prefix="/resumes")
 
-
 @resume_bp.route("/", methods=["POST"])
 def create_resume():
     session = get_db_session()
@@ -32,7 +31,8 @@ def create_resume():
         session.add(resume)
         session.commit()
 
-        return jsonify({"message": "Resume created", "id": resume.id, "name": resume.name}), 201
+        # FIX: Return the full dictionary so frontend state updates correctly
+        return jsonify(resume.to_dict()), 201
 
     except Exception as e:
         session.rollback()
@@ -109,10 +109,7 @@ def update_resume(resume_id):
 
         session.commit()
 
-        return jsonify({
-            "message": f"Resume '{resume.name}' updated successfully",
-            "resume": resume.to_dict()
-        }), 200
+        return jsonify(resume.to_dict()), 200
 
     except Exception as e:
         session.rollback()
