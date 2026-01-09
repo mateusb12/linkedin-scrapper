@@ -30,7 +30,35 @@ def fetch_exact_applied_date(session: requests.Session, job_urn: str) -> Optiona
         print(f"   [Timestamp Fetch Error] {e}")
     return None
 
-def _structure_job_from_entity(item: Dict[str, Any]) -> Any:
+def extract_company_logo_url(company_entity: Dict[str, Any], preferred_size: int = 200) -> Optional[str]:
+    """
+    Extracts a usable logo URL from a LinkedIn Company entity.
+    """
+    try:
+        logo = (
+            company_entity
+            .get("logoResolutionResult", {})
+            .get("vectorImage")
+        )
+        if not logo:
+            return None
+
+        root = logo.get("rootUrl")
+        artifacts = logo.get("artifacts", [])
+        if not root or not artifacts:
+            return None
+
+        # pick closest size
+        artifacts.sort(key=lambda a: abs(a.get("width", 0) - preferred_size))
+        return root + artifacts[0]["fileIdentifyingUrlPathSegment"]
+
+    except Exception:
+        return None
+
+def _structure_job_from_entity(
+    item: Dict[str, Any],
+    company_entities: Dict[str, Any]
+) -> Any:
     urn_id = item.get('entityUrn')
     if urn_id:
         match = re.search(r'jobPosting:(\d+)', urn_id)
@@ -59,40 +87,59 @@ def _structure_job_from_entity(item: Dict[str, Any]) -> Any:
         if raw_company_ref:
             company_urn = raw_company_ref
 
+    company_logo_url = None
+    if company_urn and company_urn in company_entities:
+        company_logo_url = extract_company_logo_url(company_entities[company_urn])
+
     return {
         'title': title,
         'company': company_name,
         'company_urn': company_urn,
+        'company_logo_url': company_logo_url,
         'location': location,
         'url': navigation_url,
         'urn': urn_id
     }
 
-def _ensure_company_exists(session, name: str, urn: str):
+def _ensure_company_exists(session, name: str, urn: str, logo_url: Optional[str] = None):
     if not urn:
         return
+
     existing = session.query(Company).filter_by(urn=urn).first()
+
     if not existing:
         print(f"   🏭 Creating new company: {name} ({urn})")
         new_company = Company(
             urn=urn,
             name=name,
-            logo_url=None,
+            logo_url=logo_url,
             url=f"https://www.linkedin.com/company/{urn.split(':')[-1]}"
         )
         session.add(new_company)
-        try:
-            session.commit()
-        except Exception as e:
-            session.rollback()
-            print(f"   ⚠️ Failed to save company: {e}")
+
+    else:
+        # Backfill logo if missing
+        if logo_url and not existing.logo_url:
+            print(f"   🖼️ Backfilled logo for company: {existing.name} ({existing.urn})")
+            existing.logo_url = logo_url
+
+    try:
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        print(f"   ⚠️ Failed to save company: {e}")
 
 def _enrich_and_save_new_job(job_data: Dict[str, str], job_repo: JobRepository, session: requests.Session) -> Job:
     """Only called for BRAND NEW jobs."""
 
     # 1. Ensure Company
     if job_data.get('company_urn'):
-        _ensure_company_exists(job_repo.session, job_data['company'], job_data['company_urn'])
+        _ensure_company_exists(
+            job_repo.session,
+            job_data['company'],
+            job_data['company_urn'],
+            job_data.get('company_logo_url')
+        )
 
     # 2. Add Basic Job Data
     job_repo.add_job_by_dict(job_data)
@@ -170,14 +217,29 @@ def fetch_all_linkedin_jobs() -> List[Job]:
 
     return job_repo.fetch_applied_jobs()
 
-def _process_page_data(data: Dict, repo: JobRepository, out_list: List, session: requests.Session) -> Tuple[int, int]:
+def _process_page_data(
+    data: Dict,
+    repo: JobRepository,
+    out_list: List,
+    session: requests.Session
+) -> Tuple[int, int]:
     new_jobs_counter = 0
     updated_jobs_counter = 0
 
     included_map = {item.get('entityUrn'): item for item in data.get('included', [])}
 
+    company_entities = {
+        item["entityUrn"]: item
+        for item in data.get("included", [])
+        if item.get("$type") == "com.linkedin.voyager.dash.organization.Company"
+    }
+
     try:
-        search_clusters = data.get('data', {}).get('data', {}).get('searchDashClustersByAll', {})
+        search_clusters = (
+            data.get('data', {})
+                .get('data', {})
+                .get('searchDashClustersByAll', {})
+        )
         elements = search_clusters.get('elements', [])
     except AttributeError:
         elements = []
@@ -188,52 +250,89 @@ def _process_page_data(data: Dict, repo: JobRepository, out_list: List, session:
             item_obj = item_wrapper.get('item', {})
             entity_urn_ref = item_obj.get('*entityResult')
 
-            if not entity_urn_ref: continue
+            if not entity_urn_ref:
+                continue
 
             resolved_entity = included_map.get(entity_urn_ref)
-            if resolved_entity:
-                structured = _structure_job_from_entity(resolved_entity)
+            if not resolved_entity:
+                continue
 
-                if structured:
-                    existing = repo.get_by_urn(structured['urn'])
+            structured = _structure_job_from_entity(resolved_entity, company_entities)
+            if not structured:
+                continue
 
-                    if not existing:
-                        _enrich_and_save_new_job(structured, repo, session)
-                        new_jobs_counter += 1
-                    else:
-                        # Existing job logic (company fix, timestamp backfill)
-                        if structured.get('company_urn') and not existing.company_urn:
-                            print(f"   🔧 Fixing missing company for {structured['urn']}...")
-                            _ensure_company_exists(repo.session, structured['company'], structured['company_urn'])
-                            existing.company_urn = structured['company_urn']
-                            repo.commit()
-                            updated_jobs_counter += 1
+            existing = repo.get_by_urn(structured['urn'])
 
-                        if existing.applied_on is None:
-                            exact_date = fetch_exact_applied_date(session, structured['urn'])
-                            if exact_date:
-                                existing.applied_on = exact_date
-                                existing.has_applied = True
-                                repo.commit()
-                                updated_jobs_counter += 1
+            # =========================================================
+            # 🆕 NEW JOB
+            # =========================================================
+            if not existing:
+                _enrich_and_save_new_job(structured, repo, session)
+                new_jobs_counter += 1
+                out_list.append(structured)
+                continue
 
-                        # 👇 ALSO CHECK MISSING DESCRIPTION ON EXISTING JOBS
-                        if existing.description_full == "No description provided":
-                            print(f"   📝 Backfilling description for {existing.title}...", end=" ")
-                            desc = EnrichmentService.fetch_single_job_description(session, existing.urn)
-                            if desc:
-                                existing.description_full = desc
-                                existing.processed = False
-                                repo.commit()
-                                print("✅")
-                                updated_jobs_counter += 1
-                            else:
-                                print("⚠️ Failed")
+            # =========================================================
+            # 🔧 EXISTING JOB — SAFE BACKFILL LOGIC
+            # =========================================================
 
-                        if not existing.has_applied:
-                            existing.has_applied = True
-                            repo.commit()
+            # 1️⃣ Ensure Company exists + backfill logo (INDEPENDENT of Job fields)
+            if structured.get("company_urn"):
+                _ensure_company_exists(
+                    repo.session,
+                    structured.get("company"),
+                    structured.get("company_urn"),
+                    structured.get("company_logo_url"),
+                )
 
-                    out_list.append(structured)
+                # 🔥 Explicit logo backfill (only if missing)
+                if structured.get("company_logo_url"):
+                    company = repo.session.query(Company).filter_by(
+                        urn=structured["company_urn"]
+                    ).first()
+
+                    if company and not company.logo_url:
+                        print(f"   🖼️ Backfilling logo for company {company.name}")
+                        company.logo_url = structured["company_logo_url"]
+                        repo.commit()
+                        updated_jobs_counter += 1
+
+            # 2️⃣ Fix missing company_urn on Job (rare, but safe)
+            if structured.get('company_urn') and not existing.company_urn:
+                print(f"   🔧 Fixing missing company for {structured['urn']}...")
+                existing.company_urn = structured['company_urn']
+                repo.commit()
+                updated_jobs_counter += 1
+
+            # 3️⃣ Backfill applied date
+            if existing.applied_on is None:
+                exact_date = fetch_exact_applied_date(session, structured['urn'])
+                if exact_date:
+                    existing.applied_on = exact_date
+                    existing.has_applied = True
+                    repo.commit()
+                    updated_jobs_counter += 1
+
+            # 4️⃣ Backfill description
+            if existing.description_full == "No description provided":
+                print(f"   📝 Backfilling description for {existing.title}...", end=" ")
+                desc = EnrichmentService.fetch_single_job_description(
+                    session, existing.urn
+                )
+                if desc:
+                    existing.description_full = desc
+                    existing.processed = False
+                    repo.commit()
+                    print("✅")
+                    updated_jobs_counter += 1
+                else:
+                    print("⚠️ Failed")
+
+            # 5️⃣ Ensure has_applied flag
+            if not existing.has_applied:
+                existing.has_applied = True
+                repo.commit()
+
+            out_list.append(structured)
 
     return new_jobs_counter, updated_jobs_counter

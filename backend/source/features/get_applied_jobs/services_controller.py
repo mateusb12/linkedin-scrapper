@@ -11,6 +11,7 @@ from sqlalchemy import or_, func
 
 from exceptions.service_exceptions import LinkedInScrapingException
 from models import Job, FetchCurl, Email, Company
+from source.features.get_applied_jobs.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
 from source.features.job_population.job_repository import JobRepository
 from services.job_tracking.huntr_service import get_huntr_jobs_data
 from database.database_connection import get_db_session
@@ -455,3 +456,116 @@ def reconcile_endpoints():
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+@services_bp.route("/debug-applied-jobs", methods=["GET"])
+def debug_applied_jobs_payload():
+    """
+    DEBUG endpoint to inspect the raw LinkedIn payload and understand
+    why company logos / profile data may be missing.
+
+    Query params:
+      - start: pagination offset (default: 0)
+      - limit: page size (default: 10)
+    """
+
+    start = request.args.get("start", default=0, type=int)
+    limit = request.args.get("limit", default=10, type=int)
+
+    try:
+        # --- Fetch LinkedIn artefacts ---
+        session, config = get_linkedin_fetch_artefacts()
+        if not session or not config:
+            return jsonify({"error": "LinkedIn session not available"}), 500
+
+        base_url = config.get("base_url")
+        query_id = config.get("query_id")
+
+        variables = f"(start:{start},query:(flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER))"
+        url = f"{base_url}?variables={variables}&queryId={query_id}"
+
+        response = session.get(url)
+        response.raise_for_status()
+        data = response.json()
+
+        # --- Extract included entities ---
+        included = data.get("included", [])
+
+        companies = {
+            item.get("entityUrn"): item
+            for item in included
+            if item.get("$type") == "com.linkedin.voyager.dash.organization.Company"
+        }
+
+        jobs_debug = []
+
+        # --- Walk clusters ---
+        clusters = (
+            data.get("data", {})
+                .get("data", {})
+                .get("searchDashClustersByAll", {})
+                .get("elements", [])
+        )
+
+        for cluster in clusters:
+            for item_wrapper in cluster.get("items", []):
+                entity_ref = item_wrapper.get("item", {}).get("*entityResult")
+                if not entity_ref:
+                    continue
+
+                entity = next(
+                    (i for i in included if i.get("entityUrn") == entity_ref),
+                    None
+                )
+                if not entity:
+                    continue
+
+                title = entity.get("title", {}).get("text")
+                company_name = entity.get("primarySubtitle", {}).get("text")
+
+                image_data = entity.get("image", {}).get("attributes", [])
+                company_urn = None
+                if image_data:
+                    detail = image_data[0].get("detailData", {})
+                    company_urn = detail.get("*companyLogo")
+
+                company_entity = companies.get(company_urn)
+                has_company_entity = company_entity is not None
+
+                has_logo = False
+                if company_entity:
+                    logo = (
+                        company_entity
+                        .get("logoResolutionResult", {})
+                        .get("vectorImage")
+                    )
+                    has_logo = bool(logo)
+
+                jobs_debug.append({
+                    "title": title,
+                    "company": company_name,
+                    "company_urn": company_urn,
+                    "has_image_block": bool(image_data),
+                    "has_company_entity": has_company_entity,
+                    "has_logo_resolution": has_logo,
+                })
+
+        return jsonify({
+            "pagination": {
+                "start": start,
+                "limit": limit
+            },
+            "stats": {
+                "jobs_returned": len(jobs_debug),
+                "companies_included": len(companies),
+                "jobs_with_company_urn": sum(1 for j in jobs_debug if j["company_urn"]),
+                "jobs_with_logo": sum(1 for j in jobs_debug if j["has_logo_resolution"]),
+            },
+            "jobs": jobs_debug
+        }), 200
+
+    except Exception as e:
+        print(traceback.format_exc())
+        return jsonify({
+            "error": "Failed to debug applied jobs payload",
+            "details": str(e)
+        }), 500
