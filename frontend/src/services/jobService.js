@@ -1,104 +1,114 @@
-import {API_BASE, handleResponse} from './config';
+import { API_BASE, handleResponse } from "./config";
 
 export const fetchAllJobs = async () => {
-    const response = await fetch(`${API_BASE}/jobs/all`);
-    return handleResponse(response, 'Failed to fetch all jobs');
+  const response = await fetch(`${API_BASE}/jobs/all`);
+  return handleResponse(response, "Failed to fetch all jobs");
 };
 
 export const markJobAsApplied = async (jobUrn) => {
-    const response = await fetch(`${API_BASE}/jobs/${jobUrn}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ applied_on: new Date().toISOString() }),
-    });
-    return handleResponse(response, 'Failed to mark job as applied');
+  const response = await fetch(`${API_BASE}/jobs/${jobUrn}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ applied_on: new Date().toISOString() }),
+  });
+  return handleResponse(response, "Failed to mark job as applied");
 };
 
 export const markJobAsDisabled = async (jobUrn) => {
-    const response = await fetch(`${API_BASE}/jobs/${jobUrn}/disable`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ disabled: true }),
-    });
-    return handleResponse(response, 'Failed to mark job as disabled');
+  const response = await fetch(`${API_BASE}/jobs/${jobUrn}/disable`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ disabled: true }),
+  });
+  return handleResponse(response, "Failed to mark job as disabled");
 };
 
 export const getMatchScore = async (jobDescription, resumeText) => {
-    const payload = {
-        job_description: jobDescription,
-        resume: resumeText
-    };
-    console.log("🔼 Sending match score request:", {
-        job_description: jobDescription,
-        resume: resumeText,
-    });
-    const response = await fetch(`${API_BASE}/jobs/match-score`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-    });
-    return handleResponse(response, 'Failed to fetch match score');
+  const payload = {
+    job_description: jobDescription,
+    resume: resumeText,
+  };
+  console.log("🔼 Sending match score request:", {
+    job_description: jobDescription,
+    resume: resumeText,
+  });
+  const response = await fetch(`${API_BASE}/jobs/match-score`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(response, "Failed to fetch match score");
 };
 
 export const fetchHuntrAppliedJobs = async () => {
-    const response = await fetch(`${API_BASE}/services/huntr`);
-    return handleResponse(response, 'Failed to fetch Huntr applied jobs');
+  const response = await fetch(`${API_BASE}/services/huntr`);
+  return handleResponse(response, "Failed to fetch Huntr applied jobs");
 };
 
 export const fetchLinkedinAppliedJobs = async () => {
-    const response = await fetch(`${API_BASE}/services/linkedin`);
-    return handleResponse(response, 'Failed to fetch LinkedIn applied jobs');
+  const response = await fetch(`${API_BASE}/services/linkedin`);
+  return handleResponse(response, "Failed to fetch LinkedIn applied jobs");
 };
 
 export const syncEmails = async (label = "Job fails") => {
-    const response = await fetch(`${API_BASE}/emails/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label }),
-    });
-    return handleResponse(response, 'Failed to sync emails');
+  const response = await fetch(`${API_BASE}/emails/sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label }),
+  });
+  return handleResponse(response, "Failed to sync emails");
 };
 
-export const fetchAppliedJobs = async ({ page, limit } = {}) => {
-    let url = `${API_BASE}/services/applied-jobs`;
+export const fetchAppliedJobs = async ({
+  page,
+  limit,
+  startDate,
+  skipSync,
+} = {}) => {
+  let url = `${API_BASE}/services/applied-jobs`;
 
-    if (page) {
-        url += `?page=${page}&limit=${limit || 10}`;
-    }
+  const params = [];
+  if (page) params.push(`page=${page}`);
+  if (limit) params.push(`limit=${limit || 10}`);
+  if (startDate) params.push(`start_date=${startDate}`);
+  if (skipSync) params.push(`skip_sync=true`);
 
-    const response = await fetch(url);
-    return handleResponse(response, 'Failed to fetch applied jobs');
+  if (params.length > 0) {
+    url += `?${params.join("&")}`;
+  }
+
+  const response = await fetch(url);
+  return handleResponse(response, "Failed to fetch applied jobs");
 };
 
 export const fetchJobFailures = async ({ page = 1, limit = 10 }) => {
-    // Note: We use the generic endpoint with a folder filter
-    const response = await fetch(`${API_BASE}/emails/?folder=Job fails&page=${page}&limit=${limit}`);
-    return handleResponse(response, 'Failed to fetch job failures');
+  const response = await fetch(
+    `${API_BASE}/emails/?folder=Job fails&page=${page}&limit=${limit}`,
+  );
+  return handleResponse(response, "Failed to fetch job failures");
 };
 
 export const syncApplicationStatus = async () => {
-    const response = await fetch(`${API_BASE}/services/sync-status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-    });
-    return handleResponse(response, 'Failed to sync application status');
+  const response = await fetch(`${API_BASE}/services/sync-status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  return handleResponse(response, "Failed to sync application status");
 };
 
-export const fetchDashboardInsights = async (timeRange = 'all_time') => {
-    // This creates the URL like: /services/insights?time_range=last_month
-    const response = await fetch(`${API_BASE}/services/insights?time_range=${timeRange}`);
-    return handleResponse(response, 'Failed to fetch dashboard insights');
+export const fetchDashboardInsights = async (timeRange = "all_time") => {
+  const response = await fetch(
+    `${API_BASE}/services/insights?time_range=${timeRange}`,
+  );
+  return handleResponse(response, "Failed to fetch dashboard insights");
 };
 
 export const reconcileJobStatuses = async () => {
-    // This assumes you have a backend endpoint like POST /services/reconcile
-    // If you haven't built it yet, you can temporarily point this to syncEmails
-    // BUT the correct approach is a dedicated SQL update endpoint.
-    const response = await fetch(`${API_BASE}/services/reconcile`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-    });
-    return handleResponse(response, 'Failed to reconcile job statuses');
+  const response = await fetch(`${API_BASE}/services/reconcile`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  return handleResponse(response, "Failed to reconcile job statuses");
 };

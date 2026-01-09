@@ -90,11 +90,15 @@ def apply_timezone_fix(job_dict):
 def get_all_applied_jobs():
     """
     Fetches job applications.
+    Accepts 'start_date' (YYYY-MM-DD) to filter results when not paginated.
+    Accepts 'skip_sync' (true/false) to bypass scraper sync.
     """
     repo = JobRepository()
     try:
         page = request.args.get('page', type=int)
         limit = request.args.get('limit', default=10, type=int)
+        start_date_str = request.args.get('start_date')
+        skip_sync = request.args.get('skip_sync') == 'true'
 
         if page:
             result = repo.fetch_paginated_applied_jobs(page, limit)
@@ -114,12 +118,24 @@ def get_all_applied_jobs():
             }), 200
 
         else:
-            print("Syncing LinkedIn jobs...")
-            fetch_all_linkedin_jobs()
-            print("Sync complete.")
+            if not skip_sync:
+                print("Syncing LinkedIn jobs...")
+                fetch_all_linkedin_jobs()
+                print("Sync complete.")
+            else:
+                print("Skipping LinkedIn Sync for export/fetch.")
 
             all_jobs = repo.fetch_internal_sql_jobs()
             normalized_jobs = [normalize_sql_job(job) for job in all_jobs]
+
+            # Parse start_date for filtering if provided
+            start_date_dt = None
+            if start_date_str:
+                try:
+                    # Assume input is YYYY-MM-DD, make it timezone aware (UTC) to match DB
+                    start_date_dt = parse_datetime(start_date_str).replace(tzinfo=timezone.utc)
+                except Exception as e:
+                    print(f"Invalid start_date format: {start_date_str}")
 
             final_list = []
             for job in normalized_jobs:
@@ -127,6 +143,16 @@ def get_all_applied_jobs():
                     continue
                 try:
                     job = apply_timezone_fix(job)
+
+                    # Date Filtering Logic
+                    if start_date_dt:
+                        job_date_str = job.get("appliedAt")
+                        if job_date_str:
+                            job_dt = parse_datetime(job_date_str)
+                            # Compare dates
+                            if job_dt < start_date_dt:
+                                continue
+
                     final_list.append(job)
                 except Exception as parse_err:
                     print(f"Skipping job {job.get('title')} - invalid date ({parse_err})")
