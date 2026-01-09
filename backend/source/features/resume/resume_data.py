@@ -1,5 +1,4 @@
 from flask import Blueprint, request, jsonify
-
 from database.database_connection import get_db_session
 from models import Resume
 from models.user_models import Profile
@@ -14,24 +13,39 @@ def create_resume():
     try:
         data = request.get_json()
 
-        name = data.get("name")
-        if not name:
-            return jsonify({"error": "Resume name is required"}), 400
+        # 1. Determine Profile ID
+        # If provided in JSON, use it. If not, try to find the first profile in DB.
+        profile_id = data.get("profile_id")
+        if not profile_id:
+            first_profile = session.query(Profile).first()
+            if first_profile:
+                profile_id = first_profile.id
 
+        # 2. Determine Name
+        profile_data = data.get("profile", {})
+        internal_name = data.get("internal_name") or profile_data.get("name") or "Novo Currículo"
+
+        # 3. Create Resume
+        # Note: We purposely might pass 'None' for fields like contact_info if we want
+        # to inherit from the profile dynamically.
         resume = Resume(
-            name=name,
-            summary=data.get("summary"),
-            hard_skills=data.get("hard_skills", []),
-            professional_experience=data.get("professional_experience", []),
+            name=internal_name,
+            meta=data.get("meta", {}),
+            contact_info=profile_data.get("contacts", None), # Pass None to allow fallback to Profile
+
+            professional_experience=data.get("experience", []),
             education=data.get("education", []),
             projects=data.get("projects", []),
-            profile_id=data.get("profile_id")
+            hard_skills=data.get("skills", {}),
+            languages=data.get("languages", []),
+
+            profile_id=profile_id
         )
 
         session.add(resume)
         session.commit()
 
-        # FIX: Return the full dictionary so frontend state updates correctly
+        # Return to_dict() which now contains the merged data (Profile + Resume)
         return jsonify(resume.to_dict()), 201
 
     except Exception as e:
@@ -46,6 +60,7 @@ def create_resume():
 def get_resume(resume_id):
     session = get_db_session()
     try:
+        # Use joinedload if you want to be efficient, but lazy loading works too
         resume = session.query(Resume).filter_by(id=resume_id).first()
         if not resume:
             return jsonify({"error": "Resume not found"}), 404
@@ -61,26 +76,11 @@ def get_resume(resume_id):
 
 @resume_bp.route("/", methods=["GET"])
 def get_all_resumes():
-    """
-    Fetch all resumes and overwrite hard_skills with the first profile's positive_keywords.
-    """
     session = get_db_session()
     try:
         resumes = session.query(Resume).all()
-        profiles = session.query(Profile).all()
-
-        # If you have at least one profile, grab its keywords
-        default_keywords = []
-        if profiles:
-            default_keywords = profiles[0].positive_keywords or []
-
-        result = []
-        for resume in resumes:
-            data = resume.to_dict()
-            # overwrite unconditionally
-            data["hard_skills"] = default_keywords
-            result.append(data)
-
+        # The to_dict() logic in the model handles the merging now.
+        result = [resume.to_dict() for resume in resumes]
         return jsonify(result), 200
 
     except Exception as e:
@@ -100,12 +100,23 @@ def update_resume(resume_id):
         if not resume:
             return jsonify({"error": "Resume not found"}), 404
 
-        resume.name = data.get("name", resume.name)
-        resume.summary = data.get("summary", resume.summary)
-        resume.hard_skills = data.get("hard_skills", resume.hard_skills)
-        resume.professional_experience = data.get("professional_experience", resume.professional_experience)
-        resume.education = data.get("education", resume.education)
-        resume.projects = data.get("projects", resume.projects)
+        # Update Logic
+        # If the frontend sends specific data, we save it to the Resume (overriding Profile).
+        # If the frontend sends null/empty, we save it as such (and to_dict will fallback).
+
+        if "meta" in data: resume.meta = data["meta"]
+        if "internal_name" in data: resume.name = data["internal_name"]
+
+        if "profile" in data:
+            profile_section = data["profile"]
+            if "name" in profile_section: resume.name = profile_section["name"]
+            if "contacts" in profile_section: resume.contact_info = profile_section["contacts"]
+
+        if "experience" in data: resume.professional_experience = data["experience"]
+        if "education" in data: resume.education = data["education"]
+        if "projects" in data: resume.projects = data["projects"]
+        if "skills" in data: resume.hard_skills = data["skills"]
+        if "languages" in data: resume.languages = data["languages"]
 
         session.commit()
 
@@ -140,50 +151,23 @@ def delete_resume(resume_id):
         session.close()
 
 
-@resume_bp.route("/search", methods=["GET"])
-def get_resume_by_name():
-    session = get_db_session()
-    try:
-        name = request.args.get("name")
-        if not name:
-            return jsonify({"error": "Query parameter 'name' is required"}), 400
-
-        # Case-insensitive search
-        resume = session.query(Resume).filter(Resume.name.ilike(f"%{name}%")).first()
-
-        if not resume:
-            return jsonify({"error": "Resume not found"}), 404
-
-        return jsonify(resume.to_dict()), 200
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-    finally:
-        session.close()
-
-
 @resume_bp.route("/tailor", methods=["POST"])
 def tailor_resume_endpoint():
-    """
-    Receives resume markdown and a job description, then uses the Gemini
-    service to return a tailored JSON representation of the resume.
-    """
-    # 1. Get and validate the request data
     data = request.get_json()
-    required_params = ["raw_job_description", "raw_resume", "extracted_job_keywords", "extracted_resume_keywords", "current_cosine_similarity"]
+
+    # Validation
+    required_params = ["raw_job_description", "raw_resume"]
     if not data or not all(param in data for param in required_params):
         return jsonify({"error": f"Request must include {required_params}"}), 400
 
     raw_job_description = data.get('raw_job_description')
     raw_resume = data.get('raw_resume')
+
     extracted_job_keywords = data.get('extracted_job_keywords', [])
     extracted_resume_keywords = data.get('extracted_resume_keywords', [])
     current_cosine_similarity = data.get('current_cosine_similarity', 0.0)
 
-    # 2. Call the AI service to tailor the resume
     try:
-        print("Started resume tailor process...")
         orchestrator = LLMOrchestrator()
         prompt = build_tailor_resume_prompt(
             raw_job_description=raw_job_description,
@@ -196,14 +180,10 @@ def tailor_resume_endpoint():
         tailored_data = orchestrator.run_prompt(prompt)
 
         if 'error' in tailored_data:
-            # The service layer encountered an issue (e.g., API or parsing error)
-            # 502 Bad Gateway is an appropriate status for an upstream error.
             return jsonify(tailored_data), 502
 
-        # 3. Return the successfully tailored data from the service
         return jsonify(tailored_data), 200
 
     except Exception as e:
-        # Catch any other unexpected errors
-        print(f"An unexpected error occurred in the tailor_resume endpoint: {e}")
+        print(f"Error in tailor_resume: {e}")
         return jsonify({"error": "An internal server error occurred."}), 500
