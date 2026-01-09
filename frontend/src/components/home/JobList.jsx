@@ -704,6 +704,13 @@ const MainJobListing = () => {
       processedJobs.sort(
         (a, b) => new Date(b.posted_on) - new Date(a.posted_on),
       );
+    } else if (sortBy === "applied_date") {
+      processedJobs.sort((a, b) => {
+        const dateA = a.applied_on ? new Date(a.applied_on) : new Date(0);
+        const dateB = b.applied_on ? new Date(b.applied_on) : new Date(0);
+
+        return dateB - dateA;
+      });
     }
 
     setFilteredJobs(processedJobs);
@@ -825,7 +832,8 @@ const MainJobListing = () => {
                 onChange={(e) => setSortBy(e.target.value)}
               >
                 <option value="relevance">Sort by: Relevance</option>
-                <option value="date">Sort by: Date</option>
+                <option value="date">Sort by: Date Posted</option>
+                <option value="applied_date">Sort by: Applied Date</option> {}
               </FilterSelect>
               <MultiSelectFilter
                 options={uniqueSkills}
