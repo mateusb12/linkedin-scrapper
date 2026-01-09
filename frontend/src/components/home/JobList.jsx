@@ -171,9 +171,49 @@ const mockData = [
   },
 ];
 
+const Badge = ({ color, children }) => {
+  const colors = {
+    green:
+      "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+    amber:
+      "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+    red: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+  };
+
+  return (
+    <span
+      className={`px-3 py-1 rounded-full text-sm font-semibold ${colors[color]}`}
+    >
+      {children}
+    </span>
+  );
+};
+
+const getCompetitionStyle = (applicants) => {
+  if (applicants == null)
+    return "text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400";
+  if (applicants < 300)
+    return "text-emerald-700 bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800";
+  if (applicants < 1000)
+    return "text-amber-700 bg-amber-100 dark:text-amber-400 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800";
+  return "text-red-700 bg-red-100 dark:text-red-400 dark:bg-red-900/30 border-red-200 dark:border-red-800";
+};
+
+const getExperienceStyle = (experience) => {
+  const minYears = experience?.min || 0;
+
+  if (!experience)
+    return "text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400";
+  if (minYears <= 4)
+    return "text-emerald-700 bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800";
+  if (minYears <= 6)
+    return "text-amber-700 bg-amber-100 dark:text-amber-400 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800";
+  return "text-red-700 bg-red-100 dark:text-red-400 dark:bg-red-900/30 border-red-200 dark:border-red-800";
+};
+
 const JobListItem = ({ job, onSelect, isSelected }) => {
   const baseClasses =
-    "p-4 border-l-4 cursor-pointer transition-colors duration-200 relative";
+    "p-4 border-l-4 cursor-pointer transition-colors duration-200";
   const selectedClasses = "bg-sky-100 dark:bg-sky-900/30 border-sky-500";
   const unselectedClasses =
     "border-transparent hover:bg-gray-100 dark:hover:bg-gray-800";
@@ -187,16 +227,19 @@ const JobListItem = ({ job, onSelect, isSelected }) => {
     });
   };
 
+  const compStyle = getCompetitionStyle(job.applicants);
+  const expStyle = getExperienceStyle(job.experience);
+
   return (
     <div
       onClick={() => onSelect(job)}
       className={`${baseClasses} ${isSelected ? selectedClasses : unselectedClasses}`}
     >
       <div className="flex justify-between items-center">
-        <h3 className="font-bold text-gray-800 dark:text-gray-100 truncate pr-6">
+        <h3 className="font-bold text-gray-800 dark:text-gray-100 truncate">
           {job.title || "Untitled Job"}
         </h3>
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex gap-1">
           {job.has_applied && (
             <CheckCircle size={16} className="text-green-500" title="Applied" />
           )}
@@ -211,9 +254,22 @@ const JobListItem = ({ job, onSelect, isSelected }) => {
       <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
         {job.location || "Location not specified"}
       </p>
-      <p className="text-xs text-gray-400 mt-1 italic">
-        Posted on {formatDate(job.posted_on)}
-      </p>
+
+      <div className="flex justify-between items-end mt-2">
+        <div className="flex gap-2">
+          {}
+          {job.applicants !== null && (
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded border ${compStyle}`}
+            >
+              {job.applicants} applicants
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-gray-400 italic">
+          {formatDate(job.posted_on)}
+        </p>
+      </div>
     </div>
   );
 };
@@ -251,27 +307,12 @@ const JobDetailView = ({ job }) => {
     });
   };
 
-  const buildLinkedInJobUrl = (urn) => {
-    if (!urn) return null;
-    const jobId = urn.split(":").pop();
-    return `https://www.linkedin.com/jobs/view/${jobId}/`;
-  };
-
-  const formatExperience = (experience) => {
-    if (!experience) return null;
-
-    const { min, max } = experience;
-
-    if (min && max) return `${min}–${max} years experience`;
-    if (min) return `${min}+ years experience`;
-    if (max) return `Up to ${max} years experience`;
-
-    return null;
-  };
-
   const skills = parseJsonArray(job.skills || job.keywords);
   const responsibilities = parseJsonArray(job.responsibilities);
   const requirements = parseJsonArray(job.requirements || job.qualifications);
+
+  const compStyle = getCompetitionStyle(job.applicants);
+  const expStyle = getExperienceStyle(job.experience);
 
   const Placeholder = ({ text = "None specified" }) => (
     <div className="flex items-center text-gray-500 dark:text-gray-400 italic">
@@ -308,35 +349,54 @@ const JobDetailView = ({ job }) => {
             </p>
           )}
           {job.has_applied && (
-            <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 text-sm font-medium rounded-full">
-              <CheckCircle size={14} /> Applied on {formatDate(job.applied_on)}
-            </div>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 mt-2 rounded bg-green-900/30 text-green-400 text-xs border border-green-800">
+              <CheckCircle size={12} /> Applied {formatDate(job.applied_on)}
+            </span>
           )}
         </div>
       </div>
 
+      {}
       <div className="flex flex-wrap items-center gap-4 mb-6">
         <a
-          href={buildLinkedInJobUrl(job.urn) || job.job_url}
+          href={job.job_url}
           target="_blank"
           rel="noopener noreferrer"
-          className={`px-6 py-2 text-white font-semibold rounded-lg shadow-md transition-all duration-200 ${
-            job.has_applied
-              ? "bg-gray-500 hover:bg-gray-600"
-              : "bg-blue-600 hover:bg-blue-700"
-          }`}
+          className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition-all duration-200 text-center"
         >
           {job.has_applied ? "View Application" : "Apply Now"}
         </a>
+
+        {}
+        <span
+          className={`flex items-center gap-2 px-4 py-2 font-semibold rounded-lg border ${compStyle}`}
+        >
+          <Users size={16} />
+          {job.applicants != null ? `${job.applicants} applicants` : "N/A"}
+          {job.applicants < 300 && job.applicants != null && (
+            <span className="text-[10px] ml-1 opacity-75">(Low)</span>
+          )}
+        </span>
+
+        {}
+        {job.experience && (
+          <span
+            className={`flex items-center gap-2 px-4 py-2 font-semibold rounded-lg border ${expStyle}`}
+          >
+            <Target size={16} />
+            {job.experience.min}+ years experience
+          </span>
+        )}
+
         {job.easy_apply && (
-          <span className="flex items-center gap-2 px-4 py-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300 font-semibold rounded-lg">
+          <span className="flex items-center gap-2 px-4 py-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300 font-semibold rounded-lg border border-yellow-200 dark:border-yellow-700">
             <Zap size={16} /> Easy Apply
           </span>
         )}
       </div>
 
+      {}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 mb-8 text-sm">
-        {}
         {job.job_type && (
           <div className="flex items-center text-indigo-900 dark:text-indigo-100 bg-indigo-100 dark:bg-indigo-900/40 p-3 rounded-lg border-l-4 border-indigo-500 dark:border-indigo-400 shadow-sm">
             <Briefcase
@@ -347,7 +407,6 @@ const JobDetailView = ({ job }) => {
           </div>
         )}
 
-        {}
         {Array.isArray(job.programming_languages) &&
           job.programming_languages.length > 0 && (
             <div className="flex items-center bg-violet-100 dark:bg-violet-900/40 p-3 rounded-lg border-l-4 border-violet-500 dark:border-violet-400 shadow-sm flex-wrap gap-2 text-violet-900 dark:text-violet-100">
@@ -389,20 +448,6 @@ const JobDetailView = ({ job }) => {
           <Globe size={18} className="mr-3 text-gray-500 flex-shrink-0" />{" "}
           <span className="truncate">{job.language || "Not specified"}</span>
         </div>
-        <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
-          <Users size={18} className="mr-3 text-gray-500 flex-shrink-0" />
-          <span>
-            {job.applicants > 0
-              ? `${job.applicants} applicant${job.applicants > 1 ? "s" : ""}`
-              : "Be the first to apply!"}
-          </span>
-        </div>
-        {job.experience && (
-          <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
-            <Target size={18} className="mr-3 text-gray-500 flex-shrink-0" />
-            <span>{formatExperience(job.experience)}</span>
-          </div>
-        )}
       </div>
 
       {job.description_snippet && (
