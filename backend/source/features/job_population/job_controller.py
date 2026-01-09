@@ -28,6 +28,12 @@ def get_job_status(job: Job) -> str:
 def _job_to_dict_with_status(job: Job) -> dict:
     """Converts a Job object to a dictionary and adds the calculated 'status' field."""
     job_dict = job.to_dict()
+    job_dict["_debug"] = {
+        "urn": job.urn,
+        "processed": job.processed,
+        "has_description": bool(job.description_full),
+        "has_applied": job.has_applied,
+    }
     job_dict["status"] = get_job_status(job)
     job_dict["experience"] = extract_years_experience(job.description_full)
     return job_dict

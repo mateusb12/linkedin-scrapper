@@ -299,6 +299,14 @@ const JobDetailView = ({ job }) => {
           <p className="text-lg text-gray-700 dark:text-gray-300">
             {job.company?.name || "Unknown Company"}
           </p>
+          {job.urn && (
+            <p
+              className="text-[11px] text-gray-400 dark:text-gray-500 font-mono mt-0.5 select-text"
+              title="LinkedIn Job URN"
+            >
+              {job.urn}
+            </p>
+          )}
           {job.has_applied && (
             <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 text-sm font-medium rounded-full">
               <CheckCircle size={14} /> Applied on {formatDate(job.applied_on)}
