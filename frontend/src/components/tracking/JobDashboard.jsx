@@ -459,6 +459,7 @@ export const JobDashboard = () => {
             <StreakCalendar dailyStats={currentStats.dailyStats} />
             <RecentApplications
               jobs={paginatedData?.data || []}
+              allJobs={allJobsData || []}
               onSelectJob={setSelectedJob}
               pagination={
                 paginatedData

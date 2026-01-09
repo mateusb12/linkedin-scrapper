@@ -115,7 +115,7 @@ const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
   );
 };
 
-const RecentApplications = ({ jobs, onSelectJob, pagination }) => {
+const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
   const [searchTerm, setSearchTerm] = useState("");
 
   const [copyStartDate, setCopyStartDate] = useState("");
@@ -132,17 +132,24 @@ const RecentApplications = ({ jobs, onSelectJob, pagination }) => {
   }, [jobs, searchTerm]);
 
   const jobsToExport = useMemo(() => {
-    if (!copyStartDate || !jobs) return [];
+    const sourceData = allJobs && allJobs.length > 0 ? allJobs : jobs;
+
+    if (!copyStartDate || !sourceData) return [];
 
     const startDate = new Date(copyStartDate);
     startDate.setHours(0, 0, 0, 0);
 
-    return jobs.filter((job) => {
+    return sourceData.filter((job) => {
       if (!job.appliedAt) return false;
+
       const jobDate = new Date(job.appliedAt);
-      return jobDate >= startDate;
+
+      const jobDateMidnight = new Date(jobDate);
+      jobDateMidnight.setHours(0, 0, 0, 0);
+
+      return jobDateMidnight >= startDate;
     });
-  }, [jobs, copyStartDate]);
+  }, [allJobs, jobs, copyStartDate]);
 
   const handleCopyJobs = () => {
     if (jobsToExport.length === 0) return;
