@@ -1,33 +1,49 @@
 FROM python:3.12-slim
 
-# Install system deps
+# ===============================
+# SYSTEM DEPS
+# ===============================
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl \
+    build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
+# ===============================
+# WORKDIR
+# ===============================
 WORKDIR /app
-
 ENV PYTHONPATH=/app
 
-# Install Poetry
+# ===============================
+# POETRY
+# ===============================
 RUN curl -sSL https://install.python-poetry.org | python3 -
 
 ENV PATH="/root/.local/bin:$PATH"
 ENV POETRY_VIRTUALENVS_CREATE=false \
-    POETRY_VIRTUALENVS_IN_PROJECT=false \
     POETRY_NO_INTERACTION=1
 
-# Copy only dependency files first
+# ===============================
+# INSTALL DEPS (DEV OR PROD)
+# ===============================
+ARG INSTALL_DEV=false
+
 COPY pyproject.toml poetry.lock ./
 
-# Install deps (no dev groups in your project)
-RUN poetry install --no-root --no-interaction --no-ansi
+RUN if [ "$INSTALL_DEV" = "true" ]; then \
+        poetry install --no-root --with dev ; \
+    else \
+        poetry install --no-root ; \
+    fi
 
-# Copy code
+# ===============================
+# APP CODE
+# ===============================
 COPY . .
 
 EXPOSE 5000
 
-# Flask run command (adjust if you use FastAPI instead)
-CMD ["poetry", "run", "flask", "--app", "app.py", "run", "--host=0.0.0.0", "--port=5000"]
-
+# ===============================
+# DEFAULT CMD (DEV OVERRIDES IN COMPOSE)
+# ===============================
+CMD ["poetry", "run", "flask", "run", "--host=0.0.0.0", "--port=5000"]

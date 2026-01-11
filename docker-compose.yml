@@ -1,6 +1,9 @@
 services:
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        INSTALL_DEV: "true"   # 👈 DEV MODE
     container_name: linkedin-backend-dev
     volumes:
       - ./backend:/app
@@ -17,6 +20,7 @@ services:
       - SYS_PTRACE
     security_opt:
       - seccomp:unconfined
+
   frontend:
     build:
       context: ./frontend

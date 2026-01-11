@@ -7,6 +7,9 @@ authors = [
 ]
 requires-python = ">=3.12,<4.0"
 
+# ===============================
+# RUNTIME DEPENDENCIES
+# ===============================
 dependencies = [
     "python-dotenv (>=1.1.1,<2.0.0)",
     "flask (>=3.1.2,<4.0.0)",
@@ -18,27 +21,40 @@ dependencies = [
     "pandas (>=2.3.2,<3.0.0)",
     "openai (>=1.109.1,<2.0.0)",
     "repomix (>=0.3.4,<0.4.0)",
+]
+
+# ===============================
+# DEV / TOOLING DEPENDENCIES
+# ===============================
+[dependency-groups]
+dev = [
+    "pytest (>=9.0.2,<10.0.0)",
+    "ruff (>=0.14.10,<0.15.0)",
+    "black (>=25.12.0,<26.0.0)",
+    "mypy (>=1.19.1,<2.0.0)",
     "pydevd-pycharm (>=253.28294.336,<253.28295.0)",
 ]
 
 [tool.poetry]
 package-mode = false
 
+# ===============================
+# BUILD SYSTEM
+# ===============================
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
-[dependency-groups]
-dev = [
-    "ruff (>=0.14.10,<0.15.0)",
-    "black (>=25.12.0,<26.0.0)",
-    "mypy (>=1.19.1,<2.0.0)",
-    "pytest (>=9.0.1,<10.0.0)"
-]
+# ===============================
+# PYTEST
+# ===============================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"
 
-# =====================================================
-# FORMATTER — BLACK
-# =====================================================
+# ===============================
+# BLACK
+# ===============================
 [tool.black]
 line-length = 88
 target-version = ["py312"]
@@ -55,28 +71,16 @@ exclude = '''
 )
 '''
 
-# =====================================================
-# LINTER — RUFF
-# =====================================================
+# ===============================
+# RUFF
+# ===============================
 [tool.ruff]
 line-length = 88
 target-version = "py312"
 fix = true
 
-select = [
-    "E",   # pycodestyle errors
-    "F",   # pyflakes
-    "W",   # warnings
-    "I",   # imports (isort replacement)
-    "B",   # bugbear
-    "UP",  # pyupgrade
-    "SIM", # simplify
-    "C4",  # comprehensions
-]
-
-ignore = [
-    "E501", # line length (Black owns this)
-]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4"]
+ignore = ["E501"]
 
 exclude = [
     ".venv",
@@ -88,9 +92,9 @@ exclude = [
 [tool.ruff.per-file-ignores]
 "migrations/**" = ["E", "F", "I"]
 
-# =====================================================
-# TYPES — MYPY (PRAGMATIC, NOT PAINFUL)
-# =====================================================
+# ===============================
+# MYPY
+# ===============================
 [tool.mypy]
 python_version = "3.12"
 warn_return_any = true
@@ -99,10 +103,3 @@ ignore_missing_imports = true
 check_untyped_defs = true
 disallow_untyped_defs = false
 no_implicit_optional = true
-
-# =====================================================
-# TESTS
-# =====================================================
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-ra -q"
