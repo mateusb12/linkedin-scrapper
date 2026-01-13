@@ -24,6 +24,11 @@ import {
   CheckSquare,
 } from "lucide-react";
 
+import {
+  getExperienceStyle,
+  getCompetitionStyle,
+} from "../tracking/utils/jobUtils";
+
 const mockData = [
   {
     applicants: 5,
@@ -189,28 +194,6 @@ const Badge = ({ color, children }) => {
   );
 };
 
-const getCompetitionStyle = (applicants) => {
-  if (applicants == null)
-    return "text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400";
-  if (applicants < 300)
-    return "text-emerald-700 bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800";
-  if (applicants < 1000)
-    return "text-amber-700 bg-amber-100 dark:text-amber-400 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800";
-  return "text-red-700 bg-red-100 dark:text-red-400 dark:bg-red-900/30 border-red-200 dark:border-red-800";
-};
-
-const getExperienceStyle = (experience) => {
-  const minYears = experience?.min || 0;
-
-  if (!experience)
-    return "text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400";
-  if (minYears <= 4)
-    return "text-emerald-700 bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800";
-  if (minYears <= 6)
-    return "text-amber-700 bg-amber-100 dark:text-amber-400 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800";
-  return "text-red-700 bg-red-100 dark:text-red-400 dark:bg-red-900/30 border-red-200 dark:border-red-800";
-};
-
 const JobListItem = ({ job, onSelect, isSelected }) => {
   const baseClasses =
     "p-4 border-l-4 cursor-pointer transition-colors duration-200";
@@ -373,7 +356,7 @@ const JobDetailView = ({ job }) => {
         >
           <Users size={16} />
           {job.applicants != null ? `${job.applicants} applicants` : "N/A"}
-          {job.applicants < 300 && job.applicants != null && (
+          {job.applicants < 100 && job.applicants != null && (
             <span className="text-[10px] ml-1 opacity-75">(Low)</span>
           )}
         </span>
@@ -396,6 +379,8 @@ const JobDetailView = ({ job }) => {
       </div>
 
       {}
+      {}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 mb-8 text-sm">
         {job.job_type && (
           <div className="flex items-center text-indigo-900 dark:text-indigo-100 bg-indigo-100 dark:bg-indigo-900/40 p-3 rounded-lg border-l-4 border-indigo-500 dark:border-indigo-400 shadow-sm">

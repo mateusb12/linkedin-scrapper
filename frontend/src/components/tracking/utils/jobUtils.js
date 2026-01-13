@@ -23,15 +23,15 @@ export const extractExperienceFromDescription = (description) => {
 };
 
 export const getExperienceStyle = (experience) => {
-  const minYears = experience?.min || 0;
-
   if (!experience)
     return "text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700";
 
-  if (minYears <= 2)
-    return "text-green-700 bg-green-100 dark:text-green-400 dark:bg-green-900/30 border-green-200 dark:border-green-800";
+  const minYears = experience.min ?? 0;
 
-  if (minYears <= 5)
+  if (minYears <= 4)
+    return "text-emerald-700 bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800";
+
+  if (minYears <= 6)
     return "text-amber-700 bg-amber-100 dark:text-amber-400 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800";
 
   return "text-red-700 bg-red-100 dark:text-red-400 dark:bg-red-900/30 border-red-200 dark:border-red-800";
@@ -39,13 +39,14 @@ export const getExperienceStyle = (experience) => {
 
 export const getCompetitionStyle = (applicants) => {
   if (applicants == null)
-    return "text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400";
-  if (applicants < 10)
+    return "text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700";
+
+  if (applicants < 300)
     return "text-emerald-700 bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800";
-  if (applicants < 50)
-    return "text-blue-700 bg-blue-100 dark:text-blue-400 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800";
-  if (applicants < 200)
+
+  if (applicants < 1000)
     return "text-amber-700 bg-amber-100 dark:text-amber-400 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800";
+
   return "text-red-700 bg-red-100 dark:text-red-400 dark:bg-red-900/30 border-red-200 dark:border-red-800";
 };
 

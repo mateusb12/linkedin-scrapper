@@ -17,12 +17,17 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  Database, // Added icon to indicate cached data
 } from "lucide-react";
 import {
   fetchLinkedinJobsRaw,
   LINKEDIN_CARD_TYPE,
 } from "../../services/jobService";
-import {cleanJobDescription, extractExperienceFromDescription, getExperienceStyle} from "./utils/jobUtils.js";
+import {
+  cleanJobDescription,
+  extractExperienceFromDescription,
+  getExperienceStyle,
+} from "./utils/jobUtils.js";
 
 const SavedJobs = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -34,6 +39,9 @@ const SavedJobs = () => {
   const [exportCount, setExportCount] = useState("");
   const [isCopied, setIsCopied] = useState(false);
 
+  // New state to track if we are viewing cached data
+  const [isCachedData, setIsCachedData] = useState(false);
+
   const TABS = [
     { id: LINKEDIN_CARD_TYPE.SAVED, label: "Saved", icon: Bookmark },
     { id: LINKEDIN_CARD_TYPE.APPLIED, label: "Applied", icon: Briefcase },
@@ -41,11 +49,37 @@ const SavedJobs = () => {
     { id: LINKEDIN_CARD_TYPE.ARCHIVED, label: "Archived", icon: Archive },
   ];
 
-  const loadJobs = async () => {
+  // Helper to generate unique keys for each tab
+  const getCacheKey = (tabId) => `linkedin_jobs_cache_${tabId}`;
+
+  // Modified loadJobs to handle caching
+  const loadJobs = async (forceRefresh = false) => {
     setIsLoading(true);
     setError(null);
     setExpandedJobUrn(null);
+
+    const cacheKey = getCacheKey(activeTab);
+
     try {
+      // 1. Try to load from LocalStorage first if not forcing a refresh
+      if (!forceRefresh) {
+        const cachedData = localStorage.getItem(cacheKey);
+        if (cachedData) {
+          try {
+            const parsedJobs = JSON.parse(cachedData);
+            if (Array.isArray(parsedJobs)) {
+              setJobs(parsedJobs);
+              setIsCachedData(true); // Flag UI that this is from cache
+              setIsLoading(false);
+              return; // Stop execution here, do not hit API
+            }
+          } catch (parseError) {
+            console.warn("Invalid cache data, fetching fresh...");
+          }
+        }
+      }
+
+      // 2. Fetch from API (if forceRefresh is true OR no cache found)
       const response = await fetchLinkedinJobsRaw({
         cardType: activeTab,
         start: 0,
@@ -54,6 +88,9 @@ const SavedJobs = () => {
 
       if (response && response.jobs) {
         setJobs(response.jobs);
+        setIsCachedData(false); // Data is fresh
+        // 3. Save result to LocalStorage
+        localStorage.setItem(cacheKey, JSON.stringify(response.jobs));
       } else {
         setJobs([]);
       }
@@ -66,7 +103,8 @@ const SavedJobs = () => {
   };
 
   useEffect(() => {
-    loadJobs();
+    // On tab change, load (preferring cache)
+    loadJobs(false);
   }, [activeTab]);
 
   const filteredJobs = useMemo(() => {
@@ -106,7 +144,11 @@ const SavedJobs = () => {
   };
 
   const handleRemove = (urn) => {
-    setJobs(jobs.filter((job) => job.job_posting_urn !== urn));
+    const updatedJobs = jobs.filter((job) => job.job_posting_urn !== urn);
+    setJobs(updatedJobs);
+
+    // Update cache immediately when removing an item
+    localStorage.setItem(getCacheKey(activeTab), JSON.stringify(updatedJobs));
   };
 
   const toggleDescription = (urn) => {
@@ -132,7 +174,7 @@ const SavedJobs = () => {
   return (
     <div className="space-y-4">
       <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-xl overflow-hidden mt-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-        {}
+        {/* Header Section */}
         <div className="p-6 border-b border-gray-700 flex flex-col gap-6 bg-gradient-to-r from-gray-800 to-emerald-900/10">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div className="flex items-center gap-4">
@@ -140,7 +182,15 @@ const SavedJobs = () => {
                 <Bookmark className="text-emerald-500" size={24} />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-white">My Items</h3>
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  My Items
+                  {/* Visual indicator for Cached Data */}
+                  {isCachedData && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-700 text-gray-400 border border-gray-600 font-normal flex items-center gap-1">
+                       <Database size={10} /> Cached
+                    </span>
+                  )}
+                </h3>
                 <p className="text-xs text-gray-400">
                   Live data from LinkedIn "My Jobs"
                 </p>
@@ -160,10 +210,13 @@ const SavedJobs = () => {
                   <Search size={14} />
                 </div>
               </div>
+
+              {/* Refresh Button - Explicitly forces refresh */}
               <button
-                onClick={loadJobs}
+                onClick={() => loadJobs(true)}
                 disabled={isLoading}
-                className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-300 transition-colors disabled:opacity-50"
+                title="Force refresh from LinkedIn"
+                className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-300 transition-colors disabled:opacity-50 relative group"
               >
                 <RefreshCw
                   size={18}
@@ -193,13 +246,13 @@ const SavedJobs = () => {
           </div>
         </div>
 
-        {}
+        {/* Table Section */}
         <div className="overflow-x-auto min-h-[300px]">
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
               <tr>
                 <th className="px-6 py-4">Role & Company</th>
-                <th className="px-6 py-4">Experience</th> {}
+                <th className="px-6 py-4">Experience</th> {/* New Column */}
                 <th className="px-6 py-4">Location</th>
                 <th className="px-6 py-4">Status / Insight</th>
                 <th className="px-6 py-4 text-right">Actions</th>
@@ -269,7 +322,7 @@ const SavedJobs = () => {
                         </div>
                       </td>
 
-                      {}
+                      {/* Experience Column */}
                       <td className="px-6 py-4">
                         {job.experienceData ? (
                           <span
@@ -330,7 +383,7 @@ const SavedJobs = () => {
                       </td>
                     </tr>
 
-                    {}
+                    {/* Expandable Details */}
                     {expandedJobUrn === job.job_posting_urn && (
                       <tr className="bg-gray-900/30 border-b border-gray-700/50 animate-in fade-in zoom-in-95 duration-200">
                         <td colSpan="5" className="px-6 py-4">
@@ -402,13 +455,13 @@ const SavedJobs = () => {
           </table>
         </div>
 
-        {}
+        {/* Footer Section */}
         <div className="px-6 py-3 bg-gray-900/50 border-t border-gray-700 flex justify-between items-center text-xs text-gray-500">
           <span>Showing {filteredJobs.length} items</span>
         </div>
       </div>
 
-      {}
+      {/* Export Section */}
       <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-4 w-full md:w-auto">
           <div className="flex flex-col">
