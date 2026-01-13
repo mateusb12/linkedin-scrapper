@@ -16,11 +16,13 @@ import {
   Hash,
   ChevronDown,
   ChevronUp,
+  Clock,
 } from "lucide-react";
 import {
   fetchLinkedinJobsRaw,
   LINKEDIN_CARD_TYPE,
 } from "../../services/jobService";
+import {cleanJobDescription, extractExperienceFromDescription, getExperienceStyle} from "./utils/jobUtils.js";
 
 const SavedJobs = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -38,58 +40,6 @@ const SavedJobs = () => {
     { id: LINKEDIN_CARD_TYPE.IN_PROGRESS, label: "In Progress", icon: Layers },
     { id: LINKEDIN_CARD_TYPE.ARCHIVED, label: "Archived", icon: Archive },
   ];
-
-  const cleanJobDescription = (rawText) => {
-    if (!rawText) return "No description available.";
-
-    const lines = rawText.split("\n");
-
-    const garbagePatterns = [
-      /^div$/,
-      /^com\.linkedin\..*/,
-      /^stringValue$/,
-      /^Collapsed$/,
-      /^bindableBoolean$/,
-      /^booleanBinding$/,
-      /^Expanded$/,
-      /^onComponentDisappear$/,
-      /^horizontal$/,
-      /^h2$/,
-      /^sans$/,
-      /^small$/,
-      /^normal$/,
-      /^open$/,
-      /^start$/,
-      /^strong$/,
-      /^text-attr-\d+$/,
-      /^more$/,
-      /^expandable_text_block.*/,
-    ];
-
-    const cleanedLines = lines
-      .map((line) => line.trim())
-      .filter((line) => {
-        if (line.length === 0) return false;
-        return !garbagePatterns.some((pattern) => pattern.test(line));
-      })
-      .map((line) => {
-        if (line === "li" || line === "ul") return "• ";
-        if (line === "br") return "";
-        return line;
-      });
-
-    let text = cleanedLines.join("\n");
-
-    text = text.replace(/([a-z])\*\*([A-Z])/g, "$1\n\n**$2");
-
-    text = text.replace(/\n\*\*/g, "\n\n**");
-
-    const unicodeBullets = /[✔✨✅•➡🔹🔸▪]/g;
-
-    text = text.replace(new RegExp(`\\n([✔✨✅•➡🔹🔸▪])`, "g"), "\n\n$1");
-
-    return text;
-  };
 
   const loadJobs = async () => {
     setIsLoading(true);
@@ -121,13 +71,22 @@ const SavedJobs = () => {
 
   const filteredJobs = useMemo(() => {
     if (!jobs) return [];
-    return jobs.filter(
-      (j) =>
-        (j.title && j.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (j.company &&
-          j.company.name &&
-          j.company.name.toLowerCase().includes(searchTerm.toLowerCase())),
-    );
+
+    return jobs
+      .map((job) => {
+        const experienceData = extractExperienceFromDescription(
+          job.description,
+        );
+        return { ...job, experienceData };
+      })
+      .filter(
+        (j) =>
+          (j.title &&
+            j.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (j.company &&
+            j.company.name &&
+            j.company.name.toLowerCase().includes(searchTerm.toLowerCase())),
+      );
   }, [jobs, searchTerm]);
 
   const jobsToExport = useMemo(() => {
@@ -240,6 +199,7 @@ const SavedJobs = () => {
             <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
               <tr>
                 <th className="px-6 py-4">Role & Company</th>
+                <th className="px-6 py-4">Experience</th> {}
                 <th className="px-6 py-4">Location</th>
                 <th className="px-6 py-4">Status / Insight</th>
                 <th className="px-6 py-4 text-right">Actions</th>
@@ -248,7 +208,7 @@ const SavedJobs = () => {
             <tbody className="divide-y divide-gray-700">
               {isLoading ? (
                 <tr>
-                  <td colSpan="4" className="p-12 text-center">
+                  <td colSpan="5" className="p-12 text-center">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <RefreshCw
                         className="animate-spin text-emerald-500"
@@ -262,7 +222,7 @@ const SavedJobs = () => {
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan="4" className="p-12 text-center text-red-400">
+                  <td colSpan="5" className="p-12 text-center text-red-400">
                     {error}
                   </td>
                 </tr>
@@ -270,7 +230,11 @@ const SavedJobs = () => {
                 filteredJobs.map((job) => (
                   <React.Fragment key={job.job_posting_urn}>
                     <tr
-                      className={`group transition-colors ${expandedJobUrn === job.job_posting_urn ? "bg-gray-800" : "hover:bg-emerald-900/5"}`}
+                      className={`group transition-colors ${
+                        expandedJobUrn === job.job_posting_urn
+                          ? "bg-gray-800"
+                          : "hover:bg-emerald-900/5"
+                      }`}
                     >
                       <td className="px-6 py-4">
                         <div className="flex items-start gap-3">
@@ -304,6 +268,22 @@ const SavedJobs = () => {
                           </div>
                         </div>
                       </td>
+
+                      {}
+                      <td className="px-6 py-4">
+                        {job.experienceData ? (
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getExperienceStyle(job.experienceData)}`}
+                          >
+                            {job.experienceData.text}
+                          </span>
+                        ) : (
+                          <span className="text-gray-600 text-xs italic opacity-50 flex items-center gap-1">
+                            <Clock size={12} /> N/A
+                          </span>
+                        )}
+                      </td>
+
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-gray-400 text-sm">
                           <MapPin size={14} className="text-gray-500" />{" "}
@@ -316,7 +296,9 @@ const SavedJobs = () => {
                             job.insights.map((insight, idx) => (
                               <span
                                 key={idx}
-                                className={`px-3 py-1 rounded-full text-xs border whitespace-nowrap ${getInsightStyle(insight)}`}
+                                className={`px-3 py-1 rounded-full text-xs border whitespace-nowrap ${getInsightStyle(
+                                  insight,
+                                )}`}
                               >
                                 {insight.trim()}
                               </span>
@@ -351,7 +333,7 @@ const SavedJobs = () => {
                     {}
                     {expandedJobUrn === job.job_posting_urn && (
                       <tr className="bg-gray-900/30 border-b border-gray-700/50 animate-in fade-in zoom-in-95 duration-200">
-                        <td colSpan="4" className="px-6 py-4">
+                        <td colSpan="5" className="px-6 py-4">
                           <div className="bg-gray-800 rounded-lg p-5 border border-gray-700 shadow-inner">
                             <h4 className="text-xs font-bold text-emerald-500 mb-3 uppercase tracking-wider flex items-center gap-2">
                               <Briefcase size={12} /> Job Description
@@ -365,22 +347,18 @@ const SavedJobs = () => {
                                       {...props}
                                     />
                                   ),
-
                                   ul: ({ node, ...props }) => (
                                     <ul
                                       className="list-disc pl-5 space-y-1 my-2"
                                       {...props}
                                     />
                                   ),
-
                                   li: ({ node, ...props }) => (
                                     <li className="pl-1" {...props} />
                                   ),
-
                                   p: ({ node, ...props }) => (
                                     <p className="mb-2 last:mb-0" {...props} />
                                   ),
-
                                   h1: ({ node, ...props }) => (
                                     <h1
                                       className="text-lg font-bold text-emerald-400 mt-4 mb-2"
@@ -412,7 +390,7 @@ const SavedJobs = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="4" className="p-8 text-center text-gray-500">
+                  <td colSpan="5" className="p-8 text-center text-gray-500">
                     <div className="flex flex-col items-center gap-2">
                       <Bookmark size={32} className="opacity-20" />
                       <span>No jobs found in this category.</span>
@@ -459,7 +437,13 @@ const SavedJobs = () => {
         <button
           onClick={handleCopyJobs}
           disabled={jobsToExport.length === 0}
-          className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-bold transition-all duration-200 ${isCopied ? "bg-green-600 text-white" : jobsToExport.length === 0 ? "bg-gray-700 text-gray-500 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg hover:shadow-emerald-500/20"}`}
+          className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-bold transition-all duration-200 ${
+            isCopied
+              ? "bg-green-600 text-white"
+              : jobsToExport.length === 0
+                ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg hover:shadow-emerald-500/20"
+          }`}
         >
           {isCopied ? (
             <>

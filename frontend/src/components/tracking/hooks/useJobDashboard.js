@@ -7,11 +7,11 @@ import {
   syncApplicationStatus,
   fetchDashboardInsights,
   reconcileJobStatuses,
-} from "../../services/jobService.js";
+} from "../../../services/jobService.js";
 import {
   processCurrentFormData,
   processHistoryData,
-} from "./dashboardUtils.js";
+} from "../utils/dashboardUtils.js";
 
 export const useJobDashboard = () => {
   const [page, setPage] = useState(1);

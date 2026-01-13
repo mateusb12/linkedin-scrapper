@@ -34,7 +34,7 @@ import {
   ScraperSettings,
   JobDetailsPanel,
 } from "./DashboardModals";
-import { useJobDashboard } from "./useJobDashboard.js";
+import { useJobDashboard } from "./hooks/useJobDashboard.js";
 
 ChartJS.register(
   ArcElement,
