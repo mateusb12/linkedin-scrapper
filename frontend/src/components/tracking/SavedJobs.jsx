@@ -17,7 +17,9 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
-  Database, // Added icon to indicate cached data
+  Database,
+  User,
+  Code2,
 } from "lucide-react";
 import {
   fetchLinkedinJobsRaw,
@@ -27,6 +29,10 @@ import {
   cleanJobDescription,
   extractExperienceFromDescription,
   getExperienceStyle,
+  extractSeniorityFromDescription,
+  extractJobTypeFromDescription,
+  getSeniorityStyle,
+  getTypeStyle,
 } from "./utils/jobUtils.js";
 
 const SavedJobs = () => {
@@ -39,7 +45,6 @@ const SavedJobs = () => {
   const [exportCount, setExportCount] = useState("");
   const [isCopied, setIsCopied] = useState(false);
 
-  // New state to track if we are viewing cached data
   const [isCachedData, setIsCachedData] = useState(false);
 
   const TABS = [
@@ -49,10 +54,8 @@ const SavedJobs = () => {
     { id: LINKEDIN_CARD_TYPE.ARCHIVED, label: "Archived", icon: Archive },
   ];
 
-  // Helper to generate unique keys for each tab
   const getCacheKey = (tabId) => `linkedin_jobs_cache_${tabId}`;
 
-  // Modified loadJobs to handle caching
   const loadJobs = async (forceRefresh = false) => {
     setIsLoading(true);
     setError(null);
@@ -61,7 +64,6 @@ const SavedJobs = () => {
     const cacheKey = getCacheKey(activeTab);
 
     try {
-      // 1. Try to load from LocalStorage first if not forcing a refresh
       if (!forceRefresh) {
         const cachedData = localStorage.getItem(cacheKey);
         if (cachedData) {
@@ -69,9 +71,9 @@ const SavedJobs = () => {
             const parsedJobs = JSON.parse(cachedData);
             if (Array.isArray(parsedJobs)) {
               setJobs(parsedJobs);
-              setIsCachedData(true); // Flag UI that this is from cache
+              setIsCachedData(true);
               setIsLoading(false);
-              return; // Stop execution here, do not hit API
+              return;
             }
           } catch (parseError) {
             console.warn("Invalid cache data, fetching fresh...");
@@ -79,7 +81,6 @@ const SavedJobs = () => {
         }
       }
 
-      // 2. Fetch from API (if forceRefresh is true OR no cache found)
       const response = await fetchLinkedinJobsRaw({
         cardType: activeTab,
         start: 0,
@@ -88,8 +89,8 @@ const SavedJobs = () => {
 
       if (response && response.jobs) {
         setJobs(response.jobs);
-        setIsCachedData(false); // Data is fresh
-        // 3. Save result to LocalStorage
+        setIsCachedData(false);
+
         localStorage.setItem(cacheKey, JSON.stringify(response.jobs));
       } else {
         setJobs([]);
@@ -103,7 +104,6 @@ const SavedJobs = () => {
   };
 
   useEffect(() => {
-    // On tab change, load (preferring cache)
     loadJobs(false);
   }, [activeTab]);
 
@@ -115,7 +115,12 @@ const SavedJobs = () => {
         const experienceData = extractExperienceFromDescription(
           job.description,
         );
-        return { ...job, experienceData };
+
+        const fullTextContext = `${job.title} ${job.description}`;
+        const seniority = extractSeniorityFromDescription(fullTextContext);
+        const jobType = extractJobTypeFromDescription(fullTextContext);
+
+        return { ...job, experienceData, seniority, jobType };
       })
       .filter(
         (j) =>
@@ -147,7 +152,6 @@ const SavedJobs = () => {
     const updatedJobs = jobs.filter((job) => job.job_posting_urn !== urn);
     setJobs(updatedJobs);
 
-    // Update cache immediately when removing an item
     localStorage.setItem(getCacheKey(activeTab), JSON.stringify(updatedJobs));
   };
 
@@ -174,7 +178,7 @@ const SavedJobs = () => {
   return (
     <div className="space-y-4">
       <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-xl overflow-hidden mt-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-        {/* Header Section */}
+        {}
         <div className="p-6 border-b border-gray-700 flex flex-col gap-6 bg-gradient-to-r from-gray-800 to-emerald-900/10">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div className="flex items-center gap-4">
@@ -184,10 +188,10 @@ const SavedJobs = () => {
               <div>
                 <h3 className="text-xl font-bold text-white flex items-center gap-2">
                   My Items
-                  {/* Visual indicator for Cached Data */}
+                  {}
                   {isCachedData && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-700 text-gray-400 border border-gray-600 font-normal flex items-center gap-1">
-                       <Database size={10} /> Cached
+                      <Database size={10} /> Cached
                     </span>
                   )}
                 </h3>
@@ -211,7 +215,7 @@ const SavedJobs = () => {
                 </div>
               </div>
 
-              {/* Refresh Button - Explicitly forces refresh */}
+              {}
               <button
                 onClick={() => loadJobs(true)}
                 disabled={isLoading}
@@ -246,13 +250,17 @@ const SavedJobs = () => {
           </div>
         </div>
 
-        {/* Table Section */}
+        {}
         <div className="overflow-x-auto min-h-[300px]">
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
               <tr>
                 <th className="px-6 py-4">Role & Company</th>
-                <th className="px-6 py-4">Experience</th> {/* New Column */}
+                {}
+                <th className="px-6 py-4">Seniority</th>
+                <th className="px-6 py-4">Type</th>
+                {}
+                <th className="px-6 py-4">Experience</th>
                 <th className="px-6 py-4">Location</th>
                 <th className="px-6 py-4">Status / Insight</th>
                 <th className="px-6 py-4 text-right">Actions</th>
@@ -261,7 +269,7 @@ const SavedJobs = () => {
             <tbody className="divide-y divide-gray-700">
               {isLoading ? (
                 <tr>
-                  <td colSpan="5" className="p-12 text-center">
+                  <td colSpan="7" className="p-12 text-center">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <RefreshCw
                         className="animate-spin text-emerald-500"
@@ -275,7 +283,7 @@ const SavedJobs = () => {
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan="5" className="p-12 text-center text-red-400">
+                  <td colSpan="7" className="p-12 text-center text-red-400">
                     {error}
                   </td>
                 </tr>
@@ -322,7 +330,37 @@ const SavedJobs = () => {
                         </div>
                       </td>
 
-                      {/* Experience Column */}
+                      {}
+                      <td className="px-6 py-4">
+                        {job.seniority ? (
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getSeniorityStyle(job.seniority)}`}
+                          >
+                            {job.seniority}
+                          </span>
+                        ) : (
+                          <span className="text-gray-600 text-xs italic opacity-50 flex items-center gap-1">
+                            <User size={12} /> -
+                          </span>
+                        )}
+                      </td>
+
+                      {}
+                      <td className="px-6 py-4">
+                        {job.jobType ? (
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getTypeStyle(job.jobType)}`}
+                          >
+                            {job.jobType}
+                          </span>
+                        ) : (
+                          <span className="text-gray-600 text-xs italic opacity-50 flex items-center gap-1">
+                            <Code2 size={12} /> -
+                          </span>
+                        )}
+                      </td>
+
+                      {}
                       <td className="px-6 py-4">
                         {job.experienceData ? (
                           <span
@@ -383,10 +421,10 @@ const SavedJobs = () => {
                       </td>
                     </tr>
 
-                    {/* Expandable Details */}
+                    {}
                     {expandedJobUrn === job.job_posting_urn && (
                       <tr className="bg-gray-900/30 border-b border-gray-700/50 animate-in fade-in zoom-in-95 duration-200">
-                        <td colSpan="5" className="px-6 py-4">
+                        <td colSpan="7" className="px-6 py-4">
                           <div className="bg-gray-800 rounded-lg p-5 border border-gray-700 shadow-inner">
                             <h4 className="text-xs font-bold text-emerald-500 mb-3 uppercase tracking-wider flex items-center gap-2">
                               <Briefcase size={12} /> Job Description
@@ -443,7 +481,7 @@ const SavedJobs = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="5" className="p-8 text-center text-gray-500">
+                  <td colSpan="7" className="p-8 text-center text-gray-500">
                     <div className="flex flex-col items-center gap-2">
                       <Bookmark size={32} className="opacity-20" />
                       <span>No jobs found in this category.</span>
@@ -455,13 +493,13 @@ const SavedJobs = () => {
           </table>
         </div>
 
-        {/* Footer Section */}
+        {}
         <div className="px-6 py-3 bg-gray-900/50 border-t border-gray-700 flex justify-between items-center text-xs text-gray-500">
           <span>Showing {filteredJobs.length} items</span>
         </div>
       </div>
 
-      {/* Export Section */}
+      {}
       <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-4 w-full md:w-auto">
           <div className="flex flex-col">

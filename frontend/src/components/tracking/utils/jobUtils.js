@@ -96,3 +96,96 @@ export const cleanJobDescription = (rawText) => {
 
   return text;
 };
+
+export const extractSeniorityFromDescription = (description) => {
+  if (!description) return null;
+  const text = description.toLowerCase();
+
+  if (
+    /\b(sênior|senior|sr\.?|spec|specialist|especialista|principal|lead|staff|architect|arquiteto)\b/i.test(
+      text,
+    )
+  ) {
+    return "Sênior";
+  }
+
+  if (/\b(pleno|mid|middle|mid-level|pl\.)\b/i.test(text)) {
+    return "Pleno";
+  }
+
+  if (/\b(júnior|junior|jr\.?|entry-level|entry|iniciante)\b/i.test(text)) {
+    return "Júnior";
+  }
+
+  if (/\b(estágio|estagiário|intern|internship|trainee)\b/i.test(text)) {
+    return "Estágio";
+  }
+
+  return null;
+};
+
+export const extractJobTypeFromDescription = (description) => {
+  if (!description) return null;
+  const text = description.toLowerCase();
+
+  if (/\b(full\s?-?stack|fullstack)\b/i.test(text)) {
+    return "Full-stack";
+  }
+
+  const hasFrontendKeywords = /\b(front\s?-?end|frontend|front)\b/i.test(text);
+
+  const hasBackendKeywords = /\b(back\s?-?end|backend|back)\b/i.test(text);
+
+  if (hasFrontendKeywords && !hasBackendKeywords) return "Frontend";
+  if (hasBackendKeywords && !hasFrontendKeywords) return "Backend";
+
+  if (hasFrontendKeywords && hasBackendKeywords) return "Full-stack";
+
+  const backendTechs =
+    /\b(java|c#|golang|go|python|ruby|php|node|nodejs|rust|scala|fastapi|django|spring|express|nest|sql|mysql|postgres|aws|azure|docker|kubernetes)\b/i;
+  const backendContext =
+    /\b(api|apis|microserviços|microservices|banco de dados|database|server|servidor|cloud)\b/i;
+
+  if (backendTechs.test(text) && backendContext.test(text)) {
+    return "Backend";
+  }
+
+  const frontendTechs =
+    /\b(react|reactjs|vue|vuejs|angular|svelte|nextjs|nuxt|tailwind|css|sass|html|javascript|typescript|ux|ui|figma)\b/i;
+  const frontendContext =
+    /\b(layout|interface|componentes|components|spa|web|mobile|responsiv)\b/i;
+
+  if (frontendTechs.test(text) && frontendContext.test(text)) {
+    return "Frontend";
+  }
+
+  return null;
+};
+
+export const getSeniorityStyle = (seniority) => {
+  switch (seniority) {
+    case "Sênior":
+      return "text-purple-700 bg-purple-100 dark:text-purple-400 dark:bg-purple-900/30 border-purple-200 dark:border-purple-800";
+    case "Pleno":
+      return "text-blue-700 bg-blue-100 dark:text-blue-400 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800";
+    case "Júnior":
+      return "text-emerald-700 bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800";
+    case "Estágio":
+      return "text-teal-700 bg-teal-100 dark:text-teal-400 dark:bg-teal-900/30 border-teal-200 dark:border-teal-800";
+    default:
+      return "text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700";
+  }
+};
+
+export const getTypeStyle = (type) => {
+  switch (type) {
+    case "Full-stack":
+      return "text-indigo-700 bg-indigo-100 dark:text-indigo-400 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-800";
+    case "Backend":
+      return "text-slate-700 bg-slate-200 dark:text-slate-300 dark:bg-slate-700/50 border-slate-300 dark:border-slate-600";
+    case "Frontend":
+      return "text-pink-700 bg-pink-100 dark:text-pink-400 dark:bg-pink-900/30 border-pink-200 dark:border-pink-800";
+    default:
+      return "text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700";
+  }
+};
