@@ -228,24 +228,22 @@ def clean_sdui_text(text: str) -> str:
     Cleans React Flight / SDUI artifacts from extracted text.
     Safe to run on already-clean human text.
     """
-    # 1. Remove React Flight references like $4:props:...
+    # 1. Remove React Flight references
     text = re.sub(r"\$\d+:props:[^\s*]+", "", text)
-
-    # 2. Remove generic $undefined tokens
     text = re.sub(r"\$undefined", "", text)
-
-    # 3. Remove stray '**last**' used as fragment glue
     text = re.sub(r"\*\*last\*\*", "", text, flags=re.IGNORECASE)
-
-    # 4. Remove 'and' when glued to removed artifacts
     text = re.sub(r"\band(?=\s*\*\*)", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\band(?=\s*$)", "", text, flags=re.IGNORECASE)
 
-    # 5. Normalize whitespace
+    # 2. CRITICAL FIX: Strip leading/trailing newlines/space INSIDE bold tags
+    # Turns "**\nJoin us**" -> "**Join us**"
+    # Turns "**Join us\n**" -> "**Join us**"
+    text = re.sub(r"\*\*[\s\n]+([^*]+)\*\*", r"**\1**", text)
+    text = re.sub(r"\*\*([^*]+)[\s\n]+\*\*", r"**\1**", text)
+
+    # 3. Normalize whitespace
     text = re.sub(r"[ \t]{2,}", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
-
-    # 6. Clean broken markdown joins
     text = re.sub(r"\*\*\s*\*\*", "", text)
 
     return text.strip()
@@ -290,28 +288,30 @@ def normalize_section_headers(text: str) -> str:
     """
 
     # 1️⃣ Fix bold headers glued to text
+    # UPDATED: Now accepts headers ending in ':' OR ',' (for 'Join us...,')
     text = re.sub(
-        r"([^\n])(\*\*[^*\n]+:\*\*)",
+        r"([^\n])\s*(\*\*[^*\n]+[:?,]\*\*)",
         r"\1\n\n\2",
         text
     )
 
     text = re.sub(
-        r"(\*\*[^*\n]+:\*\*)([^\n])",
+        r"(\*\*[^*\n]+[:?,]\*\*)([^\n])",
         r"\1\n\n\2",
         text
     )
 
     # 2️⃣ Fix plain-text headers ending with ':' glued after sentences
     text = re.sub(
-        r"([a-z]\.)\s+([A-Z][A-Za-z\s]+:)",
+        r"([a-z]\.)\s*([A-Z][A-Za-z\s\']+:\s*)",
         r"\1\n\n**\2**",
         text
     )
 
-    # 3️⃣ Fix 'Join us at X' even when missing colon
+    # 3️⃣ Fix 'Join us at X' (Targeted Fallback)
+    # If the bold fix above didn't catch it because it wasn't bolded yet:
     text = re.sub(
-        r"([a-z]\.)\s+(Join us at [A-Z][A-Za-z0-9\s]+),",
+        r"([a-z]\.)\s*(Join us at [A-Z][A-Za-z0-9\s]+)[,:]",
         r"\1\n\n**\2:**",
         text
     )

@@ -70,7 +70,6 @@ const SavedJobs = () => {
       .map((line) => line.trim())
       .filter((line) => {
         if (line.length === 0) return false;
-
         return !garbagePatterns.some((pattern) => pattern.test(line));
       })
       .map((line) => {
@@ -79,7 +78,17 @@ const SavedJobs = () => {
         return line;
       });
 
-    return cleanedLines.join("\n");
+    let text = cleanedLines.join("\n");
+
+    text = text.replace(/([a-z])\*\*([A-Z])/g, "$1\n\n**$2");
+
+    text = text.replace(/\n\*\*/g, "\n\n**");
+
+    const unicodeBullets = /[✔✨✅•➡🔹🔸▪]/g;
+
+    text = text.replace(new RegExp(`\\n([✔✨✅•➡🔹🔸▪])`, "g"), "\n\n$1");
+
+    return text;
   };
 
   const loadJobs = async () => {
