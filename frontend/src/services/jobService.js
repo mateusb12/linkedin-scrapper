@@ -112,3 +112,31 @@ export const reconcileJobStatuses = async () => {
   });
   return handleResponse(response, "Failed to reconcile job statuses");
 };
+
+export const LINKEDIN_CARD_TYPE = Object.freeze({
+  APPLIED: "applied",
+  SAVED: "saved",
+  IN_PROGRESS: "in_progress",
+  ARCHIVED: "archived",
+});
+
+export const fetchLinkedinJobsRaw = async ({
+  cardType = LINKEDIN_CARD_TYPE.APPLIED,
+  start = 0,
+  debug = false,
+} = {}) => {
+  const params = new URLSearchParams({
+    card_type: cardType,
+    start: String(start),
+  });
+
+  if (debug) {
+    params.append("debug", "true");
+  }
+
+  const response = await fetch(
+    `${API_BASE}/services/linkedin-applied-jobs/raw?${params.toString()}`,
+  );
+
+  return handleResponse(response, "Failed to fetch LinkedIn raw jobs");
+};
