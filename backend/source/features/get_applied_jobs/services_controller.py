@@ -572,3 +572,159 @@ def debug_applied_jobs_payload():
             "error": "Failed to debug applied jobs payload",
             "details": str(e)
         }), 500
+
+@services_bp.route("/linkedin-applied-jobs/raw", methods=["GET"])
+def get_linkedin_applied_jobs_raw():
+    """
+    PURE LinkedIn endpoint.
+
+    Query params:
+      - pagination: 'all' | <page_number> (1-based)
+          * 'all' -> fetches all pages until empty
+          * N     -> fetches only page N (page size = 10)
+      - debug: true/false
+          * true -> prints the exact curl being executed
+
+    Notes:
+      - Uses APPLIED filter (matches browser behavior)
+      - Page size is fixed at 10 (LinkedIn default)
+    """
+
+    pagination = request.args.get("pagination", default="1")
+    debug = request.args.get("debug", default="false").lower() == "true"
+
+    PAGE_SIZE = 10
+
+    try:
+        artefacts = get_linkedin_fetch_artefacts()
+        if not artefacts:
+            return jsonify({"error": "LinkedIn artefacts not available"}), 500
+
+        session, config = artefacts
+        base_url = config.get("base_url")
+        query_id = config.get("query_id")
+
+        def build_url(start: int) -> str:
+            variables = (
+                f"(start:{start},query:("
+                "flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER,"
+                "queryParameters:List((key:cardType,value:List(APPLIED)))"
+                "))"
+            )
+            return f"{base_url}?variables={variables}&queryId={query_id}"
+
+        def print_curl(url: str):
+            curl_parts = [f"curl '{url}'"]
+
+            for k, v in session.headers.items():
+                curl_parts.append(f"-H '{k}: {v}'")
+
+            if session.cookies:
+                cookie_str = "; ".join(f"{c.name}={c.value}" for c in session.cookies)
+                curl_parts.append(f"-H 'Cookie: {cookie_str}'")
+
+            curl_cmd = " \\\n  ".join(curl_parts)
+            print("\n================= LINKEDIN RAW CURL =================")
+            print(curl_cmd)
+            print("====================================================\n", flush=True)
+
+        def fetch_page(start: int):
+            url = build_url(start)
+
+            if debug:
+                print_curl(url)
+
+            response = session.get(url, timeout=15)
+            response.raise_for_status()
+            return response.json()
+
+        def extract_jobs(payload: dict) -> list:
+            included = payload.get("included", [])
+            included_map = {i.get("entityUrn"): i for i in included}
+
+            jobs = []
+            clusters = (
+                payload.get("data", {})
+                .get("data", {})
+                .get("searchDashClustersByAll", {})
+                .get("elements", [])
+            )
+
+            for cluster in clusters:
+                for item_wrapper in cluster.get("items", []):
+                    entity_ref = item_wrapper.get("item", {}).get("*entityResult")
+                    if not entity_ref:
+                        continue
+
+                    entity = included_map.get(entity_ref)
+                    if not entity:
+                        continue
+
+                    image_attrs = entity.get("image", {}).get("attributes", [])
+                    company_urn = None
+                    if image_attrs:
+                        company_urn = image_attrs[0].get("detailData", {}).get("*companyLogo")
+
+                    insights = []
+                    for block in entity.get("insightsResolutionResults", []):
+                        simple = block.get("simpleInsight")
+                        if simple:
+                            text = simple.get("title", {}).get("text")
+                            if text:
+                                insights.append(text)
+
+                    jobs.append({
+                        "job_posting_urn": entity.get("trackingUrn"),
+                        "entity_urn": entity.get("entityUrn"),
+                        "title": entity.get("title", {}).get("text"),
+                        "company": {
+                            "name": entity.get("primarySubtitle", {}).get("text"),
+                            "urn": company_urn,
+                        },
+                        "location": entity.get("secondarySubtitle", {}).get("text"),
+                        "navigation_url": entity.get("navigationUrl"),
+                        "insights": insights,
+                    })
+
+            return jobs
+
+        all_jobs = []
+        pages_fetched = []
+
+        # ------------------------
+        # PAGINATION CONTROL
+        # ------------------------
+        if pagination == "all":
+            start = 0
+            while True:
+                payload = fetch_page(start)
+                jobs = extract_jobs(payload)
+
+                if not jobs:
+                    break
+
+                all_jobs.extend(jobs)
+                pages_fetched.append(start // PAGE_SIZE + 1)
+                start += PAGE_SIZE
+                time.sleep(0.5)  # be polite
+
+        else:
+            page_num = max(1, int(pagination))
+            start = (page_num - 1) * PAGE_SIZE
+            payload = fetch_page(start)
+            all_jobs = extract_jobs(payload)
+            pages_fetched.append(page_num)
+
+        return jsonify({
+            "pagination": pagination,
+            "pages_fetched": pages_fetched,
+            "count": len(all_jobs),
+            "jobs": all_jobs
+        }), 200
+
+    except Exception as e:
+        print(traceback.format_exc())
+        return jsonify({
+            "error": "Failed to fetch raw LinkedIn applied jobs",
+            "details": str(e)
+        }), 500

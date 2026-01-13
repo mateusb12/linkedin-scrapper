@@ -259,8 +259,16 @@ def fetch_all_linkedin_jobs():
     query_id = config.get('query_id')
 
     def build_url(start_index: int) -> str:
-        variables = f"(start:{start_index},query:(flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER))"
-        return f"{base_url}?variables={variables}&queryId={query_id}"
+        variables = (
+            "(start:{},query:(flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER,"
+            "queryParameters:List((key:cardType,value:List(APPLIED)))))"
+        ).format(start_index)
+
+        url = f"{base_url}?variables={variables}&queryId={query_id}"
+
+        print(f"\n🧪 LinkedIn GraphQL URL (start={start_index}):\n{url}\n")
+
+        return url
 
     print(f"\n--- 🚀 Checking LinkedIn for updates... ---")
     try:
