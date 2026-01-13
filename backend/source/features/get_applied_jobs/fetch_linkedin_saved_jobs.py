@@ -47,6 +47,7 @@ PAGE_CONTEXT = {
     },
 }
 
+
 # ---------------------------------------------------------------------
 # CONTEXT OBJECT
 # ---------------------------------------------------------------------
@@ -117,7 +118,7 @@ def fetch_voyager_page(ctx: LinkedInFetchContext, start: int, debug=False, debug
 
 
 # ---------------------------------------------------------------------
-# PAYLOAD PARSING (PURE)
+# PAYLOAD PARSING
 # ---------------------------------------------------------------------
 
 def extract_jobs_from_payload(payload: dict) -> list[dict]:
@@ -175,27 +176,78 @@ def extract_jobs_from_payload(payload: dict) -> list[dict]:
 # SDUI DESCRIPTION EXTRACTION
 # ---------------------------------------------------------------------
 
+GARBAGE_PATTERNS = {
+    "div", "sans", "small", "normal", "open", "start", "strong", "horizontal",
+    "Collapsed", "Expanded", "stringValue", "bindableBoolean", "booleanBinding",
+    "onComponentDisappear", "h2", "ul", "li", "br", "span", "last", "more",
+    "presentation", "hr"
+}
+
+
+def _is_garbage_token(text: str) -> bool:
+    """
+    Returns True if the text string is likely a CSS class name,
+    internal ID, or known garbage token.
+    """
+    # 1. Exact match against known keywords
+    if text in GARBAGE_PATTERNS:
+        return True
+
+    # 2. Starts with underscore (Common LinkedIn obfuscated class pattern like _86640d32)
+    if text.startswith("_"):
+        return True
+
+    # 3. Known prefixes for internal LinkedIn data
+    if (text.startswith("com.linkedin.") or
+            text.startswith("urn:") or
+            text.startswith("text-attr-") or
+            text.startswith("expandable_text_block") or
+            text.startswith("$")):
+        return True
+
+    # 4. Hex-like strings (e.g., 'fade9ed7', 'a63518a5')
+    # Criteria: Single word (no spaces), length >= 8, only hex chars, AND contains at least one digit.
+    # The 'contains digit' check protects valid words like "effaced" or "defaced".
+    if (len(text) >= 8 and " " not in text and
+            re.match(r'^[a-fA-F0-9]+$', text) and
+            re.search(r'\d', text)):
+        return True
+
+    return False
+
+
 def _recursive_text_extract(node, collected):
     if node is None:
         return
 
+    # 1. Handle Strings
     if isinstance(node, str):
-        if node.startswith(("urn:", "$", "http")):
+        val = node.strip()
+        if not val:
             return
-        collected.append(node)
+
+        # --- NEW FILTERING LOGIC ---
+        if _is_garbage_token(val):
+            return
+
+        # Simple deduplication
+        if collected and collected[-1] == val:
+            return
+
+        collected.append(val)
         return
 
+    # 2. Handle Lists
     if isinstance(node, list):
         for n in node:
             _recursive_text_extract(n, collected)
         return
 
+    # 3. Handle Dictionaries
     if isinstance(node, dict):
         for k, v in node.items():
-            if k not in {
-                "className", "style", "attributes", "trackingUrn",
-                "entityUrn", "$type", "key"
-            }:
+            # Skip keys that are strictly metadata, but recurse into everything else
+            if k not in {"trackingUrn", "entityUrn", "$type", "key"}:
                 _recursive_text_extract(v, collected)
 
 
@@ -219,6 +271,7 @@ def extract_description_from_sdui(blob: bytes) -> str:
 
         _recursive_text_extract(data, extracted)
 
+    # Final cleanup pass
     seen = set()
     final = []
     for t in extracted:
@@ -233,13 +286,13 @@ def extract_description_from_sdui(blob: bytes) -> str:
 
 
 def enrich_jobs_with_sdui(
-    ctx: LinkedInFetchContext,
-    jobs: list[dict],
-    *,
-    debug=False,
-    trace=False,
-    debug_curls=None,
-    trace_info=None,
+        ctx: LinkedInFetchContext,
+        jobs: list[dict],
+        *,
+        debug=False,
+        trace=False,
+        debug_curls=None,
+        trace_info=None,
 ):
     if not ctx.csrf_token:
         return
@@ -297,14 +350,14 @@ def enrich_jobs_with_sdui(
 # PUBLIC ENTRYPOINT
 # ---------------------------------------------------------------------
 
-def fetch_linkedin_jobs(
-    *,
-    card_type: str,
-    pagination: str = "1",
-    start_override: Optional[int] = None,
-    enrich: bool = True,
-    debug: bool = False,
-    trace: bool = False,
+def fetch_linkedin_saved_jobs(
+        *,
+        card_type: str,
+        pagination: str = "1",
+        start_override: Optional[int] = None,
+        enrich: bool = True,
+        debug: bool = False,
+        trace: bool = False,
 ) -> dict:
     if card_type not in CARD_TYPE_MAP:
         raise ValueError(f"Invalid card_type: {card_type}")
