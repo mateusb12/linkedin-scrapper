@@ -183,7 +183,69 @@ def _enrich_and_save_new_job(job_data: Dict[str, str], job_repo: JobRepository, 
 
     return job
 
-def fetch_all_linkedin_jobs() -> List[Job]:
+def fetch_all_linkedin_jobs():
+    """
+    Synchronizes applied job data from LinkedIn into the local SQL database
+
+    This function acts as a one-way synchronization layer:
+    - It fetches the user's applied jobs directly from LinkedIn using
+      authenticated HTTP requests (cookies + GraphQL query).
+    - It DOES NOT return data for frontend consumption.
+    - Its sole responsibility is to UPDATE the local database so that
+      subsequent reads can be served purely from SQL.
+
+    High-level behavior:
+    -------------------
+    1. Loads LinkedIn fetch artifacts (session + config), including:
+       - Authenticated requests session (cookies, headers)
+       - GraphQL base URL
+       - Query ID used by LinkedIn's internal API
+
+    2. Iterates through LinkedIn's paginated "Applied Jobs" feed:
+       - Builds GraphQL URLs using a moving `start` offset
+       - Sends HTTP GET requests to LinkedIn servers
+       - Parses the JSON response payload
+
+    3. Extracts relevant job data from LinkedIn responses:
+       - Job URN
+       - Job title
+       - Company name / company URN
+       - Job URL
+       - Applied date
+       - Applicants count
+       - Location, employment type, workplace type (when available)
+
+    4. Writes data into the local SQL database:
+       - Inserts new jobs that do not exist yet
+       - Updates existing jobs matched by URN
+       - Marks jobs as `has_applied = True`
+       - Updates `applied_on` timestamps when missing
+       - Links jobs to companies via `company_urn`
+
+    5. Commits changes incrementally to ensure persistence even if
+       LinkedIn pagination or parsing fails midway.
+
+    Important architectural notes:
+    ------------------------------
+    - This function is the ONLY place where LinkedIn servers are contacted.
+    - All frontend endpoints read exclusively from SQL after this sync.
+    - Pagination, filtering, sorting, and exports are intentionally NOT
+      handled here and must be done at the database/query layer.
+    - If LinkedIn artefacts are missing or invalid, the function gracefully
+      falls back to returning SQL-only applied jobs.
+
+    Returns:
+    --------
+    list[Job] or equivalent SQL-backed job data:
+        Primarily used as a fallback or debug return.
+        The returned value should NOT be treated as a live LinkedIn response.
+
+    Raises:
+    -------
+    LinkedInScrapingException:
+        If LinkedIn responds with unexpected structures, auth errors,
+        or rate-limiting behavior that prevents a safe sync.
+    """
     job_repo = JobRepository()
 
     print("--- ⚙️ Loading config ---")
