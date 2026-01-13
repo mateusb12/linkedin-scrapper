@@ -2,10 +2,10 @@
 
 import json
 import time
-
 import math
 import re
 import traceback
+import random
 from datetime import timezone, datetime, timedelta
 from flask import Blueprint, jsonify, request
 from dateutil.parser import parse as parse_datetime
@@ -314,6 +314,7 @@ def manage_cookies():
 
     return jsonify({"error": "Method not allowed"}), 405
 
+
 @services_bp.route("/insights", methods=["GET"])
 def get_dashboard_insights():
     """
@@ -365,9 +366,9 @@ def get_dashboard_insights():
         # --- Metric 1: Granular Status Counts ---
         status_counts = {
             "waiting": 0,
-            "reviewing": 0, # Actively Reviewing
-            "closed": 0,    # No Longer Accepting
-            "refused": 0    # Explicit Rejection
+            "reviewing": 0,  # Actively Reviewing
+            "closed": 0,  # No Longer Accepting
+            "refused": 0  # Explicit Rejection
         }
 
         # --- Metric 2: Raw Competition Data (For Dynamic Histogram) ---
@@ -462,6 +463,7 @@ def reconcile_endpoints():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
 @services_bp.route("/debug-applied-jobs", methods=["GET"])
 def debug_applied_jobs_payload():
     """
@@ -506,9 +508,9 @@ def debug_applied_jobs_payload():
         # --- Walk clusters ---
         clusters = (
             data.get("data", {})
-                .get("data", {})
-                .get("searchDashClustersByAll", {})
-                .get("elements", [])
+            .get("data", {})
+            .get("searchDashClustersByAll", {})
+            .get("elements", [])
         )
 
         for cluster in clusters:
@@ -575,6 +577,122 @@ def debug_applied_jobs_payload():
             "details": str(e)
         }), 500
 
+def _recursive_text_extract(node, collected_text):
+    """
+    Recursively walks the React node tree to find text.
+    """
+    if node is None:
+        return
+
+    # 1. Direct String
+    if isinstance(node, str):
+        # Heuristic: Valid text usually has spaces or is a known short word.
+        # Junk often looks like "urn:li:..." or "expandable_text_..."
+        if node.startswith(("urn:", "$", "http", "https")):
+            # We might want http links, but usually they are in navigationUrl props, not text.
+            # For pure description, we can be strict or loose.
+            # Let's keep it loose but filter specific junk patterns.
+            pass
+
+        if "component-" in node or "JobDetails" in node:
+            return
+
+        collected_text.append(node)
+        return
+
+    # 2. List
+    if isinstance(node, list):
+        for item in node:
+            _recursive_text_extract(item, collected_text)
+        return
+
+    # 3. Dictionary
+    if isinstance(node, dict):
+        # PRIMARY SOURCE: textProps -> children
+        if "textProps" in node:
+            _recursive_text_extract(node["textProps"], collected_text)
+
+        # SECONDARY SOURCE: Direct children
+        if "children" in node:
+            _recursive_text_extract(node["children"], collected_text)
+
+        # TERTIARY SOURCE: stringValue (often used in simple text components)
+        if "stringValue" in node:
+            collected_text.append(node["stringValue"])
+
+        # FALLBACK: Walk other keys, BUT BLOCK known metadata keys
+        # This is where we fix the "className" leak
+        ignore_keys = {
+            "textProps", "children", "stringValue",  # Handled above
+            "className", "style", "accessibilityLabel", "accessibilityRole",
+            "layout", "attributes", "action", "onShowMoreAction", "onShowLessAction",
+            "trackingUrn", "entityUrn", "$type", "key", "stateKey"
+        }
+
+        for key, value in node.items():
+            if key not in ignore_keys and not key.startswith("$") and not key.startswith("_"):
+                _recursive_text_extract(value, collected_text)
+
+
+def extract_description_from_sdui(blob: bytes) -> str:
+    """
+    Parses LinkedIn/Voyager SDUI streaming response and cleans it.
+    """
+    text_content = blob.decode("utf-8", errors="ignore")
+    lines = text_content.split('\n')
+
+    all_extracted_lines = []
+
+    for line in lines:
+        line = line.strip()
+        if not line: continue
+
+        # 1. Strip Stream ID (e.g. "1:...")
+        split_line = line.split(':', 1)
+        if len(split_line) < 2: continue
+        json_payload_str = split_line[1]
+
+        # 2. Parse JSON
+        try:
+            data = json.loads(json_payload_str)
+        except json.JSONDecodeError:
+            continue
+
+        # 3. Extract
+        _recursive_text_extract(data, all_extracted_lines)
+
+    # 4. Final Cleanup & Dedup
+    seen = set()
+    final_text = []
+
+    # Blocklist for specific UI junk that might sneak through
+    junk_exact = {
+        "Collapsed", "Expanded", "MemoryNamespace", "$undefined", "null",
+        "See more", "See less", "more", "less"
+    }
+
+    for t in all_extracted_lines:
+        t = t.strip()
+
+        # Filter empty or tiny strings
+        if len(t) < 2: continue
+
+        # Filter exact blocklist
+        if t in junk_exact: continue
+
+        # Filter patterns
+        if t.startswith("com.linkedin.sdui"): continue
+        # Filter CSS class soup (e.g., "_276ccfa0 b67466c0")
+        if t.startswith("_") and " " in t: continue
+        if t.startswith("_") and len(t) > 6 and t[1].isalnum(): continue
+
+        if t not in seen:
+            seen.add(t)
+            final_text.append(t)
+
+    return "\n".join(final_text)
+
+
 @services_bp.route("/linkedin-applied-jobs/raw", methods=["GET"])
 def get_linkedin_applied_jobs_raw():
     """
@@ -618,35 +736,11 @@ def get_linkedin_applied_jobs_raw():
         GraphQL query parameter.
 
     debug : bool (default = false)
-        When true, prints the **exact curl command** being executed,
-        including URL, headers, and cookies. The printed curl is
-        copy-pasteable and suitable for browser comparison or raw capture.
+        When true, logs the **exact curl commands** executed downstream
+        (Voyager + SDUI) and returns them in the response.
 
-    ------------------------------------------------------------------
-    Behavior Notes
-    ------------------------------------------------------------------
-
-    • This endpoint DOES NOT touch the SQL database.
-    • It performs live requests to LinkedIn servers.
-    • It is intended for debugging, inspection, and reverse engineering.
-    • Pagination size is controlled by LinkedIn (currently 10 items).
-    • Header context is dynamically adjusted per card_type.
-
-    ------------------------------------------------------------------
-    Examples
-    ------------------------------------------------------------------
-
-    Applied jobs (default):
-        /services/linkedin-applied-jobs/raw
-
-    Saved jobs:
-        /services/linkedin-applied-jobs/raw?card_type=saved
-
-    In-progress jobs, page 2:
-        /services/linkedin-applied-jobs/raw?card_type=in_progress&pagination=2
-
-    Fetch all saved jobs (prints curl):
-        /services/linkedin-applied-jobs/raw?card_type=saved&pagination=all&debug=true
+    enrich : bool (default = true)
+        When true, fetches full job descriptions via the SDUI/RSC endpoint.
     """
 
     PAGE_SIZE = 10
@@ -655,6 +749,11 @@ def get_linkedin_applied_jobs_raw():
     start_override = request.args.get("start", type=int)
     card_type_raw = request.args.get("card_type", default="applied").lower()
     debug = request.args.get("debug", default="false").lower() == "true"
+    enrich = request.args.get("enrich", default="true").lower() == "true"
+    trace = request.args.get("trace", default="false").lower() == "true"
+    trace_info = []
+
+    debug_curls = []  # <<< COLLECT ALL DOWNSTREAM CURLS HERE
 
     CARD_TYPE_MAP = {
         "applied": "APPLIED",
@@ -700,18 +799,53 @@ def get_linkedin_applied_jobs_raw():
             return jsonify({"error": "LinkedIn artefacts not available"}), 500
 
         session, config = artefacts
+
         base_url = "https://www.linkedin.com/voyager/api/graphql"
         query_id = "voyagerSearchDashClusters.ef3d0937fb65bd7812e32e5a85028e79"
 
         ctx = PAGE_CONTEXT[card_type]
-
-        # ------------------------
-        # CONTEXT-SAFE HEADERS
-        # ------------------------
         session.headers["x-li-page-instance"] = ctx["page_instance"]
         session.headers["x-li-pem-metadata"] = ctx["pem"]
         session.headers["Referer"] = ctx["referer"]
 
+        # ------------------------
+        # CSRF TOKEN EXTRACTION
+        # ------------------------
+        csrf_token = None
+
+        # 1️⃣ Try cookies object
+        if "JSESSIONID" in session.cookies:
+            csrf_token = session.cookies.get("JSESSIONID")
+
+        # 2️⃣ Fallback: raw Cookie header
+        if not csrf_token:
+            cookie_header = session.headers.get("Cookie", "")
+            m = re.search(r'JSESSIONID="?([^";]+)', cookie_header)
+            if m:
+                csrf_token = m.group(1)
+
+        if csrf_token:
+            csrf_token = csrf_token.strip('"')
+
+        print("FINAL CSRF TOKEN:", csrf_token)
+
+        # ------------------------
+        # CURL GENERATOR (SHARED)
+        # ------------------------
+        def generate_curl(method, url, headers, cookies, body=None):
+            parts = [f"curl -X {method} '{url}'"]
+            for k, v in headers.items():
+                parts.append(f"-H '{k}: {v}'")
+            if cookies:
+                cookie_str = "; ".join(f"{c.name}={c.value}" for c in cookies)
+                parts.append(f"-H 'Cookie: {cookie_str}'")
+            if body is not None:
+                parts.append(f"--data '{json.dumps(body)}'")
+            return " \\\n  ".join(parts)
+
+        # ------------------------
+        # VOYAGER LIST FETCH
+        # ------------------------
         def build_url(start: int) -> str:
             variables = (
                 f"(start:{start},query:("
@@ -721,53 +855,33 @@ def get_linkedin_applied_jobs_raw():
             )
             return f"{base_url}?variables={variables}&queryId={query_id}"
 
-        def print_curl(url: str):
-            parts = [f"curl '{url}'"]
-            for k, v in session.headers.items():
-                parts.append(f"-H '{k}: {v}'")
-            if session.cookies:
-                cookie_str = "; ".join(f"{c.name}={c.value}" for c in session.cookies)
-                parts.append(f"-H 'Cookie: {cookie_str}'")
-            print("\n================= LINKEDIN RAW CURL =================")
-            print(" \\\n  ".join(parts))
-            print("====================================================\n", flush=True)
-
-        def generate_curl_command(url: str) -> str:
-            parts = [f"curl '{url}'"]
-            for k, v in session.headers.items():
-                parts.append(f"-H '{k}: {v}'")
-            if session.cookies:
-                cookie_str = "; ".join(f"{c.name}={c.value}" for c in session.cookies)
-                parts.append(f"-H 'Cookie: {cookie_str}'")
-            return " \\\n  ".join(parts)
-
         def fetch_page(start: int) -> dict:
             url = build_url(start)
 
-            # --- MODIFY DEBUG LOGIC ---
             if debug:
-                # Store these in a way we can return them
-                if not hasattr(fetch_page, 'debug_info'):
-                    fetch_page.debug_info = {}
-                fetch_page.debug_info['used_query_id'] = query_id
-                fetch_page.debug_info['generated_url'] = url
-                fetch_page.debug_info['generated_curl'] = generate_curl_command(url)
-                print_curl(url)  # Keep server logging
+                debug_curls.append(
+                    generate_curl("GET", url, session.headers, session.cookies)
+                )
 
             resp = session.get(url, timeout=15)
             resp.raise_for_status()
             return resp.json()
 
+        # ------------------------
+        # JOB EXTRACTION (UNCHANGED)
+        # ------------------------
         def extract_jobs(payload: dict) -> list:
             included = payload.get("included", [])
             included_map = {i.get("entityUrn"): i for i in included}
             jobs = []
+
             clusters = (
                 payload.get("data", {})
                 .get("data", {})
                 .get("searchDashClustersByAll", {})
                 .get("elements", [])
             )
+
             for cluster in clusters:
                 for item in cluster.get("items", []):
                     ref = item.get("item", {}).get("*entityResult")
@@ -804,6 +918,9 @@ def get_linkedin_applied_jobs_raw():
                     })
             return jobs
 
+        # ------------------------
+        # FETCH PAGES
+        # ------------------------
         all_jobs = []
         pages_fetched = []
 
@@ -825,21 +942,142 @@ def get_linkedin_applied_jobs_raw():
             all_jobs = extract_jobs(payload)
             pages_fetched.append(page_num)
 
+        # ------------------------
+        # SDUI ENRICHMENT
+        # ------------------------
+        print("CSRF TOKEN:", csrf_token)
+        if enrich and csrf_token:
+            for job in all_jobs:
+                urn = job.get("job_posting_urn")
+                if not urn:
+                    continue
+
+                m = re.search(r'jobPosting:(\d+)', urn)
+                if not m:
+                    continue
+
+                job_id = m.group(1)
+
+                url = (
+                    "https://www.linkedin.com/flagship-web/rsc-action/actions/component"
+                    "?componentId=com.linkedin.sdui.generated.jobseeker.dsl.impl.aboutTheJob"
+                )
+
+                payload = {
+                    "clientArguments": {
+                        "payload": {
+                            "jobId": job_id,
+                            "renderAsCard": True
+                        },
+                        "states": [],
+                        "requestMetadata": {}
+                    },
+                    "screenId": "com.linkedin.sdui.flagshipnav.jobs.JobDetails"
+                }
+
+                headers = dict(session.headers)
+                headers["csrf-token"] = csrf_token
+                headers["Content-Type"] = "application/json"
+
+                if debug:
+                    debug_curls.append(
+                        generate_curl("POST", url, headers, session.cookies, payload)
+                    )
+
+                resp = session.post(url, json=payload, headers=headers)
+                if trace:
+                    job_trace = {
+                        "job_id": job_id,
+                        "status": resp.status_code,
+                        "content_type": resp.headers.get("content-type"),
+                        "len_bytes": len(resp.content or b""),
+                    }
+
+                    # Always write the raw bytes + decoded preview
+                    bin_path = f"/tmp/sdui_{job_id}.bin"
+                    txt_path = f"/tmp/sdui_{job_id}.txt"
+
+                    try:
+                        with open(bin_path, "wb") as f:
+                            f.write(resp.content or b"")
+                        raw_text = (resp.content or b"").decode("utf-8", errors="replace")
+                        with open(txt_path, "w", encoding="utf-8") as f:
+                            f.write(raw_text)
+
+                        # Print a *real* preview to container logs
+                        print("\n" + "=" * 120)
+                        print(f"[TRACE SDUI] job_id={job_id}")
+                        print("STATUS:", resp.status_code)
+                        print("CONTENT-TYPE:", resp.headers.get("content-type"))
+                        print("LEN:", len(resp.content or b""))
+                        print("FIRST 300 CHARS (decoded):")
+                        print(raw_text[:300])
+                        print("FIRST 50 BYTES (raw):", (resp.content or b"")[:50])
+                        print("WROTE:", bin_path, txt_path)
+                        print("=" * 120 + "\n")
+
+                        # Put preview into response too (so curl can see it)
+                        job_trace["first_300_chars"] = raw_text[:300]
+                        job_trace["first_50_bytes_hex"] = (resp.content or b"")[:50].hex()
+
+                    except Exception as e:
+                        print("[TRACE SDUI] failed writing trace files:", e)
+                        job_trace["trace_error"] = str(e)
+
+                    trace_info.append(job_trace)
+
+                print("SDUI STATUS:", resp.status_code)
+                print("SDUI CT:", resp.headers.get("content-type"))
+                print("SDUI LEN:", len(resp.content))
+                with open(f"/tmp/sdui_{job_id}.bin", "wb") as f:
+                    print(f"Writing /tmp/sdui_{job_id}.bin")
+                    f.write(resp.content)
+                if resp.ok and resp.content:
+                    print("=" * 80)
+                    print("SDUI RAW RESPONSE")
+                    print("STATUS:", resp.status_code)
+                    print("CONTENT-TYPE:", resp.headers.get("content-type"))
+                    print("LEN:", len(resp.content))
+                    print("FIRST 500 BYTES:")
+                    print(resp.content[:500])
+                    print("=" * 80)
+
+                    raw_text = resp.content.decode("utf-8", errors="ignore")
+
+                    with open(f"/tmp/sdui_{job_id}.txt", "w") as f:
+                        f.write(raw_text)
+
+                    print(f"WROTE /tmp/sdui_{job_id}.txt")
+
+                    description = extract_description_from_sdui(resp.content)
+                    job["description"] = description or "Empty description"
+                else:
+                    job["description"] = "Failed to fetch description."
+
         response_payload = {
             "card_type": card_type_raw,
             "pagination": pagination,
             "pages_fetched": pages_fetched,
             "count": len(all_jobs),
-            "jobs": all_jobs
+            "jobs": all_jobs,
         }
 
-        if debug and hasattr(fetch_page, 'debug_info'):
-            response_payload['debug'] = fetch_page.debug_info
+        if debug:
+            response_payload["debug"] = {
+                "curl_count": len(debug_curls),
+                "curls": debug_curls,
+            }
+
+        if trace:
+            response_payload["trace"] = {
+                "count": len(trace_info),
+                "items": trace_info,
+                "tmp_dir_hint": "/tmp (inside linkedin-backend-dev container)",
+            }
 
         return jsonify(response_payload), 200
 
     except Exception as e:
-        import traceback
         print(traceback.format_exc())
         return jsonify({
             "error": "Failed to fetch raw LinkedIn jobs",
