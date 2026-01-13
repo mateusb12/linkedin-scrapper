@@ -576,18 +576,73 @@ def debug_applied_jobs_payload():
 @services_bp.route("/linkedin-applied-jobs/raw", methods=["GET"])
 def get_linkedin_applied_jobs_raw():
     """
-    PURE LinkedIn endpoint.
+    PURE LinkedIn "My Jobs" raw endpoint.
 
-    Query params:
-      - pagination: 'all' | <page_number> (1-based)
-          * 'all' -> fetches all pages until empty
-          * N     -> fetches only page N (page size = 10)
-      - debug: true/false
-          * true -> prints the exact curl being executed
+    This endpoint proxies LinkedIn's internal Voyager GraphQL API
+    and returns a paste-safe, structured subset of the raw payload.
 
-    Notes:
-      - Uses APPLIED filter (matches browser behavior)
-      - Page size is fixed at 10 (LinkedIn default)
+    It supports multiple job "tabs" using LinkedIn's internal `cardType`
+    filter, exactly as used by the browser UI.
+
+    ------------------------------------------------------------------
+    Query Parameters
+    ------------------------------------------------------------------
+
+    start : int (default = 0)
+        Pagination offset used by LinkedIn.
+        - start=0   → first page
+        - start=10  → second page (LinkedIn uses page size = 10)
+
+    card_type : str (default = "applied")
+        Determines which "My Jobs" tab is fetched.
+
+        Allowed values (case-insensitive):
+
+        - "applied"      → APPLIED
+        - "saved"        → SAVED
+        - "in_progress"  → IN_PROGRESS
+        - "archived"     → ARCHIVED
+
+        These values map 1:1 with LinkedIn's internal `cardType`
+        query parameter used by the web UI.
+
+    debug : bool (default = false)
+        When true, prints the **exact curl command** being executed,
+        including:
+        - Full GraphQL URL
+        - Headers
+        - Cookies
+
+        The printed curl is copy-pasteable and can be used to:
+        - Debug auth issues
+        - Compare against browser requests
+        - Save raw responses to disk
+
+    ------------------------------------------------------------------
+    Behavior Notes
+    ------------------------------------------------------------------
+
+    • This endpoint DOES NOT touch the SQL database.
+    • It performs a live request to LinkedIn servers.
+    • It is intended for debugging, inspection, and reverse engineering.
+    • Pagination is controlled exclusively via `start`.
+    • Page size is controlled by LinkedIn (currently 10 items per page).
+
+    ------------------------------------------------------------------
+    Examples
+    ------------------------------------------------------------------
+
+    Applied jobs (default):
+        /services/linkedin-applied-jobs/raw
+
+    Saved jobs:
+        /services/linkedin-applied-jobs/raw?card_type=saved
+
+    In-progress jobs, page 2:
+        /services/linkedin-applied-jobs/raw?card_type=in_progress&start=10
+
+    Debug mode (prints curl):
+        /services/linkedin-applied-jobs/raw?card_type=applied&debug=true
     """
 
     pagination = request.args.get("pagination", default="1")
