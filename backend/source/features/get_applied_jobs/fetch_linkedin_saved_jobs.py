@@ -173,126 +173,219 @@ def extract_jobs_from_payload(payload: dict) -> list[dict]:
 
 
 # ---------------------------------------------------------------------
-# SDUI DESCRIPTION EXTRACTION
+# SDUI DESCRIPTION EXTRACTION (TARGETED)
 # ---------------------------------------------------------------------
 
-GARBAGE_PATTERNS = {
-    "div", "sans", "small", "normal", "open", "start", "strong", "horizontal",
-    "Collapsed", "Expanded", "stringValue", "bindableBoolean", "booleanBinding",
-    "onComponentDisappear", "h2", "ul", "li", "br", "span", "last", "more",
-    "presentation", "hr"
-}
 
-
-def _is_garbage_token(text: str) -> bool:
-    """
-    Returns True if the text string is likely a CSS class name,
-    internal ID, or known garbage token.
-    """
-    # 1. Exact match against known keywords
-    if text in GARBAGE_PATTERNS:
-        return True
-
-    # 2. Starts with underscore (Common LinkedIn obfuscated class pattern like _86640d32)
-    if text.startswith("_"):
-        return True
-
-    # 3. Known prefixes for internal LinkedIn data
-    if (text.startswith("com.linkedin.") or
-            text.startswith("urn:") or
-            text.startswith("text-attr-") or
-            text.startswith("expandable_text_block") or
-            text.startswith("$")):
-        return True
-
-    # 4. Hex-like strings (e.g., 'fade9ed7', 'a63518a5')
-    # Criteria: Single word (no spaces), length >= 8, only hex chars, AND contains at least one digit.
-    # The 'contains digit' check protects valid words like "effaced" or "defaced".
-    if (len(text) >= 8 and " " not in text and
-            re.match(r'^[a-fA-F0-9]+$', text) and
-            re.search(r'\d', text)):
-        return True
-
-    return False
-
-
-def _recursive_text_extract(node, collected):
-    if node is None:
-        return
-
-    # 1. Handle Strings
+def _extract_text_nodes(node, out: list[str]):
     if isinstance(node, str):
-        val = node.strip()
-        if not val:
-            return
-
-        # --- NEW FILTERING LOGIC ---
-        if _is_garbage_token(val):
-            return
-
-        # Simple deduplication
-        if collected and collected[-1] == val:
-            return
-
-        collected.append(val)
+        s = node.strip()
+        if s:
+            out.append(s)
         return
 
-    # 2. Handle Lists
     if isinstance(node, list):
-        for n in node:
-            _recursive_text_extract(n, collected)
-        return
+        # RSC node format: ["$", tag, meta, props]
+        if len(node) >= 4 and isinstance(node[3], dict):
+            tag = node[1]
+            props = node[3]
+            children = props.get("children")
 
-    # 3. Handle Dictionaries
-    if isinstance(node, dict):
-        for k, v in node.items():
-            # Skip keys that are strictly metadata, but recurse into everything else
-            if k not in {"trackingUrn", "entityUrn", "$type", "key"}:
-                _recursive_text_extract(v, collected)
+            if tag in {"p", "$6"}:
+                if children:
+                    _extract_text_nodes(children, out)
+                    out.append("\n")
+
+            elif tag == "strong":
+                out.append("**")
+                _extract_text_nodes(props.get("children"), out)
+                out.append("**\n")
+
+            elif tag == "ul":
+                for li in props.get("children", []):
+                    out.append("- ")
+                    _extract_text_nodes(li, out)
+                    out.append("\n")
+
+            elif tag == "li":
+                _extract_text_nodes(props.get("children"), out)
+
+            else:
+                _extract_text_nodes(children, out)
+        else:
+            for item in node:
+                _extract_text_nodes(item, out)
+
+
+
+def normalize_blocks_to_markdown(blocks: list[str]) -> str:
+    text = "".join(blocks)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+def clean_sdui_text(text: str) -> str:
+    """
+    Cleans React Flight / SDUI artifacts from extracted text.
+    Safe to run on already-clean human text.
+    """
+    # 1. Remove React Flight references like $4:props:...
+    text = re.sub(r"\$\d+:props:[^\s*]+", "", text)
+
+    # 2. Remove generic $undefined tokens
+    text = re.sub(r"\$undefined", "", text)
+
+    # 3. Remove stray '**last**' used as fragment glue
+    text = re.sub(r"\*\*last\*\*", "", text, flags=re.IGNORECASE)
+
+    # 4. Remove 'and' when glued to removed artifacts
+    text = re.sub(r"\band(?=\s*\*\*)", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\band(?=\s*$)", "", text, flags=re.IGNORECASE)
+
+    # 5. Normalize whitespace
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    # 6. Clean broken markdown joins
+    text = re.sub(r"\*\*\s*\*\*", "", text)
+
+    return text.strip()
+
+def merge_inline_bold_blocks(text: str) -> str:
+    """
+    Merges isolated bold lines back into surrounding paragraphs
+    when they are clearly inline emphasis.
+    """
+    lines = text.splitlines()
+    result = []
+    buffer = None
+
+    for line in lines:
+        # Detect standalone bold like "**help customers.**"
+        if (
+            line.startswith("**")
+            and line.endswith("**")
+            and len(line) < 80
+            and buffer
+            and not buffer.endswith(":")
+        ):
+            buffer = buffer.rstrip() + " " + line.strip("**")
+            continue
+
+        if buffer is not None:
+            result.append(buffer)
+        buffer = line
+
+    if buffer is not None:
+        result.append(buffer)
+
+    return "\n".join(result)
+
+def normalize_section_headers(text: str) -> str:
+    """
+    Normalizes section headers so they always start on a new paragraph.
+    Handles:
+    - **Bold:** headers
+    - Plain-text headers ending with :
+    - Known LinkedIn headers like 'Join us at ...'
+    """
+
+    # 1️⃣ Fix bold headers glued to text
+    text = re.sub(
+        r"([^\n])(\*\*[^*\n]+:\*\*)",
+        r"\1\n\n\2",
+        text
+    )
+
+    text = re.sub(
+        r"(\*\*[^*\n]+:\*\*)([^\n])",
+        r"\1\n\n\2",
+        text
+    )
+
+    # 2️⃣ Fix plain-text headers ending with ':' glued after sentences
+    text = re.sub(
+        r"([a-z]\.)\s+([A-Z][A-Za-z\s]+:)",
+        r"\1\n\n**\2**",
+        text
+    )
+
+    # 3️⃣ Fix 'Join us at X' even when missing colon
+    text = re.sub(
+        r"([a-z]\.)\s+(Join us at [A-Z][A-Za-z0-9\s]+),",
+        r"\1\n\n**\2:**",
+        text
+    )
+
+    # 4️⃣ Cleanup spacing
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    return text.strip()
+
+def merge_inline_bold_sentences(text: str) -> str:
+    """
+    Merges bold fragments that were split from the previous sentence.
+    Example:
+      "systems that\n\n**help customers.**"
+    becomes:
+      "systems that **help customers.**"
+    """
+
+    text = re.sub(
+        r"([a-zA-Z,])\n\n(\*\*[^*\n]+\.\*\*)",
+        r"\1 \2",
+        text
+    )
+
+    return text
 
 
 def extract_description_from_sdui(blob: bytes) -> str:
     text = blob.decode("utf-8", errors="ignore")
-    lines = text.split("\n")
+    lines = text.splitlines()
 
-    extracted = []
+    l5_json = None
 
     for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        if ":" not in line:
-            continue
+        if '"$L5"' in line:
+            try:
+                _, json_part = line.split(":", 1)
+                data = json.loads(json_part)
+                l5_json = data
+                break
+            except Exception:
+                continue
 
-        try:
-            data = json.loads(line.split(":", 1)[1])
-        except json.JSONDecodeError:
-            continue
+    if not l5_json:
+        return ""
 
-        _recursive_text_extract(data, extracted)
+    props = l5_json[3] if isinstance(l5_json, list) and len(l5_json) > 3 else {}
+    text_props = props.get("textProps", {})
+    children = text_props.get("children", [])
 
-    # Final cleanup pass
-    seen = set()
-    final = []
-    for t in extracted:
-        t = t.strip()
-        if len(t) < 2:
-            continue
-        if t not in seen:
-            seen.add(t)
-            final.append(t)
+    blocks: list[str] = []
+    _extract_text_nodes(children, blocks)
 
-    return "\n".join(final)
+    raw = normalize_blocks_to_markdown(blocks)
 
+    clean = clean_sdui_text(raw)
+    clean = merge_inline_bold_blocks(clean)
+    clean = normalize_section_headers(clean)
+    clean = merge_inline_bold_sentences(clean)
+    return clean
+
+
+# ---------------------------------------------------------------------
+# ENRICH JOBS
+# ---------------------------------------------------------------------
 
 def enrich_jobs_with_sdui(
-        ctx: LinkedInFetchContext,
-        jobs: list[dict],
-        *,
-        debug=False,
-        trace=False,
-        debug_curls=None,
-        trace_info=None,
+    ctx: LinkedInFetchContext,
+    jobs: list[dict],
+    *,
+    debug=False,
+    trace=False,
+    debug_curls=None,
+    trace_info=None,
 ):
     if not ctx.csrf_token:
         return
@@ -333,6 +426,14 @@ def enrich_jobs_with_sdui(
 
         resp = ctx.session.post(url, json=payload, headers=headers)
 
+        if debug:
+            print("\n" + "=" * 80)
+            print(f"[SDUI RAW RESPONSE] job_id={job_id}")
+            print(f"status={resp.status_code} bytes={len(resp.content or b'')}")
+            print("-" * 80)
+            print(resp.content.decode("utf-8", errors="replace"))
+            print("=" * 80 + "\n")
+
         if trace and trace_info is not None:
             trace_info.append({
                 "job_id": job_id,
@@ -351,13 +452,13 @@ def enrich_jobs_with_sdui(
 # ---------------------------------------------------------------------
 
 def fetch_linkedin_saved_jobs(
-        *,
-        card_type: str,
-        pagination: str = "1",
-        start_override: Optional[int] = None,
-        enrich: bool = True,
-        debug: bool = False,
-        trace: bool = False,
+    *,
+    card_type: str,
+    pagination: str = "1",
+    start_override: Optional[int] = None,
+    enrich: bool = True,
+    debug: bool = False,
+    trace: bool = False,
 ) -> dict:
     if card_type not in CARD_TYPE_MAP:
         raise ValueError(f"Invalid card_type: {card_type}")
