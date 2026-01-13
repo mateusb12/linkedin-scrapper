@@ -189,3 +189,107 @@ export const getTypeStyle = (type) => {
       return "text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700";
   }
 };
+
+const foundationKeywords = {
+  Python: /\bpython\b/i,
+  JavaScript: /\b(javascript|js)\b/i,
+  TypeScript: /\b(typescript|ts)\b/i,
+  Java: /\bjava\b(?!script)/i,
+  "C#": /\bc#\b|\b\.net\b/i,
+  "C++": /\bc\+\+\b/i,
+  Go: /\b(go|golang)\b/i,
+  Ruby: /\bruby\b/i,
+  PHP: /\bphp\b/i,
+  Rust: /\brust\b/i,
+  Swift: /\bswift\b/i,
+  Kotlin: /\bkotlin\b/i,
+  SQL: /\bsql\b/i,
+};
+
+const specificKeywords = {
+  Django: /\bdjango\b/i,
+  FastAPI: /\bfastapi\b/i,
+  Flask: /\bflask\b/i,
+  Pandas: /\bpandas\b/i,
+  NumPy: /\bnumpy\b/i,
+
+  React: /\breact(?:\.js)?\b/i,
+  "React Native": /\breact\s?native\b/i,
+  Vue: /\bvue(?:\.js)?\b/i,
+  Angular: /\bangular\b/i,
+  "Node.js": /\bnode(?:\.?js)?\b/i,
+  "Next.js": /\bnext(?:\.?js)?\b/i,
+  "Nest.js": /\bnest(?:\.?js)?\b/i,
+  Express: /\bexpress(?:\.?js)?\b/i,
+  Svelte: /\bsvelte\b/i,
+
+  Spring: /\bspring\b/i,
+  "Spring Boot": /\bspring\s?boot\b/i,
+  Hibernate: /\bhibernate\b/i,
+
+  PostgreSQL: /\bpostgre(?:sql|s)?\b/i,
+  MySQL: /\bmysql\b/i,
+  MongoDB: /\bmongo(?:db)?\b/i,
+  Redis: /\bredis\b/i,
+
+  AWS: /\baws\b|amazon web services/i,
+  Azure: /\bazure\b/i,
+  Docker: /\bdocker\b/i,
+  Kubernetes: /\bkubernetes|k8s\b/i,
+  Git: /\bgit\b/i,
+  Terraform: /\bterraform\b/i,
+};
+
+export const extractFoundations = (description) => {
+  if (!description) return [];
+
+  const found = [];
+
+  Object.entries(foundationKeywords).forEach(([techName, regex]) => {
+    if (regex.test(description)) {
+      found.push(techName);
+    }
+  });
+
+  return found;
+};
+
+export const extractSpecifics = (description) => {
+  if (!description) return [];
+
+  const found = [];
+
+  Object.entries(specificKeywords).forEach(([techName, regex]) => {
+    if (regex.test(description)) {
+      found.push(techName);
+    }
+  });
+
+  return found;
+};
+
+const RAINBOW_PALETTE = [
+  "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20",
+  "bg-orange-500/10 text-orange-400 border-orange-500/20 hover:bg-orange-500/20",
+  "bg-amber-500/10 text-amber-300 border-amber-500/20 hover:bg-amber-500/20",
+  "bg-yellow-400/10 text-yellow-300 border-yellow-400/20 hover:bg-yellow-400/20",
+  "bg-lime-500/10 text-lime-400 border-lime-500/20 hover:bg-lime-500/20",
+  "bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20",
+  "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20",
+  "bg-teal-500/10 text-teal-300 border-teal-500/20 hover:bg-teal-500/20",
+  "bg-cyan-500/10 text-cyan-300 border-cyan-500/20 hover:bg-cyan-500/20",
+  "bg-sky-500/10 text-sky-300 border-sky-500/20 hover:bg-sky-500/20",
+  "bg-blue-500/10 text-blue-300 border-blue-500/20 hover:bg-blue-500/20",
+  "bg-indigo-500/10 text-indigo-300 border-indigo-500/20 hover:bg-indigo-500/20",
+  "bg-violet-500/10 text-violet-300 border-violet-500/20 hover:bg-violet-500/20",
+  "bg-purple-500/10 text-purple-300 border-purple-500/20 hover:bg-purple-500/20",
+  "bg-fuchsia-500/10 text-fuchsia-300 border-fuchsia-500/20 hover:bg-fuchsia-500/20",
+  "bg-pink-500/10 text-pink-300 border-pink-500/20 hover:bg-pink-500/20",
+  "bg-rose-500/10 text-rose-300 border-rose-500/20 hover:bg-rose-500/20",
+];
+
+export const getTechBadgeStyle = (index) => {
+  // Garante que o índice seja válido (ciclo infinito)
+  const safeIndex = (index || 0) % RAINBOW_PALETTE.length;
+  return `${RAINBOW_PALETTE[safeIndex]} border transition-colors`;
+};
