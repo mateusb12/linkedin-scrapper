@@ -191,7 +191,7 @@ const SavedJobs = () => {
   return (
     <div className="space-y-4">
       <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-xl overflow-hidden mt-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-        {/* Header Toolbar */}
+        {}
         <div className="p-6 border-b border-gray-700 flex flex-col gap-6 bg-gradient-to-r from-gray-800 to-emerald-900/10">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div className="flex items-center gap-4">
@@ -261,7 +261,7 @@ const SavedJobs = () => {
           </div>
         </div>
 
-        {/* Tabela de Jobs */}
+        {}
         <div className="overflow-x-auto min-h-[300px]">
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
@@ -308,7 +308,7 @@ const SavedJobs = () => {
                           : "hover:bg-emerald-900/5"
                       }`}
                     >
-                      {/* ROLE & COMPANY */}
+                      {}
                       <td className="px-6 py-4 min-w-[200px]">
                         <div className="flex items-start gap-3">
                           <button
@@ -342,16 +342,17 @@ const SavedJobs = () => {
                         </div>
                       </td>
 
-                      {/* FOUNDATIONS (Base Techs) - CORRIGIDO: Passando index */}
+                      {}
                       <td className="px-6 py-4 max-w-[200px]">
                         <div className="flex flex-wrap gap-1.5">
                           {job.foundations && job.foundations.length > 0 ? (
                             job.foundations.map((tech, index) => (
                               <span
                                 key={tech}
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ${
-                                  getTechBadgeStyle(index)
-                                }`}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ${getTechBadgeStyle(
+                                  index,
+                                  tech,
+                                )}`}
                               >
                                 {tech}
                               </span>
@@ -362,16 +363,17 @@ const SavedJobs = () => {
                         </div>
                       </td>
 
-                      {/* SPECIFICS (Frameworks/Tools) - CORRIGIDO: Passando index */}
+                      {}
                       <td className="px-6 py-4 max-w-[250px]">
                         <div className="flex flex-wrap gap-1.5">
                           {job.specifics && job.specifics.length > 0 ? (
                             job.specifics.map((tech, index) => (
                               <span
                                 key={tech}
-                                className={`px-2 py-0.5 rounded text-[10px] font-medium border shadow-sm ${
-                                  getTechBadgeStyle(index + 5)
-                                }`}
+                                className={`px-2 py-0.5 rounded text-[10px] font-medium border shadow-sm ${getTechBadgeStyle(
+                                  index + 5,
+                                  tech,
+                                )}`}
                               >
                                 {tech}
                               </span>
@@ -382,7 +384,7 @@ const SavedJobs = () => {
                         </div>
                       </td>
 
-                      {/* SENIORITY */}
+                      {}
                       <td className="px-6 py-4">
                         {job.seniority ? (
                           <span
@@ -397,7 +399,7 @@ const SavedJobs = () => {
                         )}
                       </td>
 
-                      {/* TYPE */}
+                      {}
                       <td className="px-6 py-4">
                         {job.jobType ? (
                           <span
@@ -412,7 +414,7 @@ const SavedJobs = () => {
                         )}
                       </td>
 
-                      {/* EXPERIENCE */}
+                      {}
                       <td className="px-6 py-4">
                         {job.experienceData ? (
                           <span
@@ -427,7 +429,7 @@ const SavedJobs = () => {
                         )}
                       </td>
 
-                      {/* LOCATION */}
+                      {}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-gray-400 text-sm">
                           <MapPin size={14} className="text-gray-500" />{" "}
@@ -435,7 +437,7 @@ const SavedJobs = () => {
                         </div>
                       </td>
 
-                      {/* STATUS / INSIGHT */}
+                      {}
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1 items-start">
                           {job.insights && job.insights.length > 0 ? (
@@ -457,7 +459,7 @@ const SavedJobs = () => {
                         </div>
                       </td>
 
-                      {/* ACTIONS */}
+                      {}
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <a
@@ -478,7 +480,7 @@ const SavedJobs = () => {
                       </td>
                     </tr>
 
-                    {/* DESCRIPTION EXPANSION */}
+                    {}
                     {expandedJobUrn === job.job_posting_urn && (
                       <tr className="bg-gray-900/30 border-b border-gray-700/50 animate-in fade-in zoom-in-95 duration-200">
                         <td colSpan="9" className="px-6 py-4">
@@ -550,13 +552,13 @@ const SavedJobs = () => {
           </table>
         </div>
 
-        {/* Footer */}
+        {}
         <div className="px-6 py-3 bg-gray-900/50 border-t border-gray-700 flex justify-between items-center text-xs text-gray-500">
           <span>Showing {filteredJobs.length} items</span>
         </div>
       </div>
 
-      {/* Export Section */}
+      {}
       <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-4 w-full md:w-auto">
           <div className="flex flex-col">

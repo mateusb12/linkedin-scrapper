@@ -270,26 +270,78 @@ export const extractSpecifics = (description) => {
 
 const RAINBOW_PALETTE = [
   "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20",
-  "bg-orange-500/10 text-orange-400 border-orange-500/20 hover:bg-orange-500/20",
-  "bg-amber-500/10 text-amber-300 border-amber-500/20 hover:bg-amber-500/20",
+  "bg-pink-500/10 text-pink-400 border-pink-500/20 hover:bg-pink-500/20",
+  "bg-indigo-500/10 text-indigo-400 border-indigo-500/20 hover:bg-indigo-500/20",
   "bg-yellow-400/10 text-yellow-300 border-yellow-400/20 hover:bg-yellow-400/20",
-  "bg-lime-500/10 text-lime-400 border-lime-500/20 hover:bg-lime-500/20",
-  "bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20",
-  "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20",
-  "bg-teal-500/10 text-teal-300 border-teal-500/20 hover:bg-teal-500/20",
   "bg-cyan-500/10 text-cyan-300 border-cyan-500/20 hover:bg-cyan-500/20",
-  "bg-sky-500/10 text-sky-300 border-sky-500/20 hover:bg-sky-500/20",
-  "bg-blue-500/10 text-blue-300 border-blue-500/20 hover:bg-blue-500/20",
-  "bg-indigo-500/10 text-indigo-300 border-indigo-500/20 hover:bg-indigo-500/20",
-  "bg-violet-500/10 text-violet-300 border-violet-500/20 hover:bg-violet-500/20",
-  "bg-purple-500/10 text-purple-300 border-purple-500/20 hover:bg-purple-500/20",
-  "bg-fuchsia-500/10 text-fuchsia-300 border-fuchsia-500/20 hover:bg-fuchsia-500/20",
-  "bg-pink-500/10 text-pink-300 border-pink-500/20 hover:bg-pink-500/20",
-  "bg-rose-500/10 text-rose-300 border-rose-500/20 hover:bg-rose-500/20",
 ];
 
-export const getTechBadgeStyle = (index) => {
-  // Garante que o índice seja válido (ciclo infinito)
+export const getTechBadgeStyle = (index, techName = "") => {
+  const name = techName ? techName.toLowerCase().trim() : "";
+
+  const categoryStyles = {
+    backend:
+      "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20",
+    database:
+      "bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20",
+    devops:
+      "bg-orange-500/10 text-orange-400 border-orange-500/20 hover:bg-orange-500/20",
+    tools:
+      "bg-purple-500/10 text-purple-400 border-purple-500/20 hover:bg-purple-500/20",
+  };
+
+  const techMap = {
+    django: "backend",
+    fastapi: "backend",
+    flask: "backend",
+    spring: "backend",
+    "spring boot": "backend",
+    express: "backend",
+    nest: "backend",
+    "nest.js": "backend",
+    laravel: "backend",
+    dotnet: "backend",
+    ".net": "backend",
+
+    postgresql: "database",
+    postgres: "database",
+    mysql: "database",
+    sql: "database",
+    mongodb: "database",
+    mongo: "database",
+    redis: "database",
+    sqlite: "database",
+    supabase: "database",
+    oracle: "database",
+
+    docker: "devops",
+    kubernetes: "devops",
+    k8s: "devops",
+    aws: "devops",
+    azure: "devops",
+    gcp: "devops",
+    terraform: "devops",
+    linux: "devops",
+    bash: "devops",
+    ci: "devops",
+    cd: "devops",
+    "ci/cd": "devops",
+
+    git: "tools",
+    github: "tools",
+    gitlab: "tools",
+    scrum: "tools",
+    kanban: "tools",
+    jira: "tools",
+    agile: "tools",
+    tdd: "tools",
+    solid: "tools",
+  };
+
+  if (techMap[name]) {
+    return `${categoryStyles[techMap[name]]} border transition-colors`;
+  }
+
   const safeIndex = (index || 0) % RAINBOW_PALETTE.length;
   return `${RAINBOW_PALETTE[safeIndex]} border transition-colors`;
 };
