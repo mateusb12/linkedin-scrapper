@@ -584,7 +584,10 @@ def get_linkedin_applied_jobs_raw():
     and returns a paste-safe, structured subset of the raw payload.
 
     It supports multiple job "tabs" using LinkedIn's internal `cardType`
-    filter, exactly as used by the browser UI.
+    filter, exactly as used by the browser UI, and is **context-aware**:
+    it automatically adjusts headers (page instance, referer, metadata)
+    to match the selected card type so LinkedIn does not silently fall
+    back to another feed.
 
     ------------------------------------------------------------------
     Query Parameters
@@ -594,6 +597,12 @@ def get_linkedin_applied_jobs_raw():
         Pagination offset used by LinkedIn.
         - start=0   → first page
         - start=10  → second page (LinkedIn uses page size = 10)
+
+    pagination : str (default = "1")
+        Controls which pages are fetched.
+        - "1"       → first page only
+        - "2"       → second page only
+        - "all"     → fetch all pages until empty
 
     card_type : str (default = "applied")
         Determines which "My Jobs" tab is fetched.
@@ -606,29 +615,22 @@ def get_linkedin_applied_jobs_raw():
         - "archived"     → ARCHIVED
 
         These values map 1:1 with LinkedIn's internal `cardType`
-        query parameter used by the web UI.
+        GraphQL query parameter.
 
     debug : bool (default = false)
         When true, prints the **exact curl command** being executed,
-        including:
-        - Full GraphQL URL
-        - Headers
-        - Cookies
-
-        The printed curl is copy-pasteable and can be used to:
-        - Debug auth issues
-        - Compare against browser requests
-        - Save raw responses to disk
+        including URL, headers, and cookies. The printed curl is
+        copy-pasteable and suitable for browser comparison or raw capture.
 
     ------------------------------------------------------------------
     Behavior Notes
     ------------------------------------------------------------------
 
     • This endpoint DOES NOT touch the SQL database.
-    • It performs a live request to LinkedIn servers.
+    • It performs live requests to LinkedIn servers.
     • It is intended for debugging, inspection, and reverse engineering.
-    • Pagination is controlled exclusively via `start`.
-    • Page size is controlled by LinkedIn (currently 10 items per page).
+    • Pagination size is controlled by LinkedIn (currently 10 items).
+    • Header context is dynamically adjusted per card_type.
 
     ------------------------------------------------------------------
     Examples
@@ -641,16 +643,56 @@ def get_linkedin_applied_jobs_raw():
         /services/linkedin-applied-jobs/raw?card_type=saved
 
     In-progress jobs, page 2:
-        /services/linkedin-applied-jobs/raw?card_type=in_progress&start=10
+        /services/linkedin-applied-jobs/raw?card_type=in_progress&pagination=2
 
-    Debug mode (prints curl):
-        /services/linkedin-applied-jobs/raw?card_type=applied&debug=true
+    Fetch all saved jobs (prints curl):
+        /services/linkedin-applied-jobs/raw?card_type=saved&pagination=all&debug=true
     """
 
+    PAGE_SIZE = 10
+
     pagination = request.args.get("pagination", default="1")
+    start_override = request.args.get("start", type=int)
+    card_type_raw = request.args.get("card_type", default="applied").lower()
     debug = request.args.get("debug", default="false").lower() == "true"
 
-    PAGE_SIZE = 10
+    CARD_TYPE_MAP = {
+        "applied": "APPLIED",
+        "saved": "SAVED",
+        "in_progress": "IN_PROGRESS",
+        "archived": "ARCHIVED",
+    }
+
+    if card_type_raw not in CARD_TYPE_MAP:
+        return jsonify({
+            "error": "Invalid card_type",
+            "allowed": list(CARD_TYPE_MAP.keys())
+        }), 400
+
+    card_type = CARD_TYPE_MAP[card_type_raw]
+
+    PAGE_CONTEXT = {
+        "APPLIED": {
+            "page_instance": "urn:li:page:d_flagship3_myitems_appliedjobs",
+            "referer": "https://www.linkedin.com/my-items/applied-jobs/",
+            "pem": "Voyager - My Items=myitems-applied-jobs",
+        },
+        "SAVED": {
+            "page_instance": "urn:li:page:d_flagship3_myitems_savedjobs",
+            "referer": "https://www.linkedin.com/my-items/saved-jobs/",
+            "pem": "Voyager - My Items=myitems-saved-jobs",
+        },
+        "IN_PROGRESS": {
+            "page_instance": "urn:li:page:d_flagship3_myitems_savedjobs",
+            "referer": "https://www.linkedin.com/my-items/saved-jobs/?cardType=IN_PROGRESS",
+            "pem": "Voyager - My Items=myitems-saved-jobs",
+        },
+        "ARCHIVED": {
+            "page_instance": "urn:li:page:d_flagship3_myitems_savedjobs",
+            "referer": "https://www.linkedin.com/my-items/saved-jobs/?cardType=ARCHIVED",
+            "pem": "Voyager - My Items=myitems-saved-jobs",
+        },
+    }
 
     try:
         artefacts = get_linkedin_fetch_artefacts()
@@ -658,47 +700,67 @@ def get_linkedin_applied_jobs_raw():
             return jsonify({"error": "LinkedIn artefacts not available"}), 500
 
         session, config = artefacts
-        base_url = config.get("base_url")
-        query_id = config.get("query_id")
+        base_url = "https://www.linkedin.com/voyager/api/graphql"
+        query_id = "voyagerSearchDashClusters.ef3d0937fb65bd7812e32e5a85028e79"
+
+        ctx = PAGE_CONTEXT[card_type]
+
+        # ------------------------
+        # CONTEXT-SAFE HEADERS
+        # ------------------------
+        session.headers["x-li-page-instance"] = ctx["page_instance"]
+        session.headers["x-li-pem-metadata"] = ctx["pem"]
+        session.headers["Referer"] = ctx["referer"]
 
         def build_url(start: int) -> str:
             variables = (
                 f"(start:{start},query:("
                 "flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER,"
-                "queryParameters:List((key:cardType,value:List(APPLIED)))"
+                f"queryParameters:List((key:cardType,value:List({card_type})))"
                 "))"
             )
             return f"{base_url}?variables={variables}&queryId={query_id}"
 
         def print_curl(url: str):
-            curl_parts = [f"curl '{url}'"]
-
+            parts = [f"curl '{url}'"]
             for k, v in session.headers.items():
-                curl_parts.append(f"-H '{k}: {v}'")
-
+                parts.append(f"-H '{k}: {v}'")
             if session.cookies:
                 cookie_str = "; ".join(f"{c.name}={c.value}" for c in session.cookies)
-                curl_parts.append(f"-H 'Cookie: {cookie_str}'")
-
-            curl_cmd = " \\\n  ".join(curl_parts)
+                parts.append(f"-H 'Cookie: {cookie_str}'")
             print("\n================= LINKEDIN RAW CURL =================")
-            print(curl_cmd)
+            print(" \\\n  ".join(parts))
             print("====================================================\n", flush=True)
 
-        def fetch_page(start: int):
+        def generate_curl_command(url: str) -> str:
+            parts = [f"curl '{url}'"]
+            for k, v in session.headers.items():
+                parts.append(f"-H '{k}: {v}'")
+            if session.cookies:
+                cookie_str = "; ".join(f"{c.name}={c.value}" for c in session.cookies)
+                parts.append(f"-H 'Cookie: {cookie_str}'")
+            return " \\\n  ".join(parts)
+
+        def fetch_page(start: int) -> dict:
             url = build_url(start)
 
+            # --- MODIFY DEBUG LOGIC ---
             if debug:
-                print_curl(url)
+                # Store these in a way we can return them
+                if not hasattr(fetch_page, 'debug_info'):
+                    fetch_page.debug_info = {}
+                fetch_page.debug_info['used_query_id'] = query_id
+                fetch_page.debug_info['generated_url'] = url
+                fetch_page.debug_info['generated_curl'] = generate_curl_command(url)
+                print_curl(url)  # Keep server logging
 
-            response = session.get(url, timeout=15)
-            response.raise_for_status()
-            return response.json()
+            resp = session.get(url, timeout=15)
+            resp.raise_for_status()
+            return resp.json()
 
         def extract_jobs(payload: dict) -> list:
             included = payload.get("included", [])
             included_map = {i.get("entityUrn"): i for i in included}
-
             jobs = []
             clusters = (
                 payload.get("data", {})
@@ -706,14 +768,12 @@ def get_linkedin_applied_jobs_raw():
                 .get("searchDashClustersByAll", {})
                 .get("elements", [])
             )
-
             for cluster in clusters:
-                for item_wrapper in cluster.get("items", []):
-                    entity_ref = item_wrapper.get("item", {}).get("*entityResult")
-                    if not entity_ref:
+                for item in cluster.get("items", []):
+                    ref = item.get("item", {}).get("*entityResult")
+                    if not ref:
                         continue
-
-                    entity = included_map.get(entity_ref)
+                    entity = included_map.get(ref)
                     if not entity:
                         continue
 
@@ -726,9 +786,9 @@ def get_linkedin_applied_jobs_raw():
                     for block in entity.get("insightsResolutionResults", []):
                         simple = block.get("simpleInsight")
                         if simple:
-                            text = simple.get("title", {}).get("text")
-                            if text:
-                                insights.append(text)
+                            txt = simple.get("title", {}).get("text")
+                            if txt:
+                                insights.append(txt)
 
                     jobs.append({
                         "job_posting_urn": entity.get("trackingUrn"),
@@ -742,46 +802,46 @@ def get_linkedin_applied_jobs_raw():
                         "navigation_url": entity.get("navigationUrl"),
                         "insights": insights,
                     })
-
             return jobs
 
         all_jobs = []
         pages_fetched = []
 
-        # ------------------------
-        # PAGINATION CONTROL
-        # ------------------------
         if pagination == "all":
-            start = 0
+            start = start_override or 0
             while True:
                 payload = fetch_page(start)
                 jobs = extract_jobs(payload)
-
                 if not jobs:
                     break
-
                 all_jobs.extend(jobs)
                 pages_fetched.append(start // PAGE_SIZE + 1)
                 start += PAGE_SIZE
-                time.sleep(0.5)  # be polite
-
+                time.sleep(0.5)
         else:
             page_num = max(1, int(pagination))
-            start = (page_num - 1) * PAGE_SIZE
+            start = start_override if start_override is not None else (page_num - 1) * PAGE_SIZE
             payload = fetch_page(start)
             all_jobs = extract_jobs(payload)
             pages_fetched.append(page_num)
 
-        return jsonify({
+        response_payload = {
+            "card_type": card_type_raw,
             "pagination": pagination,
             "pages_fetched": pages_fetched,
             "count": len(all_jobs),
             "jobs": all_jobs
-        }), 200
+        }
+
+        if debug and hasattr(fetch_page, 'debug_info'):
+            response_payload['debug'] = fetch_page.debug_info
+
+        return jsonify(response_payload), 200
 
     except Exception as e:
+        import traceback
         print(traceback.format_exc())
         return jsonify({
-            "error": "Failed to fetch raw LinkedIn applied jobs",
+            "error": "Failed to fetch raw LinkedIn jobs",
             "details": str(e)
         }), 500

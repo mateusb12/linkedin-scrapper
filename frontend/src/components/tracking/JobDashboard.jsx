@@ -20,11 +20,13 @@ import {
   Ban,
   DownloadCloud,
   PieChart,
+  Bookmark,
 } from "lucide-react";
 
 import StreakCalendar from "./StreakCalendar";
 import RecentApplications from "./RecentApplications";
 import JobFailures from "./JobFailures";
+import SavedJobs from "./SavedJobs";
 import PerformanceStats from "./PerformanceStats";
 import DashboardInsights from "./DashboardInsights";
 import {
@@ -32,7 +34,7 @@ import {
   ScraperSettings,
   JobDetailsPanel,
 } from "./DashboardModals";
-import {useJobDashboard} from "./useJobDashboard.js";
+import { useJobDashboard } from "./useJobDashboard.js";
 
 ChartJS.register(
   ArcElement,
@@ -158,6 +160,13 @@ export const JobDashboard = () => {
           <span className="hidden md:inline">Insights</span>
         </button>
         <button
+          onClick={() => setActiveTab("saved")}
+          className={`px-4 md:px-6 py-2 rounded-lg text-sm font-medium flex gap-2 ${activeTab === "saved" ? "bg-emerald-600 text-white" : "text-gray-400 hover:text-white"}`}
+        >
+          <Bookmark size={16} />{" "}
+          <span className="hidden md:inline">Saved Jobs</span>
+        </button>
+        <button
           onClick={() => setActiveTab("rejections")}
           className={`px-4 md:px-6 py-2 rounded-lg text-sm font-medium flex gap-2 ${activeTab === "rejections" ? "bg-red-600 text-white" : "text-gray-400 hover:text-white"}`}
         >
@@ -242,6 +251,12 @@ export const JobDashboard = () => {
             timeRange={controls.insightsTimeRange}
             onTimeRangeChange={controls.setInsightsTimeRange}
           />
+        )}
+
+        {activeTab === "saved" && (
+          <div className="animate-in fade-in">
+            <SavedJobs />
+          </div>
         )}
 
         {activeTab === "rejections" && (
