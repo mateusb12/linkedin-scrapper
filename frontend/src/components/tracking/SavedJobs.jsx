@@ -20,8 +20,8 @@ import {
   Database,
   User,
   Code2,
-  Cpu,
-  Wrench,
+  Calendar,
+  Users,
 } from "lucide-react";
 import {
   fetchLinkedinJobsRaw,
@@ -39,6 +39,7 @@ import {
   extractSpecifics,
   getTechBadgeStyle,
 } from "./utils/jobUtils.js";
+import {formatCustomDate} from "../../utils/dateUtils.js";
 
 const SavedJobs = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -287,6 +288,8 @@ const SavedJobs = () => {
                 <th className="px-6 py-4">Seniority</th>
                 <th className="px-6 py-4">Type</th>
                 <th className="px-6 py-4">Experience</th>
+                <th className="px-6 py-4">Posted</th>
+                <th className="px-6 py-4">Applicants</th>
                 <th className="px-6 py-4">Location</th>
                 <th className="px-6 py-4">Status / Insight</th>
                 <th className="px-6 py-4 text-right">Actions</th>
@@ -442,6 +445,41 @@ const SavedJobs = () => {
                             <Clock size={12} /> N/A
                           </span>
                         )}
+                      </td>
+
+                      {}
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2 text-gray-300 text-sm whitespace-nowrap">
+                          <Calendar size={14} className="text-gray-500" />
+                          {job.posted_at_formatted ? (
+                            <span className="capitalize">
+                              {formatCustomDate(job.posted_at_formatted)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-600 italic">N/A</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {}
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2 text-gray-300 text-sm">
+                          <Users size={14} className="text-gray-500" />
+                          {job.applicants !== undefined &&
+                          job.applicants !== null ? (
+                            <span
+                              className={
+                                job.applicants > 100
+                                  ? "text-emerald-400 font-bold"
+                                  : ""
+                              }
+                            >
+                              {job.applicants}
+                            </span>
+                          ) : (
+                            <span className="text-gray-600 italic">-</span>
+                          )}
+                        </div>
                       </td>
 
                       {}

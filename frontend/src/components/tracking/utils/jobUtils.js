@@ -22,6 +22,29 @@ export const extractExperienceFromDescription = (description) => {
   return null;
 };
 
+const formatCustomDate = (dateStr) => {
+  if (!dateStr) return "N/A";
+
+  const [year, month, day] = dateStr.split("-");
+
+  const months = [
+    "jan",
+    "fev",
+    "mar",
+    "abr",
+    "mai",
+    "jun",
+    "jul",
+    "ago",
+    "set",
+    "out",
+    "nov",
+    "dez",
+  ];
+
+  return `${day}/${months[parseInt(month) - 1]}/${year}`;
+};
+
 export const getExperienceStyle = (experience) => {
   if (!experience)
     return "text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700";
