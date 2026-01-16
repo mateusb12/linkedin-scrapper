@@ -172,6 +172,14 @@ const SavedJobs = () => {
     setExpandedJobUrn(expandedJobUrn === urn ? null : urn);
   };
 
+  const handleClearCache = () => {
+    const cacheKey = getCacheKey(activeTab);
+    localStorage.removeItem(cacheKey);
+    setJobs([]);
+    setIsCachedData(false);
+    setExpandedJobUrn(null);
+  };
+
   const getInsightStyle = (text) => {
     if (!text) return "text-gray-400 bg-gray-800";
     const t = text.toLowerCase();
@@ -230,13 +238,20 @@ const SavedJobs = () => {
               <button
                 onClick={() => loadJobs(true)}
                 disabled={isLoading}
-                title="Force refresh from LinkedIn"
-                className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-300 transition-colors disabled:opacity-50 relative group"
+                title="Force refresh"
+                className="p-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-40 transition"
               >
                 <RefreshCw
                   size={18}
                   className={isLoading ? "animate-spin" : ""}
                 />
+              </button>
+              <button
+                onClick={handleClearCache}
+                title="Clear Cache"
+                className="p-2 rounded-lg bg-red-600 text-white hover:bg-red-500 transition"
+              >
+                <Trash2 size={18} />
               </button>
             </div>
           </div>
