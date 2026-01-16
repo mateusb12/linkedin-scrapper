@@ -41,21 +41,16 @@ import {
 } from "./utils/jobUtils.js";
 import { formatCustomDate } from "../../utils/dateUtils.js";
 
-// ---------------------------------------------------------------------
-// INLINE COMPONENT: Copy First N Items
-// ---------------------------------------------------------------------
 const CopyFirstNItems = ({
   items,
   label = "Copy First N Items",
   buttonSuffix = "JSON",
   stringify = (data) => JSON.stringify(data, null, 2),
 }) => {
-  // Inicializa com o total de items por padrão
   const max = Array.isArray(items) ? items.length : 0;
   const [count, setCount] = useState(max);
   const [isCopied, setIsCopied] = useState(false);
 
-  // Sincroniza o count se a lista de items mudar (ex: mudou filtro ou tab)
   useEffect(() => {
     setCount(max);
   }, [max]);
@@ -90,8 +85,7 @@ const CopyFirstNItems = ({
 
   return (
     <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 flex flex-col lg:flex-row justify-between items-center gap-6 shadow-lg">
-
-      {/* Área de Controle (Slider + Input) */}
+      {}
       <div className="flex flex-col w-full lg:w-2/3 gap-2">
         <div className="flex justify-between items-end mb-1">
           <label className="text-xs text-emerald-500 font-bold uppercase flex items-center gap-2">
@@ -105,11 +99,11 @@ const CopyFirstNItems = ({
         <div className="flex items-center gap-4 bg-gray-900/50 p-3 rounded-lg border border-gray-700">
           <span className="text-xs font-mono text-gray-500">1</span>
 
-          {/* O SLIDER AQUI */}
+          {}
           <input
             type="range"
             min="1"
-            max={max || 1} // Evita max 0 quebra o range
+            max={max || 1}
             value={count}
             onChange={handleSliderChange}
             disabled={max === 0}
@@ -118,7 +112,7 @@ const CopyFirstNItems = ({
 
           <span className="text-xs font-mono text-gray-500">{max}</span>
 
-          {/* Input numérico para ajuste fino */}
+          {}
           <div className="relative min-w-[60px]">
             <input
               type="number"
@@ -132,7 +126,7 @@ const CopyFirstNItems = ({
         </div>
       </div>
 
-      {/* Botão de Ação */}
+      {}
       <div className="flex items-center justify-end w-full lg:w-auto h-full pt-2 lg:pt-0">
         <button
           onClick={handleCopy}
@@ -234,7 +228,9 @@ const SavedJobs = () => {
 
     return jobs
       .map((job) => {
-        const experienceData = extractExperienceFromDescription(job.description);
+        const experienceData = extractExperienceFromDescription(
+          job.description,
+        );
 
         const fullTextContext = `${job.title} ${job.description}`;
         const seniority = extractSeniorityFromDescription(fullTextContext);
@@ -254,10 +250,11 @@ const SavedJobs = () => {
       })
       .filter(
         (j) =>
-          (j.title && j.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (j.title &&
+            j.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
           (j.company &&
             j.company.name &&
-            j.company.name.toLowerCase().includes(searchTerm.toLowerCase()))
+            j.company.name.toLowerCase().includes(searchTerm.toLowerCase())),
       );
   }, [jobs, searchTerm]);
 
@@ -313,7 +310,9 @@ const SavedJobs = () => {
                     </span>
                   )}
                 </h3>
-                <p className="text-xs text-gray-400">Live data from LinkedIn "My Jobs"</p>
+                <p className="text-xs text-gray-400">
+                  Live data from LinkedIn "My Jobs"
+                </p>
               </div>
             </div>
 
@@ -337,7 +336,10 @@ const SavedJobs = () => {
                 title="Force refresh"
                 className="p-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-40 transition"
               >
-                <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
+                <RefreshCw
+                  size={18}
+                  className={isLoading ? "animate-spin" : ""}
+                />
               </button>
               <button
                 onClick={handleClearCache}
@@ -391,8 +393,13 @@ const SavedJobs = () => {
                 <tr>
                   <td colSpan="9" className="p-12 text-center">
                     <div className="flex flex-col items-center justify-center gap-3">
-                      <RefreshCw className="animate-spin text-emerald-500" size={32} />
-                      <span className="text-gray-400 text-sm">Fetching from LinkedIn...</span>
+                      <RefreshCw
+                        className="animate-spin text-emerald-500"
+                        size={32}
+                      />
+                      <span className="text-gray-400 text-sm">
+                        Fetching from LinkedIn...
+                      </span>
                     </div>
                   </td>
                 </tr>
@@ -407,13 +414,17 @@ const SavedJobs = () => {
                   <React.Fragment key={job.job_posting_urn}>
                     <tr
                       className={`group transition-colors ${
-                        expandedJobUrn === job.job_posting_urn ? "bg-gray-800" : "hover:bg-emerald-900/5"
+                        expandedJobUrn === job.job_posting_urn
+                          ? "bg-gray-800"
+                          : "hover:bg-emerald-900/5"
                       }`}
                     >
                       <td className="px-6 py-4 min-w-[200px]">
                         <div className="flex items-start gap-3">
                           <button
-                            onClick={() => toggleDescription(job.job_posting_urn)}
+                            onClick={() =>
+                              toggleDescription(job.job_posting_urn)
+                            }
                             className="mt-1 text-gray-500 hover:text-emerald-400 transition-colors focus:outline-none"
                           >
                             {expandedJobUrn === job.job_posting_urn ? (
@@ -425,12 +436,17 @@ const SavedJobs = () => {
                           <div>
                             <div
                               className="font-bold text-gray-200 cursor-pointer hover:text-emerald-400"
-                              onClick={() => toggleDescription(job.job_posting_urn)}
+                              onClick={() =>
+                                toggleDescription(job.job_posting_urn)
+                              }
                             >
                               {job.title ? job.title.trim() : "Unknown Title"}
                             </div>
                             <div className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                              <Building size={12} /> {job.company ? job.company.name : "Unknown Company"}
+                              <Building size={12} />{" "}
+                              {job.company
+                                ? job.company.name
+                                : "Unknown Company"}
                             </div>
                           </div>
                         </div>
@@ -444,7 +460,7 @@ const SavedJobs = () => {
                                 key={tech}
                                 className={`px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ${getTechBadgeStyle(
                                   index,
-                                  tech
+                                  tech,
                                 )}`}
                               >
                                 {tech}
@@ -464,7 +480,7 @@ const SavedJobs = () => {
                                 key={tech}
                                 className={`px-2 py-0.5 rounded text-[10px] font-medium border shadow-sm ${getTechBadgeStyle(
                                   index + 5,
-                                  tech
+                                  tech,
                                 )}`}
                               >
                                 {tech}
@@ -480,7 +496,7 @@ const SavedJobs = () => {
                         {job.seniority ? (
                           <span
                             className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getSeniorityStyle(
-                              job.seniority
+                              job.seniority,
                             )}`}
                           >
                             {job.seniority}
@@ -496,7 +512,7 @@ const SavedJobs = () => {
                         {job.jobType ? (
                           <span
                             className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getTypeStyle(
-                              job.jobType
+                              job.jobType,
                             )}`}
                           >
                             {job.jobType}
@@ -512,7 +528,7 @@ const SavedJobs = () => {
                         {job.experienceData ? (
                           <span
                             className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getExperienceStyle(
-                              job.experienceData
+                              job.experienceData,
                             )}`}
                           >
                             {job.experienceData.text}
@@ -528,7 +544,9 @@ const SavedJobs = () => {
                         <div className="flex items-center gap-2 text-gray-300 text-sm whitespace-nowrap">
                           <Calendar size={14} className="text-gray-500" />
                           {job.posted_at_formatted ? (
-                            <span className="capitalize">{formatCustomDate(job.posted_at_formatted)}</span>
+                            <span className="capitalize">
+                              {formatCustomDate(job.posted_at_formatted)}
+                            </span>
                           ) : (
                             <span className="text-gray-600 italic">N/A</span>
                           )}
@@ -538,8 +556,15 @@ const SavedJobs = () => {
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-gray-300 text-sm">
                           <Users size={14} className="text-gray-500" />
-                          {job.applicants !== undefined && job.applicants !== null ? (
-                            <span className={job.applicants > 100 ? "text-emerald-400 font-bold" : ""}>
+                          {job.applicants !== undefined &&
+                          job.applicants !== null ? (
+                            <span
+                              className={
+                                job.applicants > 100
+                                  ? "text-emerald-400 font-bold"
+                                  : ""
+                              }
+                            >
                               {job.applicants}
                             </span>
                           ) : (
@@ -550,7 +575,8 @@ const SavedJobs = () => {
 
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-gray-400 text-sm">
-                          <MapPin size={14} className="text-gray-500" /> {job.location || "Remote / Unspecified"}
+                          <MapPin size={14} className="text-gray-500" />{" "}
+                          {job.location || "Remote / Unspecified"}
                         </div>
                       </td>
 
@@ -561,14 +587,16 @@ const SavedJobs = () => {
                               <span
                                 key={idx}
                                 className={`px-3 py-1 rounded-full text-xs border whitespace-nowrap ${getInsightStyle(
-                                  insight
+                                  insight,
                                 )}`}
                               >
                                 {insight.trim()}
                               </span>
                             ))
                           ) : (
-                            <span className="text-gray-600 text-xs italic">No updates</span>
+                            <span className="text-gray-600 text-xs italic">
+                              No updates
+                            </span>
                           )}
                         </div>
                       </td>
@@ -604,23 +632,40 @@ const SavedJobs = () => {
                               <ReactMarkdown
                                 components={{
                                   strong: ({ node, ...props }) => (
-                                    <span className="font-bold text-white" {...props} />
+                                    <span
+                                      className="font-bold text-white"
+                                      {...props}
+                                    />
                                   ),
                                   ul: ({ node, ...props }) => (
-                                    <ul className="list-disc pl-5 space-y-1 my-2" {...props} />
+                                    <ul
+                                      className="list-disc pl-5 space-y-1 my-2"
+                                      {...props}
+                                    />
                                   ),
-                                  li: ({ node, ...props }) => <li className="pl-1" {...props} />,
+                                  li: ({ node, ...props }) => (
+                                    <li className="pl-1" {...props} />
+                                  ),
                                   p: ({ node, ...props }) => (
                                     <p className="mb-2 last:mb-0" {...props} />
                                   ),
                                   h1: ({ node, ...props }) => (
-                                    <h1 className="text-lg font-bold text-emerald-400 mt-4 mb-2" {...props} />
+                                    <h1
+                                      className="text-lg font-bold text-emerald-400 mt-4 mb-2"
+                                      {...props}
+                                    />
                                   ),
                                   h2: ({ node, ...props }) => (
-                                    <h2 className="text-base font-bold text-emerald-400 mt-3 mb-2" {...props} />
+                                    <h2
+                                      className="text-base font-bold text-emerald-400 mt-3 mb-2"
+                                      {...props}
+                                    />
                                   ),
                                   h3: ({ node, ...props }) => (
-                                    <h3 className="text-sm font-bold text-emerald-400 mt-2 mb-1" {...props} />
+                                    <h3
+                                      className="text-sm font-bold text-emerald-400 mt-2 mb-1"
+                                      {...props}
+                                    />
                                   ),
                                 }}
                               >
@@ -652,7 +697,7 @@ const SavedJobs = () => {
         </div>
       </div>
 
-      {/* Copy first N items panel (extracted, same file) */}
+      {}
       <CopyFirstNItems items={jobs} />
     </div>
   );
