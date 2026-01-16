@@ -9,17 +9,48 @@ from typing import List, Dict, Any, Tuple, Optional
 
 from models import Job, Company
 from source.features.job_population.job_repository import JobRepository
-from source.features.get_applied_jobs.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
 from source.features.job_population.enrichment_service import EnrichmentService
 from utils.date_parser import parse_relative_date
+
+# NEW IMPORTS FOR OOP
+from source.features.get_applied_jobs.linkedin_fetch_call_repository import (
+    get_linkedin_fetch_artefacts,
+    LinkedInRequest,
+    VoyagerGraphQLRequest
+)
+
+
+# ---------------------------------------------------------------------
+# REQUEST OBJECTS (LOCAL)
+# ---------------------------------------------------------------------
+
+class JobTimestampRequest(LinkedInRequest):
+    """
+    Objeto para buscar detalhes específicos de uma vaga (principalmente o timestamp).
+    """
+
+    def __init__(self, job_id: str):
+        url = f"https://www.linkedin.com/voyager/api/jobs/jobPostings/{job_id}"
+        super().__init__("GET", url)
+        self.set_headers({
+            'accept': 'application/json',
+            'x-restli-protocol-version': '2.0.0'
+        })
+
+
+# ---------------------------------------------------------------------
+# LOGIC
+# ---------------------------------------------------------------------
 
 def fetch_exact_applied_date(session: requests.Session, job_urn: str) -> Optional[datetime]:
     try:
         job_id = job_urn.split(":")[-1]
-        url = f"https://www.linkedin.com/voyager/api/jobs/jobPostings/{job_id}"
-        headers = {'accept': 'application/json', 'x-restli-protocol-version': '2.0.0'}
+
+        # Instancia objeto da requisição
+        req_obj = JobTimestampRequest(job_id)
+
         time.sleep(0.5)
-        response = session.get(url, headers=headers, timeout=10)
+        response = req_obj.execute(session, timeout=10)
 
         if response.status_code == 200:
             data = response.json()
@@ -30,10 +61,8 @@ def fetch_exact_applied_date(session: requests.Session, job_urn: str) -> Optiona
         print(f"   [Timestamp Fetch Error] {e}")
     return None
 
+
 def extract_company_logo_url(company_entity: Dict[str, Any], preferred_size: int = 200) -> Optional[str]:
-    """
-    Extracts a usable logo URL from a LinkedIn Company entity.
-    """
     try:
         logo = (
             company_entity
@@ -48,16 +77,16 @@ def extract_company_logo_url(company_entity: Dict[str, Any], preferred_size: int
         if not root or not artifacts:
             return None
 
-        # pick closest size
         artifacts.sort(key=lambda a: abs(a.get("width", 0) - preferred_size))
         return root + artifacts[0]["fileIdentifyingUrlPathSegment"]
 
     except Exception:
         return None
 
+
 def _structure_job_from_entity(
-    item: Dict[str, Any],
-    company_entities: Dict[str, Any]
+        item: Dict[str, Any],
+        company_entities: Dict[str, Any]
 ) -> Any:
     urn_id = item.get('entityUrn')
     if urn_id:
@@ -101,6 +130,7 @@ def _structure_job_from_entity(
         'urn': urn_id
     }
 
+
 def _ensure_company_exists(session, name: str, urn: str, logo_url: Optional[str] = None):
     if not urn:
         return
@@ -118,7 +148,6 @@ def _ensure_company_exists(session, name: str, urn: str, logo_url: Optional[str]
         session.add(new_company)
 
     else:
-        # Backfill logo if missing
         if logo_url and not existing.logo_url:
             print(f"   🖼️ Backfilled logo for company: {existing.name} ({existing.urn})")
             existing.logo_url = logo_url
@@ -128,6 +157,7 @@ def _ensure_company_exists(session, name: str, urn: str, logo_url: Optional[str]
     except Exception as e:
         session.rollback()
         print(f"   ⚠️ Failed to save company: {e}")
+
 
 def _enrich_and_save_new_job(job_data: Dict[str, str], job_repo: JobRepository, session: requests.Session) -> Job:
     """Only called for BRAND NEW jobs."""
@@ -183,69 +213,8 @@ def _enrich_and_save_new_job(job_data: Dict[str, str], job_repo: JobRepository, 
 
     return job
 
+
 def fetch_all_linkedin_jobs():
-    """
-    Synchronizes applied job data from LinkedIn into the local SQL database
-
-    This function acts as a one-way synchronization layer:
-    - It fetches the user's applied jobs directly from LinkedIn using
-      authenticated HTTP requests (cookies + GraphQL query).
-    - It DOES NOT return data for frontend consumption.
-    - Its sole responsibility is to UPDATE the local database so that
-      subsequent reads can be served purely from SQL.
-
-    High-level behavior:
-    -------------------
-    1. Loads LinkedIn fetch artifacts (session + config), including:
-       - Authenticated requests session (cookies, headers)
-       - GraphQL base URL
-       - Query ID used by LinkedIn's internal API
-
-    2. Iterates through LinkedIn's paginated "Applied Jobs" feed:
-       - Builds GraphQL URLs using a moving `start` offset
-       - Sends HTTP GET requests to LinkedIn servers
-       - Parses the JSON response payload
-
-    3. Extracts relevant job data from LinkedIn responses:
-       - Job URN
-       - Job title
-       - Company name / company URN
-       - Job URL
-       - Applied date
-       - Applicants count
-       - Location, employment type, workplace type (when available)
-
-    4. Writes data into the local SQL database:
-       - Inserts new jobs that do not exist yet
-       - Updates existing jobs matched by URN
-       - Marks jobs as `has_applied = True`
-       - Updates `applied_on` timestamps when missing
-       - Links jobs to companies via `company_urn`
-
-    5. Commits changes incrementally to ensure persistence even if
-       LinkedIn pagination or parsing fails midway.
-
-    Important architectural notes:
-    ------------------------------
-    - This function is the ONLY place where LinkedIn servers are contacted.
-    - All frontend endpoints read exclusively from SQL after this sync.
-    - Pagination, filtering, sorting, and exports are intentionally NOT
-      handled here and must be done at the database/query layer.
-    - If LinkedIn artefacts are missing or invalid, the function gracefully
-      falls back to returning SQL-only applied jobs.
-
-    Returns:
-    --------
-    list[Job] or equivalent SQL-backed job data:
-        Primarily used as a fallback or debug return.
-        The returned value should NOT be treated as a live LinkedIn response.
-
-    Raises:
-    -------
-    LinkedInScrapingException:
-        If LinkedIn responds with unexpected structures, auth errors,
-        or rate-limiting behavior that prevents a safe sync.
-    """
     job_repo = JobRepository()
 
     print("--- ⚙️ Loading config ---")
@@ -258,22 +227,23 @@ def fetch_all_linkedin_jobs():
     base_url = config.get('base_url')
     query_id = config.get('query_id')
 
-    def build_url(start_index: int) -> str:
-        variables = (
-            "(start:{},query:(flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER,"
-            "queryParameters:List((key:cardType,value:List(APPLIED)))))"
-        ).format(start_index)
+    # REFATORADO: Removemos a função build_url interna e usamos a classe
+    def fetch_page(start_index: int):
+        # Instancia o Objeto compartilhado de Request
+        req_obj = VoyagerGraphQLRequest(
+            base_url=base_url,
+            query_id=query_id,
+            start=start_index,
+            card_type="APPLIED"  # Hardcoded pois este arquivo é só para aplicados
+        )
 
-        url = f"{base_url}?variables={variables}&queryId={query_id}"
+        print(f"\n🧪 LinkedIn GraphQL URL (start={start_index}):\n{req_obj.url}\n")
 
-        print(f"\n🧪 LinkedIn GraphQL URL (start={start_index}):\n{url}\n")
-
-        return url
+        return req_obj.execute(session)
 
     print(f"\n--- 🚀 Checking LinkedIn for updates... ---")
     try:
-        url = build_url(0)
-        response = session.get(url)
+        response = fetch_page(0)
         response.raise_for_status()
         data = response.json()
     except Exception as e:
@@ -287,11 +257,12 @@ def fetch_all_linkedin_jobs():
 
     return job_repo.fetch_applied_jobs()
 
+
 def _process_page_data(
-    data: Dict,
-    repo: JobRepository,
-    out_list: List,
-    session: requests.Session
+        data: Dict,
+        repo: JobRepository,
+        out_list: List,
+        session: requests.Session
 ) -> Tuple[int, int]:
     new_jobs_counter = 0
     updated_jobs_counter = 0
@@ -307,8 +278,8 @@ def _process_page_data(
     try:
         search_clusters = (
             data.get('data', {})
-                .get('data', {})
-                .get('searchDashClustersByAll', {})
+            .get('data', {})
+            .get('searchDashClustersByAll', {})
         )
         elements = search_clusters.get('elements', [])
     except AttributeError:
@@ -333,9 +304,6 @@ def _process_page_data(
 
             existing = repo.get_by_urn(structured['urn'])
 
-            # =========================================================
-            # 🆕 NEW JOB
-            # =========================================================
             if not existing:
                 _enrich_and_save_new_job(structured, repo, session)
                 new_jobs_counter += 1
@@ -343,10 +311,9 @@ def _process_page_data(
                 continue
 
             # =========================================================
-            # 🔧 EXISTING JOB — SAFE BACKFILL LOGIC
+            # EXISTING JOB — SAFE BACKFILL LOGIC
             # =========================================================
 
-            # 1️⃣ Ensure Company exists + backfill logo (INDEPENDENT of Job fields)
             if structured.get("company_urn"):
                 _ensure_company_exists(
                     repo.session,
@@ -355,7 +322,6 @@ def _process_page_data(
                     structured.get("company_logo_url"),
                 )
 
-                # 🔥 Explicit logo backfill (only if missing)
                 if structured.get("company_logo_url"):
                     company = repo.session.query(Company).filter_by(
                         urn=structured["company_urn"]
@@ -367,14 +333,12 @@ def _process_page_data(
                         repo.commit()
                         updated_jobs_counter += 1
 
-            # 2️⃣ Fix missing company_urn on Job (rare, but safe)
             if structured.get('company_urn') and not existing.company_urn:
                 print(f"   🔧 Fixing missing company for {structured['urn']}...")
                 existing.company_urn = structured['company_urn']
                 repo.commit()
                 updated_jobs_counter += 1
 
-            # 3️⃣ Backfill applied date
             if existing.applied_on is None:
                 exact_date = fetch_exact_applied_date(session, structured['urn'])
                 if exact_date:
@@ -383,7 +347,6 @@ def _process_page_data(
                     repo.commit()
                     updated_jobs_counter += 1
 
-            # 4️⃣ Backfill description
             if existing.description_full == "No description provided":
                 print(f"   📝 Backfilling description for {existing.title}...", end=" ")
                 desc = EnrichmentService.fetch_single_job_description(
@@ -398,7 +361,6 @@ def _process_page_data(
                 else:
                     print("⚠️ Failed")
 
-            # 5️⃣ Ensure has_applied flag
             if not existing.has_applied:
                 existing.has_applied = True
                 repo.commit()

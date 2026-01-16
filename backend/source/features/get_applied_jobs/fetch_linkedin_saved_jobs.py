@@ -7,6 +7,8 @@ from typing import Optional
 
 from source.features.get_applied_jobs.linkedin_fetch_call_repository import (
     get_linkedin_fetch_artefacts,
+    LinkedInRequest,  # NEW IMPORT
+    VoyagerGraphQLRequest  # NEW IMPORT
 )
 
 # ---------------------------------------------------------------------
@@ -49,6 +51,39 @@ PAGE_CONTEXT = {
 
 
 # ---------------------------------------------------------------------
+# REQUEST OBJECTS (LOCAL SPECIFIC)
+# ---------------------------------------------------------------------
+
+class SduiEnrichmentRequest(LinkedInRequest):
+    """
+    Objeto responsável por buscar os detalhes do job via SDUI/Component.
+    """
+
+    def __init__(self, job_id: str, csrf_token: str):
+        url = (
+            "https://www.linkedin.com/flagship-web/rsc-action/actions/component"
+            "?componentId=com.linkedin.sdui.generated.jobseeker.dsl.impl.aboutTheJob"
+        )
+        super().__init__("POST", url)
+
+        self.payload = {
+            "clientArguments": {
+                "payload": {"jobId": job_id, "renderAsCard": True},
+                "states": [],
+                "requestMetadata": {},
+            },
+            "screenId": "com.linkedin.sdui.flagshipnav.jobs.JobDetails",
+        }
+        self.set_body(self.payload)
+
+        # Headers específicos desta request
+        self.set_headers({
+            "csrf-token": csrf_token,
+            "Content-Type": "application/json"
+        })
+
+
+# ---------------------------------------------------------------------
 # CONTEXT OBJECT
 # ---------------------------------------------------------------------
 
@@ -75,50 +110,28 @@ class LinkedInFetchContext:
 
 
 # ---------------------------------------------------------------------
-# CURL DEBUGGER
+# VOYAGER FETCH (REFACTORED TO OOP)
 # ---------------------------------------------------------------------
-
-def generate_curl(method, url, headers, cookies, body=None):
-    parts = [f"curl -X {method} '{url}'"]
-    for k, v in headers.items():
-        parts.append(f"-H '{k}: {v}'")
-    if cookies:
-        cookie_str = "; ".join(f"{c.name}={c.value}" for c in cookies)
-        parts.append(f"-H 'Cookie: {cookie_str}'")
-    if body is not None:
-        parts.append(f"--data '{json.dumps(body)}'")
-    return " \\\n  ".join(parts)
-
-
-# ---------------------------------------------------------------------
-# VOYAGER FETCH
-# ---------------------------------------------------------------------
-
-def build_voyager_url(start: int, card_type: str) -> str:
-    variables = (
-        f"(start:{start},query:("
-        "flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER,"
-        f"queryParameters:List((key:cardType,value:List({card_type})))"
-        "))"
-    )
-    return f"{BASE_URL}?variables={variables}&queryId={QUERY_ID}"
-
 
 def fetch_voyager_page(ctx: LinkedInFetchContext, start: int, debug=False, debug_curls=None):
-    url = build_voyager_url(start, ctx.card_type)
+    # Instancia o Objeto de Request
+    request_obj = VoyagerGraphQLRequest(
+        base_url=BASE_URL,
+        query_id=QUERY_ID,
+        start=start,
+        card_type=ctx.card_type
+    )
 
     if debug and debug_curls is not None:
-        debug_curls.append(
-            generate_curl("GET", url, ctx.session.headers, ctx.session.cookies)
-        )
+        debug_curls.append(request_obj.to_curl(ctx.session.cookies))
 
-    resp = ctx.session.get(url, timeout=15)
+    resp = request_obj.execute(ctx.session)
     resp.raise_for_status()
     return resp.json()
 
 
 # ---------------------------------------------------------------------
-# PAYLOAD PARSING
+# PAYLOAD PARSING (UNCHANGED)
 # ---------------------------------------------------------------------
 
 def extract_jobs_from_payload(payload: dict) -> list[dict]:
@@ -173,9 +186,8 @@ def extract_jobs_from_payload(payload: dict) -> list[dict]:
 
 
 # ---------------------------------------------------------------------
-# SDUI DESCRIPTION EXTRACTION (TARGETED)
+# SDUI DESCRIPTION EXTRACTION (UNCHANGED HELPERS)
 # ---------------------------------------------------------------------
-
 
 def _extract_text_nodes(node, out: list[str]):
     if isinstance(node, str):
@@ -185,7 +197,6 @@ def _extract_text_nodes(node, out: list[str]):
         return
 
     if isinstance(node, list):
-        # RSC node format: ["$", tag, meta, props]
         if len(node) >= 4 and isinstance(node[3], dict):
             tag = node[1]
             props = node[3]
@@ -217,134 +228,66 @@ def _extract_text_nodes(node, out: list[str]):
                 _extract_text_nodes(item, out)
 
 
-
 def normalize_blocks_to_markdown(blocks: list[str]) -> str:
     text = "".join(blocks)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
+
 def clean_sdui_text(text: str) -> str:
-    """
-    Cleans React Flight / SDUI artifacts from extracted text.
-    Safe to run on already-clean human text.
-    """
-    # 1. Remove React Flight references
     text = re.sub(r"\$\d+:props:[^\s*]+", "", text)
     text = re.sub(r"\$undefined", "", text)
     text = re.sub(r"\*\*last\*\*", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\band(?=\s*\*\*)", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\band(?=\s*$)", "", text, flags=re.IGNORECASE)
-
-    # 2. CRITICAL FIX: Strip leading/trailing newlines/space INSIDE bold tags
-    # Turns "**\nJoin us**" -> "**Join us**"
-    # Turns "**Join us\n**" -> "**Join us**"
     text = re.sub(r"\*\*[\s\n]+([^*]+)\*\*", r"**\1**", text)
     text = re.sub(r"\*\*([^*]+)[\s\n]+\*\*", r"**\1**", text)
-
-    # 3. Normalize whitespace
     text = re.sub(r"[ \t]{2,}", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = re.sub(r"\*\*\s*\*\*", "", text)
-
     return text.strip()
 
+
 def merge_inline_bold_blocks(text: str) -> str:
-    """
-    Merges isolated bold lines back into surrounding paragraphs
-    when they are clearly inline emphasis.
-    """
     lines = text.splitlines()
     result = []
     buffer = None
-
     for line in lines:
-        # Detect standalone bold like "**help customers.**"
         if (
-            line.startswith("**")
-            and line.endswith("**")
-            and len(line) < 80
-            and buffer
-            and not buffer.endswith(":")
+                line.startswith("**")
+                and line.endswith("**")
+                and len(line) < 80
+                and buffer
+                and not buffer.endswith(":")
         ):
             buffer = buffer.rstrip() + " " + line.strip("**")
             continue
-
         if buffer is not None:
             result.append(buffer)
         buffer = line
-
     if buffer is not None:
         result.append(buffer)
-
     return "\n".join(result)
 
+
 def normalize_section_headers(text: str) -> str:
-    """
-    Normalizes section headers so they always start on a new paragraph.
-    Handles:
-    - **Bold:** headers
-    - Plain-text headers ending with :
-    - Known LinkedIn headers like 'Join us at ...'
-    """
-
-    # 1️⃣ Fix bold headers glued to text
-    # UPDATED: Now accepts headers ending in ':' OR ',' (for 'Join us...,')
-    text = re.sub(
-        r"([^\n])\s*(\*\*[^*\n]+[:?,]\*\*)",
-        r"\1\n\n\2",
-        text
-    )
-
-    text = re.sub(
-        r"(\*\*[^*\n]+[:?,]\*\*)([^\n])",
-        r"\1\n\n\2",
-        text
-    )
-
-    # 2️⃣ Fix plain-text headers ending with ':' glued after sentences
-    text = re.sub(
-        r"([a-z]\.)\s*([A-Z][A-Za-z\s\']+:\s*)",
-        r"\1\n\n**\2**",
-        text
-    )
-
-    # 3️⃣ Fix 'Join us at X' (Targeted Fallback)
-    # If the bold fix above didn't catch it because it wasn't bolded yet:
-    text = re.sub(
-        r"([a-z]\.)\s*(Join us at [A-Z][A-Za-z0-9\s]+)[,:]",
-        r"\1\n\n**\2:**",
-        text
-    )
-
-    # 4️⃣ Cleanup spacing
+    text = re.sub(r"([^\n])\s*(\*\*[^*\n]+[:?,]\*\*)", r"\1\n\n\2", text)
+    text = re.sub(r"(\*\*[^*\n]+[:?,]\*\*)([^\n])", r"\1\n\n\2", text)
+    text = re.sub(r"([a-z]\.)\s*([A-Z][A-Za-z\s\']+:\s*)", r"\1\n\n**\2**", text)
+    text = re.sub(r"([a-z]\.)\s*(Join us at [A-Z][A-Za-z0-9\s]+)[,:]", r"\1\n\n**\2:**", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
-
     return text.strip()
 
+
 def merge_inline_bold_sentences(text: str) -> str:
-    """
-    Merges bold fragments that were split from the previous sentence.
-    Example:
-      "systems that\n\n**help customers.**"
-    becomes:
-      "systems that **help customers.**"
-    """
-
-    text = re.sub(
-        r"([a-zA-Z,])\n\n(\*\*[^*\n]+\.\*\*)",
-        r"\1 \2",
-        text
-    )
-
+    text = re.sub(r"([a-zA-Z,])\n\n(\*\*[^*\n]+\.\*\*)", r"\1 \2", text)
     return text
 
 
 def extract_description_from_sdui(blob: bytes) -> str:
     text = blob.decode("utf-8", errors="ignore")
     lines = text.splitlines()
-
     l5_json = None
-
     for line in lines:
         if '"$L5"' in line:
             try:
@@ -354,19 +297,14 @@ def extract_description_from_sdui(blob: bytes) -> str:
                 break
             except Exception:
                 continue
-
     if not l5_json:
         return ""
-
     props = l5_json[3] if isinstance(l5_json, list) and len(l5_json) > 3 else {}
     text_props = props.get("textProps", {})
     children = text_props.get("children", [])
-
     blocks: list[str] = []
     _extract_text_nodes(children, blocks)
-
     raw = normalize_blocks_to_markdown(blocks)
-
     clean = clean_sdui_text(raw)
     clean = merge_inline_bold_blocks(clean)
     clean = normalize_section_headers(clean)
@@ -375,17 +313,17 @@ def extract_description_from_sdui(blob: bytes) -> str:
 
 
 # ---------------------------------------------------------------------
-# ENRICH JOBS
+# ENRICH JOBS (REFACTORED TO OOP)
 # ---------------------------------------------------------------------
 
 def enrich_jobs_with_sdui(
-    ctx: LinkedInFetchContext,
-    jobs: list[dict],
-    *,
-    debug=False,
-    trace=False,
-    debug_curls=None,
-    trace_info=None,
+        ctx: LinkedInFetchContext,
+        jobs: list[dict],
+        *,
+        debug=False,
+        trace=False,
+        debug_curls=None,
+        trace_info=None,
 ):
     if not ctx.csrf_token:
         return
@@ -401,30 +339,13 @@ def enrich_jobs_with_sdui(
 
         job_id = m.group(1)
 
-        url = (
-            "https://www.linkedin.com/flagship-web/rsc-action/actions/component"
-            "?componentId=com.linkedin.sdui.generated.jobseeker.dsl.impl.aboutTheJob"
-        )
-
-        payload = {
-            "clientArguments": {
-                "payload": {"jobId": job_id, "renderAsCard": True},
-                "states": [],
-                "requestMetadata": {},
-            },
-            "screenId": "com.linkedin.sdui.flagshipnav.jobs.JobDetails",
-        }
-
-        headers = dict(ctx.session.headers)
-        headers["csrf-token"] = ctx.csrf_token
-        headers["Content-Type"] = "application/json"
+        # Instancia o Objeto de Request SDUI
+        req_obj = SduiEnrichmentRequest(job_id, ctx.csrf_token)
 
         if debug and debug_curls is not None:
-            debug_curls.append(
-                generate_curl("POST", url, headers, ctx.session.cookies, payload)
-            )
+            debug_curls.append(req_obj.to_curl(ctx.session.cookies))
 
-        resp = ctx.session.post(url, json=payload, headers=headers)
+        resp = req_obj.execute(ctx.session)
 
         if debug:
             print("\n" + "=" * 80)
@@ -448,17 +369,17 @@ def enrich_jobs_with_sdui(
 
 
 # ---------------------------------------------------------------------
-# PUBLIC ENTRYPOINT
+# PUBLIC ENTRYPOINT (UNCHANGED LOGIC)
 # ---------------------------------------------------------------------
 
 def fetch_linkedin_saved_jobs(
-    *,
-    card_type: str,
-    pagination: str = "1",
-    start_override: Optional[int] = None,
-    enrich: bool = True,
-    debug: bool = False,
-    trace: bool = False,
+        *,
+        card_type: str,
+        pagination: str = "1",
+        start_override: Optional[int] = None,
+        enrich: bool = True,
+        debug: bool = False,
+        trace: bool = False,
 ) -> dict:
     if card_type not in CARD_TYPE_MAP:
         raise ValueError(f"Invalid card_type: {card_type}")
