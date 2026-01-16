@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import {
   Bookmark,
@@ -39,7 +39,126 @@ import {
   extractSpecifics,
   getTechBadgeStyle,
 } from "./utils/jobUtils.js";
-import {formatCustomDate} from "../../utils/dateUtils.js";
+import { formatCustomDate } from "../../utils/dateUtils.js";
+
+// ---------------------------------------------------------------------
+// INLINE COMPONENT: Copy First N Items
+// ---------------------------------------------------------------------
+const CopyFirstNItems = ({
+  items,
+  label = "Copy First N Items",
+  buttonSuffix = "JSON",
+  stringify = (data) => JSON.stringify(data, null, 2),
+}) => {
+  // Inicializa com o total de items por padrão
+  const max = Array.isArray(items) ? items.length : 0;
+  const [count, setCount] = useState(max);
+  const [isCopied, setIsCopied] = useState(false);
+
+  // Sincroniza o count se a lista de items mudar (ex: mudou filtro ou tab)
+  useEffect(() => {
+    setCount(max);
+  }, [max]);
+
+  const itemsToExport = useMemo(() => {
+    if (!Array.isArray(items) || items.length === 0 || count <= 0) return [];
+    return items.slice(0, Math.min(count, items.length));
+  }, [items, count]);
+
+  const handleCopy = useCallback(() => {
+    if (itemsToExport.length === 0) return;
+
+    const payload = stringify(itemsToExport);
+
+    navigator.clipboard.writeText(payload).then(() => {
+      setIsCopied(true);
+      window.setTimeout(() => setIsCopied(false), 2000);
+    });
+  }, [itemsToExport, stringify]);
+
+  const handleSliderChange = (e) => {
+    setCount(Number(e.target.value));
+  };
+
+  const handleInputChange = (e) => {
+    let val = parseInt(e.target.value, 10);
+    if (isNaN(val)) val = 0;
+    if (val > max) val = max;
+    if (val < 0) val = 0;
+    setCount(val);
+  };
+
+  return (
+    <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 flex flex-col lg:flex-row justify-between items-center gap-6 shadow-lg">
+
+      {/* Área de Controle (Slider + Input) */}
+      <div className="flex flex-col w-full lg:w-2/3 gap-2">
+        <div className="flex justify-between items-end mb-1">
+          <label className="text-xs text-emerald-500 font-bold uppercase flex items-center gap-2">
+            <Hash size={14} /> {label}
+          </label>
+          <span className="text-xs text-gray-400">
+            Total Available: <span className="text-white font-mono">{max}</span>
+          </span>
+        </div>
+
+        <div className="flex items-center gap-4 bg-gray-900/50 p-3 rounded-lg border border-gray-700">
+          <span className="text-xs font-mono text-gray-500">1</span>
+
+          {/* O SLIDER AQUI */}
+          <input
+            type="range"
+            min="1"
+            max={max || 1} // Evita max 0 quebra o range
+            value={count}
+            onChange={handleSliderChange}
+            disabled={max === 0}
+            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-emerald-500 hover:accent-emerald-400 transition-all"
+          />
+
+          <span className="text-xs font-mono text-gray-500">{max}</span>
+
+          {/* Input numérico para ajuste fino */}
+          <div className="relative min-w-[60px]">
+            <input
+              type="number"
+              min="1"
+              max={max}
+              value={count}
+              onChange={handleInputChange}
+              className="w-full bg-gray-800 border border-gray-600 text-emerald-400 font-bold text-center text-sm rounded px-1 py-1 outline-none focus:border-emerald-500 appearance-none"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Botão de Ação */}
+      <div className="flex items-center justify-end w-full lg:w-auto h-full pt-2 lg:pt-0">
+        <button
+          onClick={handleCopy}
+          disabled={itemsToExport.length === 0}
+          className={`flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-bold transition-all duration-200 w-full lg:w-auto ${
+            isCopied
+              ? "bg-green-600 text-white scale-105"
+              : itemsToExport.length === 0
+                ? "bg-gray-700 text-gray-500 cursor-not-allowed opacity-50"
+                : "bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white shadow-lg hover:shadow-emerald-500/20 active:scale-95"
+          }`}
+        >
+          {isCopied ? (
+            <>
+              <CheckCircle2 size={20} /> Copied!
+            </>
+          ) : (
+            <>
+              <Copy size={20} /> Copy JSON ({itemsToExport.length})
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const SavedJobs = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -48,8 +167,6 @@ const SavedJobs = () => {
   const [error, setError] = useState(null);
   const [expandedJobUrn, setExpandedJobUrn] = useState(null);
   const [activeTab, setActiveTab] = useState(LINKEDIN_CARD_TYPE.SAVED);
-  const [exportCount, setExportCount] = useState("");
-  const [isCopied, setIsCopied] = useState(false);
 
   const [isCachedData, setIsCachedData] = useState(false);
 
@@ -117,9 +234,7 @@ const SavedJobs = () => {
 
     return jobs
       .map((job) => {
-        const experienceData = extractExperienceFromDescription(
-          job.description,
-        );
+        const experienceData = extractExperienceFromDescription(job.description);
 
         const fullTextContext = `${job.title} ${job.description}`;
         const seniority = extractSeniorityFromDescription(fullTextContext);
@@ -139,29 +254,12 @@ const SavedJobs = () => {
       })
       .filter(
         (j) =>
-          (j.title &&
-            j.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (j.title && j.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
           (j.company &&
             j.company.name &&
-            j.company.name.toLowerCase().includes(searchTerm.toLowerCase())),
+            j.company.name.toLowerCase().includes(searchTerm.toLowerCase()))
       );
   }, [jobs, searchTerm]);
-
-  const jobsToExport = useMemo(() => {
-    if (!jobs || jobs.length === 0) return [];
-    const count = parseInt(exportCount, 10);
-    if (!count || isNaN(count) || count <= 0) return [];
-    return jobs.slice(0, count);
-  }, [jobs, exportCount]);
-
-  const handleCopyJobs = () => {
-    if (jobsToExport.length === 0) return;
-    const dataStr = JSON.stringify(jobsToExport, null, 2);
-    navigator.clipboard.writeText(dataStr).then(() => {
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-    });
-  };
 
   const handleRemove = (urn) => {
     const updatedJobs = jobs.filter((job) => job.job_posting_urn !== urn);
@@ -200,7 +298,6 @@ const SavedJobs = () => {
   return (
     <div className="space-y-4">
       <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-xl overflow-hidden mt-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-        {}
         <div className="p-6 border-b border-gray-700 flex flex-col gap-6 bg-gradient-to-r from-gray-800 to-emerald-900/10">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div className="flex items-center gap-4">
@@ -216,9 +313,7 @@ const SavedJobs = () => {
                     </span>
                   )}
                 </h3>
-                <p className="text-xs text-gray-400">
-                  Live data from LinkedIn "My Jobs"
-                </p>
+                <p className="text-xs text-gray-400">Live data from LinkedIn "My Jobs"</p>
               </div>
             </div>
 
@@ -242,10 +337,7 @@ const SavedJobs = () => {
                 title="Force refresh"
                 className="p-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-40 transition"
               >
-                <RefreshCw
-                  size={18}
-                  className={isLoading ? "animate-spin" : ""}
-                />
+                <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
               </button>
               <button
                 onClick={handleClearCache}
@@ -277,7 +369,6 @@ const SavedJobs = () => {
           </div>
         </div>
 
-        {}
         <div className="overflow-x-auto min-h-[300px]">
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
@@ -300,13 +391,8 @@ const SavedJobs = () => {
                 <tr>
                   <td colSpan="9" className="p-12 text-center">
                     <div className="flex flex-col items-center justify-center gap-3">
-                      <RefreshCw
-                        className="animate-spin text-emerald-500"
-                        size={32}
-                      />
-                      <span className="text-gray-400 text-sm">
-                        Fetching from LinkedIn...
-                      </span>
+                      <RefreshCw className="animate-spin text-emerald-500" size={32} />
+                      <span className="text-gray-400 text-sm">Fetching from LinkedIn...</span>
                     </div>
                   </td>
                 </tr>
@@ -321,18 +407,13 @@ const SavedJobs = () => {
                   <React.Fragment key={job.job_posting_urn}>
                     <tr
                       className={`group transition-colors ${
-                        expandedJobUrn === job.job_posting_urn
-                          ? "bg-gray-800"
-                          : "hover:bg-emerald-900/5"
+                        expandedJobUrn === job.job_posting_urn ? "bg-gray-800" : "hover:bg-emerald-900/5"
                       }`}
                     >
-                      {}
                       <td className="px-6 py-4 min-w-[200px]">
                         <div className="flex items-start gap-3">
                           <button
-                            onClick={() =>
-                              toggleDescription(job.job_posting_urn)
-                            }
+                            onClick={() => toggleDescription(job.job_posting_urn)}
                             className="mt-1 text-gray-500 hover:text-emerald-400 transition-colors focus:outline-none"
                           >
                             {expandedJobUrn === job.job_posting_urn ? (
@@ -344,23 +425,17 @@ const SavedJobs = () => {
                           <div>
                             <div
                               className="font-bold text-gray-200 cursor-pointer hover:text-emerald-400"
-                              onClick={() =>
-                                toggleDescription(job.job_posting_urn)
-                              }
+                              onClick={() => toggleDescription(job.job_posting_urn)}
                             >
                               {job.title ? job.title.trim() : "Unknown Title"}
                             </div>
                             <div className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                              <Building size={12} />{" "}
-                              {job.company
-                                ? job.company.name
-                                : "Unknown Company"}
+                              <Building size={12} /> {job.company ? job.company.name : "Unknown Company"}
                             </div>
                           </div>
                         </div>
                       </td>
 
-                      {}
                       <td className="px-6 py-4 max-w-[200px]">
                         <div className="flex flex-wrap gap-1.5">
                           {job.foundations && job.foundations.length > 0 ? (
@@ -369,7 +444,7 @@ const SavedJobs = () => {
                                 key={tech}
                                 className={`px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ${getTechBadgeStyle(
                                   index,
-                                  tech,
+                                  tech
                                 )}`}
                               >
                                 {tech}
@@ -381,7 +456,6 @@ const SavedJobs = () => {
                         </div>
                       </td>
 
-                      {}
                       <td className="px-6 py-4 max-w-[250px]">
                         <div className="flex flex-wrap gap-1.5">
                           {job.specifics && job.specifics.length > 0 ? (
@@ -390,7 +464,7 @@ const SavedJobs = () => {
                                 key={tech}
                                 className={`px-2 py-0.5 rounded text-[10px] font-medium border shadow-sm ${getTechBadgeStyle(
                                   index + 5,
-                                  tech,
+                                  tech
                                 )}`}
                               >
                                 {tech}
@@ -402,11 +476,12 @@ const SavedJobs = () => {
                         </div>
                       </td>
 
-                      {}
                       <td className="px-6 py-4">
                         {job.seniority ? (
                           <span
-                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getSeniorityStyle(job.seniority)}`}
+                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getSeniorityStyle(
+                              job.seniority
+                            )}`}
                           >
                             {job.seniority}
                           </span>
@@ -417,11 +492,12 @@ const SavedJobs = () => {
                         )}
                       </td>
 
-                      {}
                       <td className="px-6 py-4">
                         {job.jobType ? (
                           <span
-                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getTypeStyle(job.jobType)}`}
+                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getTypeStyle(
+                              job.jobType
+                            )}`}
                           >
                             {job.jobType}
                           </span>
@@ -432,11 +508,12 @@ const SavedJobs = () => {
                         )}
                       </td>
 
-                      {}
                       <td className="px-6 py-4">
                         {job.experienceData ? (
                           <span
-                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getExperienceStyle(job.experienceData)}`}
+                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getExperienceStyle(
+                              job.experienceData
+                            )}`}
                           >
                             {job.experienceData.text}
                           </span>
@@ -447,33 +524,22 @@ const SavedJobs = () => {
                         )}
                       </td>
 
-                      {}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-gray-300 text-sm whitespace-nowrap">
                           <Calendar size={14} className="text-gray-500" />
                           {job.posted_at_formatted ? (
-                            <span className="capitalize">
-                              {formatCustomDate(job.posted_at_formatted)}
-                            </span>
+                            <span className="capitalize">{formatCustomDate(job.posted_at_formatted)}</span>
                           ) : (
                             <span className="text-gray-600 italic">N/A</span>
                           )}
                         </div>
                       </td>
 
-                      {}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-gray-300 text-sm">
                           <Users size={14} className="text-gray-500" />
-                          {job.applicants !== undefined &&
-                          job.applicants !== null ? (
-                            <span
-                              className={
-                                job.applicants > 100
-                                  ? "text-emerald-400 font-bold"
-                                  : ""
-                              }
-                            >
+                          {job.applicants !== undefined && job.applicants !== null ? (
+                            <span className={job.applicants > 100 ? "text-emerald-400 font-bold" : ""}>
                               {job.applicants}
                             </span>
                           ) : (
@@ -482,15 +548,12 @@ const SavedJobs = () => {
                         </div>
                       </td>
 
-                      {}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-gray-400 text-sm">
-                          <MapPin size={14} className="text-gray-500" />{" "}
-                          {job.location || "Remote / Unspecified"}
+                          <MapPin size={14} className="text-gray-500" /> {job.location || "Remote / Unspecified"}
                         </div>
                       </td>
 
-                      {}
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1 items-start">
                           {job.insights && job.insights.length > 0 ? (
@@ -498,21 +561,18 @@ const SavedJobs = () => {
                               <span
                                 key={idx}
                                 className={`px-3 py-1 rounded-full text-xs border whitespace-nowrap ${getInsightStyle(
-                                  insight,
+                                  insight
                                 )}`}
                               >
                                 {insight.trim()}
                               </span>
                             ))
                           ) : (
-                            <span className="text-gray-600 text-xs italic">
-                              No updates
-                            </span>
+                            <span className="text-gray-600 text-xs italic">No updates</span>
                           )}
                         </div>
                       </td>
 
-                      {}
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <a
@@ -533,7 +593,6 @@ const SavedJobs = () => {
                       </td>
                     </tr>
 
-                    {}
                     {expandedJobUrn === job.job_posting_urn && (
                       <tr className="bg-gray-900/30 border-b border-gray-700/50 animate-in fade-in zoom-in-95 duration-200">
                         <td colSpan="9" className="px-6 py-4">
@@ -545,40 +604,23 @@ const SavedJobs = () => {
                               <ReactMarkdown
                                 components={{
                                   strong: ({ node, ...props }) => (
-                                    <span
-                                      className="font-bold text-white"
-                                      {...props}
-                                    />
+                                    <span className="font-bold text-white" {...props} />
                                   ),
                                   ul: ({ node, ...props }) => (
-                                    <ul
-                                      className="list-disc pl-5 space-y-1 my-2"
-                                      {...props}
-                                    />
+                                    <ul className="list-disc pl-5 space-y-1 my-2" {...props} />
                                   ),
-                                  li: ({ node, ...props }) => (
-                                    <li className="pl-1" {...props} />
-                                  ),
+                                  li: ({ node, ...props }) => <li className="pl-1" {...props} />,
                                   p: ({ node, ...props }) => (
                                     <p className="mb-2 last:mb-0" {...props} />
                                   ),
                                   h1: ({ node, ...props }) => (
-                                    <h1
-                                      className="text-lg font-bold text-emerald-400 mt-4 mb-2"
-                                      {...props}
-                                    />
+                                    <h1 className="text-lg font-bold text-emerald-400 mt-4 mb-2" {...props} />
                                   ),
                                   h2: ({ node, ...props }) => (
-                                    <h2
-                                      className="text-base font-bold text-emerald-400 mt-3 mb-2"
-                                      {...props}
-                                    />
+                                    <h2 className="text-base font-bold text-emerald-400 mt-3 mb-2" {...props} />
                                   ),
                                   h3: ({ node, ...props }) => (
-                                    <h3
-                                      className="text-sm font-bold text-emerald-400 mt-2 mb-1"
-                                      {...props}
-                                    />
+                                    <h3 className="text-sm font-bold text-emerald-400 mt-2 mb-1" {...props} />
                                   ),
                                 }}
                               >
@@ -605,61 +647,13 @@ const SavedJobs = () => {
           </table>
         </div>
 
-        {}
         <div className="px-6 py-3 bg-gray-900/50 border-t border-gray-700 flex justify-between items-center text-xs text-gray-500">
           <span>Showing {filteredJobs.length} items</span>
         </div>
       </div>
 
-      {}
-      <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 flex flex-col md:flex-row justify-between items-center gap-4">
-        <div className="flex items-center gap-4 w-full md:w-auto">
-          <div className="flex flex-col">
-            <label className="text-xs text-gray-400 font-bold uppercase mb-1 ml-1 flex items-center gap-1">
-              <Hash size={12} /> Copy First N Items
-            </label>
-            <input
-              type="number"
-              min="1"
-              max={jobs.length}
-              placeholder={`Max: ${jobs.length}`}
-              value={exportCount}
-              onChange={(e) => setExportCount(e.target.value)}
-              className="bg-gray-900 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-emerald-500 w-32"
-            />
-          </div>
-          <div className="flex flex-col justify-end h-full pt-5">
-            <span className="text-sm font-medium text-gray-300 bg-gray-900 px-3 py-2 rounded-lg border border-gray-700 min-w-[100px] text-center">
-              Count:{" "}
-              <span className="text-emerald-400 font-bold">
-                {jobsToExport.length}
-              </span>
-            </span>
-          </div>
-        </div>
-        <button
-          onClick={handleCopyJobs}
-          disabled={jobsToExport.length === 0}
-          className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-bold transition-all duration-200 ${
-            isCopied
-              ? "bg-green-600 text-white"
-              : jobsToExport.length === 0
-                ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg hover:shadow-emerald-500/20"
-          }`}
-        >
-          {isCopied ? (
-            <>
-              <CheckCircle2 size={18} /> Copied!
-            </>
-          ) : (
-            <>
-              <Copy size={18} /> Copy{" "}
-              {jobsToExport.length > 0 ? `(${jobsToExport.length})` : ""} JSON
-            </>
-          )}
-        </button>
-      </div>
+      {/* Copy first N items panel (extracted, same file) */}
+      <CopyFirstNItems items={jobs} />
     </div>
   );
 };
