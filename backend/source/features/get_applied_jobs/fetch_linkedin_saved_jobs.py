@@ -11,6 +11,7 @@ from source.features.get_applied_jobs.linkedin_fetch_call_repository import (
     LinkedInRequest,  # NEW IMPORT
     VoyagerGraphQLRequest  # NEW IMPORT
 )
+from source.features.job_population.enrichment_service import EnrichmentService
 
 # ---------------------------------------------------------------------
 # CONSTANTS
@@ -373,6 +374,18 @@ def enrich_jobs_with_sdui(
             job["description"] = extract_description_from_sdui(resp.content)
         else:
             job["description"] = "Failed to fetch description."
+
+        try:
+            enrichment_data = EnrichmentService.fetch_single_job_details_enrichment(ctx.session, urn)
+
+            applicants = enrichment_data.get("applicants")
+            if applicants is not None:
+                job["applicants"] = applicants
+            else:
+                job["applicants"] = None
+
+        except Exception as e:
+            job["applicants"] = None
 
         meta = fetch_job_posting_metadata(ctx.session, job_id)
         if meta:
