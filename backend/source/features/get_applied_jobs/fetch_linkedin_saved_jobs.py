@@ -3,6 +3,7 @@
 import json
 import time
 import re
+from datetime import timezone, datetime
 from typing import Optional
 
 from source.features.get_applied_jobs.linkedin_fetch_call_repository import (
@@ -133,6 +134,12 @@ def fetch_voyager_page(ctx: LinkedInFetchContext, start: int, debug=False, debug
 # ---------------------------------------------------------------------
 # PAYLOAD PARSING (UNCHANGED)
 # ---------------------------------------------------------------------
+
+def format_timestamp_ms(ms: int) -> str:
+    if not ms:
+        return None
+    dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+    return dt.strftime("%Y-%m-%d")
 
 def extract_jobs_from_payload(payload: dict) -> list[dict]:
     included = payload.get("included", [])
@@ -367,6 +374,29 @@ def enrich_jobs_with_sdui(
         else:
             job["description"] = "Failed to fetch description."
 
+        meta = fetch_job_posting_metadata(ctx.session, job_id)
+        if meta:
+            listed_at = meta.get("listedAt")
+            created_at = meta.get("createdAt")
+            expire_at = meta.get("expireAt")
+            apply_method = meta.get("applyMethod")
+
+            job["posted_at"] = listed_at
+            job["posted_at_formatted"] = format_timestamp_ms(listed_at)
+
+            job["created_at"] = created_at
+            job["created_at_formatted"] = format_timestamp_ms(created_at)
+
+            job["expire_at"] = expire_at
+            job["expire_at_formatted"] = format_timestamp_ms(expire_at)
+
+            job["apply_method"] = apply_method
+        else:
+            job["listed_at"] = None
+            job["created_at"] = None
+            job["expire_at"] = None
+            job["apply_method"] = None
+
 
 # ---------------------------------------------------------------------
 # PUBLIC ENTRYPOINT (UNCHANGED LOGIC)
@@ -446,3 +476,11 @@ def fetch_linkedin_saved_jobs(
         }
 
     return response
+
+def fetch_job_posting_metadata(session, job_id):
+    url = f"https://www.linkedin.com/voyager/api/jobs/jobPostings/{job_id}"
+    resp = session.get(url, headers={
+        "accept": "application/json",
+        "x-restli-protocol-version": "2.0.0"
+    })
+    return resp.json() if resp.ok else None
