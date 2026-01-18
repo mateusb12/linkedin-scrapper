@@ -3,13 +3,14 @@
 import json
 import time
 import re
+import random  # ADDED for jitter
 from datetime import timezone, datetime
 from typing import Optional
 
 from source.features.get_applied_jobs.linkedin_fetch_call_repository import (
     get_linkedin_fetch_artefacts,
-    LinkedInRequest,  # NEW IMPORT
-    VoyagerGraphQLRequest  # NEW IMPORT
+    LinkedInRequest,
+    VoyagerGraphQLRequest
 )
 from source.features.job_population.enrichment_service import EnrichmentService
 
@@ -141,6 +142,7 @@ def format_timestamp_ms(ms: int) -> str:
         return None
     dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
     return dt.strftime("%Y-%m-%d")
+
 
 def extract_jobs_from_payload(payload: dict) -> list[dict]:
     included = payload.get("included", [])
@@ -412,13 +414,13 @@ def enrich_jobs_with_sdui(
 
 
 # ---------------------------------------------------------------------
-# PUBLIC ENTRYPOINT (UNCHANGED LOGIC)
+# PUBLIC ENTRYPOINT (DEFAULT CHANGED TO "all")
 # ---------------------------------------------------------------------
 
 def fetch_linkedin_saved_jobs(
         *,
         card_type: str,
-        pagination: str = "1",
+        pagination: str = "all",  # CHANGED DEFAULT
         start_override: Optional[int] = None,
         enrich: bool = True,
         debug: bool = False,
@@ -440,17 +442,48 @@ def fetch_linkedin_saved_jobs(
     all_jobs = []
     pages_fetched = []
 
+    # SAFETY: Track URNs to prevent infinite loops if API ignores 'start' param
+    seen_urns = set()
+
     if pagination == "all":
         start = start_override or 0
+        page_num = 1
+
         while True:
+            # 1. Fetch Page
             payload = fetch_voyager_page(ctx, start, debug, debug_curls)
+
+            # 2. Extract Jobs
             jobs = extract_jobs_from_payload(payload)
             if not jobs:
                 break
-            all_jobs.extend(jobs)
-            pages_fetched.append(start // PAGE_SIZE + 1)
+
+            # 3. Duplicate Detection (Safety Mechanism)
+            new_unique_jobs = []
+            for job in jobs:
+                urn = job.get("job_posting_urn")
+                # Only add if we haven't seen this URN before
+                if urn and urn not in seen_urns:
+                    seen_urns.add(urn)
+                    new_unique_jobs.append(job)
+
+            # If we fetched jobs but ALL were duplicates, it means we are looping
+            # (LinkedIn API ignored the 'start' param and sent Page 1 again).
+            if not new_unique_jobs:
+                if debug:
+                    print(
+                        f"[DEBUG] Infinite Loop Protection: Stopping at start={start}. All returned jobs were duplicates.")
+                break
+
+            all_jobs.extend(new_unique_jobs)
+            pages_fetched.append(page_num)
+
+            # 4. Prepare for next iteration
             start += PAGE_SIZE
-            time.sleep(0.5)
+            page_num += 1
+            # Add jitter to avoid bot detection
+            time.sleep(random.uniform(0.5, 1.5))
+
     else:
         page_num = max(1, int(pagination))
         start = start_override if start_override is not None else (page_num - 1) * PAGE_SIZE
@@ -489,6 +522,7 @@ def fetch_linkedin_saved_jobs(
         }
 
     return response
+
 
 def fetch_job_posting_metadata(session, job_id):
     url = f"https://www.linkedin.com/voyager/api/jobs/jobPostings/{job_id}"

@@ -636,7 +636,7 @@ def get_linkedin_applied_jobs_raw():
     try:
         payload = fetch_linkedin_saved_jobs(
             card_type=request.args.get("card_type", "applied").lower(),
-            pagination=request.args.get("pagination", "1"),
+            pagination=request.args.get("pagination", "all"),
             start_override=request.args.get("start", type=int),
             enrich=request.args.get("enrich", "true").lower() == "true",
             debug=request.args.get("debug", "false").lower() == "true",
