@@ -237,10 +237,11 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
                           <Calendar size={14} className="text-green-400" />
                           {formatCustomDate(job.appliedAt)}
                         </div>
-                        <div className="text-xs text-gray-600 mt-1 pl-6">
-                          {new Date(job.appliedAt).toLocaleTimeString([], {
+                        <div className="text-xs text-gray-400 mt-1 pl-6 font-medium">
+                          {new Date(job.appliedAt).toLocaleTimeString("pt-BR", {
                             hour: "2-digit",
                             minute: "2-digit",
+                            hour12: false,
                           })}
                         </div>
                       </td>
