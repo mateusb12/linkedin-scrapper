@@ -133,9 +133,11 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
   const [isCopied, setIsCopied] = useState(false);
 
   const enrichedJobs = useMemo(() => {
-    if (!jobs) return [];
+    const sourceData = searchTerm.trim() !== "" && allJobs ? allJobs : jobs;
 
-    return jobs.map((job) => {
+    if (!sourceData) return [];
+
+    return sourceData.map((job) => {
       const description = job.description || job.description_full || "";
       const fullTextContext = `${job.title} ${description}`;
 
@@ -150,15 +152,28 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
         jobType,
       };
     });
-  }, [jobs]);
+  }, [jobs, allJobs, searchTerm]);
 
   const filteredJobs = useMemo(() => {
-    return enrichedJobs.filter(
-      (j) =>
-        (j.title && j.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (j.company &&
-          j.company.toLowerCase().includes(searchTerm.toLowerCase())),
-    );
+    const term = searchTerm.toLowerCase();
+
+    return enrichedJobs.filter((j) => {
+      const title = j.title?.toLowerCase() || "";
+      const company = j.company?.toLowerCase() || "";
+      const location = j.location?.toLowerCase() || "";
+      const seniority = j.seniority?.toLowerCase() || "";
+      const jobType = j.jobType?.toLowerCase() || "";
+      const description = j.description_full?.toLowerCase() || "";
+
+      return (
+        title.includes(term) ||
+        company.includes(term) ||
+        location.includes(term) ||
+        seniority.includes(term) ||
+        jobType.includes(term) ||
+        description.includes(term)
+      );
+    });
   }, [enrichedJobs, searchTerm]);
 
   const jobsToExport = useMemo(() => {
@@ -169,7 +184,6 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
     const startDate = new Date(copyStartDate);
     startDate.setHours(0, 0, 0, 0);
 
-    // 1. First filter by date (to avoid running regex on unnecessary items)
     const dateFiltered = sourceData.filter((job) => {
       if (!job.appliedAt) return false;
 
@@ -180,7 +194,6 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
       return jobDateMidnight >= startDate;
     });
 
-    // 2. Then enrich the data with the calculated columns
     return dateFiltered.map((job) => {
       const description = job.description || job.description_full || "";
       const fullTextContext = `${job.title} ${description}`;
@@ -191,11 +204,11 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
 
       return {
         ...job,
-        // Injected fields for the JSON export
+
         extracted_seniority: seniority || "N/A",
         extracted_type: jobType || "N/A",
         extracted_experience: experienceData ? experienceData.text : "N/A",
-        // Keeping the raw object in case you need the min/max numbers programmatically
+
         experience_details: experienceData,
       };
     });
@@ -403,7 +416,7 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
           </table>
         </div>
 
-        {pagination && pagination.totalPages > 1 && (
+        {!searchTerm && pagination && pagination.totalPages > 1 && (
           <PaginationControls
             currentPage={pagination.page}
             totalPages={pagination.totalPages}
