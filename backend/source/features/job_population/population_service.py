@@ -302,72 +302,65 @@ class PopulationService:
 
     @staticmethod
     def reconcile_failures() -> Dict[str, Any]:
-        """
-        Cross-checks the 'Jobs' table against the 'Emails' table.
-        If a Job is 'Active' (not Refused) but we have a 'Job fails' email
-        matching the Company Name, we force the Job status to 'Refused'.
-        """
         print("[Reconcile] Starting SQL Cross-Check...")
         session = get_db_session()
         updated_count = 0
-        updated_jobs = []
+
+        import re
 
         try:
-            # 1. Fetch all emails tagged as rejection
-            # Adjust 'Job fails' if your folder name is different in DB
+            # 1. Fetch emails
             rejection_emails = session.query(Email).filter(
                 or_(Email.folder == 'Job fails', Email.category == 'Rejection')
             ).all()
 
-            # Pre-process emails into a search blob for speed?
-            # Actually, iterating jobs is safer to avoid false positives.
-
-            # 2. Fetch all jobs that are NOT already refused/rejected
-            # We don't want to waste time on closed jobs
+            # 2. Fetch active jobs
             active_jobs = session.query(Job).filter(
-                Job.application_status.notin_(['Refused', 'Rejected', 'Hired'])
+                or_(
+                    Job.application_status.is_(None),
+                    Job.application_status.notin_(['Refused', 'Rejected', 'Hired'])
+                )
             ).all()
 
-            print(f"[Reconcile] Checking {len(active_jobs)} active jobs against {len(rejection_emails)} rejection emails...")
-
             for job in active_jobs:
+                # SKIP JOBS WITHOUT COMPANY
                 if not job.company or not job.company.name:
                     continue
 
-                company_name = job.company.name.lower().strip()
+                # 1. Normalize
+                company_name_raw = job.company.name.lower().strip()
+                company_slug = re.sub(r'[\W_]+', '', company_name_raw)
 
-                # Skip very short names to avoid bad matches (e.g. "AI", "Go")
-                if len(company_name) < 3:
-                    continue
+                if len(company_slug) < 3: continue
 
-                # 3. The Match Logic
-                # Does any rejection email contain this company name?
+                # Debug specific company
+                if "framework" in company_name_raw:
+                    print(f"[DEBUG LOOP] Processing: {company_name_raw} (Slug: {company_slug})")
+
                 match_found = False
                 for email in rejection_emails:
-                    # Search in Sender Name, Sender Address, and Subject
-                    content_blob = f"{email.sender} {email.sender_email} {email.subject}".lower()
+                    sender = (email.sender or "").lower()
+                    address = (email.sender_email or "").lower()
+                    subject = (email.subject or "").lower()
 
-                    if company_name in content_blob:
+                    content_blob = f"{sender} {address} {subject}"
+
+                    if company_name_raw in content_blob or (len(company_slug) > 3 and company_slug in content_blob):
                         match_found = True
-                        print(f"[Reconcile] ❌ FOUND MATCH! Job: {job.title} @ {job.company.name} <-> Email: {email.subject}")
+                        print(f"[Reconcile] ❌ MATCH FOUND! {job.company.name} -> Refused")
                         break
 
                 if match_found:
                     job.application_status = "Refused"
                     updated_count += 1
-                    updated_jobs.append(f"{job.company.name} - {job.title}")
 
             session.commit()
-            print(f"[Reconcile] Done. Updated {updated_count} jobs.")
-            return {
-                "success": True,
-                "updated_count": updated_count,
-                "jobs_fixed": updated_jobs
-            }
+            return {"success": True, "updated_count": updated_count}
 
         except Exception as e:
             session.rollback()
             print(f"[Reconcile] Error: {e}")
+            import traceback
             traceback.print_exc()
             return {"success": False, "error": str(e)}
         finally:
