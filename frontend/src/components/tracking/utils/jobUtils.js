@@ -1,25 +1,76 @@
 export const extractExperienceFromDescription = (description) => {
-  if (!description) return null;
-
-  const regex =
-    /\b(\d+)(?:\s*[-–to]\s*(\d+))?\s*(?:\+|plus|\s*mais)?\s*(?:years?|yrs?|anos?)\b/i;
-
-  const match = description.match(regex);
-
-  if (match) {
-    const min = parseInt(match[1], 10);
-    const max = match[2] ? parseInt(match[2], 10) : null;
-
-    if (min > 20) return null;
-
-    return {
-      min,
-      max,
-      text: match[0],
-    };
+  if (!description) {
+    console.warn(
+      "⚠️ extractExperience: Description is MISSING/NULL. Skipping regex.",
+    );
+    return null;
   }
 
-  return null;
+  const snippet = description.slice(0, 40).replace(/\n/g, " ") + "...";
+
+  const hasKeywords = /years?|anos?/i.test(description);
+
+  if (hasKeywords) {
+    console.groupCollapsed(`🔍 Job Analysis: "${snippet}"`);
+  }
+
+  const regex =
+    /\b(\d+)(?:\s*[-–to]\s*(\d+))?\s*(?:\+|plus|\s*mais)?\s*(?:years?|yrs?|anos?)\b/gi;
+
+  const matches = [...description.matchAll(regex)];
+
+  if (matches.length === 0) {
+    if (hasKeywords) {
+      console.log("❌ Keywords found, but REGEX matched nothing.");
+      console.log("Full Text Sample:", description.slice(0, 200));
+      console.groupEnd();
+    }
+    return null;
+  }
+
+  console.log(`✅ Found ${matches.length} raw matches:`);
+
+  const candidates = matches
+    .map((m) => {
+      const min = parseInt(m[1], 10);
+      const max = m[2] ? parseInt(m[2], 10) : null;
+
+      console.log(`   ➡ Raw Match: "${m[0]}" (Parsed Min: ${min})`);
+
+      return { min, max, fullMatch: m[0] };
+    })
+    .filter((item) => {
+      const isValid = item.min > 0 && item.min <= 20;
+      if (!isValid) {
+        console.log(
+          `   ⚠️ Filtered out: ${item.min} (Reason: Must be > 0 and <= 20)`,
+        );
+      }
+      return isValid;
+    });
+
+  if (candidates.length === 0) {
+    if (hasKeywords) {
+      console.log("❌ Matches found, but all were filtered out.");
+      console.groupEnd();
+    }
+    return null;
+  }
+
+  const bestMatch = candidates.reduce((prev, current) => {
+    return prev.min > current.min ? prev : current;
+  });
+
+  if (hasKeywords) {
+    console.log("🏆 Selected Winner:", bestMatch);
+    console.groupEnd();
+  }
+
+  return {
+    min: bestMatch.min,
+    max: bestMatch.max,
+    text: bestMatch.fullMatch,
+  };
 };
 
 const formatCustomDate = (dateStr) => {
@@ -155,80 +206,63 @@ export const extractJobTypeFromDescription = (fullText) => {
 
   let text = fullText.toLowerCase();
 
-  // --- STEP 1: PRE-PROCESSING & CLEANING ---
-
-  // 1. Fix common recruiter typos
-  text = text.replace(/phyton/g, "python"); // The "Foursys" fix
+  text = text.replace(/phyton/g, "python");
   text = text.replace(/javascrpt|java script/g, "javascript");
 
-  // 2. Remove "Collaboration" noise (The "Makai" fix)
-  // We remove phrases where the role simply talks to other teams
-  text = text.replace(/(collaborate|work|interface|integrate|support|liaise)\s+(with|closely\s+with)\s+(the\s+)?(front|back)-?end/g, " ");
+  text = text.replace(
+    /(collaborate|work|interface|integrate|support|liaise)\s+(with|closely\s+with)\s+(the\s+)?(front|back)-?end/g,
+    " ",
+  );
 
-  // --- STEP 2: IMMEDIATE "FULL-STACK" TRIGGERS ---
-
-  // Explicit "Full Stack" mention is usually the strongest signal
   if (/\b(full\s?-?stack|fullstack)\b/i.test(text)) {
     return "Full-stack";
   }
 
-  // The "ProFUSION" Fix: Polyglot/Generalist detection
-  // If they say "Backend, Frontend or Mobile" or "Backend / Frontend", it's a generalist role.
-  // We treat this as Full-stack for classification purposes.
-  if (/(backend\s*(,|ou|or|\/)\s*frontend)|(frontend\s*(,|ou|or|\/)\s*backend)/i.test(text)) {
+  if (
+    /(backend\s*(,|ou|or|\/)\s*frontend)|(frontend\s*(,|ou|or|\/)\s*backend)/i.test(
+      text,
+    )
+  ) {
     return "Full-stack";
   }
-
-  // --- STEP 3: SCORING SYSTEM ---
 
   let backendScore = 0;
   let frontendScore = 0;
 
-  // We weight the TITLE (first ~150 chars) much heavier than the body
   const titleChunk = text.slice(0, 150);
   const bodyChunk = text.slice(150);
 
   const scoreText = (txt, weight) => {
-    // BACKEND KEYWORDS
-    const backendRegex = /\b(backend|back-end|python|java|go|golang|ruby|php|c#|rust|scala|elixir|nodejs|node\.js|\.net|api|apis|sql|mysql|postgres|docker|aws|cloud|microservices|data engineer|etl|spark|airflow)\b/g;
+    const backendRegex =
+      /\b(backend|back-end|python|java|go|golang|ruby|php|c#|rust|scala|elixir|nodejs|node\.js|\.net|api|apis|sql|mysql|postgres|docker|aws|cloud|microservices|data engineer|etl|spark|airflow)\b/g;
     const backendMatches = txt.match(backendRegex) || [];
     backendScore += backendMatches.length * weight;
 
-    // FRONTEND KEYWORDS
-    const frontendRegex = /\b(frontend|front-end|javascript|js|typescript|ts|react|vue|angular|svelte|next\.?js|html|css|ui\/ux|ui|ux|figma|styled|tailwind)\b/g;
+    const frontendRegex =
+      /\b(frontend|front-end|javascript|js|typescript|ts|react|vue|angular|svelte|next\.?js|html|css|ui\/ux|ui|ux|figma|styled|tailwind)\b/g;
     const frontendMatches = txt.match(frontendRegex) || [];
     frontendScore += frontendMatches.length * weight;
   };
 
-  // Apply Scoring: Title words are worth 5x more than Body words
   scoreText(titleChunk, 5);
   scoreText(bodyChunk, 1);
 
-  // --- STEP 4: ANALYZE SCORES ---
-
-  // If the scores are very close (within 20% of each other) and both are high, it's likely Full-stack
-  // (e.g., a job asking for React AND Node equally)
   if (backendScore > 5 && frontendScore > 5) {
-    const ratio = Math.max(backendScore, frontendScore) / Math.min(backendScore, frontendScore);
+    const ratio =
+      Math.max(backendScore, frontendScore) /
+      Math.min(backendScore, frontendScore);
     if (ratio < 1.3) {
       return "Full-stack";
     }
   }
 
-  // The "Nortal" Fix:
-  // Even if the title says "UI/UX" (Frontend points), if the body lists
-  // Python, API, MySQL repeatedly, the Backend Score will overtake the Frontend Score.
-
   if (backendScore > frontendScore) return "Backend";
   if (frontendScore > backendScore) return "Frontend";
 
-  // --- STEP 5: TIE-BREAKER / FALLBACK ---
-
-  // If scores are equal or zero (rare), look for specific "Developer" context
   if (/\b(python|java|go|ruby)\s+developer\b/.test(text)) return "Backend";
   if (/\b(react|vue|angular)\s+developer\b/.test(text)) return "Frontend";
 
-  return null; // Truly uncategorized
+  return null;
 };
 
 export const getSeniorityStyle = (seniority) => {

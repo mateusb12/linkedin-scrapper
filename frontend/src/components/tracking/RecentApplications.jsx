@@ -136,7 +136,7 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
     if (!jobs) return [];
 
     return jobs.map((job) => {
-      const description = job.description || "";
+      const description = job.description || job.description_full || "";
       const fullTextContext = `${job.title} ${description}`;
 
       const experienceData = extractExperienceFromDescription(description);
