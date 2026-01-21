@@ -169,15 +169,35 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
     const startDate = new Date(copyStartDate);
     startDate.setHours(0, 0, 0, 0);
 
-    return sourceData.filter((job) => {
+    // 1. First filter by date (to avoid running regex on unnecessary items)
+    const dateFiltered = sourceData.filter((job) => {
       if (!job.appliedAt) return false;
 
       const jobDate = new Date(job.appliedAt);
-
       const jobDateMidnight = new Date(jobDate);
       jobDateMidnight.setHours(0, 0, 0, 0);
 
       return jobDateMidnight >= startDate;
+    });
+
+    // 2. Then enrich the data with the calculated columns
+    return dateFiltered.map((job) => {
+      const description = job.description || job.description_full || "";
+      const fullTextContext = `${job.title} ${description}`;
+
+      const experienceData = extractExperienceFromDescription(description);
+      const seniority = extractSeniorityFromDescription(fullTextContext);
+      const jobType = extractJobTypeFromDescription(fullTextContext);
+
+      return {
+        ...job,
+        // Injected fields for the JSON export
+        extracted_seniority: seniority || "N/A",
+        extracted_type: jobType || "N/A",
+        extracted_experience: experienceData ? experienceData.text : "N/A",
+        // Keeping the raw object in case you need the min/max numbers programmatically
+        experience_details: experienceData,
+      };
     });
   }, [allJobs, jobs, copyStartDate]);
 
