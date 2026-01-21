@@ -26,6 +26,12 @@ import {
   getExperienceStyle,
 } from "./utils/jobUtils";
 
+const isRiskyApplication = (job) => {
+  if (job.experienceData?.min >= 10) return true;
+
+  return false;
+};
+
 const STATUS_STYLES = {
   waiting: {
     css: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
@@ -108,11 +114,17 @@ const ApplicationTable = memo(({ jobs, onSelectJob }) => {
               job.applicants !== undefined &&
               job.applicants > 0;
 
+            const isRisky = isRiskyApplication(job);
+
             return (
               <tr
                 key={job.urn}
                 onClick={() => onSelectJob(job)}
-                className="group hover:bg-gray-700/30 transition-colors cursor-pointer"
+                className={`group transition-colors cursor-pointer border-l-4 ${
+                  isRisky
+                    ? "bg-red-900/10 hover:bg-red-900/20 border-red-500/50"
+                    : "hover:bg-gray-700/30 border-transparent"
+                }`}
               >
                 {}
                 <td className="px-6 py-4">
