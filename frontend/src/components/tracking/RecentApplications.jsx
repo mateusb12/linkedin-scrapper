@@ -26,10 +26,31 @@ import {
   getExperienceStyle,
 } from "./utils/jobUtils";
 
-const isRiskyApplication = (job) => {
-  if (job.experienceData?.min >= 10) return true;
+const getJobRiskConfig = (job) => {
+  const minExp = job.experienceData?.min || 0;
+  const seniority = (job.seniority || "").toLowerCase();
 
-  return false;
+  const isSafeSeniority =
+      seniority.includes("júnior") ||
+      seniority.includes("junior") ||
+      seniority.includes("pleno") ||
+      seniority.includes("mid-level");
+
+  const isLowExperience = job.experienceData && minExp < 4;
+
+  if (isSafeSeniority || isLowExperience) {
+    return "bg-green-500/5 hover:bg-green-500/10 border-green-500/20";
+  }
+
+  if (minExp >= 7) {
+    return "bg-red-500/5 hover:bg-red-500/10 border-red-500/20";
+  }
+
+  if (minExp >= 5) {
+    return "bg-orange-500/5 hover:bg-orange-500/10 border-orange-500/20";
+  }
+
+  return "hover:bg-gray-700/30 border-transparent";
 };
 
 const STATUS_STYLES = {
@@ -114,17 +135,13 @@ const ApplicationTable = memo(({ jobs, onSelectJob }) => {
               job.applicants !== undefined &&
               job.applicants > 0;
 
-            const isRisky = isRiskyApplication(job);
+            const riskStyleClass = getJobRiskConfig(job);
 
             return (
               <tr
                 key={job.urn}
                 onClick={() => onSelectJob(job)}
-                className={`group transition-colors cursor-pointer border-l-4 ${
-                  isRisky
-                    ? "bg-red-900/10 hover:bg-red-900/20 border-red-500/50"
-                    : "hover:bg-gray-700/30 border-transparent"
-                }`}
+                className={`group transition-colors cursor-pointer border-l-4 ${riskStyleClass}`}
               >
                 {}
                 <td className="px-6 py-4">
