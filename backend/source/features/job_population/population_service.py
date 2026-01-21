@@ -210,10 +210,13 @@ class PopulationService:
 
                 # --- Diff Logic ---
                 TERMINAL_STATES = {"Refused", "Rejected", "Offer", "Hired", "Interviewing"}
+
+                # 1. Check if we should ignore the update (Terminal State)
                 if job.application_status in TERMINAL_STATES:
-                    print(f"[DEBUG] Skipping status update for {job.urn}. "
-                          f"Current: {job.application_status} (Protected) -> New: {new_status}")
-                else:
+                    print(
+                        f"[DEBUG] Skipping status update for {job.urn}. Current: {job.application_status} (Protected)")
+                # 2. Check if it is ACTUALLY different (The Fix)
+                elif job.application_status != new_status:
                     changes.append({
                         "field": "Status",
                         "old": job.application_status,
