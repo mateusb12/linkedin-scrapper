@@ -14,8 +14,7 @@ export const extractExperienceFromDescription = (description) => {
     console.groupCollapsed(`🔍 Job Analysis: "${snippet}"`);
   }
 
-  const regex =
-    /\b(\d+)(?:\s*[-–to]\s*(\d+))?\s*(?:\+|plus|\s*mais)?\s*(?:years?|yrs?|anos?)\b/gi;
+  const regex = /(\d+)(?:\s*[-–to]\s*(\d+))?\s*(?:\+|plus|\s*mais)?\s*(?:years?|yrs?|anos?)\b/gi;
 
   const matches = [...description.matchAll(regex)];
 
