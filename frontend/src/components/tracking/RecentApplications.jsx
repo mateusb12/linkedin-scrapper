@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, memo } from "react";
 import {
   ChevronRight,
   ChevronLeft,
@@ -26,45 +26,44 @@ import {
   getExperienceStyle,
 } from "./utils/jobUtils";
 
-const StatusBadge = ({ status }) => {
+const STATUS_STYLES = {
+  waiting: {
+    css: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+    icon: null,
+  },
+  refused: {
+    css: "bg-red-500/10 text-red-500 border-red-500/20",
+    icon: null,
+  },
+  interview: {
+    css: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+    icon: null,
+  },
+  accepted: {
+    css: "bg-green-500/10 text-green-500 border-green-500/20",
+    icon: null,
+  },
+  "actively reviewing": {
+    css: "bg-purple-500/10 text-purple-400 border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.2)]",
+    icon: <Eye size={12} className="mr-1 inline-block" />,
+  },
+  "actively reviewing applicants": {
+    css: "bg-purple-500/10 text-purple-400 border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.2)]",
+    icon: <Eye size={12} className="mr-1 inline-block" />,
+  },
+  "no longer accepting": {
+    css: "bg-gray-700/50 text-gray-400 border-gray-600/50",
+    icon: <AlertCircle size={12} className="mr-1 inline-block" />,
+  },
+  "no longer accepting applications": {
+    css: "bg-gray-700/50 text-gray-400 border-gray-600/50",
+    icon: <AlertCircle size={12} className="mr-1 inline-block" />,
+  },
+};
+
+const StatusBadge = memo(({ status }) => {
   const normalizedStatus = (status || "Waiting").toLowerCase();
-
-  const styles = {
-    waiting: {
-      css: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-      icon: null,
-    },
-    refused: {
-      css: "bg-red-500/10 text-red-500 border-red-500/20",
-      icon: null,
-    },
-    interview: {
-      css: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-      icon: null,
-    },
-    accepted: {
-      css: "bg-green-500/10 text-green-500 border-green-500/20",
-      icon: null,
-    },
-    "actively reviewing": {
-      css: "bg-purple-500/10 text-purple-400 border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.2)]",
-      icon: <Eye size={12} className="mr-1 inline-block" />,
-    },
-    "actively reviewing applicants": {
-      css: "bg-purple-500/10 text-purple-400 border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.2)]",
-      icon: <Eye size={12} className="mr-1 inline-block" />,
-    },
-    "no longer accepting": {
-      css: "bg-gray-700/50 text-gray-400 border-gray-600/50",
-      icon: <AlertCircle size={12} className="mr-1 inline-block" />,
-    },
-    "no longer accepting applications": {
-      css: "bg-gray-700/50 text-gray-400 border-gray-600/50",
-      icon: <AlertCircle size={12} className="mr-1 inline-block" />,
-    },
-  };
-
-  const config = styles[normalizedStatus] || styles["waiting"];
+  const config = STATUS_STYLES[normalizedStatus] || STATUS_STYLES["waiting"];
   const displayLabel =
     status && status.length > 20 ? status.substring(0, 18) + "..." : status;
 
@@ -76,7 +75,171 @@ const StatusBadge = ({ status }) => {
       {displayLabel || "Waiting"}
     </span>
   );
-};
+});
+
+const ApplicationTable = memo(({ jobs, onSelectJob }) => {
+  if (jobs.length === 0) {
+    return (
+      <div className="p-8 text-center text-gray-500">
+        No applications found matching your search.
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left border-collapse">
+        <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
+          <tr>
+            <th className="px-6 py-4">Application</th>
+            <th className="px-6 py-4">Seniority</th>
+            <th className="px-6 py-4">Type</th>
+            <th className="px-6 py-4">Experience</th>
+            <th className="px-6 py-4">Applied</th>
+            <th className="px-6 py-4">Applicants</th>
+            <th className="px-6 py-4">App Status</th>
+            <th className="px-6 py-4 text-right">Action</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-700">
+          {jobs.map((job) => {
+            const hasApplicants =
+              job.applicants !== null &&
+              job.applicants !== undefined &&
+              job.applicants > 0;
+
+            return (
+              <tr
+                key={job.urn}
+                onClick={() => onSelectJob(job)}
+                className="group hover:bg-gray-700/30 transition-colors cursor-pointer"
+              >
+                {}
+                <td className="px-6 py-4">
+                  <div className="font-bold text-gray-200 text-base mb-1 group-hover:text-blue-400 transition-colors flex items-center gap-2">
+                    <Briefcase size={16} className="text-purple-400" />
+                    {job.title}
+                  </div>
+                  <div className="flex items-center gap-2 pl-6 text-sm text-gray-400">
+                    <div className="flex items-center gap-1.5 font-medium">
+                      <Building2 size={12} className="text-gray-500" />
+                      {job.company}
+                    </div>
+                    <span className="text-gray-600 text-xs">•</span>
+                    <div className="text-xs text-gray-500 uppercase">
+                      {job.source || "Linkedin"}
+                    </div>
+                  </div>
+                </td>
+
+                {}
+                <td className="px-6 py-4">
+                  {job.seniority ? (
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getSeniorityStyle(
+                        job.seniority,
+                      )}`}
+                    >
+                      {job.seniority}
+                    </span>
+                  ) : (
+                    <span className="text-gray-600 text-xs italic opacity-50 flex items-center gap-1">
+                      <User size={12} /> -
+                    </span>
+                  )}
+                </td>
+
+                {}
+                <td className="px-6 py-4">
+                  {job.jobType ? (
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getTypeStyle(
+                        job.jobType,
+                      )}`}
+                    >
+                      {job.jobType}
+                    </span>
+                  ) : (
+                    <span className="text-gray-600 text-xs italic opacity-50 flex items-center gap-1">
+                      <Code2 size={12} /> -
+                    </span>
+                  )}
+                </td>
+
+                {}
+                <td className="px-6 py-4">
+                  {job.experienceData ? (
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getExperienceStyle(
+                        job.experienceData,
+                      )}`}
+                    >
+                      {job.experienceData.text}
+                    </span>
+                  ) : (
+                    <span className="text-gray-600 text-xs italic opacity-50 flex items-center gap-1">
+                      <Clock size={12} /> N/A
+                    </span>
+                  )}
+                </td>
+
+                {}
+                <td className="px-6 py-4 text-gray-400 text-sm whitespace-nowrap">
+                  <div className="flex items-center gap-2">
+                    <Calendar size={14} className="text-green-400" />
+                    {formatCustomDate(job.appliedAt)}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1 pl-6 font-medium">
+                    {new Date(job.appliedAt).toLocaleTimeString("pt-BR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false,
+                    })}
+                  </div>
+                </td>
+
+                {}
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-2 text-gray-300 text-sm">
+                    <Users
+                      size={14}
+                      className={
+                        hasApplicants ? "text-gray-500" : "text-gray-600"
+                      }
+                    />
+                    {hasApplicants ? (
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-bold border ${getCompetitionStyle(
+                          job.applicants,
+                        )}`}
+                      >
+                        {job.applicants.toLocaleString()}
+                      </span>
+                    ) : (
+                      <span className="text-gray-600 italic">-</span>
+                    )}
+                  </div>
+                </td>
+
+                {}
+                <td className="px-6 py-4">
+                  <StatusBadge status={job.application_status} />
+                </td>
+
+                {}
+                <td className="px-6 py-4 text-right">
+                  <button className="text-gray-500 hover:text-white p-2 rounded-full hover:bg-gray-600 transition-colors">
+                    <ChevronRight size={16} />
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+});
 
 const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
   const getPageNumbers = () => {
@@ -129,11 +292,22 @@ const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
 
 const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [copyStartDate, setCopyStartDate] = useState("");
   const [isCopied, setIsCopied] = useState(false);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   const enrichedJobs = useMemo(() => {
-    const sourceData = searchTerm.trim() !== "" && allJobs ? allJobs : jobs;
+    const isSearching = debouncedSearchTerm.trim() !== "";
+
+    const sourceData = isSearching && allJobs ? allJobs : jobs;
 
     if (!sourceData) return [];
 
@@ -152,12 +326,15 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
         jobType,
       };
     });
-  }, [jobs, allJobs, searchTerm]);
+  }, [jobs, allJobs, debouncedSearchTerm]);
 
   const filteredJobs = useMemo(() => {
-    const term = searchTerm.toLowerCase();
+    const term = debouncedSearchTerm.toLowerCase();
+    const isSearching = term.trim() !== "";
 
-    return enrichedJobs.filter((j) => {
+    if (!isSearching) return enrichedJobs;
+
+    const filtered = enrichedJobs.filter((j) => {
       const title = j.title?.toLowerCase() || "";
       const company = j.company?.toLowerCase() || "";
       const location = j.location?.toLowerCase() || "";
@@ -174,7 +351,9 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
         description.includes(term)
       );
     });
-  }, [enrichedJobs, searchTerm]);
+
+    return filtered.slice(0, 100);
+  }, [enrichedJobs, debouncedSearchTerm]);
 
   const jobsToExport = useMemo(() => {
     const sourceData = allJobs && allJobs.length > 0 ? allJobs : jobs;
@@ -186,11 +365,9 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
 
     const dateFiltered = sourceData.filter((job) => {
       if (!job.appliedAt) return false;
-
       const jobDate = new Date(job.appliedAt);
       const jobDateMidnight = new Date(jobDate);
       jobDateMidnight.setHours(0, 0, 0, 0);
-
       return jobDateMidnight >= startDate;
     });
 
@@ -204,11 +381,9 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
 
       return {
         ...job,
-
         extracted_seniority: seniority || "N/A",
         extracted_type: jobType || "N/A",
         extracted_experience: experienceData ? experienceData.text : "N/A",
-
         experience_details: experienceData,
       };
     });
@@ -254,168 +429,9 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
         </div>
 
         {}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
-              <tr>
-                <th className="px-6 py-4">Application</th>
-                {}
-                <th className="px-6 py-4">Seniority</th>
-                <th className="px-6 py-4">Type</th>
-                <th className="px-6 py-4">Experience</th>
-                {}
-                <th className="px-6 py-4">Applied</th>
-                <th className="px-6 py-4">Applicants</th>
-                <th className="px-6 py-4">App Status</th>
-                <th className="px-6 py-4 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-700">
-              {filteredJobs.length > 0 ? (
-                filteredJobs.map((job) => {
-                  const hasApplicants =
-                    job.applicants !== null &&
-                    job.applicants !== undefined &&
-                    job.applicants > 0;
+        <ApplicationTable jobs={filteredJobs} onSelectJob={onSelectJob} />
 
-                  return (
-                    <tr
-                      key={job.urn}
-                      onClick={() => onSelectJob(job)}
-                      className="group hover:bg-gray-700/30 transition-colors cursor-pointer"
-                    >
-                      {}
-                      <td className="px-6 py-4">
-                        <div className="font-bold text-gray-200 text-base mb-1 group-hover:text-blue-400 transition-colors flex items-center gap-2">
-                          <Briefcase size={16} className="text-purple-400" />
-                          {job.title}
-                        </div>
-                        <div className="flex items-center gap-2 pl-6 text-sm text-gray-400">
-                          <div className="flex items-center gap-1.5 font-medium">
-                            <Building2 size={12} className="text-gray-500" />
-                            {job.company}
-                          </div>
-                          <span className="text-gray-600 text-xs">•</span>
-                          <div className="text-xs text-gray-500 uppercase">
-                            {job.source || "Linkedin"}
-                          </div>
-                        </div>
-                      </td>
-
-                      {}
-                      <td className="px-6 py-4">
-                        {job.seniority ? (
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getSeniorityStyle(
-                              job.seniority,
-                            )}`}
-                          >
-                            {job.seniority}
-                          </span>
-                        ) : (
-                          <span className="text-gray-600 text-xs italic opacity-50 flex items-center gap-1">
-                            <User size={12} /> -
-                          </span>
-                        )}
-                      </td>
-
-                      {}
-                      <td className="px-6 py-4">
-                        {job.jobType ? (
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getTypeStyle(
-                              job.jobType,
-                            )}`}
-                          >
-                            {job.jobType}
-                          </span>
-                        ) : (
-                          <span className="text-gray-600 text-xs italic opacity-50 flex items-center gap-1">
-                            <Code2 size={12} /> -
-                          </span>
-                        )}
-                      </td>
-
-                      {}
-                      <td className="px-6 py-4">
-                        {job.experienceData ? (
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getExperienceStyle(
-                              job.experienceData,
-                            )}`}
-                          >
-                            {job.experienceData.text}
-                          </span>
-                        ) : (
-                          <span className="text-gray-600 text-xs italic opacity-50 flex items-center gap-1">
-                            <Clock size={12} /> N/A
-                          </span>
-                        )}
-                      </td>
-
-                      {}
-                      <td className="px-6 py-4 text-gray-400 text-sm whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <Calendar size={14} className="text-green-400" />
-                          {formatCustomDate(job.appliedAt)}
-                        </div>
-                        <div className="text-xs text-gray-400 mt-1 pl-6 font-medium">
-                          {new Date(job.appliedAt).toLocaleTimeString("pt-BR", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: false,
-                          })}
-                        </div>
-                      </td>
-
-                      {}
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2 text-gray-300 text-sm">
-                          <Users
-                            size={14}
-                            className={
-                              hasApplicants ? "text-gray-500" : "text-gray-600"
-                            }
-                          />
-                          {hasApplicants ? (
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs font-bold border ${getCompetitionStyle(
-                                job.applicants,
-                              )}`}
-                            >
-                              {job.applicants.toLocaleString()}
-                            </span>
-                          ) : (
-                            <span className="text-gray-600 italic">-</span>
-                          )}
-                        </div>
-                      </td>
-
-                      {}
-                      <td className="px-6 py-4">
-                        <StatusBadge status={job.application_status} />
-                      </td>
-
-                      {}
-                      <td className="px-6 py-4 text-right">
-                        <button className="text-gray-500 hover:text-white p-2 rounded-full hover:bg-gray-600 transition-colors">
-                          <ChevronRight size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan="8" className="p-8 text-center text-gray-500">
-                    No applications found matching your search.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
+        {}
         {!searchTerm && pagination && pagination.totalPages > 1 && (
           <PaginationControls
             currentPage={pagination.page}
