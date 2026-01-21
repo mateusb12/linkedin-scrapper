@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { formatCustomDate } from "../../utils/dateUtils";
 
+import { getCompetitionStyle } from "./utils/jobUtils";
+
 const StatusBadge = ({ status }) => {
   const normalizedStatus = (status || "Waiting").toLowerCase();
 
@@ -54,14 +56,14 @@ const StatusBadge = ({ status }) => {
 
   const config = styles[normalizedStatus] || styles["waiting"];
   const displayLabel =
-      status && status.length > 20 ? status.substring(0, 18) + "..." : status;
+    status && status.length > 20 ? status.substring(0, 18) + "..." : status;
 
   return (
-      <span
-          className={`px-2.5 py-0.5 rounded-full text-xs font-medium border flex items-center w-fit ${config.css}`}
-      >
+    <span
+      className={`px-2.5 py-0.5 rounded-full text-xs font-medium border flex items-center w-fit ${config.css}`}
+    >
       {config.icon}
-        {displayLabel || "Waiting"}
+      {displayLabel || "Waiting"}
     </span>
   );
 };
@@ -80,38 +82,38 @@ const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
   };
 
   return (
-      <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-700 bg-gray-800">
+    <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-700 bg-gray-800">
+      <button
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage === 1}
+        className="p-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-400 hover:text-white transition-colors"
+      >
+        <ChevronLeft size={20} />
+      </button>
+      {getPageNumbers().map((page, idx) => (
         <button
-            onClick={() => onPageChange(currentPage - 1)}
-            disabled={currentPage === 1}
-            className="p-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-400 hover:text-white transition-colors"
+          key={idx}
+          onClick={() => (typeof page === "number" ? onPageChange(page) : null)}
+          disabled={typeof page !== "number"}
+          className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+            page === currentPage
+              ? "bg-blue-600 text-white shadow-md"
+              : typeof page === "number"
+                ? "bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700"
+                : "text-gray-500 cursor-default"
+          }`}
         >
-          <ChevronLeft size={20} />
+          {page}
         </button>
-        {getPageNumbers().map((page, idx) => (
-            <button
-                key={idx}
-                onClick={() => (typeof page === "number" ? onPageChange(page) : null)}
-                disabled={typeof page !== "number"}
-                className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                    page === currentPage
-                        ? "bg-blue-600 text-white shadow-md"
-                        : typeof page === "number"
-                            ? "bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700"
-                            : "text-gray-500 cursor-default"
-                }`}
-            >
-              {page}
-            </button>
-        ))}
-        <button
-            onClick={() => onPageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
-            className="p-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-400 hover:text-white transition-colors"
-        >
-          <ChevronRight size={20} />
-        </button>
-      </div>
+      ))}
+      <button
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage === totalPages}
+        className="p-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-400 hover:text-white transition-colors"
+      >
+        <ChevronRight size={20} />
+      </button>
+    </div>
   );
 };
 
@@ -124,10 +126,10 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
   const filteredJobs = useMemo(() => {
     if (!jobs) return [];
     return jobs.filter(
-        (j) =>
-            (j.title && j.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (j.company &&
-                j.company.toLowerCase().includes(searchTerm.toLowerCase())),
+      (j) =>
+        (j.title && j.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (j.company &&
+          j.company.toLowerCase().includes(searchTerm.toLowerCase())),
     );
   }, [jobs, searchTerm]);
 
@@ -162,38 +164,38 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
   };
 
   return (
-      <div className="space-y-4">
-        <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-xl overflow-hidden mt-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-          {/* Header */}
-          <div className="p-6 border-b border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-800">
-            <div className="flex items-center gap-4">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                Recent Applications
-              </h3>
-              {pagination && (
-                  <span className="text-xs font-mono text-blue-300 bg-blue-900/30 px-2 py-1 rounded border border-blue-800/50">
+    <div className="space-y-4">
+      <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-xl overflow-hidden mt-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
+        {}
+        <div className="p-6 border-b border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-800">
+          <div className="flex items-center gap-4">
+            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+              Recent Applications
+            </h3>
+            {pagination && (
+              <span className="text-xs font-mono text-blue-300 bg-blue-900/30 px-2 py-1 rounded border border-blue-800/50">
                 Total: {pagination.total}
               </span>
-              )}
-            </div>
-            <div className="relative w-full md:w-64">
-              <input
-                  type="text"
-                  placeholder="Search applications..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-700 text-gray-200 text-sm rounded-lg pl-10 pr-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-              />
-              <div className="absolute left-3 top-2.5 text-gray-500">
-                <Search size={14} />
-              </div>
+            )}
+          </div>
+          <div className="relative w-full md:w-64">
+            <input
+              type="text"
+              placeholder="Search applications..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-700 text-gray-200 text-sm rounded-lg pl-10 pr-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+            />
+            <div className="absolute left-3 top-2.5 text-gray-500">
+              <Search size={14} />
             </div>
           </div>
+        </div>
 
-          {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
+        {}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
               <tr>
                 <th className="px-6 py-4">Application</th>
                 <th className="px-6 py-4">Applied</th>
@@ -201,146 +203,161 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
                 <th className="px-6 py-4">App Status</th>
                 <th className="px-6 py-4 text-right">Action</th>
               </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-700">
+            </thead>
+            <tbody className="divide-y divide-gray-700">
               {filteredJobs.length > 0 ? (
-                  filteredJobs.map((job) => {
-                    const hasApplicants =
-                        job.applicants !== null &&
-                        job.applicants !== undefined &&
-                        job.applicants > 0;
+                filteredJobs.map((job) => {
+                  const hasApplicants =
+                    job.applicants !== null &&
+                    job.applicants !== undefined &&
+                    job.applicants > 0;
 
-                    return (
-                        <tr
-                            key={job.urn}
-                            onClick={() => onSelectJob(job)}
-                            className="group hover:bg-gray-700/30 transition-colors cursor-pointer"
-                        >
-                          {/* Merged Role & Company Column */}
-                          <td className="px-6 py-4">
-                            <div className="font-bold text-gray-200 text-base mb-1 group-hover:text-blue-400 transition-colors flex items-center gap-2">
-                              <Briefcase size={16} className="text-purple-400" />
-                              {job.title}
-                            </div>
-                            <div className="flex items-center gap-2 pl-6 text-sm text-gray-400">
-                              <div className="flex items-center gap-1.5 font-medium">
-                                <Building2 size={12} className="text-gray-500" />
-                                {job.company}
-                              </div>
-                              <span className="text-gray-600 text-xs">•</span>
-                              <div className="text-xs text-gray-500 uppercase">
-                                {job.source || "Linkedin"}
-                              </div>
-                            </div>
-                          </td>
+                  return (
+                    <tr
+                      key={job.urn}
+                      onClick={() => onSelectJob(job)}
+                      className="group hover:bg-gray-700/30 transition-colors cursor-pointer"
+                    >
+                      {}
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-gray-200 text-base mb-1 group-hover:text-blue-400 transition-colors flex items-center gap-2">
+                          <Briefcase size={16} className="text-purple-400" />
+                          {job.title}
+                        </div>
+                        <div className="flex items-center gap-2 pl-6 text-sm text-gray-400">
+                          <div className="flex items-center gap-1.5 font-medium">
+                            <Building2 size={12} className="text-gray-500" />
+                            {job.company}
+                          </div>
+                          <span className="text-gray-600 text-xs">•</span>
+                          <div className="text-xs text-gray-500 uppercase">
+                            {job.source || "Linkedin"}
+                          </div>
+                        </div>
+                      </td>
 
-                          <td className="px-6 py-4 text-gray-400 text-sm whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <Calendar size={14} className="text-green-400" />
-                              {formatCustomDate(job.appliedAt)}
-                            </div>
-                            <div className="text-xs text-gray-400 mt-1 pl-6 font-medium">
-                              {new Date(job.appliedAt).toLocaleTimeString("pt-BR", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                                hour12: false,
-                              })}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2 text-gray-400 font-mono text-sm">
-                              <Users
-                                  size={14}
-                                  className={
-                                    hasApplicants ? "text-gray-400" : "text-gray-600"
-                                  }
-                              />
-                              {hasApplicants
-                                  ? job.applicants.toLocaleString()
-                                  : "-"}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <StatusBadge status={job.application_status} />
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <button className="text-gray-500 hover:text-white p-2 rounded-full hover:bg-gray-600 transition-colors">
-                              <ChevronRight size={16} />
-                            </button>
-                          </td>
-                        </tr>
-                    );
-                  })
+                      {}
+                      <td className="px-6 py-4 text-gray-400 text-sm whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <Calendar size={14} className="text-green-400" />
+                          {formatCustomDate(job.appliedAt)}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1 pl-6 font-medium">
+                          {new Date(job.appliedAt).toLocaleTimeString("pt-BR", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: false,
+                          })}
+                        </div>
+                      </td>
+
+                      {}
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2 text-gray-300 text-sm">
+                          <Users
+                            size={14}
+                            className={
+                              hasApplicants ? "text-gray-500" : "text-gray-600"
+                            }
+                          />
+                          {hasApplicants ? (
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs font-bold border ${getCompetitionStyle(
+                                job.applicants,
+                              )}`}
+                            >
+                              {job.applicants.toLocaleString()}
+                            </span>
+                          ) : (
+                            <span className="text-gray-600 italic">-</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {}
+                      <td className="px-6 py-4">
+                        <StatusBadge status={job.application_status} />
+                      </td>
+
+                      {}
+                      <td className="px-6 py-4 text-right">
+                        <button className="text-gray-500 hover:text-white p-2 rounded-full hover:bg-gray-600 transition-colors">
+                          <ChevronRight size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
-                  <tr>
-                    <td colSpan="5" className="p-8 text-center text-gray-500">
-                      No applications found matching your search.
-                    </td>
-                  </tr>
+                <tr>
+                  <td colSpan="5" className="p-8 text-center text-gray-500">
+                    No applications found matching your search.
+                  </td>
+                </tr>
               )}
-              </tbody>
-            </table>
-          </div>
-
-          {pagination && pagination.totalPages > 1 && (
-              <PaginationControls
-                  currentPage={pagination.page}
-                  totalPages={pagination.totalPages}
-                  onPageChange={pagination.onPageChange}
-              />
-          )}
+            </tbody>
+          </table>
         </div>
 
-        {/* Copy Data Footer */}
-        <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-4 w-full md:w-auto">
-            <div className="flex flex-col">
-              <label className="text-xs text-gray-400 font-bold uppercase mb-1 ml-1">
-                Copy Data From
-              </label>
-              <input
-                  type="date"
-                  value={copyStartDate}
-                  onChange={(e) => setCopyStartDate(e.target.value)}
-                  className="bg-gray-900 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-blue-500"
-              />
-            </div>
+        {pagination && pagination.totalPages > 1 && (
+          <PaginationControls
+            currentPage={pagination.page}
+            totalPages={pagination.totalPages}
+            onPageChange={pagination.onPageChange}
+          />
+        )}
+      </div>
 
-            <div className="flex flex-col justify-end h-full pt-5">
+      {}
+      <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="flex items-center gap-4 w-full md:w-auto">
+          <div className="flex flex-col">
+            <label className="text-xs text-gray-400 font-bold uppercase mb-1 ml-1">
+              Copy Data From
+            </label>
+            <input
+              type="date"
+              value={copyStartDate}
+              onChange={(e) => setCopyStartDate(e.target.value)}
+              className="bg-gray-900 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div className="flex flex-col justify-end h-full pt-5">
             <span className="text-sm font-medium text-gray-300 bg-gray-900 px-3 py-2 rounded-lg border border-gray-700 min-w-[100px] text-center">
-              {/* Calculate count based on date filter */}
+              {}
               Count:{" "}
               <span className="text-blue-400 font-bold">
                 {jobsToExport.length}
               </span>
             </span>
-            </div>
           </div>
-
-          <button
-              onClick={handleCopyJobs}
-              disabled={jobsToExport.length === 0}
-              className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-bold transition-all duration-200 ${
-                  isCopied
-                      ? "bg-green-600 text-white"
-                      : jobsToExport.length === 0
-                          ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                          : "bg-blue-600 hover:bg-blue-500 text-white shadow-lg hover:shadow-blue-500/20"
-              }`}
-          >
-            {isCopied ? (
-                <>
-                  <CheckCircle2 size={18} /> Copied!
-                </>
-            ) : (
-                <>
-                  <Copy size={18} /> Copy{" "}
-                  {jobsToExport.length > 0 ? `(${jobsToExport.length})` : ""} JSON
-                </>
-            )}
-          </button>
         </div>
+
+        <button
+          onClick={handleCopyJobs}
+          disabled={jobsToExport.length === 0}
+          className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-bold transition-all duration-200 ${
+            isCopied
+              ? "bg-green-600 text-white"
+              : jobsToExport.length === 0
+                ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-500 text-white shadow-lg hover:shadow-blue-500/20"
+          }`}
+        >
+          {isCopied ? (
+            <>
+              <CheckCircle2 size={18} /> Copied!
+            </>
+          ) : (
+            <>
+              <Copy size={18} /> Copy{" "}
+              {jobsToExport.length > 0 ? `(${jobsToExport.length})` : ""} JSON
+            </>
+          )}
+        </button>
       </div>
+    </div>
   );
 };
 
