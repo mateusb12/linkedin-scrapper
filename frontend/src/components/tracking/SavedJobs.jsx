@@ -37,7 +37,7 @@ import {
   getTypeStyle,
   extractFoundations,
   extractSpecifics,
-  getTechBadgeStyle,
+  getTechBadgeStyle, getCompetitionStyle,
 } from "./utils/jobUtils.js";
 import { formatCustomDate } from "../../utils/dateUtils.js";
 
@@ -559,11 +559,9 @@ const SavedJobs = () => {
                           {job.applicants !== undefined &&
                           job.applicants !== null ? (
                             <span
-                              className={
-                                job.applicants > 100
-                                  ? "text-emerald-400 font-bold"
-                                  : ""
-                              }
+                              className={`px-2 py-1 rounded-full text-xs font-bold border ${getCompetitionStyle(
+                                job.applicants,
+                              )}`}
                             >
                               {job.applicants}
                             </span>
