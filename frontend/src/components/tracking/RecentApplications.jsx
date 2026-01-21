@@ -11,10 +11,20 @@ import {
   Eye,
   Copy,
   CheckCircle2,
+  User,
+  Code2,
+  Clock,
 } from "lucide-react";
 import { formatCustomDate } from "../../utils/dateUtils";
-
-import { getCompetitionStyle } from "./utils/jobUtils";
+import {
+  getCompetitionStyle,
+  extractExperienceFromDescription,
+  extractSeniorityFromDescription,
+  extractJobTypeFromDescription,
+  getSeniorityStyle,
+  getTypeStyle,
+  getExperienceStyle,
+} from "./utils/jobUtils";
 
 const StatusBadge = ({ status }) => {
   const normalizedStatus = (status || "Waiting").toLowerCase();
@@ -119,19 +129,37 @@ const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
 
 const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
   const [searchTerm, setSearchTerm] = useState("");
-
   const [copyStartDate, setCopyStartDate] = useState("");
   const [isCopied, setIsCopied] = useState(false);
 
-  const filteredJobs = useMemo(() => {
+  const enrichedJobs = useMemo(() => {
     if (!jobs) return [];
-    return jobs.filter(
+
+    return jobs.map((job) => {
+      const description = job.description || "";
+      const fullTextContext = `${job.title} ${description}`;
+
+      const experienceData = extractExperienceFromDescription(description);
+      const seniority = extractSeniorityFromDescription(fullTextContext);
+      const jobType = extractJobTypeFromDescription(fullTextContext);
+
+      return {
+        ...job,
+        experienceData,
+        seniority,
+        jobType,
+      };
+    });
+  }, [jobs]);
+
+  const filteredJobs = useMemo(() => {
+    return enrichedJobs.filter(
       (j) =>
         (j.title && j.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (j.company &&
           j.company.toLowerCase().includes(searchTerm.toLowerCase())),
     );
-  }, [jobs, searchTerm]);
+  }, [enrichedJobs, searchTerm]);
 
   const jobsToExport = useMemo(() => {
     const sourceData = allJobs && allJobs.length > 0 ? allJobs : jobs;
@@ -198,6 +226,11 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
             <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
               <tr>
                 <th className="px-6 py-4">Application</th>
+                {}
+                <th className="px-6 py-4">Seniority</th>
+                <th className="px-6 py-4">Type</th>
+                <th className="px-6 py-4">Experience</th>
+                {}
                 <th className="px-6 py-4">Applied</th>
                 <th className="px-6 py-4">Applicants</th>
                 <th className="px-6 py-4">App Status</th>
@@ -234,6 +267,57 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
                             {job.source || "Linkedin"}
                           </div>
                         </div>
+                      </td>
+
+                      {}
+                      <td className="px-6 py-4">
+                        {job.seniority ? (
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getSeniorityStyle(
+                              job.seniority,
+                            )}`}
+                          >
+                            {job.seniority}
+                          </span>
+                        ) : (
+                          <span className="text-gray-600 text-xs italic opacity-50 flex items-center gap-1">
+                            <User size={12} /> -
+                          </span>
+                        )}
+                      </td>
+
+                      {}
+                      <td className="px-6 py-4">
+                        {job.jobType ? (
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getTypeStyle(
+                              job.jobType,
+                            )}`}
+                          >
+                            {job.jobType}
+                          </span>
+                        ) : (
+                          <span className="text-gray-600 text-xs italic opacity-50 flex items-center gap-1">
+                            <Code2 size={12} /> -
+                          </span>
+                        )}
+                      </td>
+
+                      {}
+                      <td className="px-6 py-4">
+                        {job.experienceData ? (
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getExperienceStyle(
+                              job.experienceData,
+                            )}`}
+                          >
+                            {job.experienceData.text}
+                          </span>
+                        ) : (
+                          <span className="text-gray-600 text-xs italic opacity-50 flex items-center gap-1">
+                            <Clock size={12} /> N/A
+                          </span>
+                        )}
                       </td>
 
                       {}
@@ -290,7 +374,7 @@ const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
                 })
               ) : (
                 <tr>
-                  <td colSpan="5" className="p-8 text-center text-gray-500">
+                  <td colSpan="8" className="p-8 text-center text-gray-500">
                     No applications found matching your search.
                   </td>
                 </tr>

@@ -150,42 +150,85 @@ export const extractSeniorityFromDescription = (description) => {
   return null;
 };
 
-export const extractJobTypeFromDescription = (description) => {
-  if (!description) return null;
-  const text = description.toLowerCase();
+export const extractJobTypeFromDescription = (fullText) => {
+  if (!fullText) return null;
 
+  let text = fullText.toLowerCase();
+
+  // --- STEP 1: PRE-PROCESSING & CLEANING ---
+
+  // 1. Fix common recruiter typos
+  text = text.replace(/phyton/g, "python"); // The "Foursys" fix
+  text = text.replace(/javascrpt|java script/g, "javascript");
+
+  // 2. Remove "Collaboration" noise (The "Makai" fix)
+  // We remove phrases where the role simply talks to other teams
+  text = text.replace(/(collaborate|work|interface|integrate|support|liaise)\s+(with|closely\s+with)\s+(the\s+)?(front|back)-?end/g, " ");
+
+  // --- STEP 2: IMMEDIATE "FULL-STACK" TRIGGERS ---
+
+  // Explicit "Full Stack" mention is usually the strongest signal
   if (/\b(full\s?-?stack|fullstack)\b/i.test(text)) {
     return "Full-stack";
   }
 
-  const hasFrontendKeywords = /\b(front\s?-?end|frontend|front)\b/i.test(text);
-
-  const hasBackendKeywords = /\b(back\s?-?end|backend|back)\b/i.test(text);
-
-  if (hasFrontendKeywords && !hasBackendKeywords) return "Frontend";
-  if (hasBackendKeywords && !hasFrontendKeywords) return "Backend";
-
-  if (hasFrontendKeywords && hasBackendKeywords) return "Full-stack";
-
-  const backendTechs =
-    /\b(java|c#|golang|go|python|ruby|php|node|nodejs|rust|scala|fastapi|django|spring|express|nest|sql|mysql|postgres|aws|azure|docker|kubernetes)\b/i;
-  const backendContext =
-    /\b(api|apis|microserviços|microservices|banco de dados|database|server|servidor|cloud)\b/i;
-
-  if (backendTechs.test(text) && backendContext.test(text)) {
-    return "Backend";
+  // The "ProFUSION" Fix: Polyglot/Generalist detection
+  // If they say "Backend, Frontend or Mobile" or "Backend / Frontend", it's a generalist role.
+  // We treat this as Full-stack for classification purposes.
+  if (/(backend\s*(,|ou|or|\/)\s*frontend)|(frontend\s*(,|ou|or|\/)\s*backend)/i.test(text)) {
+    return "Full-stack";
   }
 
-  const frontendTechs =
-    /\b(react|reactjs|vue|vuejs|angular|svelte|nextjs|nuxt|tailwind|css|sass|html|javascript|typescript|ux|ui|figma)\b/i;
-  const frontendContext =
-    /\b(layout|interface|componentes|components|spa|web|mobile|responsiv)\b/i;
+  // --- STEP 3: SCORING SYSTEM ---
 
-  if (frontendTechs.test(text) && frontendContext.test(text)) {
-    return "Frontend";
+  let backendScore = 0;
+  let frontendScore = 0;
+
+  // We weight the TITLE (first ~150 chars) much heavier than the body
+  const titleChunk = text.slice(0, 150);
+  const bodyChunk = text.slice(150);
+
+  const scoreText = (txt, weight) => {
+    // BACKEND KEYWORDS
+    const backendRegex = /\b(backend|back-end|python|java|go|golang|ruby|php|c#|rust|scala|elixir|nodejs|node\.js|\.net|api|apis|sql|mysql|postgres|docker|aws|cloud|microservices|data engineer|etl|spark|airflow)\b/g;
+    const backendMatches = txt.match(backendRegex) || [];
+    backendScore += backendMatches.length * weight;
+
+    // FRONTEND KEYWORDS
+    const frontendRegex = /\b(frontend|front-end|javascript|js|typescript|ts|react|vue|angular|svelte|next\.?js|html|css|ui\/ux|ui|ux|figma|styled|tailwind)\b/g;
+    const frontendMatches = txt.match(frontendRegex) || [];
+    frontendScore += frontendMatches.length * weight;
+  };
+
+  // Apply Scoring: Title words are worth 5x more than Body words
+  scoreText(titleChunk, 5);
+  scoreText(bodyChunk, 1);
+
+  // --- STEP 4: ANALYZE SCORES ---
+
+  // If the scores are very close (within 20% of each other) and both are high, it's likely Full-stack
+  // (e.g., a job asking for React AND Node equally)
+  if (backendScore > 5 && frontendScore > 5) {
+    const ratio = Math.max(backendScore, frontendScore) / Math.min(backendScore, frontendScore);
+    if (ratio < 1.3) {
+      return "Full-stack";
+    }
   }
 
-  return null;
+  // The "Nortal" Fix:
+  // Even if the title says "UI/UX" (Frontend points), if the body lists
+  // Python, API, MySQL repeatedly, the Backend Score will overtake the Frontend Score.
+
+  if (backendScore > frontendScore) return "Backend";
+  if (frontendScore > backendScore) return "Frontend";
+
+  // --- STEP 5: TIE-BREAKER / FALLBACK ---
+
+  // If scores are equal or zero (rare), look for specific "Developer" context
+  if (/\b(python|java|go|ruby)\s+developer\b/.test(text)) return "Backend";
+  if (/\b(react|vue|angular)\s+developer\b/.test(text)) return "Frontend";
+
+  return null; // Truly uncategorized
 };
 
 export const getSeniorityStyle = (seniority) => {
