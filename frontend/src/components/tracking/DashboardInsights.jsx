@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Chart } from "react-google-charts";
 import { Doughnut, Bar } from "react-chartjs-2";
 import {
@@ -15,9 +15,7 @@ import {
 } from "chart.js";
 import {
   Users,
-  AlertTriangle,
   CheckCircle,
-  Calendar,
   Filter,
   ArrowUpRight,
   Activity,
@@ -28,6 +26,7 @@ import {
   GitMerge,
   Minus,
   Plus,
+  Calendar as CalendarIcon,
 } from "lucide-react";
 
 ChartJS.register(
@@ -129,6 +128,11 @@ const BucketStepper = ({ value, onChange, min = 2, max = 20 }) => {
 const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
   const safeInsights = insights || {};
 
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const isCustomMode =
+    timeRange === "custom" || timeRange.startsWith("custom_");
+
   const overview = safeInsights.overview || {
     total: 0,
     refused: 0,
@@ -137,7 +141,6 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
     closed: 0,
   };
   const rawComp = safeInsights.competition || {};
-
   const rawCompData = safeInsights.competition_raw || [];
 
   const [bucketCount, setBucketCount] = useState(6);
@@ -148,6 +151,23 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
     overview.total > 0
       ? Math.round((overview.reviewing / overview.total) * 100)
       : 0;
+
+  const handleCustomDateChange = (type, value) => {
+    let newStart = startDate;
+    let newEnd = endDate;
+
+    if (type === "start") {
+      setStartDate(value);
+      newStart = value;
+    } else {
+      setEndDate(value);
+      newEnd = value;
+    }
+
+    if (newStart && newEnd) {
+      onTimeRangeChange(`custom_${newStart}_${newEnd}`);
+    }
+  };
 
   const competitionData = useMemo(() => {
     if (!rawCompData || rawCompData.length === 0)
@@ -374,10 +394,20 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
     tooltip: { isHtml: true, textStyle: { color: "#000000" } },
   };
 
+  const handleDropdownChange = (e) => {
+    const val = e.target.value;
+    if (val === "custom") {
+      onTimeRangeChange("custom");
+    } else {
+      onTimeRangeChange(val);
+    }
+  };
+
   return (
     <div className="space-y-6 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {}
-      <div className="flex flex-col sm:flex-row justify-between items-center bg-gray-800/40 p-4 rounded-2xl border border-gray-700/50 backdrop-blur-md">
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center bg-gray-800/40 p-4 rounded-2xl border border-gray-700/50 backdrop-blur-md gap-4">
+        {}
         <div className="flex items-center gap-3">
           <div className="p-2 bg-purple-500/10 rounded-lg text-purple-400">
             <Activity size={20} />
@@ -386,28 +416,69 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
             <h3 className="text-lg font-bold text-white leading-none">
               Insight Analytics
             </h3>
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
               Deep dive into application states for{" "}
               <span className="text-purple-400 font-medium capitalize">
-                {timeRange.replace(/_/g, " ")}
+                {isCustomMode ? "Custom Range" : timeRange.replace(/_/g, " ")}
               </span>
             </p>
           </div>
         </div>
-        <div className="mt-4 sm:mt-0 flex items-center gap-3 bg-gray-900 p-1 rounded-xl border border-gray-700/50 shadow-inner">
-          <div className="pl-3 text-gray-500">
-            <Filter size={14} />
+
+        {}
+        <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
+          {}
+          {isCustomMode && (
+            <div className="flex items-center gap-2 bg-gray-900 p-1 rounded-xl border border-gray-700/50 animate-in fade-in slide-in-from-right-4 duration-300">
+              <div className="flex items-center px-2 gap-2">
+                <CalendarIcon size={14} className="text-gray-500" />
+                <span className="text-xs text-gray-400 font-medium">From:</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) =>
+                    handleCustomDateChange("start", e.target.value)
+                  }
+                  className="bg-transparent border-none p-0 text-white text-xs focus:ring-0 [color-scheme:dark] w-24 cursor-pointer"
+                />
+              </div>
+              <div className="w-px h-4 bg-gray-700"></div>
+              <div className="flex items-center px-2 gap-2">
+                <span className="text-xs text-gray-400 font-medium">To:</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) =>
+                    handleCustomDateChange("end", e.target.value)
+                  }
+                  className="bg-transparent border-none p-0 text-white text-xs focus:ring-0 [color-scheme:dark] w-24 cursor-pointer"
+                />
+              </div>
+            </div>
+          )}
+
+          {}
+          <div className="flex items-center gap-3 bg-gray-900 p-1 rounded-xl border border-gray-700/50 shadow-inner ml-auto xl:ml-0">
+            <div className="pl-3 text-gray-500">
+              <Filter size={14} />
+            </div>
+            <select
+              value={isCustomMode ? "custom" : timeRange}
+              onChange={handleDropdownChange}
+              className="bg-gray-900 border-none text-gray-300 text-sm focus:ring-0 cursor-pointer py-1.5 pr-8 pl-2 font-medium hover:text-white transition-colors rounded-r-xl outline-none"
+            >
+              <option value="current_week">Current Week</option>
+              <option value="last_2_weeks">Last 2 Weeks</option>
+              <option value="last_month">Last Month</option>
+              <option value="all_time">All Time</option>
+              <option
+                className="bg-gray-800 text-purple-300 font-bold"
+                value="custom"
+              >
+                ✨ Custom Range
+              </option>
+            </select>
           </div>
-          <select
-            value={timeRange}
-            onChange={(e) => onTimeRangeChange(e.target.value)}
-            className="bg-gray-900 border-none text-gray-300 text-sm focus:ring-0 cursor-pointer py-1.5 pr-8 pl-2 font-medium hover:text-white transition-colors rounded-r-xl outline-none"
-          >
-            <option value="current_week">Current Week</option>
-            <option value="last_2_weeks">Last 2 Weeks</option>
-            <option value="last_month">Last Month</option>
-            <option value="all_time">All Time</option>
-          </select>
         </div>
       </div>
 
@@ -447,9 +518,7 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
         />
       </div>
 
-      {}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-80">
-        {}
         <div className="bg-gray-800/60 backdrop-blur-sm p-6 rounded-2xl border border-gray-700/50 flex flex-col shadow-lg">
           <div className="flex justify-between items-center mb-4 h-8">
             <div className="flex items-center gap-2">
@@ -519,7 +588,6 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
           </div>
         </div>
 
-        {}
         <div className="bg-gray-800/60 backdrop-blur-sm p-6 rounded-2xl border border-gray-700/50 flex flex-col shadow-lg">
           <div className="flex justify-between items-center mb-4 h-8">
             <div className="flex items-center gap-2">
@@ -530,7 +598,6 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
                 Competition Distribution
               </h4>
             </div>
-            {}
             <BucketStepper value={bucketCount} onChange={setBucketCount} />
           </div>
 
@@ -546,7 +613,6 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
         </div>
       </div>
 
-      {}
       {overview.total > 0 && (
         <div className="bg-gray-800/60 backdrop-blur-sm p-6 rounded-2xl border border-gray-700/50 shadow-lg min-h-[400px] flex flex-col">
           <div className="flex justify-between items-center mb-6">
