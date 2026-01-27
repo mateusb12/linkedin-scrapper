@@ -22,6 +22,8 @@ import {
   Code2,
   Calendar,
   Users,
+  Trophy,
+  Check,
 } from "lucide-react";
 import {
   fetchLinkedinJobsRaw,
@@ -37,9 +39,96 @@ import {
   getTypeStyle,
   extractFoundations,
   extractSpecifics,
-  getTechBadgeStyle, getCompetitionStyle,
+  getTechBadgeStyle,
+  getCompetitionStyle,
 } from "./utils/jobUtils.js";
 import { formatCustomDate } from "../../utils/dateUtils.js";
+
+const SCORES_STORAGE_KEY = "linkedin_job_scores";
+
+const ScoreInput = ({ initialScore, onSave }) => {
+  const [value, setValue] = useState(initialScore || 0);
+  const [isDirty, setIsDirty] = useState(false);
+
+  useEffect(() => {
+    setValue(initialScore || 0);
+    setIsDirty(false);
+  }, [initialScore]);
+
+  const handleChange = (e) => {
+    const val = e.target.value;
+
+    if (val === "") {
+      setValue("");
+      setIsDirty(true);
+      return;
+    }
+
+    if (!/^\d*$/.test(val)) return;
+
+    const num = parseInt(val, 10);
+    if (!isNaN(num) && num >= 0 && num <= 100) {
+      setValue(num);
+      setIsDirty(num !== (initialScore || 0));
+    }
+  };
+
+  const handleSave = () => {
+    const finalValue = value === "" ? 0 : parseInt(value, 10);
+    onSave(finalValue);
+    setIsDirty(false);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") {
+      handleSave();
+    }
+  };
+
+  const getScoreColor = (score) => {
+    const s = parseInt(score, 10) || 0;
+    if (s >= 80) return "text-emerald-400 border-emerald-500/50";
+    if (s >= 50) return "text-yellow-400 border-yellow-500/50";
+    if (s > 0) return "text-red-400 border-red-500/50";
+    return "text-gray-500 border-gray-700";
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      <div className="relative w-12">
+        <Trophy
+          size={10}
+          className="absolute left-1.5 top-2 text-gray-600 pointer-events-none"
+        />
+        <input
+          type="text"
+          inputMode="numeric"
+          value={value}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onBlur={() => {
+            if (isDirty) handleSave();
+          }}
+          className={`w-full bg-gray-900 border text-center text-xs font-bold rounded py-1 pl-3 pr-1 outline-none transition-colors focus:ring-1 focus:ring-emerald-500/50 ${getScoreColor(
+            value,
+          )}`}
+        />
+      </div>
+      <button
+        onClick={handleSave}
+        disabled={!isDirty}
+        className={`p-1 rounded transition-all duration-200 ${
+          isDirty
+            ? "bg-emerald-600 text-white hover:bg-emerald-500 hover:scale-110 shadow-lg shadow-emerald-900/50 cursor-pointer"
+            : "bg-gray-800 text-gray-600 cursor-default opacity-50"
+        }`}
+        title="Confirm Score"
+      >
+        <Check size={12} strokeWidth={3} />
+      </button>
+    </div>
+  );
+};
 
 const CopyFirstNItems = ({
   items,
@@ -85,7 +174,6 @@ const CopyFirstNItems = ({
 
   return (
     <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 flex flex-col lg:flex-row justify-between items-center gap-6 shadow-lg">
-      {}
       <div className="flex flex-col w-full lg:w-2/3 gap-2">
         <div className="flex justify-between items-end mb-1">
           <label className="text-xs text-emerald-500 font-bold uppercase flex items-center gap-2">
@@ -99,7 +187,6 @@ const CopyFirstNItems = ({
         <div className="flex items-center gap-4 bg-gray-900/50 p-3 rounded-lg border border-gray-700">
           <span className="text-xs font-mono text-gray-500">1</span>
 
-          {}
           <input
             type="range"
             min="1"
@@ -112,7 +199,6 @@ const CopyFirstNItems = ({
 
           <span className="text-xs font-mono text-gray-500">{max}</span>
 
-          {}
           <div className="relative min-w-[60px]">
             <input
               type="number"
@@ -126,7 +212,6 @@ const CopyFirstNItems = ({
         </div>
       </div>
 
-      {}
       <div className="flex items-center justify-end w-full lg:w-auto h-full pt-2 lg:pt-0">
         <button
           onClick={handleCopy}
@@ -161,8 +246,17 @@ const SavedJobs = () => {
   const [error, setError] = useState(null);
   const [expandedJobUrn, setExpandedJobUrn] = useState(null);
   const [activeTab, setActiveTab] = useState(LINKEDIN_CARD_TYPE.SAVED);
-
   const [isCachedData, setIsCachedData] = useState(false);
+
+  const [scores, setScores] = useState(() => {
+    try {
+      const savedScores = localStorage.getItem(SCORES_STORAGE_KEY);
+      return savedScores ? JSON.parse(savedScores) : {};
+    } catch (e) {
+      console.error("Failed to parse scores", e);
+      return {};
+    }
+  });
 
   const TABS = [
     { id: LINKEDIN_CARD_TYPE.SAVED, label: "Saved", icon: Bookmark },
@@ -223,6 +317,16 @@ const SavedJobs = () => {
     loadJobs(false);
   }, [activeTab]);
 
+  const handleScoreSave = (urn, newValue) => {
+    const newScores = {
+      ...scores,
+      [urn]: newValue,
+    };
+
+    setScores(newScores);
+    localStorage.setItem(SCORES_STORAGE_KEY, JSON.stringify(newScores));
+  };
+
   const filteredJobs = useMemo(() => {
     if (!jobs) return [];
 
@@ -239,6 +343,8 @@ const SavedJobs = () => {
         const foundations = extractFoundations(job.description);
         const specifics = extractSpecifics(job.description);
 
+        const score = scores[job.job_posting_urn] || 0;
+
         return {
           ...job,
           experienceData,
@@ -246,6 +352,7 @@ const SavedJobs = () => {
           jobType,
           foundations,
           specifics,
+          score,
         };
       })
       .filter(
@@ -255,8 +362,10 @@ const SavedJobs = () => {
           (j.company &&
             j.company.name &&
             j.company.name.toLowerCase().includes(searchTerm.toLowerCase())),
-      );
-  }, [jobs, searchTerm]);
+      )
+
+      .sort((a, b) => b.score - a.score);
+  }, [jobs, searchTerm, scores]);
 
   const handleRemove = (urn) => {
     const updatedJobs = jobs.filter((job) => job.job_posting_urn !== urn);
@@ -375,6 +484,7 @@ const SavedJobs = () => {
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
               <tr>
+                <th className="px-6 py-4">Score</th>
                 <th className="px-6 py-4">Role & Company</th>
                 <th className="px-6 py-4">Foundations</th>
                 <th className="px-6 py-4">Specifics</th>
@@ -391,7 +501,7 @@ const SavedJobs = () => {
             <tbody className="divide-y divide-gray-700">
               {isLoading ? (
                 <tr>
-                  <td colSpan="9" className="p-12 text-center">
+                  <td colSpan="12" className="p-12 text-center">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <RefreshCw
                         className="animate-spin text-emerald-500"
@@ -405,7 +515,7 @@ const SavedJobs = () => {
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan="9" className="p-12 text-center text-red-400">
+                  <td colSpan="12" className="p-12 text-center text-red-400">
                     {error}
                   </td>
                 </tr>
@@ -419,6 +529,16 @@ const SavedJobs = () => {
                           : "hover:bg-emerald-900/5"
                       }`}
                     >
+                      {}
+                      <td className="px-6 py-4">
+                        <ScoreInput
+                          initialScore={job.score}
+                          onSave={(val) =>
+                            handleScoreSave(job.job_posting_urn, val)
+                          }
+                        />
+                      </td>
+
                       <td className="px-6 py-4 min-w-[200px]">
                         <div className="flex items-start gap-3">
                           <button
@@ -621,7 +741,7 @@ const SavedJobs = () => {
 
                     {expandedJobUrn === job.job_posting_urn && (
                       <tr className="bg-gray-900/30 border-b border-gray-700/50 animate-in fade-in zoom-in-95 duration-200">
-                        <td colSpan="9" className="px-6 py-4">
+                        <td colSpan="12" className="px-6 py-4">
                           <div className="bg-gray-800 rounded-lg p-5 border border-gray-700 shadow-inner">
                             <h4 className="text-xs font-bold text-emerald-500 mb-3 uppercase tracking-wider flex items-center gap-2">
                               <Briefcase size={12} /> Job Description
@@ -678,7 +798,7 @@ const SavedJobs = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="9" className="p-8 text-center text-gray-500">
+                  <td colSpan="12" className="p-8 text-center text-gray-500">
                     <div className="flex flex-col items-center gap-2">
                       <Bookmark size={32} className="opacity-20" />
                       <span>No jobs found in this category.</span>
@@ -696,7 +816,7 @@ const SavedJobs = () => {
       </div>
 
       {}
-      <CopyFirstNItems items={jobs} />
+      <CopyFirstNItems items={filteredJobs} />
     </div>
   );
 };
