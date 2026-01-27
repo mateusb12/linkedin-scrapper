@@ -295,31 +295,79 @@ def merge_inline_bold_sentences(text: str) -> str:
 
 
 def extract_description_from_sdui(blob: bytes) -> str:
+    """
+    Extrai texto de forma limpa do SDUI moderno do LinkedIn.
+    """
     text = blob.decode("utf-8", errors="ignore")
     lines = text.splitlines()
-    l5_json = None
+
+    json_blobs = []
+
+    # Extrai todos os JSON válidos
     for line in lines:
-        if '"$L5"' in line:
-            try:
-                _, json_part = line.split(":", 1)
-                data = json.loads(json_part)
-                l5_json = data
-                break
-            except Exception:
-                continue
-    if not l5_json:
-        return ""
-    props = l5_json[3] if isinstance(l5_json, list) and len(l5_json) > 3 else {}
-    text_props = props.get("textProps", {})
-    children = text_props.get("children", [])
-    blocks: list[str] = []
-    _extract_text_nodes(children, blocks)
-    raw = normalize_blocks_to_markdown(blocks)
-    clean = clean_sdui_text(raw)
-    clean = merge_inline_bold_blocks(clean)
-    clean = normalize_section_headers(clean)
-    clean = merge_inline_bold_sentences(clean)
-    return clean
+        if ":" not in line:
+            continue
+        try:
+            _, json_part = line.split(":", 1)
+            obj = json.loads(json_part)
+            json_blobs.append(obj)
+        except:
+            continue
+
+    blocks = []
+
+    def walk(node):
+        if node is None:
+            return
+
+        # --- FILTRO DE STRINGS LIXO ---
+        if isinstance(node, str):
+            s = node.strip()
+
+            # Ignorar tags SDUI e placeholders
+            if (
+                    not s or
+                    s.startswith("$L") or  # $L1 $L2 $L7...
+                    s.startswith("$S") or  # $Sreact.fragment
+                    s.startswith("$8") or  # $8, $8 0, $8 1...
+                    s == "$undefined" or
+                    s.isdigit() or  # números perdidos (0,1)
+                    all(ch in "$ " for ch in s) or  # <<<<<< filtra "$ $ $ $$ $"
+                    s in {"$", "$$", "$$$", "$span", "span"} or
+                    re.fullmatch(r"\$+ span \$+", s) or  # "$ span $"
+                    re.fullmatch(r"\$+", s)  # só símbolos
+            ):
+                return
+
+            blocks.append(s)
+            return
+
+        if isinstance(node, list):
+            for x in node:
+                walk(x)
+            return
+
+        if isinstance(node, dict):
+
+            # Texto real → textProps
+            if "textProps" in node:
+                children = node["textProps"].get("children", [])
+                walk(children)
+                return
+
+            if "children" in node:
+                walk(node["children"])
+            return
+
+    # Varre cada blob JSON válido
+    for obj in json_blobs:
+        walk(obj)
+
+    # Junta com quebras limpas
+    result = "\n".join(blocks)
+    result = re.sub(r"\n{3,}", "\n\n", result)
+
+    return result.strip()
 
 
 # ---------------------------------------------------------------------

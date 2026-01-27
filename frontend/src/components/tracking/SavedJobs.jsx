@@ -57,15 +57,12 @@ const ScoreInput = ({ initialScore, onSave }) => {
 
   const handleChange = (e) => {
     const val = e.target.value;
-
     if (val === "") {
       setValue("");
       setIsDirty(true);
       return;
     }
-
     if (!/^\d*$/.test(val)) return;
-
     const num = parseInt(val, 10);
     if (!isNaN(num) && num >= 0 && num <= 100) {
       setValue(num);
@@ -80,9 +77,7 @@ const ScoreInput = ({ initialScore, onSave }) => {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === "Enter") {
-      handleSave();
-    }
+    if (e.key === "Enter") handleSave();
   };
 
   const getScoreColor = (score) => {
@@ -106,12 +101,8 @@ const ScoreInput = ({ initialScore, onSave }) => {
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          onBlur={() => {
-            if (isDirty) handleSave();
-          }}
-          className={`w-full bg-gray-900 border text-center text-xs font-bold rounded py-1 pl-3 pr-1 outline-none transition-colors focus:ring-1 focus:ring-emerald-500/50 ${getScoreColor(
-            value,
-          )}`}
+          onBlur={() => isDirty && handleSave()}
+          className={`w-full bg-gray-900 border text-center text-xs font-bold rounded py-1 pl-3 pr-1 outline-none transition-colors focus:ring-1 focus:ring-emerald-500/50 ${getScoreColor(value)}`}
         />
       </div>
       <button
@@ -133,7 +124,6 @@ const ScoreInput = ({ initialScore, onSave }) => {
 const CopyFirstNItems = ({
   items,
   label = "Copy First N Items",
-  buttonSuffix = "JSON",
   stringify = (data) => JSON.stringify(data, null, 2),
 }) => {
   const max = Array.isArray(items) ? items.length : 0;
@@ -151,19 +141,14 @@ const CopyFirstNItems = ({
 
   const handleCopy = useCallback(() => {
     if (itemsToExport.length === 0) return;
-
     const payload = stringify(itemsToExport);
-
     navigator.clipboard.writeText(payload).then(() => {
       setIsCopied(true);
       window.setTimeout(() => setIsCopied(false), 2000);
     });
   }, [itemsToExport, stringify]);
 
-  const handleSliderChange = (e) => {
-    setCount(Number(e.target.value));
-  };
-
+  const handleSliderChange = (e) => setCount(Number(e.target.value));
   const handleInputChange = (e) => {
     let val = parseInt(e.target.value, 10);
     if (isNaN(val)) val = 0;
@@ -183,10 +168,8 @@ const CopyFirstNItems = ({
             Total Available: <span className="text-white font-mono">{max}</span>
           </span>
         </div>
-
         <div className="flex items-center gap-4 bg-gray-900/50 p-3 rounded-lg border border-gray-700">
           <span className="text-xs font-mono text-gray-500">1</span>
-
           <input
             type="range"
             min="1"
@@ -196,9 +179,7 @@ const CopyFirstNItems = ({
             disabled={max === 0}
             className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-emerald-500 hover:accent-emerald-400 transition-all"
           />
-
           <span className="text-xs font-mono text-gray-500">{max}</span>
-
           <div className="relative min-w-[60px]">
             <input
               type="number"
@@ -211,7 +192,6 @@ const CopyFirstNItems = ({
           </div>
         </div>
       </div>
-
       <div className="flex items-center justify-end w-full lg:w-auto h-full pt-2 lg:pt-0">
         <button
           onClick={handleCopy}
@@ -271,7 +251,6 @@ const SavedJobs = () => {
     setIsLoading(true);
     setError(null);
     setExpandedJobUrn(null);
-
     const cacheKey = getCacheKey(activeTab);
 
     try {
@@ -318,11 +297,7 @@ const SavedJobs = () => {
   }, [activeTab]);
 
   const handleScoreSave = (urn, newValue) => {
-    const newScores = {
-      ...scores,
-      [urn]: newValue,
-    };
-
+    const newScores = { ...scores, [urn]: newValue };
     setScores(newScores);
     localStorage.setItem(SCORES_STORAGE_KEY, JSON.stringify(newScores));
   };
@@ -335,11 +310,9 @@ const SavedJobs = () => {
         const experienceData = extractExperienceFromDescription(
           job.description,
         );
-
         const fullTextContext = `${job.title} ${job.description}`;
         const seniority = extractSeniorityFromDescription(fullTextContext);
         const jobType = extractJobTypeFromDescription(fullTextContext);
-
         const foundations = extractFoundations(job.description);
         const specifics = extractSpecifics(job.description);
 
@@ -364,7 +337,7 @@ const SavedJobs = () => {
             j.company.name.toLowerCase().includes(searchTerm.toLowerCase())),
       )
 
-      .sort((a, b) => b.score - a.score);
+      .sort((a, b) => (b.score || 0) - (a.score || 0));
   }, [jobs, searchTerm, scores]);
 
   const handleRemove = (urn) => {
@@ -484,6 +457,7 @@ const SavedJobs = () => {
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
               <tr>
+                {}
                 <th className="px-6 py-4">Score</th>
                 <th className="px-6 py-4">Role & Company</th>
                 <th className="px-6 py-4">Foundations</th>
@@ -578,10 +552,7 @@ const SavedJobs = () => {
                             job.foundations.map((tech, index) => (
                               <span
                                 key={tech}
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ${getTechBadgeStyle(
-                                  index,
-                                  tech,
-                                )}`}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ${getTechBadgeStyle(index, tech)}`}
                               >
                                 {tech}
                               </span>
@@ -598,10 +569,7 @@ const SavedJobs = () => {
                             job.specifics.map((tech, index) => (
                               <span
                                 key={tech}
-                                className={`px-2 py-0.5 rounded text-[10px] font-medium border shadow-sm ${getTechBadgeStyle(
-                                  index + 5,
-                                  tech,
-                                )}`}
+                                className={`px-2 py-0.5 rounded text-[10px] font-medium border shadow-sm ${getTechBadgeStyle(index + 5, tech)}`}
                               >
                                 {tech}
                               </span>
@@ -615,9 +583,7 @@ const SavedJobs = () => {
                       <td className="px-6 py-4">
                         {job.seniority ? (
                           <span
-                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getSeniorityStyle(
-                              job.seniority,
-                            )}`}
+                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getSeniorityStyle(job.seniority)}`}
                           >
                             {job.seniority}
                           </span>
@@ -631,9 +597,7 @@ const SavedJobs = () => {
                       <td className="px-6 py-4">
                         {job.jobType ? (
                           <span
-                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getTypeStyle(
-                              job.jobType,
-                            )}`}
+                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getTypeStyle(job.jobType)}`}
                           >
                             {job.jobType}
                           </span>
@@ -647,9 +611,7 @@ const SavedJobs = () => {
                       <td className="px-6 py-4">
                         {job.experienceData ? (
                           <span
-                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getExperienceStyle(
-                              job.experienceData,
-                            )}`}
+                            className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getExperienceStyle(job.experienceData)}`}
                           >
                             {job.experienceData.text}
                           </span>
@@ -679,9 +641,7 @@ const SavedJobs = () => {
                           {job.applicants !== undefined &&
                           job.applicants !== null ? (
                             <span
-                              className={`px-2 py-1 rounded-full text-xs font-bold border ${getCompetitionStyle(
-                                job.applicants,
-                              )}`}
+                              className={`px-2 py-1 rounded-full text-xs font-bold border ${getCompetitionStyle(job.applicants)}`}
                             >
                               {job.applicants}
                             </span>
@@ -704,9 +664,7 @@ const SavedJobs = () => {
                             job.insights.map((insight, idx) => (
                               <span
                                 key={idx}
-                                className={`px-3 py-1 rounded-full text-xs border whitespace-nowrap ${getInsightStyle(
-                                  insight,
-                                )}`}
+                                className={`px-3 py-1 rounded-full text-xs border whitespace-nowrap ${getInsightStyle(insight)}`}
                               >
                                 {insight.trim()}
                               </span>
@@ -816,7 +774,7 @@ const SavedJobs = () => {
       </div>
 
       {}
-      <CopyFirstNItems items={filteredJobs} />
+      <CopyFirstNItems items={jobs} />
     </div>
   );
 };
