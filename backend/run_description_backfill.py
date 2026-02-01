@@ -9,7 +9,7 @@ sys.path.append(str(Path(__file__).parent))
 
 from database.database_connection import get_db_session
 from models import Job
-from source.features.get_applied_jobs.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
+from source.features.fetch_curl.linkedin_http_client import get_linkedin_fetch_artefacts
 from source.features.job_population.enrichment_service import EnrichmentService
 
 def backfill_descriptions():

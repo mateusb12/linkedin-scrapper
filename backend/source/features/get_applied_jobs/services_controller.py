@@ -1,20 +1,17 @@
 # backend/source/features/get_applied_jobs/services_controller.py
 
 import json
-import time
 import math
 import re
 import traceback
-import random
 from datetime import timezone, datetime, timedelta
 from flask import Blueprint, jsonify, request
 from dateutil.parser import parse as parse_datetime
 from sqlalchemy import or_, func
 
-from exceptions.service_exceptions import LinkedInScrapingException
 from models import Job, FetchCurl, Email, Company
 from source.features.get_applied_jobs.fetch_linkedin_saved_jobs import fetch_linkedin_saved_jobs
-from source.features.get_applied_jobs.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
+from source.features.fetch_curl.linkedin_http_client import get_linkedin_fetch_artefacts
 from source.features.job_population.job_repository import JobRepository
 from services.job_tracking.huntr_service import get_huntr_jobs_data
 from database.database_connection import get_db_session

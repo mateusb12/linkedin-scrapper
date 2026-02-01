@@ -3,17 +3,15 @@
 import time
 import re
 import requests
-import logging
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Tuple, Optional
 
 from models import Job, Company
 from source.features.job_population.job_repository import JobRepository
 from source.features.job_population.enrichment_service import EnrichmentService
-from utils.date_parser import parse_relative_date
 
 # NEW IMPORTS FOR OOP
-from source.features.get_applied_jobs.linkedin_fetch_call_repository import (
+from source.features.fetch_curl.linkedin_http_client import (
     get_linkedin_fetch_artefacts,
     LinkedInRequest,
     VoyagerGraphQLRequest

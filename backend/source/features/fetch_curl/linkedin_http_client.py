@@ -114,7 +114,7 @@ class VoyagerGraphQLRequest(LinkedInRequest):
 # ---------------------------------------------------------------------
 
 def get_linkedin_fetch_artefacts() -> Optional[Tuple[requests.Session, Dict[str, Any]]]:
-    from .linkedin_fetch_call_repository import load_linkedin_config  # evitar import circular
+    from .linkedin_http_client import load_linkedin_config  # evitar import circular
 
     config = load_linkedin_config('LinkedIn_Saved_Jobs_Scraper')
     if not config:

@@ -13,7 +13,7 @@ from source.features.job_population.job_repository import JobRepository
 from models import Company, Job, Email
 from source.features.job_population.linkedin_parser import parse_job_entries
 from source.features.job_population.enrichment_service import EnrichmentService
-from source.features.get_applied_jobs.linkedin_fetch_call_repository import get_linkedin_fetch_artefacts
+from source.features.fetch_curl.linkedin_http_client import get_linkedin_fetch_artefacts
 from database.database_connection import get_db_session
 
 class PopulationService:

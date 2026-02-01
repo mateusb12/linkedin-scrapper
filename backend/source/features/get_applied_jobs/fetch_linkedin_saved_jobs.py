@@ -7,7 +7,7 @@ import random  # ADDED for jitter
 from datetime import timezone, datetime
 from typing import Optional
 
-from source.features.get_applied_jobs.linkedin_fetch_call_repository import (
+from source.features.fetch_curl.linkedin_http_client import (
     get_linkedin_fetch_artefacts,
     LinkedInRequest,
     VoyagerGraphQLRequest
