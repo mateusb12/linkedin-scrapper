@@ -140,3 +140,13 @@ export const fetchLinkedinJobsRaw = async ({
 
   return handleResponse(response, "Failed to fetch LinkedIn raw jobs");
 };
+
+export const fetchProfileExperiences = async (
+  urn = "urn:li:fsd_profile:ACoAAD016UkBWKGUUWKD7WdA2pTCzevPYoF-xnE",
+) => {
+  const params = new URLSearchParams({ urn });
+  const response = await fetch(
+    `${API_BASE}/services/profile/experiences?${params.toString()}`,
+  );
+  return handleResponse(response, "Failed to fetch profile experiences");
+};

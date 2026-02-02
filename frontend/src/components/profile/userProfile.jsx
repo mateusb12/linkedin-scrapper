@@ -7,18 +7,12 @@ import {
   Linkedin,
   Github,
   Globe,
-  Eye,
-  EyeOff,
-  Server,
-  Database,
-  Code,
-  Layout,
-  BrainCircuit,
   Briefcase,
   FileJson,
   GraduationCap,
   Languages,
-  Link as LinkIcon,
+  Code,
+  BrainCircuit,
 } from "lucide-react";
 
 import { fetchProfiles, saveProfile } from "../../services/profileService.js";
@@ -33,6 +27,8 @@ import {
   normalizeResume,
   generateLatex,
 } from "./resumeJsonMapper.js";
+
+import LinkedinExperiences from "./LinkedinExperiences";
 
 const palette = {
   bg: {
@@ -427,7 +423,6 @@ const ResumeSection = ({
     <div
       className={`${palette.bg.card} p-6 rounded-lg shadow-lg mt-8 border border-gray-700`}
     >
-      {}
       <div
         className={`flex flex-col md:flex-row justify-between md:items-center mb-8 border-b ${palette.border.primary} pb-5`}
       >
@@ -461,7 +456,6 @@ const ResumeSection = ({
 
       {selectedResume && (
         <div className="space-y-8 animate-in fade-in duration-500">
-          {}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className={styleguide.label}>Resume Internal Name</label>
@@ -485,7 +479,6 @@ const ResumeSection = ({
             </div>
           </div>
 
-          {}
           <div className="bg-gray-700/30 p-4 rounded-lg border border-gray-700">
             <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
               <User size={16} /> Resume Contacts
@@ -506,9 +499,7 @@ const ResumeSection = ({
             </div>
           </div>
 
-          {}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {}
             <div className="bg-gray-700/30 p-4 rounded-lg border border-gray-700">
               <div className="flex justify-between items-center mb-3">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
@@ -549,7 +540,6 @@ const ResumeSection = ({
               ))}
             </div>
 
-            {}
             <div className="bg-gray-700/30 p-4 rounded-lg border border-gray-700">
               <div className="flex justify-between items-center mb-3">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
@@ -622,7 +612,6 @@ const ResumeSection = ({
             </div>
           </div>
 
-          {}
           <div className="bg-gray-700/30 p-5 rounded-lg border border-gray-700">
             <h3
               className={`text-lg font-bold ${palette.text.light} mb-4 flex items-center gap-2`}
@@ -649,7 +638,6 @@ const ResumeSection = ({
             </div>
           </div>
 
-          {}
           <div>
             <div className="flex justify-between items-center border-t border-gray-700 pt-6 mb-4">
               <h3
@@ -780,7 +768,6 @@ const ResumeSection = ({
             </div>
           </div>
 
-          {}
           <div>
             <div className="flex justify-between items-center border-t border-gray-700 pt-6 mb-4">
               <h3
@@ -871,7 +858,6 @@ const ResumeSection = ({
             </div>
           </div>
 
-          {}
           <div
             className={`flex flex-col sm:flex-row justify-end items-center mt-8 pt-6 border-t ${palette.border.primary} gap-3`}
           >
@@ -1077,6 +1063,11 @@ const UserProfile = () => {
           <Briefcase className="text-blue-500" /> Career Profile & Resumes
         </h1>
 
+        {}
+        <div className="mb-8">
+          <LinkedinExperiences />
+        </div>
+
         <ProfileDetails
           profile={profile}
           setProfile={setProfile}
@@ -1096,7 +1087,6 @@ const UserProfile = () => {
         {showFullPreview && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 animate-in fade-in">
             <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 w-full max-w-4xl h-3/4 flex flex-col shadow-2xl">
-              {}
               <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-4">
                   <h3 className="text-white font-bold font-mono text-sm flex items-center gap-2">
@@ -1108,7 +1098,6 @@ const UserProfile = () => {
                     Resume Payload Preview
                   </h3>
 
-                  {}
                   <div className="flex bg-gray-900 rounded-lg p-1 border border-gray-700">
                     <button
                       onClick={() => handleFormatChange("json")}
@@ -1141,7 +1130,6 @@ const UserProfile = () => {
                 </button>
               </div>
 
-              {}
               <textarea
                 readOnly
                 value={previewContent}
@@ -1150,7 +1138,6 @@ const UserProfile = () => {
                 }`}
               />
 
-              {}
               {previewFormat === "latex" && (
                 <div className="mt-2 text-xs text-gray-500 text-right">
                   Copie e cole no Overleaf ou no seu editor .tex local
