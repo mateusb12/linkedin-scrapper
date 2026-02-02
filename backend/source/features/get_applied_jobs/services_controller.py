@@ -17,6 +17,7 @@ from services.job_tracking.huntr_service import get_huntr_jobs_data
 from database.database_connection import get_db_session
 from source.features.get_applied_jobs.fetch_linkedin_applied_jobs import fetch_all_linkedin_jobs
 from source.features.job_population.population_service import PopulationService
+from source.features.profile.fetch_linkedin_profile_experiences import fetch_linkedin_profile_experiences
 from source.services.experience_extractor import extract_years_experience
 
 services_bp = Blueprint("services", __name__, url_prefix="/services")
@@ -655,4 +656,48 @@ def get_linkedin_applied_jobs_raw():
         return jsonify({
             "error": "Failed to fetch raw LinkedIn jobs",
             "details": str(e),
+        }), 500
+
+
+@services_bp.route("/profile/experiences", methods=["GET"])
+def get_profile_experiences():
+    """
+    Fetches raw experience data from a LinkedIn Profile.
+
+    Query Params:
+      - urn: The specific profile URN (e.g., "urn:li:fsd_profile:ACoAAD...").
+             If not provided, tries to use a default or fails.
+    """
+    try:
+        # Pega o URN da query string (ex: ?urn=urn:li:fsd_profile:...)
+        # Se você quiser deixar hardcoded pro seu perfil "me", pode definir um default aqui.
+        target_urn = request.args.get("urn")
+
+        if not target_urn:
+            return jsonify({
+                "error": "Missing 'urn' parameter. Please provide the LinkedIn Profile URN."
+            }), 400
+
+        print(f"🚀 Fetching experiences for URN: {target_urn}")
+
+        # Chama a função refatorada
+        data = fetch_linkedin_profile_experiences(target_urn)
+
+        if not data:
+            return jsonify({
+                "message": "No experiences found or failed to fetch.",
+                "data": []
+            }), 404  # Ou 200 com lista vazia, depende da preferência
+
+        return jsonify({
+            "count": len(data),
+            "urn": target_urn,
+            "experiences": data
+        }), 200
+
+    except Exception as e:
+        print(traceback.format_exc())
+        return jsonify({
+            "error": "Failed to fetch profile experiences",
+            "details": str(e)
         }), 500

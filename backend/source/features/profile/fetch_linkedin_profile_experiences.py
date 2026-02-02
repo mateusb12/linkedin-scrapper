@@ -38,6 +38,20 @@ class Experience:
                 f"   📝 Descrição:\n{self.description}\n"
                 f"   🛠️ Skills: {skills_str}\n")
 
+    def to_dict(self):
+        return {
+            "title": self.title,
+            "company_name": self.company_name,
+            "employment_type": self.employment_type,
+            "location": self.location,
+            "work_type": self.work_type,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "duration": self.duration,
+            "description": self.description,
+            "skills": self.skills
+        }
+
 
 # ===================================================================
 # 2) HELPERS & PARSER LOGIC BLINDADA
@@ -256,6 +270,8 @@ def fetch_linkedin_profile_experiences(profile_urn: str):
             print(f"--- JOB #{i} ---")
             print(exp)
             print("-" * 50)
+
+    return [exp.to_dict() for exp in experiences]
 
 
 if __name__ == "__main__":
