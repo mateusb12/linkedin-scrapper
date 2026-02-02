@@ -28,6 +28,11 @@ import {
   deleteResume,
   updateResume,
 } from "../../services/resumeService.js";
+import {
+  denormalizeResume,
+  normalizeResume,
+  generateLatex,
+} from "./resumeJsonMapper.js";
 
 const palette = {
   bg: {
@@ -157,114 +162,6 @@ const DynamicInputSection = ({ title, items, setItems, placeholder }) => {
       </button>
     </div>
   );
-};
-
-const normalizeResume = (apiData) => {
-  return {
-    id: apiData.id,
-
-    internal_name: apiData.internal_name || apiData.name || "Untitled Resume",
-    summary: apiData.summary || "",
-
-    contacts: apiData.contacts ||
-      apiData.profile?.contacts || {
-        phone: "",
-        email: "",
-        linkedin: "",
-        github: "",
-        portfolio: "",
-      },
-
-    skills: apiData.skills || {
-      languages: [],
-      frameworks: [],
-      cloud_and_infra: [],
-      databases: [],
-      concepts: [],
-    },
-
-    languages: Array.isArray(apiData.languages) ? apiData.languages : [],
-
-    experience: (apiData.experience || []).map((exp) => ({
-      id: exp.id || `exp_${Date.now()}_${Math.random()}`,
-      role: exp.role || exp.title || "",
-      company: exp.company || "",
-      location: exp.location || "",
-      start_date: exp.start_date || "",
-      end_date: exp.end_date || "",
-      highlights: exp.highlights || exp.description || [],
-      stack: exp.stack || [],
-    })),
-
-    projects: (apiData.projects || []).map((proj) => ({
-      id: proj.id || `proj_${Date.now()}_${Math.random()}`,
-      name: proj.name || proj.title || "",
-      description: proj.description || "",
-      stack: proj.stack || [],
-      links: proj.links || { github: "", website: "" },
-    })),
-
-    education: (apiData.education || []).map((edu) => ({
-      id: edu.id || `edu_${Date.now()}_${Math.random()}`,
-      institution: edu.institution || "",
-      degree: edu.degree || "",
-      location: edu.location || "",
-      start_year: edu.start_year || "",
-      end_year: edu.end_year || "",
-      year: edu.year || "",
-    })),
-
-    meta: apiData.meta || {
-      language: "pt-BR",
-      page: { size: "letter", font_size: 11 },
-    },
-  };
-};
-
-const denormalizeResume = (uiState) => {
-  return {
-    id: uiState.id,
-    internal_name: uiState.internal_name,
-    summary: uiState.summary,
-
-    profile: {
-      name: uiState.internal_name,
-      contacts: uiState.contacts,
-    },
-
-    contacts: uiState.contacts,
-    languages: uiState.languages,
-
-    skills: uiState.skills,
-
-    experience: uiState.experience.map((exp) => ({
-      company: exp.company,
-      role: exp.role,
-      location: exp.location,
-      start_date: exp.start_date,
-      end_date: exp.end_date,
-      highlights: exp.highlights,
-      stack: exp.stack,
-    })),
-
-    projects: uiState.projects.map((proj) => ({
-      name: proj.name,
-      description: proj.description,
-      stack: proj.stack,
-      links: proj.links,
-    })),
-
-    education: uiState.education.map((edu) => ({
-      institution: edu.institution,
-      degree: edu.degree,
-      location: edu.location,
-      start_year: edu.start_year,
-      end_year: edu.end_year,
-      year: edu.year,
-    })),
-
-    meta: uiState.meta,
-  };
 };
 
 const ProfileDetails = ({ profile, setProfile, onSave }) => {
@@ -1014,6 +911,7 @@ const UserProfile = () => {
   const [previewContent, setPreviewContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [previewFormat, setPreviewFormat] = useState("json");
 
   const selectedResume = resumes.find((r) => r.id === selectedResumeId);
 
@@ -1133,10 +1031,24 @@ const UserProfile = () => {
     }
   };
 
-  const handleToggleFullPreview = () => {
-    if (!showFullPreview) {
+  const updatePreviewContent = (format) => {
+    if (format === "json") {
       const jsonPayload = denormalizeResume(selectedResume);
       setPreviewContent(JSON.stringify(jsonPayload, null, 2));
+    } else {
+      const latexContent = generateLatex(selectedResume);
+      setPreviewContent(latexContent);
+    }
+  };
+
+  const handleFormatChange = (format) => {
+    setPreviewFormat(format);
+    updatePreviewContent(format);
+  };
+
+  const handleToggleFullPreview = () => {
+    if (!showFullPreview) {
+      updatePreviewContent(previewFormat);
     }
     setShowFullPreview(!showFullPreview);
   };
@@ -1184,10 +1096,43 @@ const UserProfile = () => {
         {showFullPreview && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 animate-in fade-in">
             <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 w-full max-w-4xl h-3/4 flex flex-col shadow-2xl">
+              {}
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-white font-bold font-mono text-sm flex items-center gap-2">
-                  <FileJson size={16} /> JSON Payload Preview
-                </h3>
+                <div className="flex items-center gap-4">
+                  <h3 className="text-white font-bold font-mono text-sm flex items-center gap-2">
+                    {previewFormat === "json" ? (
+                      <FileJson size={16} />
+                    ) : (
+                      <FileJson size={16} className="text-blue-400" />
+                    )}
+                    Resume Payload Preview
+                  </h3>
+
+                  {}
+                  <div className="flex bg-gray-900 rounded-lg p-1 border border-gray-700">
+                    <button
+                      onClick={() => handleFormatChange("json")}
+                      className={`px-3 py-1 text-xs font-bold rounded transition ${
+                        previewFormat === "json"
+                          ? "bg-emerald-600 text-white shadow"
+                          : "text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      JSON
+                    </button>
+                    <button
+                      onClick={() => handleFormatChange("latex")}
+                      className={`px-3 py-1 text-xs font-bold rounded transition ${
+                        previewFormat === "latex"
+                          ? "bg-blue-600 text-white shadow"
+                          : "text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      LaTeX
+                    </button>
+                  </div>
+                </div>
+
                 <button
                   onClick={() => setShowFullPreview(false)}
                   className="text-gray-400 hover:text-white hover:bg-gray-700 p-1 rounded"
@@ -1195,11 +1140,22 @@ const UserProfile = () => {
                   Close
                 </button>
               </div>
+
+              {}
               <textarea
                 readOnly
                 value={previewContent}
-                className={`${styleguide.previewTextarea} font-mono flex-1`}
+                className={`${styleguide.previewTextarea} font-mono flex-1 ${
+                  previewFormat === "latex" ? "text-blue-300" : "text-green-400"
+                }`}
               />
+
+              {}
+              {previewFormat === "latex" && (
+                <div className="mt-2 text-xs text-gray-500 text-right">
+                  Copie e cole no Overleaf ou no seu editor .tex local
+                </div>
+              )}
             </div>
           </div>
         )}
