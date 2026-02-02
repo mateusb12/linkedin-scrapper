@@ -190,3 +190,98 @@ def load_linkedin_config(config_name: str) -> dict | None:
 
     session.close()
     return config
+
+# ============================================================
+# NEW HEADERS FOR EXPERIENCE SCRAPER (FROM HAR)
+# ============================================================
+
+EXPERIENCE_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0",
+    "Accept": "application/vnd.linkedin.normalized+json+2.1",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "x-li-lang": "en_US",
+    "x-li-track": "{\"clientVersion\":\"1.13.42216\",\"mpVersion\":\"1.13.42216\",\"osName\":\"web\",\"timezoneOffset\":-3,\"timezone\":\"America/Recife\",\"deviceFormFactor\":\"DESKTOP\",\"mpName\":\"voyager-web\",\"displayDensity\":1,\"displayWidth\":1920,\"displayHeight\":1080}",
+    "x-li-page-instance": "urn:li:page:d_flagship3_profile_view_base_position_details;WEFAKT5HTB+PRWyIVfqS1A==",
+    "csrf-token": "ajax:2911536425343488140",
+    "x-restli-protocol-version": "2.0.0",
+    "x-li-pem-metadata": "Voyager - Profile=view-experience-details",
+    "Referer": "https://www.linkedin.com/in/mateus-bessa-m/details/experience/",
+    "Pragma": "no-cache",
+    "Cache-Control": "no-cache"
+}
+
+
+# ============================================================
+# SAVE CONFIG INTO DB FOR EXPERIENCE SCRAPER
+# ============================================================
+
+def save_experience_config_to_db():
+    from database.database_connection import get_db_session
+    from models.fetch_models import FetchCurl
+
+    CONFIG_NAME = "LinkedIn_Profile_Experience_Scraper"
+
+    session = get_db_session()
+    existing = session.query(FetchCurl).filter_by(name=CONFIG_NAME).first()
+
+    if existing:
+        print(f"✔ Config '{CONFIG_NAME}' already exists.")
+        session.close()
+        return
+
+    print(f"🛠 Creating config '{CONFIG_NAME}'...")
+
+    record = FetchCurl(
+        name=CONFIG_NAME,
+        base_url="https://www.linkedin.com/voyager/api/graphql",
+        query_id="voyagerIdentityDashProfileComponents.c5d4db426a0f8247b8ab7bc1d660775a",
+        method="GET",
+        headers=json.dumps(EXPERIENCE_HEADERS, indent=2),
+        referer=EXPERIENCE_HEADERS["Referer"]
+    )
+
+    session.add(record)
+    session.commit()
+    session.close()
+    print(f"💾 Saved config '{CONFIG_NAME}'.")
+
+
+# ============================================================
+# LOAD CONFIG FOR EXPERIENCE SCRAPER (COOKIE + HEADERS MERGE)
+# ============================================================
+
+def load_experience_config():
+    from database.database_connection import get_db_session
+    from models.fetch_models import FetchCurl
+
+    CONFIG_NAME = "LinkedIn_Profile_Experience_Scraper"
+
+    session = get_db_session()
+    print(f"🔎 Loading config '{CONFIG_NAME}'...")
+
+    record = session.query(FetchCurl).filter_by(name=CONFIG_NAME).first()
+    if not record:
+        session.close()
+        print(f"❌ Config '{CONFIG_NAME}' not found!")
+        return None
+
+    headers_dict = json.loads(record.headers)
+
+    if not record.cookies:
+        session.close()
+        raise RuntimeError(f"❌ No cookie stored for {CONFIG_NAME}")
+    else:
+        print("🍪 Applying cookie from DB...")
+
+    headers_dict["Cookie"] = record.cookies
+
+    session.close()
+
+    return {
+        "base_url": record.base_url,
+        "query_id": record.query_id,
+        "method": record.method,
+        "headers": headers_dict,
+        "referer": record.referer,
+    }
