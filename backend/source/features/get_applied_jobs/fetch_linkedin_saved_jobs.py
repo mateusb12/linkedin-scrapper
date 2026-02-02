@@ -1,11 +1,10 @@
-# backend/source/features/get_applied_jobs/fetch_linkedin_saved_jobs.py
-
 import json
 import time
 import re
-import random  # ADDED for jitter
+import random
 from datetime import timezone, datetime
-from typing import Optional
+from typing import Optional, List
+from dataclasses import dataclass, field
 
 from source.features.fetch_curl.linkedin_http_client import (
     get_linkedin_fetch_artefacts,
@@ -13,6 +12,43 @@ from source.features.fetch_curl.linkedin_http_client import (
     VoyagerGraphQLRequest
 )
 from source.features.job_population.enrichment_service import EnrichmentService
+
+
+# =====================================================================
+# 1) DATACLASSES (O "OURO")
+# =====================================================================
+
+@dataclass
+class SavedJob:
+    urn: str
+    entity_urn: str
+    title: str
+    company_name: str
+    location: str
+    job_url: str
+    insights: List[str] = field(default_factory=list)
+
+    # Campos enriquecidos posteriormente
+    description: str = ""
+    posted_at: str = ""  # Timestamp bruto ou formatado
+    posted_date_text: str = ""  # Texto amigável (Ex: 2 weeks ago)
+    applicants: str = "N/A"
+    apply_method: dict = field(default_factory=dict)
+
+    def __repr__(self):
+        # Formatação limpa para o terminal
+        insights_str = ', '.join(self.insights[:3]) + ('...' if len(self.insights) > 3 else '')
+        desc_preview = self.description[:100].replace('\n',
+                                                      ' ') + "..." if self.description else "No description fetched."
+
+        return (f"🏢 {self.company_name}\n"
+                f"   💼 {self.title}\n"
+                f"   📍 {self.location}\n"
+                f"   📅 Posted: {self.posted_date_text} | Applicants: {self.applicants}\n"
+                f"   🔗 {self.job_url}\n"
+                f"   💡 Insights: {insights_str}\n"
+                f"   📝 Desc: {desc_preview}\n")
+
 
 # ---------------------------------------------------------------------
 # CONSTANTS
@@ -54,14 +90,10 @@ PAGE_CONTEXT = {
 
 
 # ---------------------------------------------------------------------
-# REQUEST OBJECTS (LOCAL SPECIFIC)
+# REQUEST OBJECTS
 # ---------------------------------------------------------------------
 
 class SduiEnrichmentRequest(LinkedInRequest):
-    """
-    Objeto responsável por buscar os detalhes do job via SDUI/Component.
-    """
-
     def __init__(self, job_id: str, csrf_token: str):
         url = (
             "https://www.linkedin.com/flagship-web/rsc-action/actions/component"
@@ -78,17 +110,11 @@ class SduiEnrichmentRequest(LinkedInRequest):
             "screenId": "com.linkedin.sdui.flagshipnav.jobs.JobDetails",
         }
         self.set_body(self.payload)
-
-        # Headers específicos desta request
         self.set_headers({
             "csrf-token": csrf_token,
             "Content-Type": "application/json"
         })
 
-
-# ---------------------------------------------------------------------
-# CONTEXT OBJECT
-# ---------------------------------------------------------------------
 
 class LinkedInFetchContext:
     def __init__(self, session, card_type: str):
@@ -106,25 +132,22 @@ class LinkedInFetchContext:
     def _extract_csrf(self) -> Optional[str]:
         if "JSESSIONID" in self.session.cookies:
             return self.session.cookies.get("JSESSIONID").strip('"')
-
         cookie_header = self.session.headers.get("Cookie", "")
         m = re.search(r'JSESSIONID="?([^";]+)', cookie_header)
         return m.group(1) if m else None
 
 
 # ---------------------------------------------------------------------
-# VOYAGER FETCH (REFACTORED TO OOP)
+# FETCHERS & PARSERS
 # ---------------------------------------------------------------------
 
 def fetch_voyager_page(ctx: LinkedInFetchContext, start: int, debug=False, debug_curls=None):
-    # Instancia o Objeto de Request
     request_obj = VoyagerGraphQLRequest(
         base_url=BASE_URL,
         query_id=QUERY_ID,
         start=start,
         card_type=ctx.card_type
     )
-
     if debug and debug_curls is not None:
         debug_curls.append(request_obj.to_curl(ctx.session.cookies))
 
@@ -133,18 +156,25 @@ def fetch_voyager_page(ctx: LinkedInFetchContext, start: int, debug=False, debug
     return resp.json()
 
 
-# ---------------------------------------------------------------------
-# PAYLOAD PARSING (UNCHANGED)
-# ---------------------------------------------------------------------
-
 def format_timestamp_ms(ms: int) -> str:
     if not ms:
-        return None
+        return ""
     dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
     return dt.strftime("%Y-%m-%d")
 
 
-def extract_jobs_from_payload(payload: dict) -> list[dict]:
+def safe_get_text(obj, *keys):
+    curr = obj
+    try:
+        for k in keys:
+            if curr is None: return ""
+            curr = curr[k]
+        return curr if curr is not None else ""
+    except Exception:
+        return ""
+
+
+def extract_jobs_from_payload(payload: dict) -> List[SavedJob]:
     included = payload.get("included", [])
     included_map = {i.get("entityUrn"): i for i in included}
     jobs = []
@@ -166,313 +196,145 @@ def extract_jobs_from_payload(payload: dict) -> list[dict]:
             if not entity:
                 continue
 
-            image_attrs = entity.get("image", {}).get("attributes", [])
-            company_urn = None
-            if image_attrs:
-                company_urn = image_attrs[0].get("detailData", {}).get("*companyLogo")
+            # Extração de Campos Básicos
+            urn = entity.get("trackingUrn")
+            entity_urn = entity.get("entityUrn")
+            title = safe_get_text(entity, "title", "text")
+            company_name = safe_get_text(entity, "primarySubtitle", "text")
+            location = safe_get_text(entity, "secondarySubtitle", "text")
+            nav_url = entity.get("navigationUrl")
 
+            # Insights
             insights = []
             for block in entity.get("insightsResolutionResults", []):
-                simple = block.get("simpleInsight")
-                if simple:
-                    txt = simple.get("title", {}).get("text")
-                    if txt:
-                        insights.append(txt)
+                txt = safe_get_text(block, "simpleInsight", "title", "text")
+                if txt:
+                    insights.append(txt)
 
-            jobs.append({
-                "job_posting_urn": entity.get("trackingUrn"),
-                "entity_urn": entity.get("entityUrn"),
-                "title": entity.get("title", {}).get("text"),
-                "company": {
-                    "name": entity.get("primarySubtitle", {}).get("text"),
-                    "urn": company_urn,
-                },
-                "location": entity.get("secondarySubtitle", {}).get("text"),
-                "navigation_url": entity.get("navigationUrl"),
-                "insights": insights,
-            })
+            # Instancia o Objeto
+            job = SavedJob(
+                urn=urn,
+                entity_urn=entity_urn,
+                title=title,
+                company_name=company_name,
+                location=location,
+                job_url=nav_url,
+                insights=insights
+            )
+            jobs.append(job)
 
     return jobs
 
 
 # ---------------------------------------------------------------------
-# SDUI DESCRIPTION EXTRACTION (UNCHANGED HELPERS)
+# SDUI EXTRACTION (Helpers)
 # ---------------------------------------------------------------------
 
-def _extract_text_nodes(node, out: list[str]):
-    if isinstance(node, str):
-        s = node.strip()
-        if s:
-            out.append(s)
-        return
-
-    if isinstance(node, list):
-        if len(node) >= 4 and isinstance(node[3], dict):
-            tag = node[1]
-            props = node[3]
-            children = props.get("children")
-
-            if tag in {"p", "$6"}:
-                if children:
-                    _extract_text_nodes(children, out)
-                    out.append("\n")
-
-            elif tag == "strong":
-                out.append("**")
-                _extract_text_nodes(props.get("children"), out)
-                out.append("**\n")
-
-            elif tag == "ul":
-                for li in props.get("children", []):
-                    out.append("- ")
-                    _extract_text_nodes(li, out)
-                    out.append("\n")
-
-            elif tag == "li":
-                _extract_text_nodes(props.get("children"), out)
-
-            else:
-                _extract_text_nodes(children, out)
-        else:
-            for item in node:
-                _extract_text_nodes(item, out)
-
-
-def normalize_blocks_to_markdown(blocks: list[str]) -> str:
-    text = "".join(blocks)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
-
-
-def clean_sdui_text(text: str) -> str:
-    text = re.sub(r"\$\d+:props:[^\s*]+", "", text)
-    text = re.sub(r"\$undefined", "", text)
-    text = re.sub(r"\*\*last\*\*", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\band(?=\s*\*\*)", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\band(?=\s*$)", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\*\*[\s\n]+([^*]+)\*\*", r"**\1**", text)
-    text = re.sub(r"\*\*([^*]+)[\s\n]+\*\*", r"**\1**", text)
-    text = re.sub(r"[ \t]{2,}", " ", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    text = re.sub(r"\*\*\s*\*\*", "", text)
-    return text.strip()
-
-
-def merge_inline_bold_blocks(text: str) -> str:
-    lines = text.splitlines()
-    result = []
-    buffer = None
-    for line in lines:
-        if (
-                line.startswith("**")
-                and line.endswith("**")
-                and len(line) < 80
-                and buffer
-                and not buffer.endswith(":")
-        ):
-            buffer = buffer.rstrip() + " " + line.strip("**")
-            continue
-        if buffer is not None:
-            result.append(buffer)
-        buffer = line
-    if buffer is not None:
-        result.append(buffer)
-    return "\n".join(result)
-
-
-def normalize_section_headers(text: str) -> str:
-    text = re.sub(r"([^\n])\s*(\*\*[^*\n]+[:?,]\*\*)", r"\1\n\n\2", text)
-    text = re.sub(r"(\*\*[^*\n]+[:?,]\*\*)([^\n])", r"\1\n\n\2", text)
-    text = re.sub(r"([a-z]\.)\s*([A-Z][A-Za-z\s\']+:\s*)", r"\1\n\n**\2**", text)
-    text = re.sub(r"([a-z]\.)\s*(Join us at [A-Z][A-Za-z0-9\s]+)[,:]", r"\1\n\n**\2:**", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
-
-
-def merge_inline_bold_sentences(text: str) -> str:
-    text = re.sub(r"([a-zA-Z,])\n\n(\*\*[^*\n]+\.\*\*)", r"\1 \2", text)
-    return text
-
-
 def extract_description_from_sdui(blob: bytes) -> str:
-    """
-    Extrai texto de forma limpa do SDUI moderno do LinkedIn.
-    """
     text = blob.decode("utf-8", errors="ignore")
     lines = text.splitlines()
-
     json_blobs = []
 
-    # Extrai todos os JSON válidos
     for line in lines:
-        if ":" not in line:
-            continue
+        if ":" not in line: continue
         try:
             _, json_part = line.split(":", 1)
-            obj = json.loads(json_part)
-            json_blobs.append(obj)
+            json_blobs.append(json.loads(json_part))
         except:
             continue
 
     blocks = []
 
     def walk(node):
-        if node is None:
-            return
-
-        # --- FILTRO DE STRINGS LIXO ---
+        if node is None: return
         if isinstance(node, str):
             s = node.strip()
-
-            # Ignorar tags SDUI e placeholders
-            if (
-                    not s or
-                    s.startswith("$L") or  # $L1 $L2 $L7...
-                    s.startswith("$S") or  # $Sreact.fragment
-                    s.startswith("$8") or  # $8, $8 0, $8 1...
-                    s == "$undefined" or
-                    s.isdigit() or  # números perdidos (0,1)
-                    all(ch in "$ " for ch in s) or  # <<<<<< filtra "$ $ $ $$ $"
-                    s in {"$", "$$", "$$$", "$span", "span"} or
-                    re.fullmatch(r"\$+ span \$+", s) or  # "$ span $"
-                    re.fullmatch(r"\$+", s)  # só símbolos
-            ):
+            # Filtros de sujeira do SDUI
+            if (not s or s.startswith("$L") or s.startswith("$S") or s.startswith("$8")
+                    or s == "$undefined" or all(ch in "$ " for ch in s)):
                 return
-
             blocks.append(s)
             return
 
         if isinstance(node, list):
-            for x in node:
-                walk(x)
-            return
-
-        if isinstance(node, dict):
-
-            # Texto real → textProps
+            for x in node: walk(x)
+        elif isinstance(node, dict):
             if "textProps" in node:
-                children = node["textProps"].get("children", [])
-                walk(children)
-                return
-
-            if "children" in node:
+                walk(node["textProps"].get("children", []))
+            elif "children" in node:
                 walk(node["children"])
-            return
 
-    # Varre cada blob JSON válido
     for obj in json_blobs:
         walk(obj)
 
-    # Junta com quebras limpas
     result = "\n".join(blocks)
     result = re.sub(r"\n{3,}", "\n\n", result)
-
     return result.strip()
 
 
 # ---------------------------------------------------------------------
-# ENRICH JOBS (REFACTORED TO OOP)
+# ENRICHMENT
 # ---------------------------------------------------------------------
 
-def enrich_jobs_with_sdui(
-        ctx: LinkedInFetchContext,
-        jobs: list[dict],
-        *,
-        debug=False,
-        trace=False,
-        debug_curls=None,
-        trace_info=None,
-):
-    if not ctx.csrf_token:
-        return
+def enrich_jobs_with_sdui(ctx: LinkedInFetchContext, jobs: List[SavedJob], debug=False):
+    if not ctx.csrf_token: return
 
     for job in jobs:
-        urn = job.get("job_posting_urn")
-        if not urn:
-            continue
+        if not job.urn: continue
 
-        m = re.search(r"jobPosting:(\d+)", urn)
-        if not m:
-            continue
-
+        # Extract Job ID
+        m = re.search(r"jobPosting:(\d+)", job.urn)
+        if not m: continue
         job_id = m.group(1)
 
-        # Instancia o Objeto de Request SDUI
-        req_obj = SduiEnrichmentRequest(job_id, ctx.csrf_token)
-
-        if debug and debug_curls is not None:
-            debug_curls.append(req_obj.to_curl(ctx.session.cookies))
-
-        resp = req_obj.execute(ctx.session)
-
-        if debug:
-            print("\n" + "=" * 80)
-            print(f"[SDUI RAW RESPONSE] job_id={job_id}")
-            print(f"status={resp.status_code} bytes={len(resp.content or b'')}")
-            print("-" * 80)
-            print(resp.content.decode("utf-8", errors="replace"))
-            print("=" * 80 + "\n")
-
-        if trace and trace_info is not None:
-            trace_info.append({
-                "job_id": job_id,
-                "status": resp.status_code,
-                "len": len(resp.content or b""),
-            })
-
-        if resp.ok and resp.content:
-            job["description"] = extract_description_from_sdui(resp.content)
-        else:
-            job["description"] = "Failed to fetch description."
-
+        # 1. SDUI Request (Description)
         try:
-            enrichment_data = EnrichmentService.fetch_single_job_details_enrichment(ctx.session, urn)
-
-            applicants = enrichment_data.get("applicants")
-            if applicants is not None:
-                job["applicants"] = applicants
+            req = SduiEnrichmentRequest(job_id, ctx.csrf_token)
+            resp = req.execute(ctx.session)
+            if resp.ok and resp.content:
+                job.description = extract_description_from_sdui(resp.content)
             else:
-                job["applicants"] = None
-
+                job.description = "Failed to fetch description"
         except Exception as e:
-            job["applicants"] = None
+            job.description = f"Error: {str(e)}"
 
-        meta = fetch_job_posting_metadata(ctx.session, job_id)
-        if meta:
-            listed_at = meta.get("listedAt")
-            created_at = meta.get("createdAt")
-            expire_at = meta.get("expireAt")
-            apply_method = meta.get("applyMethod")
+        # 2. Enrichment Service (Applicants, etc)
+        try:
+            enrichment_data = EnrichmentService.fetch_single_job_details_enrichment(ctx.session, job.urn)
+            applicants = enrichment_data.get("applicants")
+            job.applicants = str(applicants) if applicants is not None else "N/A"
+        except Exception:
+            job.applicants = "Error"
 
-            job["posted_at"] = listed_at
-            job["posted_at_formatted"] = format_timestamp_ms(listed_at)
+        # 3. Metadata (Dates)
+        try:
+            meta = fetch_job_posting_metadata(ctx.session, job_id)
+            if meta:
+                listed_at = meta.get("listedAt")
+                job.posted_at = format_timestamp_ms(listed_at)
+                job.posted_date_text = job.posted_at  # Fallback simplificado
+                job.apply_method = meta.get("applyMethod")
+        except Exception:
+            pass
 
-            job["created_at"] = created_at
-            job["created_at_formatted"] = format_timestamp_ms(created_at)
 
-            job["expire_at"] = expire_at
-            job["expire_at_formatted"] = format_timestamp_ms(expire_at)
-
-            job["apply_method"] = apply_method
-        else:
-            job["listed_at"] = None
-            job["created_at"] = None
-            job["expire_at"] = None
-            job["apply_method"] = None
+def fetch_job_posting_metadata(session, job_id):
+    url = f"https://www.linkedin.com/voyager/api/jobs/jobPostings/{job_id}"
+    resp = session.get(url, headers={"accept": "application/json", "x-restli-protocol-version": "2.0.0"})
+    return resp.json() if resp.ok else None
 
 
 # ---------------------------------------------------------------------
-# PUBLIC ENTRYPOINT (DEFAULT CHANGED TO "all")
+# MAIN FUNCTION
 # ---------------------------------------------------------------------
 
 def fetch_linkedin_saved_jobs(
         *,
         card_type: str,
-        pagination: str = "all",  # CHANGED DEFAULT
+        pagination: str = "all",
         start_override: Optional[int] = None,
         enrich: bool = True,
         debug: bool = False,
-        trace: bool = False,
 ) -> dict:
     if card_type not in CARD_TYPE_MAP:
         raise ValueError(f"Invalid card_type: {card_type}")
@@ -484,98 +346,77 @@ def fetch_linkedin_saved_jobs(
     session, _ = artefacts
     ctx = LinkedInFetchContext(session, CARD_TYPE_MAP[card_type])
 
-    debug_curls = []
-    trace_info = []
-
-    all_jobs = []
+    all_jobs: List[SavedJob] = []
+    seen_urns = set()
     pages_fetched = []
 
-    # SAFETY: Track URNs to prevent infinite loops if API ignores 'start' param
-    seen_urns = set()
+    start = start_override or 0
+    page_num = 1
+    max_pages = 100 if pagination == "all" else int(pagination)
 
-    if pagination == "all":
-        start = start_override or 0
-        page_num = 1
+    print(f"🚀 Starting fetch for '{card_type}' jobs...")
 
-        while True:
-            # 1. Fetch Page
-            payload = fetch_voyager_page(ctx, start, debug, debug_curls)
+    while page_num <= max_pages:
+        if debug: print(f"   Fetching page {page_num} (start={start})...")
 
-            # 2. Extract Jobs
-            jobs = extract_jobs_from_payload(payload)
-            if not jobs:
-                break
+        payload = fetch_voyager_page(ctx, start, debug)
+        new_jobs = extract_jobs_from_payload(payload)
 
-            # 3. Duplicate Detection (Safety Mechanism)
-            new_unique_jobs = []
-            for job in jobs:
-                urn = job.get("job_posting_urn")
-                # Only add if we haven't seen this URN before
-                if urn and urn not in seen_urns:
-                    seen_urns.add(urn)
-                    new_unique_jobs.append(job)
+        if not new_jobs:
+            break
 
-            # If we fetched jobs but ALL were duplicates, it means we are looping
-            # (LinkedIn API ignored the 'start' param and sent Page 1 again).
-            if not new_unique_jobs:
-                if debug:
-                    print(
-                        f"[DEBUG] Infinite Loop Protection: Stopping at start={start}. All returned jobs were duplicates.")
-                break
+        # Duplicate Check
+        unique_batch = []
+        for job in new_jobs:
+            if job.urn not in seen_urns:
+                seen_urns.add(job.urn)
+                unique_batch.append(job)
 
-            all_jobs.extend(new_unique_jobs)
-            pages_fetched.append(page_num)
+        if not unique_batch:
+            if debug: print("   Loop detected (all duplicates). Stopping.")
+            break
 
-            # 4. Prepare for next iteration
-            start += PAGE_SIZE
-            page_num += 1
-            # Add jitter to avoid bot detection
-            time.sleep(random.uniform(0.5, 1.5))
-
-    else:
-        page_num = max(1, int(pagination))
-        start = start_override if start_override is not None else (page_num - 1) * PAGE_SIZE
-        payload = fetch_voyager_page(ctx, start, debug, debug_curls)
-        all_jobs = extract_jobs_from_payload(payload)
+        all_jobs.extend(unique_batch)
         pages_fetched.append(page_num)
 
-    if enrich:
-        enrich_jobs_with_sdui(
-            ctx,
-            all_jobs,
-            debug=debug,
-            trace=trace,
-            debug_curls=debug_curls,
-            trace_info=trace_info,
-        )
+        if pagination != "all":
+            break
 
-    response = {
+        start += PAGE_SIZE
+        page_num += 1
+        time.sleep(random.uniform(0.5, 1.0))
+
+    if enrich:
+        print(f"✨ Enriching {len(all_jobs)} jobs with details...")
+        enrich_jobs_with_sdui(ctx, all_jobs, debug=debug)
+
+    return {
         "card_type": card_type,
-        "pagination": pagination,
-        "pages_fetched": pages_fetched,
         "count": len(all_jobs),
-        "jobs": all_jobs,
+        "jobs": all_jobs
     }
 
-    if debug:
-        response["debug"] = {
-            "curl_count": len(debug_curls),
-            "curls": debug_curls,
-        }
 
-    if trace:
-        response["trace"] = {
-            "count": len(trace_info),
-            "items": trace_info,
-        }
+# =====================================================================
+# MAIN EXECUTION BLOCK (DATACLASS PREVIEW)
+# =====================================================================
 
-    return response
+if __name__ == "__main__":
+    # Teste rápido apenas com a primeira página
+    try:
+        results = fetch_linkedin_saved_jobs(
+            card_type="saved",
+            pagination="1",  # Puxa só 1 página para teste rápido
+            enrich=True,
+            debug=True
+        )
 
+        print(f"\n✅ SUCCESS! Found {results['count']} saved jobs.\n")
 
-def fetch_job_posting_metadata(session, job_id):
-    url = f"https://www.linkedin.com/voyager/api/jobs/jobPostings/{job_id}"
-    resp = session.get(url, headers={
-        "accept": "application/json",
-        "x-restli-protocol-version": "2.0.0"
-    })
-    return resp.json() if resp.ok else None
+        for i, job in enumerate(results['jobs'], 1):
+            print(f"--- JOB #{i} ---")
+            print(job)  # Usa o __repr__ bonito da Dataclass
+            print("-" * 50)
+
+    except Exception as e:
+        print(f"\n❌ Erro durante a execução: {e}")
