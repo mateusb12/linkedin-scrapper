@@ -1,3 +1,5 @@
+# backend/source/features/get_applied_jobs/fetch_linkedin_saved_jobs.py
+
 import json
 import time
 import re
@@ -6,8 +8,9 @@ from datetime import timezone, datetime
 from typing import Optional, List
 from dataclasses import dataclass, field
 
+# IMPORTS REFATORADOS
 from source.features.fetch_curl.linkedin_http_client import (
-    get_linkedin_fetch_artefacts,
+    LinkedInClient,
     LinkedInRequest,
     VoyagerGraphQLRequest
 )
@@ -54,8 +57,6 @@ class SavedJob:
 # CONSTANTS
 # ---------------------------------------------------------------------
 
-BASE_URL = "https://www.linkedin.com/voyager/api/graphql"
-QUERY_ID = "voyagerSearchDashClusters.ef3d0937fb65bd7812e32e5a85028e79"
 PAGE_SIZE = 10
 
 CARD_TYPE_MAP = {
@@ -90,7 +91,7 @@ PAGE_CONTEXT = {
 
 
 # ---------------------------------------------------------------------
-# REQUEST OBJECTS
+# REQUEST OBJECTS (Enrichment Only)
 # ---------------------------------------------------------------------
 
 class SduiEnrichmentRequest(LinkedInRequest):
@@ -116,45 +117,9 @@ class SduiEnrichmentRequest(LinkedInRequest):
         })
 
 
-class LinkedInFetchContext:
-    def __init__(self, session, card_type: str):
-        self.session = session
-        self.card_type = card_type
-        self.page_ctx = PAGE_CONTEXT[card_type]
-        self._apply_headers()
-        self.csrf_token = self._extract_csrf()
-
-    def _apply_headers(self):
-        self.session.headers["x-li-page-instance"] = self.page_ctx["page_instance"]
-        self.session.headers["x-li-pem-metadata"] = self.page_ctx["pem"]
-        self.session.headers["Referer"] = self.page_ctx["referer"]
-
-    def _extract_csrf(self) -> Optional[str]:
-        if "JSESSIONID" in self.session.cookies:
-            return self.session.cookies.get("JSESSIONID").strip('"')
-        cookie_header = self.session.headers.get("Cookie", "")
-        m = re.search(r'JSESSIONID="?([^";]+)', cookie_header)
-        return m.group(1) if m else None
-
-
 # ---------------------------------------------------------------------
-# FETCHERS & PARSERS
+# PARSERS (Mantidos intactos)
 # ---------------------------------------------------------------------
-
-def fetch_voyager_page(ctx: LinkedInFetchContext, start: int, debug=False, debug_curls=None):
-    request_obj = VoyagerGraphQLRequest(
-        base_url=BASE_URL,
-        query_id=QUERY_ID,
-        start=start,
-        card_type=ctx.card_type
-    )
-    if debug and debug_curls is not None:
-        debug_curls.append(request_obj.to_curl(ctx.session.cookies))
-
-    resp = request_obj.execute(ctx.session)
-    resp.raise_for_status()
-    return resp.json()
-
 
 def format_timestamp_ms(ms: int) -> str:
     if not ms:
@@ -276,8 +241,10 @@ def extract_description_from_sdui(blob: bytes) -> str:
 # ENRICHMENT
 # ---------------------------------------------------------------------
 
-def enrich_jobs_with_sdui(ctx: LinkedInFetchContext, jobs: List[SavedJob], debug=False):
-    if not ctx.csrf_token: return
+def enrich_jobs_with_sdui(client: LinkedInClient, jobs: List[SavedJob], debug=False):
+    if not client.csrf_token:
+        print("⚠️ No CSRF token found, skipping enrichment.")
+        return
 
     for job in jobs:
         if not job.urn: continue
@@ -289,8 +256,8 @@ def enrich_jobs_with_sdui(ctx: LinkedInFetchContext, jobs: List[SavedJob], debug
 
         # 1. SDUI Request (Description)
         try:
-            req = SduiEnrichmentRequest(job_id, ctx.csrf_token)
-            resp = req.execute(ctx.session)
+            req = SduiEnrichmentRequest(job_id, client.csrf_token)
+            resp = client.execute(req)
             if resp.ok and resp.content:
                 job.description = extract_description_from_sdui(resp.content)
             else:
@@ -299,8 +266,10 @@ def enrich_jobs_with_sdui(ctx: LinkedInFetchContext, jobs: List[SavedJob], debug
             job.description = f"Error: {str(e)}"
 
         # 2. Enrichment Service (Applicants, etc)
+        # Nota: EnrichmentService ainda espera uma session crua do requests,
+        # então passamos client.session
         try:
-            enrichment_data = EnrichmentService.fetch_single_job_details_enrichment(ctx.session, job.urn)
+            enrichment_data = EnrichmentService.fetch_single_job_details_enrichment(client.session, job.urn)
             applicants = enrichment_data.get("applicants")
             job.applicants = str(applicants) if applicants is not None else "N/A"
         except Exception:
@@ -308,7 +277,7 @@ def enrich_jobs_with_sdui(ctx: LinkedInFetchContext, jobs: List[SavedJob], debug
 
         # 3. Metadata (Dates)
         try:
-            meta = fetch_job_posting_metadata(ctx.session, job_id)
+            meta = fetch_job_posting_metadata(client.session, job_id)
             if meta:
                 listed_at = meta.get("listedAt")
                 job.posted_at = format_timestamp_ms(listed_at)
@@ -325,7 +294,7 @@ def fetch_job_posting_metadata(session, job_id):
 
 
 # ---------------------------------------------------------------------
-# MAIN FUNCTION
+# MAIN FUNCTION REFATORADA
 # ---------------------------------------------------------------------
 
 def fetch_linkedin_saved_jobs(
@@ -339,16 +308,23 @@ def fetch_linkedin_saved_jobs(
     if card_type not in CARD_TYPE_MAP:
         raise ValueError(f"Invalid card_type: {card_type}")
 
-    artefacts = get_linkedin_fetch_artefacts()
-    if not artefacts:
-        raise RuntimeError("LinkedIn artefacts not available")
+    # 1. INICIALIZA O CLIENTE
+    client = LinkedInClient("LinkedIn_Saved_Jobs_Scraper")
+    if not client.config:
+        raise RuntimeError("LinkedIn config not available in DB (LinkedIn_Saved_Jobs_Scraper)")
 
-    session, _ = artefacts
-    ctx = LinkedInFetchContext(session, CARD_TYPE_MAP[card_type])
+    # 2. CONFIGURA CONTEXTO (HEADERS)
+    mapped_type = CARD_TYPE_MAP[card_type]
+    page_ctx = PAGE_CONTEXT.get(mapped_type, PAGE_CONTEXT["SAVED"])
+
+    client.session.headers.update({
+        "x-li-page-instance": page_ctx["page_instance"],
+        "x-li-pem-metadata": page_ctx["pem"],
+        "Referer": page_ctx["referer"]
+    })
 
     all_jobs: List[SavedJob] = []
     seen_urns = set()
-    pages_fetched = []
 
     start = start_override or 0
     page_num = 1
@@ -359,7 +335,29 @@ def fetch_linkedin_saved_jobs(
     while page_num <= max_pages:
         if debug: print(f"   Fetching page {page_num} (start={start})...")
 
-        payload = fetch_voyager_page(ctx, start, debug)
+        # 3. PREPARA VARIÁVEIS GRAPHQL
+        variables = (
+            f"(start:{start},query:("
+            "flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER,"
+            f"queryParameters:List((key:cardType,value:List({mapped_type})))"
+            "))"
+        )
+
+        # 4. EXECUTA REQUEST
+        req = VoyagerGraphQLRequest(
+            base_url=client.config['base_url'],
+            query_id=client.config['query_id'],
+            variables=variables
+        )
+
+        if debug:
+            print(f"[DEBUG] URL: {req.url}")
+
+        resp = client.execute(req)
+        resp.raise_for_status()
+        payload = resp.json()
+
+        # 5. PARSE E PAGINAÇÃO
         new_jobs = extract_jobs_from_payload(payload)
 
         if not new_jobs:
@@ -377,7 +375,6 @@ def fetch_linkedin_saved_jobs(
             break
 
         all_jobs.extend(unique_batch)
-        pages_fetched.append(page_num)
 
         if pagination != "all":
             break
@@ -388,7 +385,7 @@ def fetch_linkedin_saved_jobs(
 
     if enrich:
         print(f"✨ Enriching {len(all_jobs)} jobs with details...")
-        enrich_jobs_with_sdui(ctx, all_jobs, debug=debug)
+        enrich_jobs_with_sdui(client, all_jobs, debug=debug)
 
     return {
         "card_type": card_type,

@@ -1,11 +1,15 @@
+# backend/source/features/profile/fetch_linkedin_profile_experiences.py
+
 import json
 import urllib.parse
-import requests
-import os
 from dataclasses import dataclass, field
 from typing import List
 
-from source.features.fetch_curl.linkedin_http_client import load_experience_config
+# IMPORTS REFATORADOS
+from source.features.fetch_curl.linkedin_http_client import (
+    LinkedInClient,
+    VoyagerGraphQLRequest
+)
 
 
 # ===================================================================
@@ -41,20 +45,6 @@ class Experience:
 
 def encode_urn_only(raw_urn: str) -> str:
     return urllib.parse.quote(raw_urn, safe='')
-
-
-def build_url(profile_urn: str, query_id: str):
-    raw_urn = profile_urn.replace("profileUrn:", "").strip()
-    encoded_urn = encode_urn_only(raw_urn)
-    variables_param = f"(profileUrn:{encoded_urn},sectionType:experience)"
-
-    url = (
-        "https://www.linkedin.com/voyager/api/graphql"
-        f"?includeWebMetadata=true"
-        f"&variables={variables_param}"
-        f"&queryId={query_id}"
-    )
-    return url
 
 
 def safe_get(obj, *keys):
@@ -217,23 +207,28 @@ def parse_experiences(json_data: dict) -> List[Experience]:
 # ===================================================================
 
 def fetch_linkedin_profile_experiences(profile_urn: str):
-    print("=== Fetch & Parse LinkedIn Experiences (ROBUST FIX) ===")
+    print("=== Fetch & Parse LinkedIn Experiences (REFATORED) ===")
 
-    cfg = load_experience_config()
-    if not cfg:
-        print("❌ Could not load config.")
+    # 1. INSTANCIA O CLIENTE (Carrega config do DB automaticamente)
+    client = LinkedInClient("LinkedIn_Profile_Experience_Scraper")
+    if not client.config:
+        print("❌ Could not load config 'LinkedIn_Profile_Experience_Scraper'.")
         return
 
-    headers = cfg["headers"]
-    query_id = cfg["query_id"]
+    # 2. CONSTROI URL E REQUEST
+    raw_urn = profile_urn.replace("profileUrn:", "").strip()
+    encoded_urn = encode_urn_only(raw_urn)
+    variables = f"(profileUrn:{encoded_urn},sectionType:experience)"
 
-    url = build_url(profile_urn, query_id)
-
-    session = requests.Session()
-    session.headers.update(headers)
+    req = VoyagerGraphQLRequest(
+        base_url=client.config["base_url"],
+        query_id=client.config["query_id"],
+        variables=variables
+    )
 
     print(f"🚀 Sending request...")
-    response = session.get(url, allow_redirects=False)
+    # Executa usando o Client (que já tem os headers e cookies)
+    response = client.execute(req)
     print(f"➡️ STATUS: {response.status_code}")
 
     if response.status_code != 200:
@@ -264,6 +259,7 @@ def fetch_linkedin_profile_experiences(profile_urn: str):
 
 
 if __name__ == "__main__":
+    # Exemplo de uso
     fetch_linkedin_profile_experiences(
         "profileUrn:urn:li:fsd_profile:ACoAAD016UkBWKGUUWKD7WdA2pTCzevPYoF-xnE"
     )

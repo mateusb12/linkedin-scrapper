@@ -1,9 +1,10 @@
-# backend/source/features/get_applied_jobs/linkedin_fetch_call_repository.py
+# backend/source/features/fetch_curl/linkedin_http_client.py
 
 import json
 import os
 import sys
 import requests
+import re
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Tuple
 
@@ -11,39 +12,15 @@ from typing import Dict, Any, Optional, Tuple
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
-# -------------------------------------------------------------
-
-HEADERS_DICT = {
-    'accept': 'application/vnd.linkedin.normalized+json+2.1',
-    'accept-language': 'en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7',
-    'csrf-token': 'ajax:2584240299603910567',
-    'priority': 'u=1, i',
-    'referer': 'https://www.linkedin.com/my-items/saved-jobs/',
-    'sec-ch-prefers-color-scheme': 'dark',
-    'sec-ch-ua': '"Not)A;Brand";v="8", "Chromium";v="138", "Microsoft Edge";v="138"',
-    'sec-ch-ua-mobile': '?0',
-    'sec-ch-ua-platform': '"Windows"',
-    'sec-fetch-dest': 'empty',
-    'sec-fetch-mode': 'cors',
-    'sec-fetch-site': 'same-origin',
-    'x-li-lang': 'en_US',
-    'x-li-page-instance': 'urn:li:page:d_flagship3_myitems_savedjobs;gGeMib0KRoGTbXxHpSSTfg==',
-    'x-li-pem-metadata': 'Voyager - My Items=myitems-saved-jobs',
-    'x-li-track': '{"clientVersion":"1.13.37702","mpVersion":"1.13.37702","osName":"web","timezoneOffset":-3,'
-                  '"timezone":"America/Fortaleza","deviceFormFactor":"DESKTOP","mpName":"voyager-web",'
-                  '"displayDensity":1,"displayWidth":1920,"displayHeight":1080}',
-    'x-restli-protocol-version': '2.0.0'
-}
 
 
 # ---------------------------------------------------------------------
-# REQUEST OBJECT BASE
+# 1) REQUEST ABSTRACTIONS
 # ---------------------------------------------------------------------
 
 class LinkedInRequest(ABC):
     """
     Classe base abstrata para todas as requisições do LinkedIn.
-    Cada URL construída é um objeto que sabe se executar e se transformar em cURL.
     """
 
     def __init__(self, method: str, url: str):
@@ -88,47 +65,116 @@ class LinkedInRequest(ABC):
         )
 
 
-# ---------------------------------------------------------------------
-# CONCRETE VOYAGER REQUEST (SHARED)
-# ---------------------------------------------------------------------
-
 class VoyagerGraphQLRequest(LinkedInRequest):
     """
-    Objeto especializado na busca principal (Voyager GraphQL).
-    Usado tanto para 'Saved Jobs' quanto para 'Applied Jobs'.
+    Request genérico para a API Voyager GraphQL.
+    Serve tanto para Jobs (SearchCluster) quanto para Profile (Components).
     """
 
-    def __init__(self, base_url: str, query_id: str, start: int, card_type: str):
-        variables = (
-            f"(start:{start},query:("
-            "flagshipSearchIntent:SEARCH_MY_ITEMS_JOB_SEEKER,"
-            f"queryParameters:List((key:cardType,value:List({card_type})))"
-            "))"
-        )
-        final_url = f"{base_url}?variables={variables}&queryId={query_id}"
+    def __init__(self, base_url: str, query_id: str, variables: str):
+        # Monta a URL no padrão Voyager: ?variables=(...)&queryId=...
+        # Garante que não haja duplicidade de ? ou &
+        separator = "&" if "?" in base_url else "?"
+        final_url = f"{base_url}{separator}variables={variables}&queryId={query_id}"
         super().__init__("GET", final_url)
 
 
 # ---------------------------------------------------------------------
-# ARTEFACTS LOADER
+# 2) CLIENT MANAGER (The "Smart" Session)
+# ---------------------------------------------------------------------
+
+class LinkedInClient:
+    """
+    Gerencia a sessão, cookies e configurações do DB.
+    Centraliza a lógica de conexão.
+    """
+
+    def __init__(self, config_name: str):
+        self.config_name = config_name
+        self.session = requests.Session()
+        self.config = self._load_config()
+        self.csrf_token = None
+
+        if self.config:
+            # Aplica headers base da configuração
+            self.session.headers.update(self.config.get("headers", {}))
+            # Tenta extrair CSRF
+            self.csrf_token = self._extract_csrf()
+
+    def _load_config(self) -> Optional[dict]:
+        from database.database_connection import get_db_session
+        from models.fetch_models import FetchCurl
+
+        session_db = get_db_session()
+        print(f"🔎 [LinkedInClient] Loading config '{self.config_name}' from DB...")
+
+        record = session_db.query(FetchCurl).filter_by(name=self.config_name).first()
+
+        if not record:
+            print(f"❌ Configuration '{self.config_name}' not found.")
+            session_db.close()
+            return None
+
+        try:
+            headers_dict = json.loads(record.headers)
+        except:
+            headers_dict = {}
+
+        # Injeta o Cookie do banco nos headers
+        if record.cookies:
+            headers_dict["Cookie"] = record.cookies
+            print("🍪 Cookies applied from DB.")
+        else:
+            print(f"⚠️ Warning: No cookies found for {self.config_name}")
+
+        config = {
+            "base_url": record.base_url,
+            "query_id": record.query_id,
+            "headers": headers_dict,
+            "referer": record.referer
+        }
+        session_db.close()
+        return config
+
+    def _extract_csrf(self) -> Optional[str]:
+        """Tenta extrair o CSRF token (JSESSIONID) dos cookies"""
+        # 1. Tenta direto do jar de cookies (se requests gerencia)
+        if "JSESSIONID" in self.session.cookies:
+            return self.session.cookies.get("JSESSIONID").strip('"')
+
+        # 2. Tenta do header 'Cookie' bruto
+        cookie_header = self.session.headers.get("Cookie", "")
+        m = re.search(r'JSESSIONID="?([^";]+)', cookie_header)
+        return m.group(1) if m else None
+
+    def execute(self, request: LinkedInRequest) -> requests.Response:
+        """Executa um request usando a sessão configurada"""
+        return request.execute(self.session)
+
+
+# ---------------------------------------------------------------------
+# 3) LEGACY / HELPER FUNCTIONS (Mantidas para compatibilidade se necessário)
 # ---------------------------------------------------------------------
 
 def get_linkedin_fetch_artefacts() -> Optional[Tuple[requests.Session, Dict[str, Any]]]:
-    from .linkedin_http_client import load_linkedin_config  # evitar import circular
-
-    config = load_linkedin_config('LinkedIn_Saved_Jobs_Scraper')
-    if not config:
-        print("❌ Critical error: Could not load API configuration 'LinkedIn_Saved_Jobs_Scraper'.")
+    """Helper legado caso algum outro script ainda use"""
+    client = LinkedInClient('LinkedIn_Saved_Jobs_Scraper')
+    if not client.config:
         return None
-
-    session = requests.Session()
-    session.headers.update(config.get('headers', {}))
-    return session, config
+    return client.session, client.config
 
 
 def save_linkedin_config_to_db():
     from database.database_connection import get_db_session
     from models.fetch_models import FetchCurl
+
+    # Exemplo de headers padrão para salvar
+    HEADERS_DICT = {
+        'accept': 'application/vnd.linkedin.normalized+json+2.1',
+        'csrf-token': 'ajax:2584240299603910567',  # Exemplo
+        'x-li-lang': 'en_US',
+        'x-restli-protocol-version': '2.0.0'
+    }
 
     session = get_db_session()
     config_name = "LinkedIn_Saved_Jobs_Scraper"
@@ -142,10 +188,10 @@ def save_linkedin_config_to_db():
     new_record = FetchCurl(
         name=config_name,
         base_url="https://www.linkedin.com/voyager/api/graphql",
-        query_id="voyagerSearchDashClusters.5ba32757c00b31aea747c8bebb92855c",
+        query_id="voyagerSearchDashClusters.ef3d0937fb65bd7812e32e5a85028e79",
         method="GET",
         headers=json.dumps(HEADERS_DICT, indent=2),
-        referer=HEADERS_DICT.get('referer')
+        referer="https://www.linkedin.com/my-items/saved-jobs/"
     )
     session.add(new_record)
     session.commit()
@@ -153,74 +199,18 @@ def save_linkedin_config_to_db():
     print(f"💾 Successfully saved '{config_name}' to DB.")
 
 
-def load_linkedin_config(config_name: str) -> dict | None:
-    from database.database_connection import get_db_session
-    from models.fetch_models import FetchCurl
-
-    session = get_db_session()
-    print(f"🔎 Attempting to load configuration '{config_name}'...")
-    record = session.query(FetchCurl).filter_by(name=config_name).first()
-
-    if not record:
-        print(f"❌ Configuration '{config_name}' not found.")
-        session.close()
-        return None
-
-    print(f"[DEBUG] Scraper READ record -> ID {record.id}, Name {record.name}")
-
-    headers_dict = json.loads(record.headers)
-    cookie_to_use = record.cookies
-
-    if not cookie_to_use:
-        raise RuntimeError(f"❌ ERROR: No cookie found for '{config_name}'.")
-    else:
-        print("🍪 Using cookie from DB.")
-
-    if cookie_to_use:
-        headers_dict["Cookie"] = cookie_to_use
-
-    config = {
-        "name": record.name,
-        "base_url": record.base_url,
-        "query_id": record.query_id,
-        "method": record.method,
-        "headers": headers_dict,
-        "referer": record.referer
-    }
-
-    session.close()
-    return config
-
-# ============================================================
-# NEW HEADERS FOR EXPERIENCE SCRAPER (FROM HAR)
-# ============================================================
-
-EXPERIENCE_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0",
-    "Accept": "application/vnd.linkedin.normalized+json+2.1",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br, zstd",
-    "x-li-lang": "en_US",
-    "x-li-track": "{\"clientVersion\":\"1.13.42216\",\"mpVersion\":\"1.13.42216\",\"osName\":\"web\",\"timezoneOffset\":-3,\"timezone\":\"America/Recife\",\"deviceFormFactor\":\"DESKTOP\",\"mpName\":\"voyager-web\",\"displayDensity\":1,\"displayWidth\":1920,\"displayHeight\":1080}",
-    "x-li-page-instance": "urn:li:page:d_flagship3_profile_view_base_position_details;WEFAKT5HTB+PRWyIVfqS1A==",
-    "csrf-token": "ajax:2911536425343488140",
-    "x-restli-protocol-version": "2.0.0",
-    "x-li-pem-metadata": "Voyager - Profile=view-experience-details",
-    "Referer": "https://www.linkedin.com/in/mateus-bessa-m/details/experience/",
-    "Pragma": "no-cache",
-    "Cache-Control": "no-cache"
-}
-
-
-# ============================================================
-# SAVE CONFIG INTO DB FOR EXPERIENCE SCRAPER
-# ============================================================
-
 def save_experience_config_to_db():
     from database.database_connection import get_db_session
     from models.fetch_models import FetchCurl
 
     CONFIG_NAME = "LinkedIn_Profile_Experience_Scraper"
+
+    # Headers simplificados para exemplo
+    EXPERIENCE_HEADERS = {
+        "Accept": "application/vnd.linkedin.normalized+json+2.1",
+        "x-restli-protocol-version": "2.0.0",
+        "csrf-token": "ajax:2911536425343488140",
+    }
 
     session = get_db_session()
     existing = session.query(FetchCurl).filter_by(name=CONFIG_NAME).first()
@@ -238,50 +228,10 @@ def save_experience_config_to_db():
         query_id="voyagerIdentityDashProfileComponents.c5d4db426a0f8247b8ab7bc1d660775a",
         method="GET",
         headers=json.dumps(EXPERIENCE_HEADERS, indent=2),
-        referer=EXPERIENCE_HEADERS["Referer"]
+        referer="https://www.linkedin.com/in/me/details/experience/"
     )
 
     session.add(record)
     session.commit()
     session.close()
     print(f"💾 Saved config '{CONFIG_NAME}'.")
-
-
-# ============================================================
-# LOAD CONFIG FOR EXPERIENCE SCRAPER (COOKIE + HEADERS MERGE)
-# ============================================================
-
-def load_experience_config():
-    from database.database_connection import get_db_session
-    from models.fetch_models import FetchCurl
-
-    CONFIG_NAME = "LinkedIn_Profile_Experience_Scraper"
-
-    session = get_db_session()
-    print(f"🔎 Loading config '{CONFIG_NAME}'...")
-
-    record = session.query(FetchCurl).filter_by(name=CONFIG_NAME).first()
-    if not record:
-        session.close()
-        print(f"❌ Config '{CONFIG_NAME}' not found!")
-        return None
-
-    headers_dict = json.loads(record.headers)
-
-    if not record.cookies:
-        session.close()
-        raise RuntimeError(f"❌ No cookie stored for {CONFIG_NAME}")
-    else:
-        print("🍪 Applying cookie from DB...")
-
-    headers_dict["Cookie"] = record.cookies
-
-    session.close()
-
-    return {
-        "base_url": record.base_url,
-        "query_id": record.query_id,
-        "method": record.method,
-        "headers": headers_dict,
-        "referer": record.referer,
-    }
