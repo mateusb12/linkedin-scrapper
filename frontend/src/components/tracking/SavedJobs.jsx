@@ -24,6 +24,8 @@ import {
   Users,
   Trophy,
   Check,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import {
   fetchLinkedinJobsRaw,
@@ -45,8 +47,6 @@ import {
   getTechIcon,
 } from "./utils/jobUtils.js";
 import { formatCustomDate } from "../../utils/dateUtils.js";
-
-const USE_ICONS = true;
 
 const SCORES_STORAGE_KEY = "linkedin_job_scores";
 
@@ -232,6 +232,9 @@ const SavedJobs = () => {
   const [activeTab, setActiveTab] = useState(LINKEDIN_CARD_TYPE.SAVED);
   const [isCachedData, setIsCachedData] = useState(false);
 
+  const [showFoundationIcons, setShowFoundationIcons] = useState(true);
+  const [showSpecificsIcons, setShowSpecificsIcons] = useState(true);
+
   const [scores, setScores] = useState(() => {
     try {
       const savedScores = localStorage.getItem(SCORES_STORAGE_KEY);
@@ -406,6 +409,41 @@ const SavedJobs = () => {
             </div>
 
             <div className="flex items-center gap-2 w-full md:w-auto">
+              {}
+              <div className="flex items-center bg-gray-900/50 rounded-lg border border-gray-700 p-1 mr-2">
+                <button
+                  onClick={() => setShowFoundationIcons(!showFoundationIcons)}
+                  className={`p-1.5 rounded-md transition-all duration-200 ${
+                    showFoundationIcons
+                      ? "bg-emerald-500/20 text-emerald-400 shadow-sm"
+                      : "text-gray-500 hover:text-gray-300 hover:bg-gray-800"
+                  }`}
+                  title={
+                    showFoundationIcons
+                      ? "Hide Foundation Icons"
+                      : "Show Foundation Icons"
+                  }
+                >
+                  <Layers size={16} />
+                </button>
+                <div className="w-px h-4 bg-gray-700 mx-1"></div>
+                <button
+                  onClick={() => setShowSpecificsIcons(!showSpecificsIcons)}
+                  className={`p-1.5 rounded-md transition-all duration-200 ${
+                    showSpecificsIcons
+                      ? "bg-emerald-500/20 text-emerald-400 shadow-sm"
+                      : "text-gray-500 hover:text-gray-300 hover:bg-gray-800"
+                  }`}
+                  title={
+                    showSpecificsIcons
+                      ? "Hide Specifics Icons"
+                      : "Show Specifics Icons"
+                  }
+                >
+                  <Code2 size={16} />
+                </button>
+              </div>
+
               <div className="relative flex-1 md:w-64">
                 <input
                   type="text"
@@ -553,7 +591,7 @@ const SavedJobs = () => {
                             job.foundations.map((tech, index) => {
                               const iconSrc = getTechIcon(tech);
 
-                              if (USE_ICONS && iconSrc) {
+                              if (showFoundationIcons && iconSrc) {
                                 return (
                                   <div
                                     key={tech}
@@ -590,14 +628,37 @@ const SavedJobs = () => {
                       <td className="px-6 py-4 max-w-[250px]">
                         <div className="flex flex-wrap gap-1.5">
                           {job.specifics && job.specifics.length > 0 ? (
-                            job.specifics.map((tech, index) => (
-                              <span
-                                key={tech}
-                                className={`px-2 py-0.5 rounded text-[10px] font-medium border shadow-sm ${getTechBadgeStyle(index + 5, tech)}`}
-                              >
-                                {tech}
-                              </span>
-                            ))
+                            job.specifics.map((tech, index) => {
+                              const iconSrc = getTechIcon(tech);
+
+                              if (showSpecificsIcons && iconSrc) {
+                                return (
+                                  <div
+                                    key={tech}
+                                    className="relative group/icon"
+                                  >
+                                    <img
+                                      src={iconSrc}
+                                      alt={tech}
+                                      className="w-8 h-8 object-contain hover:scale-125 transition-transform duration-200 cursor-help filter drop-shadow-sm"
+                                    />
+                                    {}
+                                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10 border border-gray-700">
+                                      {tech}
+                                    </span>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <span
+                                  key={tech}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-medium border shadow-sm ${getTechBadgeStyle(index + 5, tech)}`}
+                                >
+                                  {tech}
+                                </span>
+                              );
+                            })
                           ) : (
                             <span className="text-gray-700 text-xs">-</span>
                           )}

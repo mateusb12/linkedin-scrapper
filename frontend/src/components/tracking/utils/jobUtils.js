@@ -4,6 +4,19 @@ import sqlIcon from "../../../assets/skills_icons/sql.png";
 import javascriptIcon from "../../../assets/skills_icons/javascript.png";
 import typescriptIcon from "../../../assets/skills_icons/typescript.png";
 import phpIcon from "../../../assets/skills_icons/php.png";
+import djangoIcon from "../../../assets/skills_icons/django.png";
+import azureIcon from "../../../assets/skills_icons/azure.png";
+import kubernetesIcon from "../../../assets/skills_icons/kubernetes.png";
+import linuxIcon from "../../../assets/skills_icons/linux.png";
+import dockerIcon from "../../../assets/skills_icons/docker.png";
+import reactIcon from "../../../assets/skills_icons/react.png";
+import nodejsIcon from "../../../assets/skills_icons/nodejs.png";
+import nextjsIcon from "../../../assets/skills_icons/nextjs.png";
+import awsIcon from "../../../assets/skills_icons/aws.png";
+import gitIcon from "../../../assets/skills_icons/git.png";
+import mysqlIcon from "../../../assets/skills_icons/mysql.png";
+import reactnativeIcon from "../../../assets/skills_icons/react-native.png";
+import llmIcon from "../../../assets/skills_icons/llm.png";
 
 const NEGATIVE_KEYWORDS = [
   "rpa",
@@ -563,6 +576,20 @@ const techIconsMap = {
   JavaScript: javascriptIcon,
   TypeScript: typescriptIcon,
   PHP: phpIcon,
+
+  Django: djangoIcon,
+  Azure: azureIcon,
+  Kubernetes: kubernetesIcon,
+  Linux: linuxIcon,
+  Docker: dockerIcon,
+  React: reactIcon,
+  "Node.js": nodejsIcon,
+  NextJS: nextjsIcon,
+  AWS: awsIcon,
+  Git: gitIcon,
+  MySQL: mysqlIcon,
+  "React Native": reactnativeIcon,
+  LLM: llmIcon,
 };
 
 export const getTechIcon = (techName) => {
