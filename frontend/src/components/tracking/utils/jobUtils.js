@@ -1,3 +1,16 @@
+const NEGATIVE_KEYWORDS = [
+  "rpa",
+  "llm",
+  "mcp",
+  "rag",
+  "n8n",
+  "langchain",
+  "lovable",
+  "gemini",
+  "oracle",
+  "langgraph",
+];
+
 export const extractExperienceFromDescription = (description) => {
   if (!description) {
     console.warn(
@@ -412,7 +425,14 @@ export const extractSpecifics = (description) => {
     }
   });
 
-  return found;
+  return found.sort((a, b) => {
+    const isANegative = NEGATIVE_KEYWORDS.includes(a.toLowerCase());
+    const isBNegative = NEGATIVE_KEYWORDS.includes(b.toLowerCase());
+
+    if (isANegative && !isBNegative) return -1;
+    if (!isANegative && isBNegative) return 1;
+    return 0;
+  });
 };
 
 const RAINBOW_PALETTE = [
@@ -425,6 +445,10 @@ const RAINBOW_PALETTE = [
 
 export const getTechBadgeStyle = (index, techName = "") => {
   const name = techName ? techName.toLowerCase().trim() : "";
+
+  if (NEGATIVE_KEYWORDS.includes(name)) {
+    return "bg-red-500/20 text-red-400 border-red-500/50 hover:bg-red-500/30 border transition-colors font-bold";
+  }
 
   const categoryStyles = {
     backend:
