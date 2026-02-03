@@ -511,18 +511,14 @@ const SavedJobs = () => {
                       <td className="px-6 py-4">
                         <ScoreInput
                           initialScore={job.score}
-                          onSave={(val) =>
-                            handleScoreSave(job.urn, val)
-                          }
+                          onSave={(val) => handleScoreSave(job.urn, val)}
                         />
                       </td>
 
                       <td className="px-6 py-4 min-w-[200px]">
                         <div className="flex items-start gap-3">
                           <button
-                            onClick={() =>
-                              toggleDescription(job.urn)
-                            }
+                            onClick={() => toggleDescription(job.urn)}
                             className="mt-1 text-gray-500 hover:text-emerald-400 transition-colors focus:outline-none"
                           >
                             {expandedJobUrn === job.urn ? (
@@ -534,9 +530,7 @@ const SavedJobs = () => {
                           <div>
                             <div
                               className="font-bold text-gray-200 cursor-pointer hover:text-emerald-400"
-                              onClick={() =>
-                                toggleDescription(job.urn)
-                              }
+                              onClick={() => toggleDescription(job.urn)}
                             >
                               {job.title ? job.title.trim() : "Unknown Title"}
                             </div>

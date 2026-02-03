@@ -113,48 +113,94 @@ export const getCompetitionStyle = (applicants) => {
 export const cleanJobDescription = (rawText) => {
   if (!rawText) return "No description available.";
 
-  const lines = rawText.split("\n");
-  const garbagePatterns = [
-    /^div$/,
-    /^com\.linkedin\..*/,
-    /^stringValue$/,
-    /^Collapsed$/,
-    /^bindableBoolean$/,
-    /^booleanBinding$/,
-    /^Expanded$/,
-    /^onComponentDisappear$/,
-    /^horizontal$/,
-    /^h2$/,
-    /^sans$/,
-    /^small$/,
-    /^normal$/,
-    /^open$/,
-    /^start$/,
-    /^strong$/,
-    /^text-attr-\d+$/,
-    /^more$/,
-    /^expandable_text_block.*/,
-  ];
+  const lines = rawText.replace(/\r\n/g, "\n").split("\n");
 
-  const cleanedLines = lines
-    .map((line) => line.trim())
-    .filter((line) => {
-      if (line.length === 0) return false;
-      return !garbagePatterns.some((pattern) => pattern.test(line));
-    })
-    .map((line) => {
-      if (line === "li" || line === "ul") return "• ";
-      if (line === "br") return "";
-      return line;
-    });
+  const cleanedLines = [];
 
-  let text = cleanedLines.join("\n");
-  text = text.replace(/([a-z])\*\*([A-Z])/g, "$1\n\n**$2");
-  text = text.replace(/\n\*\*/g, "\n\n**");
-  const unicodeBullets = /[✔✨✅•➡🔹🔸▪]/g;
-  text = text.replace(new RegExp(`\\n([✔✨✅•➡🔹🔸▪])`, "g"), "\n\n$1");
+  let pendingBullet = false;
+  let pendingBold = false;
 
-  return text;
+  const garbageRegex = new RegExp(
+    "^(div|ul|br|text-attr-\\d+|\\d+|about the job|start|end|open|collapsed|expanded|horizontal|vertical|small|normal|sans|h2|stringValue|bindableBoolean)$",
+    "i",
+  );
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+
+    if (!line) continue;
+
+    if (line === "li") {
+      pendingBullet = true;
+      continue;
+    }
+
+    if (line === "strong") {
+      pendingBold = true;
+      continue;
+    }
+
+    if (garbageRegex.test(line)) {
+      continue;
+    }
+
+    let currentText = line;
+
+    if (pendingBold) {
+      if (!currentText.startsWith("**")) {
+        currentText = `**${currentText}**`;
+      }
+      pendingBold = false;
+    }
+
+    if (pendingBullet) {
+      currentText = `- ${currentText}`;
+      pendingBullet = false;
+    } else if (/^[•·\-\*]\s/.test(currentText)) {
+      currentText = currentText.replace(/^[•·\-\*]\s*/, "- ");
+    }
+
+    if (cleanedLines.length > 0) {
+      const lastIndex = cleanedLines.length - 1;
+      const lastLine = cleanedLines[lastIndex];
+
+      const isCurrentBullet = currentText.startsWith("- ");
+      const isCurrentHeader = currentText.startsWith("**");
+
+      const lastLineEndsSentence = /[.!?:;]$/.test(lastLine);
+      const lastLineIsHeader =
+        lastLine.startsWith("**") && lastLine.endsWith("**");
+      const lastLineIsBullet = lastLine.startsWith("- ");
+
+      if (
+        !lastLineEndsSentence &&
+        !lastLineIsHeader &&
+        !lastLineIsBullet &&
+        !isCurrentBullet &&
+        !isCurrentHeader
+      ) {
+        cleanedLines[lastIndex] = lastLine + " " + currentText;
+      } else {
+        if (isCurrentBullet && !lastLineIsBullet && lastLine !== "") {
+          cleanedLines.push("");
+        }
+
+        if (isCurrentHeader && lastLine !== "") {
+          cleanedLines.push("");
+        }
+
+        cleanedLines.push(currentText);
+      }
+    } else {
+      cleanedLines.push(currentText);
+    }
+  }
+
+  return cleanedLines
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/ \./g, ".")
+    .trim();
 };
 
 export const extractSeniorityFromDescription = (description) => {
