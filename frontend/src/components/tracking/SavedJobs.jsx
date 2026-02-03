@@ -42,8 +42,11 @@ import {
   getTechBadgeStyle,
   getCompetitionStyle,
   getPostedStyle,
+  getTechIcon,
 } from "./utils/jobUtils.js";
 import { formatCustomDate } from "../../utils/dateUtils.js";
+
+const USE_ICONS = true;
 
 const SCORES_STORAGE_KEY = "linkedin_job_scores";
 
@@ -545,16 +548,39 @@ const SavedJobs = () => {
                       </td>
 
                       <td className="px-6 py-4 max-w-[200px]">
-                        <div className="flex flex-wrap gap-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
                           {job.foundations && job.foundations.length > 0 ? (
-                            job.foundations.map((tech, index) => (
-                              <span
-                                key={tech}
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ${getTechBadgeStyle(index, tech)}`}
-                              >
-                                {tech}
-                              </span>
-                            ))
+                            job.foundations.map((tech, index) => {
+                              const iconSrc = getTechIcon(tech);
+
+                              if (USE_ICONS && iconSrc) {
+                                return (
+                                  <div
+                                    key={tech}
+                                    className="relative group/icon"
+                                  >
+                                    <img
+                                      src={iconSrc}
+                                      alt={tech}
+                                      className="w-9 h-9 object-contain hover:scale-125 transition-transform duration-200 cursor-help filter drop-shadow-sm"
+                                    />
+                                    {}
+                                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10 border border-gray-700">
+                                      {tech}
+                                    </span>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <span
+                                  key={tech}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ${getTechBadgeStyle(index, tech)}`}
+                                >
+                                  {tech}
+                                </span>
+                              );
+                            })
                           ) : (
                             <span className="text-gray-700 text-xs">-</span>
                           )}

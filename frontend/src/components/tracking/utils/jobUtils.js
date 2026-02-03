@@ -1,3 +1,10 @@
+import pythonIcon from "../../../assets/skills_icons/_python.png";
+import javaIcon from "../../../assets/skills_icons/java.png";
+import sqlIcon from "../../../assets/skills_icons/sql.png";
+import javascriptIcon from "../../../assets/skills_icons/javascript.png";
+import typescriptIcon from "../../../assets/skills_icons/typescript.png";
+import phpIcon from "../../../assets/skills_icons/php.png";
+
 const NEGATIVE_KEYWORDS = [
   "rpa",
   "llm",
@@ -547,4 +554,17 @@ export const getPostedStyle = (postedText) => {
   }
 
   return "text-gray-300 bg-gray-700/50 border-gray-600";
+};
+
+const techIconsMap = {
+  Python: pythonIcon,
+  Java: javaIcon,
+  SQL: sqlIcon,
+  JavaScript: javascriptIcon,
+  TypeScript: typescriptIcon,
+  PHP: phpIcon,
+};
+
+export const getTechIcon = (techName) => {
+  return techIconsMap[techName] || null;
 };
