@@ -308,6 +308,9 @@ const SavedJobs = () => {
 
     return jobs
       .map((job) => {
+        const urn = job.urn || job.entity_urn;
+        const companyName = job.company_name;
+
         const experienceData = extractExperienceFromDescription(
           job.description,
         );
@@ -316,11 +319,13 @@ const SavedJobs = () => {
         const jobType = extractJobTypeFromDescription(fullTextContext);
         const foundations = extractFoundations(job.description);
         const specifics = extractSpecifics(job.description);
-
-        const score = scores[job.job_posting_urn] || 0;
+        const score = scores[urn] || 0;
 
         return {
           ...job,
+          urn,
+          company: { name: companyName },
+          postedAt: job.posted_date_text,
           experienceData,
           seniority,
           jobType,
@@ -329,20 +334,18 @@ const SavedJobs = () => {
           score,
         };
       })
-      .filter(
-        (j) =>
-          (j.title &&
-            j.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (j.company &&
-            j.company.name &&
-            j.company.name.toLowerCase().includes(searchTerm.toLowerCase())),
-      )
-
+      .filter((j) => {
+        const name = j.company?.name || "";
+        return (
+          j.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          name.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+      })
       .sort((a, b) => (b.score || 0) - (a.score || 0));
   }, [jobs, searchTerm, scores]);
 
   const handleRemove = (urn) => {
-    const updatedJobs = jobs.filter((job) => job.job_posting_urn !== urn);
+    const updatedJobs = jobs.filter((job) => job.urn !== urn);
     setJobs(updatedJobs);
     localStorage.setItem(getCacheKey(activeTab), JSON.stringify(updatedJobs));
   };
@@ -496,10 +499,10 @@ const SavedJobs = () => {
                 </tr>
               ) : filteredJobs.length > 0 ? (
                 filteredJobs.map((job) => (
-                  <React.Fragment key={job.job_posting_urn}>
+                  <React.Fragment key={job.urn}>
                     <tr
                       className={`group transition-colors ${
-                        expandedJobUrn === job.job_posting_urn
+                        expandedJobUrn === job.urn
                           ? "bg-gray-800"
                           : "hover:bg-emerald-900/5"
                       }`}
@@ -509,7 +512,7 @@ const SavedJobs = () => {
                         <ScoreInput
                           initialScore={job.score}
                           onSave={(val) =>
-                            handleScoreSave(job.job_posting_urn, val)
+                            handleScoreSave(job.urn, val)
                           }
                         />
                       </td>
@@ -518,11 +521,11 @@ const SavedJobs = () => {
                         <div className="flex items-start gap-3">
                           <button
                             onClick={() =>
-                              toggleDescription(job.job_posting_urn)
+                              toggleDescription(job.urn)
                             }
                             className="mt-1 text-gray-500 hover:text-emerald-400 transition-colors focus:outline-none"
                           >
-                            {expandedJobUrn === job.job_posting_urn ? (
+                            {expandedJobUrn === job.urn ? (
                               <ChevronUp size={16} />
                             ) : (
                               <ChevronDown size={16} />
@@ -532,7 +535,7 @@ const SavedJobs = () => {
                             <div
                               className="font-bold text-gray-200 cursor-pointer hover:text-emerald-400"
                               onClick={() =>
-                                toggleDescription(job.job_posting_urn)
+                                toggleDescription(job.urn)
                               }
                             >
                               {job.title ? job.title.trim() : "Unknown Title"}
@@ -626,9 +629,9 @@ const SavedJobs = () => {
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-gray-300 text-sm whitespace-nowrap">
                           <Calendar size={14} className="text-gray-500" />
-                          {job.posted_at_formatted ? (
+                          {job.postedAt ? (
                             <span className="capitalize">
-                              {formatCustomDate(job.posted_at_formatted)}
+                              {formatCustomDate(job.postedAt)}
                             </span>
                           ) : (
                             <span className="text-gray-600 italic">N/A</span>
@@ -693,7 +696,7 @@ const SavedJobs = () => {
                             <ExternalLink size={16} />
                           </a>
                           <button
-                            onClick={() => handleRemove(job.job_posting_urn)}
+                            onClick={() => handleRemove(job.urn)}
                             className="text-gray-400 hover:text-red-400 hover:bg-red-900/20 p-2 rounded-lg transition-colors"
                           >
                             <Trash2 size={16} />
@@ -702,7 +705,7 @@ const SavedJobs = () => {
                       </td>
                     </tr>
 
-                    {expandedJobUrn === job.job_posting_urn && (
+                    {expandedJobUrn === job.urn && (
                       <tr className="bg-gray-900/30 border-b border-gray-700/50 animate-in fade-in zoom-in-95 duration-200">
                         <td colSpan="12" className="px-6 py-4">
                           <div className="bg-gray-800 rounded-lg p-5 border border-gray-700 shadow-inner">
