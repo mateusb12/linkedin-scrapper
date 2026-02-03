@@ -10,42 +10,27 @@ export const extractExperienceFromDescription = (description) => {
 
   const hasKeywords = /years?|anos?/i.test(description);
 
-  if (hasKeywords) {
-    console.groupCollapsed(`🔍 Job Analysis: "${snippet}"`);
-  }
-
-  const regex = /(\d+)(?:\s*[-–to]\s*(\d+))?\s*(?:\+|plus|\s*mais)?\s*(?:years?|yrs?|anos?)\b/gi;
+  const regex =
+    /(\d+)(?:\s*[-–to]\s*(\d+))?\s*(?:\+|plus|\s*mais)?\s*(?:years?|yrs?|anos?)\b/gi;
 
   const matches = [...description.matchAll(regex)];
 
   if (matches.length === 0) {
     if (hasKeywords) {
-      console.log("❌ Keywords found, but REGEX matched nothing.");
-      console.log("Full Text Sample:", description.slice(0, 200));
       console.groupEnd();
     }
     return null;
   }
-
-  console.log(`✅ Found ${matches.length} raw matches:`);
 
   const candidates = matches
     .map((m) => {
       const min = parseInt(m[1], 10);
       const max = m[2] ? parseInt(m[2], 10) : null;
 
-      console.log(`   ➡ Raw Match: "${m[0]}" (Parsed Min: ${min})`);
-
       return { min, max, fullMatch: m[0] };
     })
     .filter((item) => {
-      const isValid = item.min > 0 && item.min <= 20;
-      if (!isValid) {
-        console.log(
-          `   ⚠️ Filtered out: ${item.min} (Reason: Must be > 0 and <= 20)`,
-        );
-      }
-      return isValid;
+      return item.min > 0 && item.min <= 20;
     });
 
   if (candidates.length === 0) {
@@ -61,7 +46,6 @@ export const extractExperienceFromDescription = (description) => {
   });
 
   if (hasKeywords) {
-    console.log("🏆 Selected Winner:", bestMatch);
     console.groupEnd();
   }
 
@@ -446,4 +430,36 @@ export const getTechBadgeStyle = (index, techName = "") => {
 
   const safeIndex = (index || 0) % RAINBOW_PALETTE.length;
   return `${RAINBOW_PALETTE[safeIndex]} border transition-colors`;
+};
+
+export const getPostedStyle = (postedText) => {
+  if (!postedText) {
+    return "text-gray-300 bg-gray-700/50 border-gray-600";
+  }
+
+  const t = postedText.toLowerCase().trim();
+
+  const match = t.match(/posted\s+(\d+)\s*(d|w|mo)/i);
+  if (!match) return "text-gray-300 bg-gray-700/50 border-gray-600";
+
+  const num = parseInt(match[1], 10);
+  const unit = match[2];
+
+  if (unit === "d" && num < 7) {
+    return "text-emerald-400 bg-emerald-900/30 border border-emerald-700/50";
+  }
+
+  if ((unit === "d" && num >= 7 && num < 30) || (unit === "w" && num < 4)) {
+    return "text-yellow-400 bg-yellow-900/30 border border-yellow-700/50";
+  }
+
+  if (
+    unit === "mo" ||
+    (unit === "w" && num >= 4) ||
+    (unit === "d" && num >= 30)
+  ) {
+    return "text-red-400 bg-red-900/30 border border-red-700/50";
+  }
+
+  return "text-gray-300 bg-gray-700/50 border-gray-600";
 };

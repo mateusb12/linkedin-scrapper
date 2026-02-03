@@ -638,7 +638,6 @@ def get_linkedin_applied_jobs_raw():
             start_override=request.args.get("start", type=int),
             enrich=request.args.get("enrich", "true").lower() == "true",
             debug=request.args.get("debug", "false").lower() == "true",
-            trace=request.args.get("trace", "false").lower() == "true",
         )
 
         return jsonify(payload), 200

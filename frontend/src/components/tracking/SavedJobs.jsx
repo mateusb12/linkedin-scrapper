@@ -41,6 +41,7 @@ import {
   extractSpecifics,
   getTechBadgeStyle,
   getCompetitionStyle,
+  getPostedStyle,
 } from "./utils/jobUtils.js";
 import { formatCustomDate } from "../../utils/dateUtils.js";
 
@@ -664,7 +665,11 @@ const SavedJobs = () => {
                             job.insights.map((insight, idx) => (
                               <span
                                 key={idx}
-                                className={`px-3 py-1 rounded-full text-xs border whitespace-nowrap ${getInsightStyle(insight)}`}
+                                className={`px-3 py-1 rounded-full text-xs border whitespace-nowrap ${
+                                  insight.toLowerCase().includes("posted")
+                                    ? getPostedStyle(insight)
+                                    : getInsightStyle(insight)
+                                }`}
                               >
                                 {insight.trim()}
                               </span>
