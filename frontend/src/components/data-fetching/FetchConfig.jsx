@@ -15,7 +15,7 @@ import gmailIcon from "../../assets/ui_icons/gmail.png";
 
 const NETWORK_FILTER_PAGINATION = "jobCollectionSlug:recommended";
 const NETWORK_FILTER_INDIVIDUAL = "jobPostingDetailDescription_start";
-const NETWORK_FILTER_EXPERIENCE = "profileUrn OR sectionType:experience";
+const NETWORK_FILTER_EXPERIENCE = "sdui.pagers.profile.details.experience";
 
 export default function FetchConfig() {
   const [isDark] = useDarkMode();
@@ -282,7 +282,7 @@ export default function FetchConfig() {
               value={simpleExpInput}
               onChange={(e) => setSimpleExpInput(e.target.value)}
               rows={8}
-              placeholder="Paste cURL with 'identityDashProfileComponents' OR 'sectionType=experience' here..."
+              placeholder="Paste POST cURL with 'sdui.pagers.profile.details.experience' here..."
               className="w-full p-3 mb-4 text-xs font-mono border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300 focus:ring-2 focus:ring-green-500 outline-none resize-none"
             />
 
