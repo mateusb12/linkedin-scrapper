@@ -220,58 +220,102 @@ def parse_experiences(json_data: dict) -> List[Experience]:
 # 3) MAIN EXECUTION
 # ===================================================================
 
-def fetch_linkedin_profile_experiences(profile_urn: str):
+def fetch_linkedin_profile_experiences(profile_urn: str, debug: bool = True):
     print("=== Fetch & Parse LinkedIn Experiences (REFATORED) ===")
 
-    # 1. INSTANCIA O CLIENTE (Carrega config do DB automaticamente)
+    errors = []  # Collect debug-friendly messages
+
+    # 1. INIT CLIENT
     client = LinkedInClient("LinkedIn_Profile_Experience_Scraper")
     if not client.config:
-        print("❌ Could not load config 'LinkedIn_Profile_Experience_Scraper'.")
-        return
+        msg = "Could not load config 'LinkedIn_Profile_Experience_Scraper'. Missing DB record?"
+        print("❌", msg)
+        return {"ok": False, "error": msg, "stage": "config_load"}
 
-    # 2. CONSTROI URL E REQUEST
-    raw_urn = profile_urn.replace("profileUrn:", "").strip()
-    encoded_urn = encode_urn_only(raw_urn)
-    variables = f"(profileUrn:{encoded_urn},sectionType:experience)"
+    # 2. BUILD REQUEST
+    try:
+        raw_urn = profile_urn.replace("profileUrn:", "").strip()
+        encoded_urn = encode_urn_only(raw_urn)
+        variables = f"(profileUrn:{encoded_urn},sectionType:experience)"
 
-    req = VoyagerGraphQLRequest(
-        base_url=client.config["base_url"],
-        query_id=client.config["query_id"],
-        variables=variables
-    )
+        req = VoyagerGraphQLRequest(
+            base_url=client.config["base_url"],
+            query_id=client.config["query_id"],
+            variables=variables
+        )
+    except Exception as e:
+        msg = f"Error building GraphQL request: {e}"
+        print("❌", msg)
+        return {"ok": False, "error": msg, "stage": "request_build"}
 
-    print(f"🚀 Sending request...")
-    # Executa usando o Client (que já tem os headers e cookies)
-    response = client.execute(req)
-    print(f"➡️ STATUS: {response.status_code}")
+    # 3. EXECUTE REQUEST
+    try:
+        print("🚀 Sending request...")
+        response = client.execute(req)
+        print(f"➡️ STATUS: {response.status_code}")
+    except Exception as e:
+        msg = f"HTTP failure on client.execute(): {e}"
+        print("❌", msg)
+        return {"ok": False, "error": msg, "stage": "http_execute"}
+
+    # 4. STATUS VALIDATION
+    if response.status_code == 403:
+        msg = "403 Forbidden — LinkedIn blocked the request. Cookies expired or CSRF mismatch."
+        print("❌", msg)
+        return {"ok": False, "error": msg, "stage": "linkedin_forbidden"}
 
     if response.status_code != 200:
-        print(response.text)
-        return
+        msg = f"Unexpected status {response.status_code}"
+        print("❌", msg, "\n", response.text)
+        return {
+            "ok": False,
+            "error": msg,
+            "body": response.text,
+            "stage": "non_200_status"
+        }
 
+    # 5. PARSE JSON
     try:
         parsed_json = response.json()
     except json.JSONDecodeError:
-        print("❌ Response is not valid JSON.")
-        return
+        msg = "Response is not valid JSON."
+        print("❌", msg)
+        return {
+            "ok": False,
+            "error": msg,
+            "raw": response.text[:500],
+            "stage": "json_decode"
+        }
 
-    # Salva dump para debug
-    with open("linkedin_experience_dump.json", "w", encoding="utf-8") as f:
-        json.dump(parsed_json, f, indent=2, ensure_ascii=False)
+    # 6. DEBUG DUMP
+    try:
+        with open("linkedin_experience_dump.json", "w", encoding="utf-8") as f:
+            json.dump(parsed_json, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print("⚠️ Could not write dump file:", e)
 
-    print("\n=== 💰 PROCESSANDO DADOS ===")
-    experiences = parse_experiences(parsed_json)
+    # 7. PARSE EXPERIENCES
+    try:
+        experiences = parse_experiences(parsed_json)
+    except Exception as e:
+        msg = f"Parser error: {e}"
+        print("❌", msg)
+        return {"ok": False, "error": msg, "stage": "parser"}
 
+    # 8. EMPTY RESULT
     if not experiences:
-        print("⚠️ Nenhuma experiência encontrada.")
-    else:
-        print(f"✅ Sucesso! {len(experiences)} experiências extraídas:\n")
-        for i, exp in enumerate(experiences, 1):
-            print(f"--- JOB #{i} ---")
-            print(exp)
-            print("-" * 50)
+        msg = "No experiences found — JSON structure changed or scraper missing permissions."
+        print("⚠️", msg)
+        return {"ok": False, "error": msg, "stage": "empty_result"}
 
-    return [exp.to_dict() for exp in experiences]
+    # 9. SUCCESS
+    print(f"✅ {len(experiences)} experiences extracted.")
+    return {
+        "ok": True,
+        "count": len(experiences),
+        "experiences": [e.to_dict() for e in experiences]
+    }
+
 
 
 if __name__ == "__main__":

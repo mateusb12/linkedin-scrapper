@@ -1,6 +1,8 @@
 from flask import Blueprint, request, jsonify, abort
 from source.features.fetch_curl.fetch_service import FetchService
 
+from backend.linkedin.api_fetch.potential_urls.potential_curl.analyzer import parse_curl
+
 fetch_curl_bp = Blueprint("fetch_curl", __name__, url_prefix="/config")
 
 @fetch_curl_bp.route("/curl/<string:name>", methods=["GET"])
@@ -34,3 +36,20 @@ def handle_pagination_curl():
 def handle_individual_curl():
     if request.method == "GET": return get_config("SingleJob")
     return update_config("SingleJob")
+
+@fetch_curl_bp.route("/experience", methods=["PUT"])
+def update_experience_config():
+    data = request.get_json()
+    curl = data.get("curl")
+
+    if not curl:
+        return {"error": "Missing curl input"}, 400
+
+    parsed = parse_curl(curl)
+
+    FetchService.update_config_from_parsed(
+        "LinkedIn_Profile_Experience_Scraper",
+        parsed
+    )
+
+    return {"message": "Experience config updated"}, 200

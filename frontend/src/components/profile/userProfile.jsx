@@ -1063,7 +1063,6 @@ const UserProfile = () => {
           <Briefcase className="text-blue-500" /> Career Profile & Resumes
         </h1>
 
-        {}
         <div className="mb-8">
           <LinkedinExperiences />
         </div>

@@ -5,6 +5,7 @@ import { CopyableCodeBlock } from "./CopyableCodeBlock.jsx";
 import {
   savePaginationCurl,
   saveIndividualJobCurl,
+  saveExperienceCurl,
   saveGmailToken,
   getProfiles,
   testGmailConnection,
@@ -14,6 +15,7 @@ import gmailIcon from "../../assets/ui_icons/gmail.png";
 
 const NETWORK_FILTER_PAGINATION = "jobCollectionSlug:recommended";
 const NETWORK_FILTER_INDIVIDUAL = "jobPostingDetailDescription_start";
+const NETWORK_FILTER_EXPERIENCE = "profileUrn OR sectionType:experience";
 
 export default function FetchConfig() {
   const [isDark] = useDarkMode();
@@ -21,6 +23,7 @@ export default function FetchConfig() {
 
   const [simplePagInput, setSimplePagInput] = useState("");
   const [simpleIndInput, setSimpleIndInput] = useState("");
+  const [simpleExpInput, setSimpleExpInput] = useState("");
 
   const [gmailToken, setGmailToken] = useState("");
   const [showToken, setShowToken] = useState(false);
@@ -88,6 +91,22 @@ export default function FetchConfig() {
       await saveIndividualJobCurl(simpleIndInput);
       setSimpleIndInput("");
       setStatusMessage({ general: "✅ Individual Job cURL Updated!" });
+      clearStatusMessage();
+    } catch (error) {
+      console.error(error);
+      const msg = error.response?.data?.description || error.message;
+      setStatusMessage({ general: `❌ Error: ${msg}` });
+    }
+  };
+
+  const handleUpdateExperience = async () => {
+    if (!simpleExpInput.trim()) return;
+    setStatusMessage({ general: "Saving Experience Config..." });
+
+    try {
+      await saveExperienceCurl(simpleExpInput);
+      setSimpleExpInput("");
+      setStatusMessage({ general: "✅ Experience cURL Updated!" });
       clearStatusMessage();
     } catch (error) {
       console.error(error);
@@ -189,20 +208,18 @@ export default function FetchConfig() {
           Scraper Configuration
         </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-            <div className="mb-4">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center">
-                📄 Pagination Request
-              </h2>
-              <p className="text-xs text-gray-500 mt-1 mb-3">
-                Controls how we traverse the job list (pages 1, 2, 3...).
-              </p>
-              <CopyableCodeBlock
-                label="Network Filter"
-                text={NETWORK_FILTER_PAGINATION}
-              />
-            </div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+              📄 Pagination Request
+            </h2>
+            <p className="text-xs text-gray-500 mt-1 mb-3">
+              Controls how we traverse the job list (pages 1, 2, 3...).
+            </p>
+            <CopyableCodeBlock
+              label="Network Filter"
+              text={NETWORK_FILTER_PAGINATION}
+            />
 
             <textarea
               value={simplePagInput}
@@ -211,7 +228,6 @@ export default function FetchConfig() {
               placeholder="Paste cURL with 'jobCollectionSlug' here..."
               className="w-full p-3 mb-4 text-xs font-mono border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
             />
-
             <button
               onClick={handleUpdatePagination}
               disabled={!simplePagInput}
@@ -222,18 +238,16 @@ export default function FetchConfig() {
           </div>
 
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-            <div className="mb-4">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center">
-                💼 Individual Job Request
-              </h2>
-              <p className="text-xs text-gray-500 mt-1 mb-3">
-                Controls how we fetch details for a single job card.
-              </p>
-              <CopyableCodeBlock
-                label="Network Filter"
-                text={NETWORK_FILTER_INDIVIDUAL}
-              />
-            </div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+              💼 Individual Job Request
+            </h2>
+            <p className="text-xs text-gray-500 mt-1 mb-3">
+              Controls how we fetch details for a single job card.
+            </p>
+            <CopyableCodeBlock
+              label="Network Filter"
+              text={NETWORK_FILTER_INDIVIDUAL}
+            />
 
             <textarea
               value={simpleIndInput}
@@ -242,13 +256,42 @@ export default function FetchConfig() {
               placeholder="Paste cURL with 'jobPostingDetailDescription' here..."
               className="w-full p-3 mb-4 text-xs font-mono border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300 focus:ring-2 focus:ring-purple-500 outline-none resize-none"
             />
-
             <button
               onClick={handleUpdateIndividual}
               disabled={!simpleIndInput}
               className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
             >
               Update Job Config
+            </button>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+              🧩 Experience Request
+            </h2>
+            <p className="text-xs text-gray-500 mt-1 mb-3">
+              Controls how we fetch profile experience sections.
+            </p>
+
+            <CopyableCodeBlock
+              label="Network Filter"
+              text={NETWORK_FILTER_EXPERIENCE}
+            />
+
+            <textarea
+              value={simpleExpInput}
+              onChange={(e) => setSimpleExpInput(e.target.value)}
+              rows={8}
+              placeholder="Paste cURL with 'identityDashProfileComponents' OR 'sectionType=experience' here..."
+              className="w-full p-3 mb-4 text-xs font-mono border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300 focus:ring-2 focus:ring-green-500 outline-none resize-none"
+            />
+
+            <button
+              onClick={handleUpdateExperience}
+              disabled={!simpleExpInput}
+              className="w-full py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+            >
+              Update Experience Config
             </button>
           </div>
         </div>
@@ -275,7 +318,9 @@ export default function FetchConfig() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 relative overflow-hidden">
             <div
-              className={`absolute top-0 left-0 w-full h-1 ${gmailStatus === "success" ? "bg-green-500" : "bg-red-500"}`}
+              className={`absolute top-0 left-0 w-full h-1 ${
+                gmailStatus === "success" ? "bg-green-500" : "bg-red-500"
+              }`}
             ></div>
 
             <div className="flex justify-between items-start mb-4">
@@ -312,6 +357,7 @@ export default function FetchConfig() {
                 disabled={!profileId}
                 className="w-full p-3 pr-10 text-sm font-mono border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300 focus:ring-2 focus:ring-red-500 outline-none transition-all disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed"
               />
+
               <button
                 type="button"
                 onClick={() => setShowToken(!showToken)}

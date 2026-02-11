@@ -43,6 +43,36 @@ class FetchService:
             db.close()
 
     @staticmethod
+    def update_config_from_parsed(name: str, parsed: dict) -> bool:
+        """
+        Updates a FetchCurl record using a parsed cURL structure.
+        This is used for Pagination, SingleJob, Experience, etc.
+        """
+        db = get_db_session()
+        try:
+            record = db.query(FetchCurl).filter(FetchCurl.name == name).first()
+            if not record:
+                raise ValueError(f"Config '{name}' not found.")
+
+            # Parsed fields coming from your parse_curl() implementation
+            record.base_url = parsed.get("base_url")
+            record.query_id = parsed.get("query_id")
+            record.method = parsed.get("method")
+            record.headers = parsed.get("headers_json")
+            record.cookies = parsed.get("cookies")
+            record.referer = parsed.get("referer")
+
+            db.commit()
+            return True
+
+        except Exception as e:
+            print(f"❌ Error updating FetchCurl record: {e}")
+            db.rollback()
+            raise e
+        finally:
+            db.close()
+
+    @staticmethod
     def execute_fetch_page(page_number: int) -> Optional[Dict]:
         """Loads config from DB and fetches a page."""
         db = get_db_session()

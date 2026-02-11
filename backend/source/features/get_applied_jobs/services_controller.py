@@ -680,18 +680,19 @@ def get_profile_experiences():
         print(f"🚀 Fetching experiences for URN: {target_urn}")
 
         # Chama a função refatorada
-        data = fetch_linkedin_profile_experiences(target_urn)
+        result = fetch_linkedin_profile_experiences(target_urn)
 
-        if not data:
+        if not result.get("ok"):
             return jsonify({
-                "message": "No experiences found or failed to fetch.",
-                "data": []
-            }), 404  # Ou 200 com lista vazia, depende da preferência
+                "error": result.get("error"),
+                "stage": result.get("stage"),
+                "details": result,
+            }), 500  # INTERNAL ERROR, not 404
 
         return jsonify({
-            "count": len(data),
+            "count": result["count"],
             "urn": target_urn,
-            "experiences": data
+            "experiences": result["experiences"]
         }), 200
 
     except Exception as e:
