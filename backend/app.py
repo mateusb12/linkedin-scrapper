@@ -12,6 +12,7 @@ from source.features.job_population.job_controller import job_data_bp
 from source.features.resume.resume_data import resume_bp
 from source.features.fetch_curl import fetch_curl_bp
 from source.features.job_population.population_controller import population_bp
+from database.database_connection import create_db_and_tables
 
 load_dotenv()
 
@@ -19,6 +20,9 @@ start_debugger_monitor()
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+
+with app.app_context():
+    create_db_and_tables()
 
 # Register blueprints
 app.register_blueprint(fetch_curl_bp)

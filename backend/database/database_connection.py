@@ -19,7 +19,7 @@ CURRENT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = CURRENT_DIR.parent
 
 # Final SQLite DB file → backend/database/linkedin.db
-DB_FILE = CURRENT_DIR / "linkedin.db"
+DB_FILE = Path("/app/db/linkedin.db")
 
 # Convert to proper SQLite URL
 DATABASE_URL = f"sqlite:///{DB_FILE}"

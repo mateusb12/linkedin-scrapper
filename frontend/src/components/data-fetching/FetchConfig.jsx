@@ -31,9 +31,38 @@ export default function FetchConfig() {
 
     // --- State for Context ---
     const [profileId, setProfileId] = useState(null);
+    const [profileLoading, setProfileLoading] = useState(true);
 
     const clearStatusMessage = () =>
         setTimeout(() => setStatusMessage({}), 4000);
+
+    const loadProfileContext = async () => {
+        try {
+            const profiles = await getProfiles();
+
+            if (profiles && profiles.length > 0) {
+                const active = profiles[0];
+                setProfileId(active.id);
+
+                if (active.email_app_password) {
+                    // Password exists -> populate normally
+                    setGmailToken(active.email_app_password);
+                    setGmailStatus("success");
+                } else {
+                    // No password saved -> mark UI as clean state
+                    setGmailStatus("idle"); // not connected, but loaded
+                }
+            } else {
+                // No profiles at all
+                setGmailStatus("error");
+            }
+        } catch (err) {
+            console.error(err);
+            setGmailStatus("error");
+        } finally {
+            setProfileLoading(false); // <-- IMPORTANT
+        }
+    };
 
     // Apply Dark Mode & Fetch Profile Context
     useEffect(() => {
@@ -42,24 +71,6 @@ export default function FetchConfig() {
         else root.classList.remove("dark");
 
         // Fetch the profile ID so we know who to update
-        const loadProfileContext = async () => {
-            try {
-                const profiles = await getProfiles();
-                // Assuming single user mode, we pick the first profile
-                if (profiles && profiles.length > 0) {
-                    const activeProfile = profiles[0];
-                    setProfileId(activeProfile.id);
-
-                    // FIXED: We now actually populate the input field
-                    if (activeProfile.email_app_password) {
-                        setGmailStatus("success");
-                        setGmailToken(activeProfile.email_app_password); // <--- ADDED THIS LINE
-                    }
-                }
-            } catch (error) {
-                console.error("Could not fetch profiles to set context:", error);
-            }
-        };
         loadProfileContext();
     }, [isDark]);
 
@@ -295,12 +306,14 @@ export default function FetchConfig() {
                                 value={gmailToken}
                                 onChange={(e) => setGmailToken(e.target.value)}
                                 placeholder="•••• •••• •••• ••••"
-                                className="w-full p-3 pr-10 text-sm font-mono border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300 focus:ring-2 focus:ring-red-500 outline-none transition-all"
+                                disabled={!profileId}
+                                className="w-full p-3 pr-10 text-sm font-mono border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300 focus:ring-2 focus:ring-red-500 outline-none transition-all disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed"
                             />
                             <button
                                 type="button"
                                 onClick={() => setShowToken(!showToken)}
-                                className="absolute right-3 top-8 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"
+                                disabled={!profileId}
+                                className="absolute right-3 top-8 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {showToken ? (
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858-5.908a9.018 9.018 0 014.722-.045 23.993 23.993 0 012.336 1.054c.642.348 1.144.757 1.503 1.15.54.59.914 1.198 1.127 1.776.435 1.168.435 2.508 0 3.676-.192.518-.52 1.026-.967 1.503m-3.468 3.125A3.375 3.375 0 0112 15.75c-1.864 0-3.375-1.511-3.375-3.375 0-.58.156-1.122.427-1.595" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18" /></svg>
@@ -313,14 +326,18 @@ export default function FetchConfig() {
                         <div className="flex gap-3">
                             <button
                                 onClick={handleSaveGmail}
-                                disabled={!profileId}
+                                disabled={profileLoading || !profileId}
                                 className="flex-1 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-bold rounded shadow-sm transition-colors text-sm"
+                                title={!profileId ? "Create a profile first to save a token" : ""}
                             >
-                                {profileId ? "Save Token" : "Loading Profile..."}
+                                {profileLoading ? "Loading Profile..." : !profileId ? "Requires Profile" : "Save Token"}
                             </button>
+
                             <button
                                 onClick={handleTestGmail}
-                                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold rounded shadow-sm transition-colors text-sm"
+                                disabled={profileLoading || !profileId}
+                                className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-gray-800 dark:text-gray-200 font-semibold rounded shadow-sm transition-colors text-sm"
+                                title={!profileId ? "Create a profile first to test" : ""}
                             >
                                 Test
                             </button>

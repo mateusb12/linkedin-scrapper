@@ -7,6 +7,7 @@ services:
     container_name: linkedin-backend-dev
     volumes:
       - ./backend:/app
+      - ./backend/db:/app/db
     ports:
       - "5000:5000"
     env_file:
