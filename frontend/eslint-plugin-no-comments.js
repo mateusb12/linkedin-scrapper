@@ -1,32 +1,34 @@
+// 1. Alteramos para focar apenas no range do comentário
 function removeLineAndBlockComments(context, comments) {
   for (const comment of comments) {
     context.report({
-      node: comment,
+      loc: comment.loc, // É mais seguro usar 'loc' ao invés de 'node' para comentários soltos
       messageId: 'noComment',
       fix: (fixer) => fixer.removeRange(comment.range),
     });
   }
 }
 
+// 2. Simplificamos a validação: Se é vazio, removemos sem perguntar
 function shouldRemoveJsxCommentContainer(node) {
   return (
-    node.expression &&
-    node.expression.type === 'JSXEmptyExpression' &&
-    Array.isArray(node.expression.comments) &&
-    node.expression.comments.length > 0
+      node.expression &&
+      node.expression.type === 'JSXEmptyExpression'
   );
 }
 
+// 3. Atualizamos a remoção para usar removeRange (melhor prática no AST)
 function removeJsxCommentContainer(context, node) {
   context.report({
     node,
     messageId: 'noComment',
-    fix: (fixer) => fixer.remove(node),
+    fix: (fixer) => fixer.removeRange(node.range),
   });
 }
 
 function createRemoveCommentsRule(context) {
-  const source = context.getSourceCode();
+  // 4. Suporte atualizado para ESLint v9 (getSourceCode foi depreciado)
+  const source = context.sourceCode || context.getSourceCode();
   const comments = source.getAllComments();
   removeLineAndBlockComments(context, comments);
 
