@@ -43,23 +43,44 @@ class FetchService:
             db.close()
 
     @staticmethod
-    def update_config_from_parsed(name: str, parsed: dict) -> bool:
+    def update_config_from_parsed(name: str, parsed) -> bool:
         """
         Updates a FetchCurl record using a parsed cURL structure.
-        This is used for Pagination, SingleJob, Experience, etc.
+        Accepts both:
+            - dict parsed from a modern parser
+            - tuple from legacy parse_curl(): (method, url, headers, cookies)
         """
+        # ---- Normalizar fallback quando o parser retorna tuple ----
+        if isinstance(parsed, tuple):
+            method, url, headers, cookies = parsed
+
+            # Converter para dict no formato esperado pelo modelo FetchCurl
+            parsed = {
+                "base_url": url,
+                "method": method.upper() if method else None,
+                "headers": headers or {},
+                "cookies": cookies or {},
+                "query_id": "",
+                "variables_count": 0,
+                "body": "",
+                "referer": "",
+            }
+
+        # ---- Garantir JSON no campo headers_json ----
+        import json
+        headers_json = json.dumps(parsed.get("headers", {}))
+
         db = get_db_session()
         try:
             record = db.query(FetchCurl).filter(FetchCurl.name == name).first()
             if not record:
                 raise ValueError(f"Config '{name}' not found.")
 
-            # Parsed fields coming from your parse_curl() implementation
             record.base_url = parsed.get("base_url")
             record.query_id = parsed.get("query_id")
             record.method = parsed.get("method")
-            record.headers = parsed.get("headers_json")
-            record.cookies = parsed.get("cookies")
+            record.headers = headers_json
+            record.cookies = json.dumps(parsed.get("cookies", {}))
             record.referer = parsed.get("referer")
 
             db.commit()

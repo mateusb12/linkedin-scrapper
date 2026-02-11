@@ -159,6 +159,7 @@ export const testGmailConnection = async (profileId) => {
     throw error;
   }
 };
+
 export async function saveExperienceCurl(rawCurl) {
-  return axios.put("/fetch-curl/experience", { curl: rawCurl });
+  return axios.put(`${CONFIG_URL}/experience`, { curl: rawCurl });
 }

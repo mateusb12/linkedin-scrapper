@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, abort
 from source.features.fetch_curl.fetch_service import FetchService
 
-from backend.linkedin.api_fetch.potential_urls.potential_curl.analyzer import parse_curl
+from source.features.api_fetch.potential_urls.potential_curl.analyzer import parse_curl
 
 fetch_curl_bp = Blueprint("fetch_curl", __name__, url_prefix="/config")
 
@@ -48,7 +48,7 @@ def update_experience_config():
     parsed = parse_curl(curl)
 
     FetchService.update_config_from_parsed(
-        "LinkedIn_Profile_Experience_Scraper",
+        "Experience",
         parsed
     )
 
