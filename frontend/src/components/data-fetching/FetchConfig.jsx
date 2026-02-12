@@ -6,6 +6,12 @@ import {
   savePaginationCurl,
   saveIndividualJobCurl,
   saveExperienceCurl,
+  getPaginationCurl,
+  getIndividualJobCurl,
+  getExperienceCurl,
+  deletePaginationCurl,
+  deleteIndividualJobCurl,
+  deleteExperienceCurl,
   saveGmailToken,
   getProfiles,
   testGmailConnection,
@@ -17,31 +23,185 @@ const NETWORK_FILTER_PAGINATION = "jobCollectionSlug:recommended";
 const NETWORK_FILTER_INDIVIDUAL = "jobPostingDetailDescription_start";
 const NETWORK_FILTER_EXPERIENCE = "sdui.pagers.profile.details.experience";
 
+const ConfigCard = ({
+  title,
+  description,
+  networkFilter,
+  savedData,
+  onSave,
+  onDelete,
+  placeholder,
+  colorClass,
+}) => {
+  const [input, setInput] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const colors = {
+    blue: {
+      btn: "bg-blue-600 hover:bg-blue-700",
+      ring: "focus:ring-blue-500",
+      light: "bg-blue-50 dark:bg-blue-900/20",
+    },
+    purple: {
+      btn: "bg-purple-600 hover:bg-purple-700",
+      ring: "focus:ring-purple-500",
+      light: "bg-purple-50 dark:bg-purple-900/20",
+    },
+    green: {
+      btn: "bg-green-600 hover:bg-green-700",
+      ring: "focus:ring-green-500",
+      light: "bg-green-50 dark:bg-green-900/20",
+    },
+  };
+  const theme = colors[colorClass] || colors.blue;
+
+  const handleSaveInternal = async () => {
+    if (!input.trim()) return;
+    await onSave(input);
+    setInput("");
+  };
+
+  const handleDeleteInternal = async () => {
+    if (!confirm("Are you sure you want to delete this configuration?")) return;
+    setIsDeleting(true);
+    try {
+      await onDelete();
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const getDisplayContent = () => {
+    if (!savedData) return "";
+    if (typeof savedData === "string") return savedData;
+
+    if (savedData.curl) {
+      return typeof savedData.curl === "object"
+        ? JSON.stringify(savedData.curl, null, 2)
+        : savedData.curl;
+    }
+
+    return JSON.stringify(savedData, null, 2);
+  };
+
+  return (
+    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 flex flex-col h-full">
+      <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+        {title}
+      </h2>
+      <p className="text-xs text-gray-500 mt-1 mb-3">{description}</p>
+
+      <CopyableCodeBlock label="Network Filter" text={networkFilter} />
+
+      <div className="mt-auto">
+        {savedData ? (
+          <div className="relative animate-fadeIn">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-xs font-bold text-green-600 dark:text-green-400 flex items-center gap-1">
+                ✅ Configured
+              </span>
+            </div>
+
+            <div
+              className={`p-3 rounded border border-gray-200 dark:border-gray-700 mb-4 overflow-hidden overflow-y-auto max-h-48 ${theme.light}`}
+            >
+              <pre className="text-xs font-mono text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-all">
+                {getDisplayContent()}
+              </pre>
+            </div>
+
+            <button
+              onClick={handleDeleteInternal}
+              disabled={isDeleting}
+              className="w-full py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded flex items-center justify-center gap-2 transition-colors shadow-sm"
+            >
+              {isDeleting ? (
+                "Deleting..."
+              ) : (
+                <>
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                  Delete Configuration
+                </>
+              )}
+            </button>
+          </div>
+        ) : (
+          <div className="animate-fadeIn">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              rows={6}
+              placeholder={placeholder}
+              className={`w-full p-3 mb-4 text-xs font-mono border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300 focus:ring-2 ${theme.ring} outline-none resize-none`}
+            />
+            <button
+              onClick={handleSaveInternal}
+              disabled={!input}
+              className={`w-full py-2 ${theme.btn} text-white font-bold rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm`}
+            >
+              Save Configuration
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export default function FetchConfig() {
   const [isDark] = useDarkMode();
   const [statusMessage, setStatusMessage] = useState({});
 
-  const [simplePagInput, setSimplePagInput] = useState("");
-  const [simpleIndInput, setSimpleIndInput] = useState("");
-  const [simpleExpInput, setSimpleExpInput] = useState("");
+  const [pagConfig, setPagConfig] = useState(null);
+  const [indConfig, setIndConfig] = useState(null);
+  const [expConfig, setExpConfig] = useState(null);
 
   const [gmailToken, setGmailToken] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [gmailStatus, setGmailStatus] = useState("idle");
-
   const [profileId, setProfileId] = useState(null);
   const [profileLoading, setProfileLoading] = useState(true);
 
   const clearStatusMessage = () => setTimeout(() => setStatusMessage({}), 4000);
 
-  const loadProfileContext = async () => {
-    try {
-      const profiles = await getProfiles();
+  const loadAllData = async () => {
+    setProfileLoading(true);
 
+    const loadConfigSafe = async (fn) => {
+      try {
+        return await fn();
+      } catch (e) {
+        return null;
+      }
+    };
+
+    try {
+      const [pag, ind, exp] = await Promise.all([
+        loadConfigSafe(getPaginationCurl),
+        loadConfigSafe(getIndividualJobCurl),
+        loadConfigSafe(getExperienceCurl),
+      ]);
+
+      setPagConfig(pag);
+      setIndConfig(ind);
+      setExpConfig(exp);
+
+      const profiles = await getProfiles();
       if (profiles && profiles.length > 0) {
         const active = profiles[0];
         setProfileId(active.id);
-
         if (active.email_app_password) {
           setGmailToken(active.email_app_password);
           setGmailStatus("success");
@@ -53,7 +213,7 @@ export default function FetchConfig() {
       }
     } catch (err) {
       console.error(err);
-      setGmailStatus("error");
+      setStatusMessage({ general: "Error loading initial data." });
     } finally {
       setProfileLoading(false);
     }
@@ -64,60 +224,93 @@ export default function FetchConfig() {
     if (isDark) root.classList.add("dark");
     else root.classList.remove("dark");
 
-    loadProfileContext();
+    loadAllData();
   }, [isDark]);
 
-  const handleUpdatePagination = async () => {
-    if (!simplePagInput.trim()) return;
+  const onSavePag = async (curl) => {
     setStatusMessage({ general: "Saving Pagination..." });
-
     try {
-      await savePaginationCurl(simplePagInput);
-      setSimplePagInput("");
+      await savePaginationCurl(curl);
       setStatusMessage({ general: "✅ Pagination cURL Updated!" });
-      clearStatusMessage();
+
+      setPagConfig({ curl });
     } catch (error) {
-      console.error(error);
-      const msg = error.response?.data?.description || error.message;
-      setStatusMessage({ general: `❌ Error: ${msg}` });
+      handleError(error);
+    } finally {
+      clearStatusMessage();
     }
   };
 
-  const handleUpdateIndividual = async () => {
-    if (!simpleIndInput.trim()) return;
+  const onDeletePag = async () => {
+    try {
+      await deletePaginationCurl();
+      setPagConfig(null);
+      setStatusMessage({ general: "🗑️ Pagination Config Deleted." });
+    } catch (error) {
+      handleError(error);
+    } finally {
+      clearStatusMessage();
+    }
+  };
+
+  const onSaveInd = async (curl) => {
     setStatusMessage({ general: "Saving Job Config..." });
-
     try {
-      await saveIndividualJobCurl(simpleIndInput);
-      setSimpleIndInput("");
-      setStatusMessage({ general: "✅ Individual Job cURL Updated!" });
-      clearStatusMessage();
+      await saveIndividualJobCurl(curl);
+      setStatusMessage({ general: "✅ Job cURL Updated!" });
+      setIndConfig({ curl });
     } catch (error) {
-      console.error(error);
-      const msg = error.response?.data?.description || error.message;
-      setStatusMessage({ general: `❌ Error: ${msg}` });
+      handleError(error);
+    } finally {
+      clearStatusMessage();
     }
   };
 
-  const handleUpdateExperience = async () => {
-    if (!simpleExpInput.trim()) return;
-    setStatusMessage({ general: "Saving Experience Config..." });
-
+  const onDeleteInd = async () => {
     try {
-      await saveExperienceCurl(simpleExpInput);
-      setSimpleExpInput("");
-      setStatusMessage({ general: "✅ Experience cURL Updated!" });
-      clearStatusMessage();
+      await deleteIndividualJobCurl();
+      setIndConfig(null);
+      setStatusMessage({ general: "🗑️ Job Config Deleted." });
     } catch (error) {
-      console.error(error);
-      const msg = error.response?.data?.description || error.message;
-      setStatusMessage({ general: `❌ Error: ${msg}` });
+      handleError(error);
+    } finally {
+      clearStatusMessage();
     }
+  };
+
+  const onSaveExp = async (curl) => {
+    setStatusMessage({ general: "Saving Experience Config..." });
+    try {
+      await saveExperienceCurl(curl);
+      setStatusMessage({ general: "✅ Experience cURL Updated!" });
+      setExpConfig({ curl });
+    } catch (error) {
+      handleError(error);
+    } finally {
+      clearStatusMessage();
+    }
+  };
+
+  const onDeleteExp = async () => {
+    try {
+      await deleteExperienceCurl();
+      setExpConfig(null);
+      setStatusMessage({ general: "🗑️ Experience Config Deleted." });
+    } catch (error) {
+      handleError(error);
+    } finally {
+      clearStatusMessage();
+    }
+  };
+
+  const handleError = (error) => {
+    console.error(error);
+    const msg = error.response?.data?.description || error.message;
+    setStatusMessage({ general: `❌ Error: ${msg}` });
   };
 
   const handleSaveGmail = async () => {
     if (!gmailToken.trim()) return;
-
     if (!profileId) {
       setStatusMessage({
         general: "❌ No Profile found. Create a profile first.",
@@ -126,12 +319,9 @@ export default function FetchConfig() {
       clearStatusMessage();
       return;
     }
-
     setStatusMessage({ general: "Saving Gmail Token..." });
-
     try {
       await saveGmailToken(profileId, gmailToken);
-
       setStatusMessage({ general: "✅ Gmail Token Saved securely!" });
       setGmailStatus("success");
       setGmailToken("");
@@ -153,18 +343,14 @@ export default function FetchConfig() {
       clearStatusMessage();
       return;
     }
-
     setStatusMessage({ general: "⏳ Sending Test Email..." });
-
     try {
       await testGmailConnection(profileId);
-
       setStatusMessage({ general: "✅ Test Email Sent! Check your inbox." });
       setGmailStatus("success");
       clearStatusMessage();
     } catch (error) {
       console.error(error);
-
       const msg = error.response?.data?.error || "Failed to send test email";
       setStatusMessage({ general: `❌ ${msg}` });
       clearStatusMessage();
@@ -209,91 +395,38 @@ export default function FetchConfig() {
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-              📄 Pagination Request
-            </h2>
-            <p className="text-xs text-gray-500 mt-1 mb-3">
-              Controls how we traverse the job list (pages 1, 2, 3...).
-            </p>
-            <CopyableCodeBlock
-              label="Network Filter"
-              text={NETWORK_FILTER_PAGINATION}
-            />
+          <ConfigCard
+            title="📄 Pagination Request"
+            description="Controls how we traverse the job list (pages 1, 2, 3...)."
+            networkFilter={NETWORK_FILTER_PAGINATION}
+            savedData={pagConfig}
+            onSave={onSavePag}
+            onDelete={onDeletePag}
+            placeholder="Paste cURL with 'jobCollectionSlug' here..."
+            colorClass="blue"
+          />
 
-            <textarea
-              value={simplePagInput}
-              onChange={(e) => setSimplePagInput(e.target.value)}
-              rows={8}
-              placeholder="Paste cURL with 'jobCollectionSlug' here..."
-              className="w-full p-3 mb-4 text-xs font-mono border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-            />
-            <button
-              onClick={handleUpdatePagination}
-              disabled={!simplePagInput}
-              className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-            >
-              Update Pagination Config
-            </button>
-          </div>
+          <ConfigCard
+            title="💼 Individual Job Request"
+            description="Controls how we fetch details for a single job card."
+            networkFilter={NETWORK_FILTER_INDIVIDUAL}
+            savedData={indConfig}
+            onSave={onSaveInd}
+            onDelete={onDeleteInd}
+            placeholder="Paste cURL with 'jobPostingDetailDescription' here..."
+            colorClass="purple"
+          />
 
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-              💼 Individual Job Request
-            </h2>
-            <p className="text-xs text-gray-500 mt-1 mb-3">
-              Controls how we fetch details for a single job card.
-            </p>
-            <CopyableCodeBlock
-              label="Network Filter"
-              text={NETWORK_FILTER_INDIVIDUAL}
-            />
-
-            <textarea
-              value={simpleIndInput}
-              onChange={(e) => setSimpleIndInput(e.target.value)}
-              rows={8}
-              placeholder="Paste cURL with 'jobPostingDetailDescription' here..."
-              className="w-full p-3 mb-4 text-xs font-mono border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300 focus:ring-2 focus:ring-purple-500 outline-none resize-none"
-            />
-            <button
-              onClick={handleUpdateIndividual}
-              disabled={!simpleIndInput}
-              className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-            >
-              Update Job Config
-            </button>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-              🧩 Experience Request
-            </h2>
-            <p className="text-xs text-gray-500 mt-1 mb-3">
-              Controls how we fetch profile experience sections.
-            </p>
-
-            <CopyableCodeBlock
-              label="Network Filter"
-              text={NETWORK_FILTER_EXPERIENCE}
-            />
-
-            <textarea
-              value={simpleExpInput}
-              onChange={(e) => setSimpleExpInput(e.target.value)}
-              rows={8}
-              placeholder="Paste POST cURL with 'sdui.pagers.profile.details.experience' here..."
-              className="w-full p-3 mb-4 text-xs font-mono border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300 focus:ring-2 focus:ring-green-500 outline-none resize-none"
-            />
-
-            <button
-              onClick={handleUpdateExperience}
-              disabled={!simpleExpInput}
-              className="w-full py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-            >
-              Update Experience Config
-            </button>
-          </div>
+          <ConfigCard
+            title="🧩 Experience Request"
+            description="Controls how we fetch profile experience sections."
+            networkFilter={NETWORK_FILTER_EXPERIENCE}
+            savedData={expConfig}
+            onSave={onSaveExp}
+            onDelete={onDeleteExp}
+            placeholder="Paste POST cURL with 'sdui.pagers.profile.details.experience' here..."
+            colorClass="green"
+          />
         </div>
       </div>
 
@@ -318,9 +451,7 @@ export default function FetchConfig() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 relative overflow-hidden">
             <div
-              className={`absolute top-0 left-0 w-full h-1 ${
-                gmailStatus === "success" ? "bg-green-500" : "bg-red-500"
-              }`}
+              className={`absolute top-0 left-0 w-full h-1 ${gmailStatus === "success" ? "bg-green-500" : "bg-red-500"}`}
             ></div>
 
             <div className="flex justify-between items-start mb-4">
@@ -335,11 +466,7 @@ export default function FetchConfig() {
               </div>
 
               <span
-                className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wide ${
-                  gmailStatus === "success"
-                    ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                    : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400"
-                }`}
+                className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wide ${gmailStatus === "success" ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400"}`}
               >
                 {gmailStatus === "success" ? "Connected" : "Not Configured"}
               </span>

@@ -246,3 +246,21 @@ class FetchService:
             return None
         finally:
             db.close()
+
+    @staticmethod
+    def delete_curl_config(name: str) -> bool:
+        db = get_db_session()
+        try:
+            record = db.query(FetchCurl).filter(FetchCurl.name == name).first()
+            if not record:
+                return False
+
+            db.delete(record)
+            db.commit()
+            return True
+        except Exception as e:
+            print(f"❌ Error deleting config '{name}': {e}")
+            db.rollback()
+            raise e
+        finally:
+            db.close()

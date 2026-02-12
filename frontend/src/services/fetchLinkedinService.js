@@ -163,3 +163,20 @@ export const testGmailConnection = async (profileId) => {
 export async function saveExperienceCurl(rawCurl) {
   return axios.put(`${CONFIG_URL}/experience`, { curl: rawCurl });
 }
+
+export async function deletePaginationCurl() {
+  return axios.delete(`${CONFIG_URL}/pagination-curl`);
+}
+
+export async function deleteIndividualJobCurl() {
+  return axios.delete(`${CONFIG_URL}/individual-job-curl`);
+}
+
+export async function getExperienceCurl() {
+  const res = await axios.get(`${CONFIG_URL}/experience`);
+  return res.data;
+}
+
+export async function deleteExperienceCurl() {
+  return axios.delete(`${CONFIG_URL}/experience`);
+}
