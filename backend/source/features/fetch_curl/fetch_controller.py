@@ -3,6 +3,8 @@ from source.features.fetch_curl.fetch_service import FetchService
 
 from source.features.api_fetch.potential_urls.potential_curl.analyzer import parse_curl
 
+from source.features.fetch_curl.sdui_curl_parser import parse_sdui_curl
+
 fetch_curl_bp = Blueprint("fetch_curl", __name__, url_prefix="/config")
 
 @fetch_curl_bp.route("/curl/<string:name>", methods=["GET"])
@@ -45,7 +47,7 @@ def update_experience_config():
     if not curl:
         return {"error": "Missing curl input"}, 400
 
-    parsed = parse_curl(curl)
+    parsed = parse_sdui_curl(curl)
 
     FetchService.update_config_from_parsed(
         "Experience",

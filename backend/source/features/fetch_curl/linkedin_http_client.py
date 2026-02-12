@@ -23,11 +23,12 @@ class LinkedInRequest(ABC):
     Classe base abstrata para todas as requisições do LinkedIn.
     """
 
-    def __init__(self, method: str, url: str):
+    def __init__(self, method: str, url: str, debug: bool = False):
         self.method = method
         self.url = url
         self._headers = {}
         self._body = None
+        self.debug = debug
 
     def set_headers(self, headers: dict):
         self._headers = headers
@@ -56,13 +57,63 @@ class LinkedInRequest(ABC):
         merged_headers = session.headers.copy()
         merged_headers.update(self._headers)
 
-        return session.request(
+        if self.debug:
+            print("\n" + "="*80)
+            print("🚀 LINKEDIN REQUEST DEBUG")
+            print("="*80)
+
+            print("\n📌 METHOD:")
+            print(self.method)
+
+            print("\n📌 URL:")
+            print(self.url)
+
+            print("\n📌 HEADERS (MERGED):")
+            for k, v in merged_headers.items():
+                print(f"{k}: {v}")
+
+            print("\n📌 SESSION COOKIES:")
+            for c in session.cookies:
+                print(f"{c.name} = {c.value}")
+
+            print("\n📌 RAW COOKIE HEADER:")
+            print(merged_headers.get("Cookie"))
+
+            print("\n📌 BODY:")
+            if self._body:
+                print(json.dumps(self._body, indent=2))
+            else:
+                print("None")
+
+            print("\n📌 GENERATED CURL:")
+            print(self.to_curl(session.cookies))
+
+            print("="*80)
+            print("📡 SENDING REQUEST...")
+            print("="*80)
+
+        response = session.request(
             method=self.method,
             url=self.url,
             headers=merged_headers,
             json=self._body,
             timeout=timeout
         )
+
+        if self.debug:
+            print("\n📥 RESPONSE STATUS:", response.status_code)
+            print("\n📥 RESPONSE HEADERS:")
+            for k, v in response.headers.items():
+                print(f"{k}: {v}")
+
+            print("\n📥 RESPONSE BODY (first 1000 chars):")
+            print(response.text[:1000])
+
+            print("="*80)
+            print("🏁 END DEBUG")
+            print("="*80 + "\n")
+
+        return response
 
 
 class VoyagerGraphQLRequest(LinkedInRequest):
@@ -77,6 +128,16 @@ class VoyagerGraphQLRequest(LinkedInRequest):
         separator = "&" if "?" in base_url else "?"
         final_url = f"{base_url}{separator}variables={variables}&queryId={query_id}"
         super().__init__("GET", final_url)
+
+class SduiPaginationRequest(LinkedInRequest):
+    """
+    Request para endpoints SDUI (React Server Component pagination).
+    Exige POST com JSON body.
+    """
+
+    def __init__(self, base_url: str, body: dict, debug: bool = False):
+        super().__init__("POST", base_url, debug=debug)
+        self.set_body(body)
 
 
 # ---------------------------------------------------------------------
@@ -115,15 +176,36 @@ class LinkedInClient:
             session_db.close()
             return None
 
+        # -------------------------
+        # HEADERS
+        # -------------------------
         try:
-            headers_dict = json.loads(record.headers)
-        except:
+            headers_dict = json.loads(record.headers) if record.headers else {}
+        except Exception as e:
+            print("❌ Failed to parse headers JSON:", e)
             headers_dict = {}
 
-        # Injeta o Cookie do banco nos headers
+        # -------------------------
+        # COOKIES (FIX CRÍTICO)
+        # -------------------------
         if record.cookies:
-            headers_dict["Cookie"] = record.cookies
-            print("🍪 Cookies applied from DB.")
+            try:
+                cookie_dict = json.loads(record.cookies)
+
+                def clean(value):
+                    if isinstance(value, str):
+                        return value.strip('"')
+                    return value
+
+                cookie_string = "; ".join(
+                    f"{k}={clean(v)}" for k, v in cookie_dict.items()
+                )
+
+                headers_dict["Cookie"] = cookie_string
+                print("🍪 Cookies applied from DB (formatted).")
+
+            except Exception as e:
+                print("❌ Failed to parse cookies JSON:", e)
         else:
             print(f"⚠️ Warning: No cookies found for {self.config_name}")
 
@@ -133,8 +215,10 @@ class LinkedInClient:
             "headers": headers_dict,
             "referer": record.referer
         }
+
         session_db.close()
         return config
+
 
     def _extract_csrf(self) -> Optional[str]:
         """Tenta extrair o CSRF token (JSESSIONID) dos cookies"""
@@ -203,7 +287,7 @@ def save_experience_config_to_db():
     from database.database_connection import get_db_session
     from models.fetch_models import FetchCurl
 
-    CONFIG_NAME = "LinkedIn_Profile_Experience_Scraper"
+    CONFIG_NAME = "Experience"
 
     # Headers simplificados para exemplo
     EXPERIENCE_HEADERS = {

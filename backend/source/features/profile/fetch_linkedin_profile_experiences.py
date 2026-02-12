@@ -1,19 +1,19 @@
 # backend/source/features/profile/fetch_linkedin_profile_experiences.py
 
 import json
+import re
 import urllib.parse
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional, Any, Dict, Tuple
 
-# IMPORTS REFATORADOS
+# IMPORTS
 from source.features.fetch_curl.linkedin_http_client import (
     LinkedInClient,
-    VoyagerGraphQLRequest
+    SduiPaginationRequest
 )
 
-
 # ===================================================================
-# 1) DATACLASSES (FORMATO COMPLETO)
+# 1) DATACLASSES
 # ===================================================================
 
 @dataclass
@@ -29,15 +29,6 @@ class Experience:
     description: str
     skills: List[str] = field(default_factory=list)
 
-    def __repr__(self):
-        skills_str = ', '.join(self.skills) if self.skills else "N/A"
-        return (f"🏢 {self.company_name} ({self.employment_type})\n"
-                f"   💼 {self.title}\n"
-                f"   📅 {self.start_date} - {self.end_date} ({self.duration})\n"
-                f"   📍 {self.location} ({self.work_type})\n"
-                f"   📝 Descrição:\n{self.description}\n"
-                f"   🛠️ Skills: {skills_str}\n")
-
     def to_dict(self):
         return {
             "title": self.title,
@@ -52,152 +43,252 @@ class Experience:
             "skills": self.skills
         }
 
-
 # ===================================================================
-# 2) HELPERS & PARSER LOGIC BLINDADA
+# 2) HELPERS (ARRUMADOS)
 # ===================================================================
 
 def encode_urn_only(raw_urn: str) -> str:
     return urllib.parse.quote(raw_urn, safe='')
 
 
-def safe_get(obj, *keys):
+def is_garbage(text: str) -> bool:
+    t = text.strip()
+    if not t:
+        return True
+
+    # CSS classes (_abc123)
+    if t.startswith("_"):
+        return True
+
+    # Template vars ($L1, $undefined)
+    if t.startswith("$"):
+        return True
+
+    # UUID
+    if re.match(r'^[0-9a-f-]{36}$', t):
+        return True
+
+    # Hashes longos
+    if re.match(r'^[0-9a-f]{8,}$', t):
+        return True
+
+    # Namespaces
+    if "proto.sdui" in t or "com.linkedin" in t:
+        return True
+
+    # URNs
+    if "urn:li" in t:
+        return True
+
+    # Tokens técnicos comuns no dump
+    technical_tokens = {
+        "div", "span", "click", "block", "horizontal",
+        "default", "icon", "center", "modal", "screen",
+        "button", "figure", "low", "high", "xMidYMid",
+        "slice", "true", "false", "null",
+        "menu", "menuitem", "presentation",
+        "hr", "li", "ul", "img", "image",
+        "sans", "small", "normal", "open",
+        "start", "1x", "more"
+    }
+    if t.lower() in technical_tokens:
+        return True
+
+    # UI inútil
+    ui_texts = {
+        "Edit experience", "Reorder experience",
+        "Show more", "Show less",
+        "Expanded", "Add experience",
+        "Add career break", "Skills:", "Skills",
+        "Voltar", "Back", "Open menu", "Close menu"
+    }
+    if t in ui_texts:
+        return True
+
+    return False
+
+
+def clean_text_list(raw_texts: List[str]) -> List[str]:
+    clean = []
+    for t in raw_texts:
+        if not isinstance(t, str):
+            continue
+
+        t = t.strip()
+        if len(t) < 2:
+            continue
+
+        if not is_garbage(t):
+            if clean and clean[-1] == t:
+                continue
+            clean.append(t)
+
+    return clean
+
+
+def flatten_values(data: Any, text_list: List[str]):
+    """Extrai recursivamente apenas VALORES strings de qualquer JSON."""
+    if isinstance(data, str):
+        text_list.append(data)
+    elif isinstance(data, list):
+        for item in data:
+            flatten_values(item, text_list)
+    elif isinstance(data, dict):
+        for v in data.values():
+            flatten_values(v, text_list)
+
+
+def parse_date_row(text: str) -> Optional[Dict[str, str]]:
     """
-    Navega com segurança absoluta pelo dicionário.
-    Retorna '' se qualquer chave for inexistente ou valor for None.
+    Detecta linha de data: 'Aug 2025 - Present · 7 mos'
     """
-    curr = obj
-    for k in keys:
-        if isinstance(curr, dict):
-            curr = curr.get(k)
-        else:
-            return ""
+    if not re.search(r'\d{4}', text):
+        return None
 
-        if curr is None:
-            return ""
+    if " - " not in text and " – " not in text and "·" not in text and "Present" not in text:
+        return None
 
-    return str(curr)
+    parts = text.split("·")
+    main_date = parts[0].strip()
+    duration = parts[1].strip() if len(parts) > 1 else ""
+
+    start, end = "", ""
+
+    if " - " in main_date:
+        d = main_date.split(" - ")
+        start, end = d[0], d[1]
+    elif " – " in main_date:
+        d = main_date.split(" – ")
+        start, end = d[0], d[1]
+    elif "Present" in main_date:
+        start = main_date.replace("Present", "").strip() or "?"
+        end = "Present"
+    else:
+        start = main_date
+
+    return {"start": start.strip(), "end": end.strip(), "duration": duration.strip()}
 
 
-def parse_experiences(json_data: dict) -> List[Experience]:
-    experiences = []
-    raw_jobs = []
+def looks_like_description(text: str) -> bool:
+    t = text.strip()
 
-    # --- ESTRATÉGIA: BUSCA EM 'INCLUDED' ---
-    # Verifica se a chave 'included' existe e não é nula
-    included = json_data.get('included')
-    if included and isinstance(included, list):
-        for item in included:
-            if item.get('$type') == 'com.linkedin.voyager.dash.identity.profile.tetris.PagedListComponent':
-                # Achamos a lista de experiências
-                comps = item.get('components')
-                if comps:
-                    elements = comps.get('elements')
-                    if elements:
-                        raw_jobs = elements
-                        break
+    # se for curtinho, quase nunca é descrição
+    if len(t) < 60:
+        return False
 
-    # Fallback para estrutura antiga (apenas se não achou no included)
-    if not raw_jobs:
-        try:
-            root = json_data.get('data', {}).get('data', {}).get('identityDashProfileComponentsBySectionType')
-            if root:
-                elements = root.get('elements', [])
-                if elements:
-                    paged_list = elements[0].get('components', {}).get('pagedListComponent')
-                    if paged_list:
-                        raw_jobs = paged_list.get('components', {}).get('elements', [])
-        except (KeyError, IndexError, TypeError):
-            pass
+    # descrição normalmente é multiline ou começa com bullet
+    if "\n" in t:
+        return True
 
-    if not raw_jobs:
-        print("⚠️ ERRO: Não foi possível localizar a lista de jobs no JSON.")
-        return []
+    if t.startswith(("-", "•")):
+        return True
 
-    # --- PROCESSAMENTO ---
-    for job_node in raw_jobs:
-        # Acesso defensivo ao EntityComponent
-        comps = job_node.get('components')
-        if not comps: continue
+    return False
 
-        entity = comps.get('entityComponent')
-        if not entity: continue
 
-        # 1. HEADER - Extração Segura
-        title = safe_get(entity, 'titleV2', 'text', 'text')
-        subtitle_raw = safe_get(entity, 'subtitle', 'text')
-        metadata_raw = safe_get(entity, 'metadata', 'text')
-        caption_raw = safe_get(entity, 'caption', 'text')
+def extract_description_blocks(included: List[Any]) -> List[Tuple[int, str]]:
+    """
+    Retorna [(included_idx, description_text), ...]
+    """
+    blocks: List[Tuple[int, str]] = []
 
-        # Parsing das Strings
-        company = subtitle_raw
+    for idx, item in enumerate(included):
+        raw: List[str] = []
+        flatten_values(item, raw)
+
+        # pega o primeiro texto que pareça descrição
+        for s in raw:
+            if isinstance(s, str) and looks_like_description(s):
+                blocks.append((idx, s.strip()))
+                break
+
+    return blocks
+
+
+def split_location_work_type(location_line: str) -> Tuple[str, str]:
+    """
+    Ex: "Fortaleza, Ceará, Brazil · Hybrid" -> ("Fortaleza, Ceará, Brazil", "Hybrid")
+    """
+    if "·" in location_line:
+        parts = [p.strip() for p in location_line.split("·") if p.strip()]
+        if len(parts) >= 2:
+            return parts[0], parts[-1]
+
+    return location_line.strip(), ""
+
+
+def is_location_like(t: str) -> bool:
+    # mantém heurística simples (boa o suficiente)
+    needles = [
+        "Brazil", "Brasil",
+        "United States",
+        "Remote", "Hybrid", "On-site", "Onsite",
+        "Ceará", "São Paulo", "Fortaleza"
+    ]
+    return any(x in t for x in needles)
+
+# ===================================================================
+# 3) PARSER (VERSÃO NOVA: ITEM-BASED + PROXIMIDADE)
+# ===================================================================
+
+def parse_experiences(json_data: dict, debug: bool = False) -> List[Experience]:
+    """
+    - Para cada item em included, tenta achar o padrão:
+      [Título, Empresa · Tipo, Data · Duração, (Local...)]
+    - Descrição não é confiável no mesmo item, então:
+      extrai blocos de descrição separados (expandable_text_block)
+      e associa por proximidade: entre experiência atual e a próxima.
+    """
+    included: List[Any] = json_data.get("included", [])
+
+    desc_blocks = extract_description_blocks(included)
+
+    found: List[Tuple[int, Experience]] = []
+
+    for idx, item in enumerate(included):
+        raw: List[str] = []
+        flatten_values(item, raw)
+
+        clean = clean_text_list(raw)
+        if not clean:
+            continue
+
+        # acha a primeira linha de data no item
+        date_idx = -1
+        date_info = None
+        for i, text in enumerate(clean):
+            parsed = parse_date_row(text)
+            if parsed:
+                date_info = parsed
+                date_idx = i
+                break
+
+        if date_idx == -1 or date_idx < 2:
+            continue
+
+        title = clean[date_idx - 2]
+
+        company_line = clean[date_idx - 1]
+        company = company_line.strip()
         emp_type = ""
-        if '·' in subtitle_raw:
-            parts = subtitle_raw.split('·')
-            company = parts[0].strip()
-            emp_type = parts[1].strip() if len(parts) > 1 else ""
+        if "·" in company_line:
+            parts = [p.strip() for p in company_line.split("·") if p.strip()]
+            if parts:
+                company = parts[0]
+            if len(parts) >= 2:
+                emp_type = parts[1]
 
-        location = metadata_raw
+        # tenta pegar localização no próprio item (às vezes vem aqui)
+        location = ""
         work_type = ""
-        if '·' in metadata_raw:
-            parts = metadata_raw.split('·')
-            location = parts[0].strip()
-            work_type = parts[1].strip() if len(parts) > 1 else ""
 
-        date_range = ""
-        duration = ""
-        start_date = ""
-        end_date = ""
-
-        if caption_raw:
-            parts = caption_raw.split('·')
-            date_range = parts[0].strip()
-            if len(parts) > 1:
-                duration = parts[1].strip()
-
-            if '-' in date_range:
-                d_parts = date_range.split('-')
-                start_date = d_parts[0].strip()
-                end_date = d_parts[1].strip()
-            else:
-                start_date = date_range
-
-        # 2. DESCRIPTION & SKILLS (Blidagem contra NoneType)
-        description = ""
-        skills = []
-
-        sub_comps_wrapper = entity.get('subComponents')
-        if sub_comps_wrapper:
-            sub_components_list = sub_comps_wrapper.get('components', [])
-
-            if sub_components_list:
-                for sub in sub_components_list:
-                    sub_inner = sub.get('components')
-                    if not sub_inner: continue
-
-                    # AQUI OCORRIA O ERRO: fixedListComponent pode ser None
-                    fixed_list = sub_inner.get('fixedListComponent')
-                    if not fixed_list: continue  # Pula se for None
-
-                    items = fixed_list.get('components')
-                    if not items: continue
-
-                    for item in items:
-                        item_comps = item.get('components')
-                        if not item_comps: continue
-
-                        text_comp = item_comps.get('textComponent')
-                        if not text_comp: continue
-
-                        # Texto aqui é: text -> text
-                        raw_text = safe_get(text_comp, 'text', 'text')
-
-                        if raw_text:
-                            if raw_text.startswith("Skills:"):
-                                clean = raw_text.replace("Skills:", "").strip()
-                                skills = [s.strip() for s in clean.split('·') if s.strip()]
-                            else:
-                                description += raw_text + "\n"
+        after = clean[date_idx + 1:]
+        for t in after:
+            if is_location_like(t):
+                loc, wt = split_location_work_type(t)
+                location = loc
+                work_type = wt
+                break
 
         exp = Experience(
             title=title,
@@ -205,121 +296,197 @@ def parse_experiences(json_data: dict) -> List[Experience]:
             employment_type=emp_type,
             location=location,
             work_type=work_type,
-            start_date=start_date,
-            end_date=end_date,
-            duration=duration,
-            description=description.strip(),
-            skills=skills
+            start_date=date_info["start"],
+            end_date=date_info["end"],
+            duration=date_info["duration"],
+            description="",
+            skills=[]
         )
-        experiences.append(exp)
 
-    return experiences
+        found.append((idx, exp))
 
+    # dedupe por chave (título+empresa+start)
+    unique: List[Tuple[int, Experience]] = []
+    seen = set()
+    for idx, exp in found:
+        key = f"{exp.title}|{exp.company_name}|{exp.start_date}"
+        if key not in seen:
+            unique.append((idx, exp))
+            seen.add(key)
+
+    # associa descrição por proximidade
+    exp_idxs = [i for i, _ in unique]
+    for k, (exp_idx, exp) in enumerate(unique):
+        next_exp_idx = exp_idxs[k + 1] if k + 1 < len(exp_idxs) else float("inf")
+
+        desc = ""
+        for d_idx, d_text in desc_blocks:
+            if exp_idx < d_idx < next_exp_idx:
+                desc = d_text
+                break
+
+        exp.description = desc
+
+    if debug:
+        # preview de debug (bem leve)
+        for idx, exp in unique:
+            print(f"[DEBUG] exp@{idx}: {exp.title} | {exp.company_name} | desc={'yes' if exp.description else 'no'}")
+
+    return [exp for _, exp in unique]
 
 # ===================================================================
-# 3) MAIN EXECUTION
+# 4) SDUI STREAM PARSER (MANTIDO)
 # ===================================================================
 
-def fetch_linkedin_profile_experiences(profile_urn: str, debug: bool = True):
-    print("=== Fetch & Parse LinkedIn Experiences (REFATORED) ===")
+def parse_sdui_stream_to_dict(raw_text: str) -> dict:
+    """Converte o stream SDUI em um dicionário único."""
+    included_items = []
+    lines = raw_text.split('\n')
+    for line in lines:
+        if not line.strip():
+            continue
+        if ':' in line:
+            _, json_part = line.split(':', 1)
+            try:
+                parsed = json.loads(json_part)
+                if isinstance(parsed, list):
+                    included_items.append(parsed)
+                    for item in parsed:
+                        if isinstance(item, dict):
+                            included_items.append(item)
+                elif isinstance(parsed, dict):
+                    included_items.append(parsed)
+            except json.JSONDecodeError:
+                continue
+    return {"data": {}, "included": included_items}
 
-    errors = []  # Collect debug-friendly messages
 
-    # 1. INIT CLIENT
-    client = LinkedInClient("LinkedIn_Profile_Experience_Scraper")
+def extract_vanity_from_referer(referer: str) -> Optional[str]:
+    if not referer:
+        return None
+    match = re.search(r"/in/([^/]+)/", referer)
+    return match.group(1) if match else None
+
+# ===================================================================
+# 5) MAIN FUNCTION (ENDPOINT LOGIC)
+# ===================================================================
+
+def fetch_linkedin_profile_experiences(
+        profile_urn: str,
+        vanity_name: str | None = None,
+        locale: str = "en",
+        start: int = 0,
+        count: int = 10,
+        debug: bool = True
+):
+    if debug:
+        print("=== Fetch LinkedIn Experiences via SDUI (Item-Based Parser) ===")
+
+    config_name = "Experience"
+    client = LinkedInClient(config_name)
+
     if not client.config:
-        msg = "Could not load config 'LinkedIn_Profile_Experience_Scraper'. Missing DB record?"
-        print("❌", msg)
-        return {"ok": False, "error": msg, "stage": "config_load"}
+        return {"ok": False, "error": f"Config '{config_name}' missing", "stage": "config_load"}
 
-    # 2. BUILD REQUEST
-    try:
-        raw_urn = profile_urn.replace("profileUrn:", "").strip()
-        encoded_urn = encode_urn_only(raw_urn)
-        variables = f"(profileUrn:{encoded_urn},sectionType:experience)"
+    if not vanity_name:
+        vanity_name = extract_vanity_from_referer(client.config.get("referer"))
 
-        req = VoyagerGraphQLRequest(
-            base_url=client.config["base_url"],
-            query_id=client.config["query_id"],
-            variables=variables
-        )
-    except Exception as e:
-        msg = f"Error building GraphQL request: {e}"
-        print("❌", msg)
-        return {"ok": False, "error": msg, "stage": "request_build"}
+    if not vanity_name:
+        return {"ok": False, "error": "No vanity_name found", "stage": "vanity_resolve"}
 
-    # 3. EXECUTE REQUEST
-    try:
-        print("🚀 Sending request...")
-        response = client.execute(req)
-        print(f"➡️ STATUS: {response.status_code}")
-    except Exception as e:
-        msg = f"HTTP failure on client.execute(): {e}"
-        print("❌", msg)
-        return {"ok": False, "error": msg, "stage": "http_execute"}
+    profile_id = profile_urn.replace("urn:li:fsd_profile:", "").strip()
 
-    # 4. STATUS VALIDATION
-    if response.status_code == 403:
-        msg = "403 Forbidden — LinkedIn blocked the request. Cookies expired or CSRF mismatch."
-        print("❌", msg)
-        return {"ok": False, "error": msg, "stage": "linkedin_forbidden"}
-
-    if response.status_code != 200:
-        msg = f"Unexpected status {response.status_code}"
-        print("❌", msg, "\n", response.text)
-        return {
-            "ok": False,
-            "error": msg,
-            "body": response.text,
-            "stage": "non_200_status"
+    payload = {
+        "pagerId": "com.linkedin.sdui.pagers.profile.details.experience",
+        "clientArguments": {
+            "$type": "proto.sdui.actions.requests.RequestedArguments",
+            "payload": {
+                "vanityName": vanity_name,
+                "locale": locale,
+                "start": start,
+                "count": count,
+                "profileId": profile_id
+            },
+            "requestedStateKeys": [],
+            "requestMetadata": {"$type": "proto.sdui.common.RequestMetadata"},
+            "states": [],
+            "screenId": "com.linkedin.sdui.flagshipnav.profile.ProfileExperienceDetails"
+        },
+        "paginationRequest": {
+            "$type": "proto.sdui.actions.requests.PaginationRequest",
+            "pagerId": "com.linkedin.sdui.pagers.profile.details.experience",
+            "requestedArguments": {
+                "$type": "proto.sdui.actions.requests.RequestedArguments",
+                "payload": {
+                    "vanityName": vanity_name,
+                    "locale": locale,
+                    "start": start,
+                    "count": count,
+                    "profileId": profile_id
+                },
+                "requestedStateKeys": [],
+                "requestMetadata": {"$type": "proto.sdui.common.RequestMetadata"}
+            },
+            "trigger": {
+                "$case": "itemDistanceTrigger",
+                "itemDistanceTrigger": {
+                    "$type": "proto.sdui.actions.requests.ItemDistanceTrigger",
+                    "preloadDistance": 3,
+                    "preloadLength": 250
+                }
+            },
+            "retryCount": 2
         }
-
-    # 5. PARSE JSON
-    try:
-        parsed_json = response.json()
-    except json.JSONDecodeError:
-        msg = "Response is not valid JSON."
-        print("❌", msg)
-        return {
-            "ok": False,
-            "error": msg,
-            "raw": response.text[:500],
-            "stage": "json_decode"
-        }
-
-    # 6. DEBUG DUMP
-    try:
-        with open("linkedin_experience_dump.json", "w", encoding="utf-8") as f:
-            json.dump(parsed_json, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        print("⚠️ Could not write dump file:", e)
-
-    # 7. PARSE EXPERIENCES
-    try:
-        experiences = parse_experiences(parsed_json)
-    except Exception as e:
-        msg = f"Parser error: {e}"
-        print("❌", msg)
-        return {"ok": False, "error": msg, "stage": "parser"}
-
-    # 8. EMPTY RESULT
-    if not experiences:
-        msg = "No experiences found — JSON structure changed or scraper missing permissions."
-        print("⚠️", msg)
-        return {"ok": False, "error": msg, "stage": "empty_result"}
-
-    # 9. SUCCESS
-    print(f"✅ {len(experiences)} experiences extracted.")
-    return {
-        "ok": True,
-        "count": len(experiences),
-        "experiences": [e.to_dict() for e in experiences]
     }
 
+    try:
+        req = SduiPaginationRequest(
+            base_url=client.config["base_url"],
+            body=payload,
+            debug=debug
+        )
+        response = client.execute(req)
+
+        if response.status_code == 403:
+            return {"ok": False, "error": "403 Forbidden", "stage": "linkedin_forbidden"}
+
+        if response.status_code != 200:
+            return {"ok": False, "error": f"Status {response.status_code}", "body": response.text[:500]}
+
+        content_type = response.headers.get("Content-Type", "")
+        parsed_data: Dict[str, Any] = {}
+
+        if "application/octet-stream" in content_type:
+            if debug:
+                print("📦 Detectado stream SDUI. Processando linhas...")
+            parsed_data = parse_sdui_stream_to_dict(response.text)
+        else:
+            parsed_data = response.json()
+
+        if debug:
+            with open("linkedin_sdui_dump.json", "w", encoding="utf-8") as f:
+                json.dump(parsed_data, f, indent=2, ensure_ascii=False)
+
+        # Extração (nova)
+        experiences_list = parse_experiences(parsed_data, debug=debug)
+        experiences_dicts = [exp.to_dict() for exp in experiences_list]
+
+        if debug:
+            print(f"✅ Parser encontrou {len(experiences_dicts)} experiências.")
+
+        return {
+            "ok": True,
+            "experiences": experiences_dicts,
+            "raw": parsed_data if debug else None
+        }
+
+    except Exception as e:
+        return {"ok": False, "error": str(e), "stage": "execution_error"}
 
 
 if __name__ == "__main__":
-    # Exemplo de uso
-    fetch_linkedin_profile_experiences(
-        "profileUrn:urn:li:fsd_profile:ACoAAD016UkBWKGUUWKD7WdA2pTCzevPYoF-xnE"
+    res = fetch_linkedin_profile_experiences(
+        "urn:li:fsd_profile:ACoAAD016UkBWKGUUWKD7WdA2pTCzevPYoF-xnE",
+        debug=True
     )
+    print(json.dumps(res, indent=2, ensure_ascii=False))

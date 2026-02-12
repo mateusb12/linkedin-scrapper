@@ -668,36 +668,33 @@ def get_profile_experiences():
              If not provided, tries to use a default or fails.
     """
     try:
-        # Pega o URN da query string (ex: ?urn=urn:li:fsd_profile:...)
-        # Se você quiser deixar hardcoded pro seu perfil "me", pode definir um default aqui.
         target_urn = request.args.get("urn")
+        vanity = request.args.get("vanity")
 
-        if not target_urn:
+        if not target_urn or not vanity:
             return jsonify({
-                "error": "Missing 'urn' parameter. Please provide the LinkedIn Profile URN."
+                "error": "Missing 'urn' or 'vanity' parameter."
             }), 400
 
         print(f"🚀 Fetching experiences for URN: {target_urn}")
+        print(f"👤 Vanity: {vanity}")
 
-        # Chama a função refatorada
-        result = fetch_linkedin_profile_experiences(target_urn)
+        result = fetch_linkedin_profile_experiences(
+            profile_urn=target_urn,
+            vanity_name=vanity
+        )
 
         if not result.get("ok"):
-            return jsonify({
-                "error": result.get("error"),
-                "stage": result.get("stage"),
-                "details": result,
-            }), 500  # INTERNAL ERROR, not 404
+            print("❌ LinkedIn fetch returned error:")
+            print(result)
+            return jsonify(result), 500
 
-        return jsonify({
-            "count": result["count"],
-            "urn": target_urn,
-            "experiences": result["experiences"]
-        }), 200
+        return jsonify(result), 200
 
     except Exception as e:
+        print("🔥 ERROR in /profile/experiences")
         print(traceback.format_exc())
         return jsonify({
-            "error": "Failed to fetch profile experiences",
+            "error": "Unhandled exception",
             "details": str(e)
         }), 500

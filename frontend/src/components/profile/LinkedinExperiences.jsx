@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { fetchProfileExperiences } from "../../services/jobService";
 
-// --- Shared Style Definitions (Matching UserProfile) ---
 const palette = {
   bg: {
     card: "bg-gray-800",
@@ -47,13 +46,14 @@ const styleguide = {
 const ExperienceCard = ({ exp }) => {
   return (
     <div className={styleguide.nestedCard}>
-      {/* Header: Title & Company */}
       <div className="flex flex-col md:flex-row md:justify-between md:items-start mb-4 gap-2">
         <div>
           <h3 className={`text-xl font-bold ${palette.text.light}`}>
             {exp.title}
           </h3>
-          <div className={`flex items-center gap-2 ${palette.text.link} font-medium text-lg`}>
+          <div
+            className={`flex items-center gap-2 ${palette.text.link} font-medium text-lg`}
+          >
             <Building size={16} />
             <span>{exp.company_name}</span>
             {exp.employment_type && (
@@ -64,8 +64,9 @@ const ExperienceCard = ({ exp }) => {
           </div>
         </div>
 
-        {/* Meta Info: Dates, Location, Duration */}
-        <div className={`flex flex-col items-start md:items-end text-sm ${palette.text.secondary} gap-1`}>
+        <div
+          className={`flex flex-col items-start md:items-end text-sm ${palette.text.secondary} gap-1`}
+        >
           <div className="flex items-center gap-1.5">
             <Calendar size={14} />
             <span>
@@ -87,17 +88,19 @@ const ExperienceCard = ({ exp }) => {
         </div>
       </div>
 
-      {/* Description */}
       {exp.description && (
-        <div className={`mb-5 text-sm leading-relaxed whitespace-pre-wrap ${palette.text.primary} border-l-2 border-gray-600 pl-4 py-1`}>
+        <div
+          className={`mb-5 text-sm leading-relaxed whitespace-pre-wrap ${palette.text.primary} border-l-2 border-gray-600 pl-4 py-1`}
+        >
           {exp.description}
         </div>
       )}
 
-      {/* Skills */}
       {exp.skills && exp.skills.length > 0 && (
         <div className="mt-4">
-          <div className={`flex items-center gap-2 text-xs font-bold uppercase tracking-wider ${palette.text.secondary} mb-2`}>
+          <div
+            className={`flex items-center gap-2 text-xs font-bold uppercase tracking-wider ${palette.text.secondary} mb-2`}
+          >
             <Wrench size={12} /> Skills Used
           </div>
           <div className="flex flex-wrap gap-2">
@@ -118,32 +121,38 @@ const LinkedinExperiences = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const loadExperiences = async () => {
-      try {
-        setLoading(true);
-        // Uses the default URN set in jobService.js
-        const data = await fetchProfileExperiences();
+  const loadExperiences = async () => {
+    try {
+      setLoading(true);
+      const data = await fetchProfileExperiences();
 
-        if (data && data.experiences) {
-          setExperiences(data.experiences);
-        } else {
-          setExperiences([]);
-        }
-      } catch (err) {
-        console.error("Failed to load LinkedIn experiences:", err);
-        setError("Failed to load experiences data.");
-      } finally {
-        setLoading(false);
+      console.log("🔍 DADOS RECEBIDOS DO BACKEND:", data);
+
+      if (data && data.experiences) {
+        setExperiences(data.experiences);
+      } else if (data && data.raw) {
+        console.log("Achei RAW data, mas não experiences processadas");
+        setExperiences([]);
+      } else {
+        setExperiences([]);
       }
-    };
+    } catch (err) {
+      console.error("Failed to load LinkedIn experiences:", err);
+      setError("Failed to load experiences data.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     loadExperiences();
   }, []);
 
   if (loading) {
     return (
-      <div className={`${palette.bg.card} p-12 rounded-lg border ${palette.border.primary} flex flex-col items-center justify-center text-gray-400`}>
+      <div
+        className={`${palette.bg.card} p-12 rounded-lg border ${palette.border.primary} flex flex-col items-center justify-center text-gray-400`}
+      >
         <Loader2 className="animate-spin mb-3 text-blue-500" size={32} />
         <p>Syncing Profile Data...</p>
       </div>
@@ -152,7 +161,9 @@ const LinkedinExperiences = () => {
 
   if (error) {
     return (
-      <div className={`${palette.bg.card} p-8 rounded-lg border border-red-900/50 flex items-center gap-3 text-red-400`}>
+      <div
+        className={`${palette.bg.card} p-8 rounded-lg border border-red-900/50 flex items-center gap-3 text-red-400`}
+      >
         <AlertCircle size={24} />
         <p>{error}</p>
       </div>
@@ -175,7 +186,9 @@ const LinkedinExperiences = () => {
             </p>
           </div>
         </div>
-        <div className={`bg-blue-900/30 px-3 py-1 rounded border border-blue-800 text-blue-200 text-xs font-mono`}>
+        <div
+          className={`bg-blue-900/30 px-3 py-1 rounded border border-blue-800 text-blue-200 text-xs font-mono`}
+        >
           Count: {experiences.length}
         </div>
       </div>

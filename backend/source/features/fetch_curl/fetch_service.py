@@ -170,10 +170,18 @@ class FetchService:
         return FetchService._internal_request(base_url, params=params)
 
     @staticmethod
-    def _internal_request(url: str, params: Optional[Dict[str, str]] = None) -> Optional[Dict]:
+    def _internal_request(
+            url: str,
+            params: Optional[Dict[str, str]] = None,
+            debug: bool = False
+    ) -> Optional[Any]:
         """
-        Executes a generic authenticated request reusing credentials from the 'Pagination' config.
+        Executes an authenticated request.
+        Supports BOTH:
+          - GraphQL (JSON)
+          - SDUI (React Server Component stream)
         """
+
         db = get_db_session()
         try:
             record = db.query(FetchCurl).filter(FetchCurl.name == "Pagination").first()
@@ -188,23 +196,50 @@ class FetchService:
                 except:
                     pass
 
-            # Use 'params' only if provided, otherwise assume URL is fully constructed
             req = requests.Request('GET', url, headers=headers, params=params)
             prepared = req.prepare()
 
-            # --- DEBUG PRINT (Temporary) ---
-            print(f"🐍 DEBUG URL: {prepared.url}")
-            # -------------------------------
+            session = requests.Session()
+            response = session.send(prepared, timeout=15)
 
-            response = requests.Session().send(prepared, timeout=10)
+            content_type = response.headers.get("Content-Type", "")
+
+            if debug:
+                print("\n" + "=" * 60)
+                print("📡 INTERNAL REQUEST DEBUG")
+                print("URL:", prepared.url)
+                print("Status:", response.status_code)
+                print("Content-Type:", content_type)
+                print("=" * 60)
 
             if response.status_code != 200:
-                print(f"❌ Status: {response.status_code}")
-                # LinkedIn errors are often verbose html/json, print short snippet
-                print(f"❌ Response: {response.text[:200]}")
+                if debug:
+                    print("❌ RESPONSE:", response.text[:500])
                 return None
 
-            return response.json()
+            # ----------- JSON (GraphQL) -----------
+            if "application/json" in content_type:
+                return response.json()
+
+            # ----------- SDUI / RSC STREAM -----------
+            if "application/octet-stream" in content_type:
+                raw = response.content
+
+                # decompress manually if needed
+                if response.headers.get("content-encoding") == "br":
+                    import brotli
+                    raw = brotli.decompress(raw)
+
+                decoded = raw.decode("utf-8")
+
+                if debug:
+                    print("📦 RSC RAW (first 1000 chars):")
+                    print(decoded[:1000])
+
+                return decoded
+
+            # ----------- Fallback -----------
+            return response.text
 
         except Exception as e:
             print(f"❌ [FetchService] Request failed: {e}")
