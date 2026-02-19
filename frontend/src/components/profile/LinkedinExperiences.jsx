@@ -9,6 +9,12 @@ import {
   Linkedin,
   Loader2,
   AlertCircle,
+  Code,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Check,
+  Terminal,
 } from "lucide-react";
 import { fetchProfileExperiences } from "../../services/jobService";
 
@@ -17,6 +23,7 @@ const palette = {
     card: "bg-gray-800",
     nestedCard: "bg-gray-700/50",
     chip: "bg-gray-700",
+    codeBlock: "bg-gray-900",
   },
   text: {
     primary: "text-gray-200",
@@ -24,6 +31,7 @@ const palette = {
     light: "text-white",
     accent: "text-emerald-400",
     link: "text-blue-400",
+    code: "text-green-400",
   },
   border: {
     primary: "border-gray-700",
@@ -118,8 +126,12 @@ const ExperienceCard = ({ exp }) => {
 
 const LinkedinExperiences = () => {
   const [experiences, setExperiences] = useState([]);
+  const [fullData, setFullData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const [showDebug, setShowDebug] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
 
   const loadExperiences = async () => {
     try {
@@ -128,13 +140,18 @@ const LinkedinExperiences = () => {
 
       console.log("🔍 DADOS RECEBIDOS DO BACKEND:", data);
 
-      if (data && data.experiences) {
-        setExperiences(data.experiences);
-      } else if (data && data.raw) {
-        console.log("Achei RAW data, mas não experiences processadas");
-        setExperiences([]);
-      } else {
-        setExperiences([]);
+      if (data) {
+        const { raw, ...cleanData } = data;
+        setFullData(cleanData);
+
+        if (data.experiences) {
+          setExperiences(data.experiences);
+        } else if (data.raw) {
+          console.log("Achei RAW data, mas não experiences processadas");
+          setExperiences([]);
+        } else {
+          setExperiences([]);
+        }
       }
     } catch (err) {
       console.error("Failed to load LinkedIn experiences:", err);
@@ -147,6 +164,13 @@ const LinkedinExperiences = () => {
   useEffect(() => {
     loadExperiences();
   }, []);
+
+  const handleCopyJson = () => {
+    if (!fullData) return;
+    navigator.clipboard.writeText(JSON.stringify(fullData, null, 2));
+    setCopySuccess(true);
+    setTimeout(() => setCopySuccess(false), 2000);
+  };
 
   if (loading) {
     return (
@@ -193,7 +217,7 @@ const LinkedinExperiences = () => {
         </div>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-6 mb-8">
         {experiences.length === 0 ? (
           <div className="text-center text-gray-500 py-8 italic">
             No experiences found in the profile data.
@@ -202,6 +226,66 @@ const LinkedinExperiences = () => {
           experiences.map((exp, index) => (
             <ExperienceCard key={index} exp={exp} />
           ))
+        )}
+      </div>
+
+      <hr className={`border-t ${palette.border.primary} my-6`} />
+
+      <div
+        className={`rounded-lg border ${palette.border.secondary} overflow-hidden`}
+      >
+        <button
+          onClick={() => setShowDebug(!showDebug)}
+          className={`w-full flex items-center justify-between p-3 ${palette.bg.nestedCard} hover:bg-gray-700 transition-colors`}
+        >
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-300">
+            <Terminal size={16} className="text-purple-400" />
+            <span>Cleaned JSON Data</span>
+            <span className="text-xs font-normal text-gray-500 ml-2">
+              (Debug / Fill Helper)
+            </span>
+          </div>
+          {showDebug ? (
+            <ChevronUp size={16} className="text-gray-400" />
+          ) : (
+            <ChevronDown size={16} className="text-gray-400" />
+          )}
+        </button>
+
+        {showDebug && (
+          <div
+            className={`relative ${palette.bg.codeBlock} border-t ${palette.border.secondary}`}
+          >
+            <div className="absolute top-2 right-2 z-10">
+              <button
+                onClick={handleCopyJson}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all 
+                  ${
+                    copySuccess
+                      ? "bg-green-900/50 text-green-400 border border-green-800"
+                      : "bg-gray-800 text-gray-300 border border-gray-600 hover:bg-gray-700 hover:text-white"
+                  }`}
+              >
+                {copySuccess ? (
+                  <>
+                    <Check size={12} /> Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy size={12} /> Copy JSON
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="p-4 overflow-x-auto max-h-[500px] overflow-y-auto">
+              <pre
+                className={`text-xs font-mono ${palette.text.code} leading-relaxed`}
+              >
+                <code>{JSON.stringify(fullData, null, 2)}</code>
+              </pre>
+            </div>
+          </div>
         )}
       </div>
     </div>
