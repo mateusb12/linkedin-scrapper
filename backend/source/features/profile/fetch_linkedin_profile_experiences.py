@@ -4,6 +4,7 @@ import json
 import re
 import urllib.parse
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List, Optional, Any, Dict, Tuple
 
 # IMPORTS
@@ -464,8 +465,13 @@ def fetch_linkedin_profile_experiences(
             parsed_data = response.json()
 
         if debug:
-            with open("linkedin_sdui_dump.json", "w", encoding="utf-8") as f:
-                json.dump(parsed_data, f, indent=2, ensure_ascii=False)
+            dump_dir = Path(__file__).resolve().parent / "debug"
+            dump_dir.mkdir(exist_ok=True)
+
+            dump_path = dump_dir / "linkedin_sdui_dump.json"
+            dump_path.write_text(json.dumps(parsed_data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+            print(f"[DEBUG] Dump saved to {dump_path}")
 
         # Extração (nova)
         experiences_list = parse_experiences(parsed_data, debug=debug)

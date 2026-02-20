@@ -1,63 +1,52 @@
-# backend/database/database_connection.py
-
 from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-
 import models
+import os
 
 print(f"Importing ORM models... {models.__name__}")
 
-# =====================================================
-# ABSOLUTE DATABASE PATH (bulletproof)
-# =====================================================
+# ============================================================
+# Detectar se está rodando em Docker
+# ============================================================
 
-# Directory of this file → backend/database/
-CURRENT_DIR = Path(__file__).resolve().parent
+def running_in_docker() -> bool:
+    return Path("/.dockerenv").exists() or os.environ.get("RUNNING_IN_DOCKER") == "1"
 
-# Root project folder → backend/
-BACKEND_DIR = CURRENT_DIR.parent
+# ============================================================
+# Definir caminho do DB dependendo do ambiente
+# ============================================================
 
-# Final SQLite DB file → backend/database/linkedin.db
-DB_FILE = Path("/app/db/linkedin.db")
+if running_in_docker():
+    # Caminho dentro do contêiner
+    DB_FILE = Path("/app/db/linkedin.db")
+else:
+    # Caminho local no ambiente do desenvolvedor
+    CURRENT_DIR = Path(__file__).resolve().parent
+    BACKEND_DIR = CURRENT_DIR.parent
+    DB_FILE = BACKEND_DIR / "db" / "linkedin.db"
 
-# Convert to proper SQLite URL
+# Garantir que o diretório existe
+DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+
 DATABASE_URL = f"sqlite:///{DB_FILE}"
-
-# =====================================================
-# SQLAlchemy Engine
-# =====================================================
 
 engine = create_engine(
     DATABASE_URL,
-    echo=False,  # Set to True if you want SQL logs
-    connect_args={"check_same_thread": False},  # Required for FastAPI/Flask multithreading
+    echo=False,
+    connect_args={"check_same_thread": False},
 )
 
-# SQLAlchemy Session Factory
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
     bind=engine
 )
 
-# =====================================================
-# Database Helpers
-# =====================================================
-
 def create_db_and_tables():
-    """
-    Creates SQLite DB and all ORM tables.
-    Safe to run multiple times (won't overwrite tables).
-    """
     print(f"Creating database at: {DB_FILE}")
     models.Base.metadata.create_all(bind=engine)
     print("Database initialization complete.\n")
 
-
 def get_db_session():
-    """
-    Returns a new SQLAlchemy session.
-    Use inside routes.
-    """
     return SessionLocal()
