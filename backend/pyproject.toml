@@ -20,10 +20,14 @@ openai = ">=1.109.1,<2.0.0"
 repomix = ">=0.3.4,<0.4.0"
 werkzeug = ">=3.1.5,<4.0.0"
 brotli = "^1.2.0"
+playwright = "^1.58.0"
+ruff = "^0.15.2"
+astor = "^0.8.1"
+libcst = "^1.8.6"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=9.0.2,<10.0.0"
-ruff = ">=0.14.10,<0.15.0"
+ruff = "^0.15.2"
 black = ">=25.12.0,<26.0.0"
 mypy = ">=1.19.1,<2.0.0"
 pydevd-pycharm = ">=253.28294.336,<253.28295.0"
@@ -54,6 +58,8 @@ exclude = '''
 line-length = 88
 target-version = "py312"
 fix = true
+
+[tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4"]
 ignore = ["E501"]
 exclude = [
@@ -63,7 +69,7 @@ exclude = [
     "migrations",
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "migrations/**" = ["E", "F", "I"]
 
 [tool.mypy]
