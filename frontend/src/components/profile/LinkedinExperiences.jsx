@@ -196,6 +196,30 @@ const LinkedinExperiences = () => {
 
   return (
     <div className={styleguide.card}>
+      <div className="mb-6">
+        <button
+          onClick={() => {
+            if (!fullData || !fullData.experiences) {
+              alert("Nenhum dado do LinkedIn encontrado.");
+              return;
+            }
+            if (typeof window.importLinkedinExperienceHook === "function") {
+              window.importLinkedinExperienceHook(fullData);
+              alert("Experiências importadas para o Resume Editor! 🎉");
+            } else {
+              alert("O Resume Editor não está pronto para receber importação.");
+            }
+          }}
+          className="w-full bg-emerald-600 hover:bg-emerald-500
+                     text-white font-semibold py-2.5 rounded-lg
+                     shadow-md flex items-center justify-center gap-2
+                     transition-all"
+        >
+          <Briefcase size={16} />
+          Importar experiências no Resume Editor
+        </button>
+      </div>
+
       <div className="flex items-center justify-between mb-8 border-b border-gray-700 pb-5">
         <div className="flex items-center">
           <div className={styleguide.headerIcon}>
@@ -210,6 +234,7 @@ const LinkedinExperiences = () => {
             </p>
           </div>
         </div>
+
         <div
           className={`bg-blue-900/30 px-3 py-1 rounded border border-blue-800 text-blue-200 text-xs font-mono`}
         >

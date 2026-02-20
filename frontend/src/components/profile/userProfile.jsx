@@ -29,6 +29,7 @@ import {
 } from "./resumeJsonMapper.js";
 
 import LinkedinExperiences from "./LinkedinExperiences";
+import { extractTechStack } from "../resume/constants.js";
 
 const palette = {
   bg: {
@@ -901,6 +902,39 @@ const UserProfile = () => {
 
   const selectedResume = resumes.find((r) => r.id === selectedResumeId);
 
+  const importExperiencesFromLinkedin = (linkedinData) => {
+    if (!selectedResume) return;
+
+    const mapped = linkedinData.experiences.map((exp) => ({
+      id: Date.now() + Math.random(),
+      company: exp.company_name,
+      role: exp.title,
+      location: exp.location || "",
+      start_date: convertDate(exp.start_date),
+      end_date:
+        exp.end_date === "Present" ? "Present" : convertDate(exp.end_date),
+
+      highlights: exp.description
+        ? exp.description
+            .split(/\r?\n+/)
+            .map((line) => line.replace(/^[-•\s]+/, "").trim())
+            .filter((line) => line.length > 0)
+        : [],
+
+      stack: extractTechStack(exp.description || ""),
+    }));
+
+    setResumes((prev) =>
+      prev.map((r) =>
+        r.id === selectedResume.id ? { ...r, experience: mapped } : r,
+      ),
+    );
+  };
+
+  useEffect(() => {
+    window.importLinkedinExperienceHook = importExperiencesFromLinkedin;
+  }, [importExperiencesFromLinkedin]);
+
   useEffect(() => {
     const loadDataFromApi = async () => {
       setLoading(true);
@@ -1039,6 +1073,32 @@ const UserProfile = () => {
     setShowFullPreview(!showFullPreview);
   };
 
+  function convertDate(str) {
+    if (!str) return "";
+    try {
+      const [monthStr, year] = str.split(" ");
+      const month = {
+        Jan: "01",
+        Feb: "02",
+        Mar: "03",
+        Apr: "04",
+        May: "05",
+        Jun: "06",
+        Jul: "07",
+        Aug: "08",
+        Sep: "09",
+        Oct: "10",
+        Nov: "11",
+        Dec: "12",
+      }[monthStr];
+
+      return `${year}-${month}`;
+    } catch (err) {
+      console.error("Invalid date:", str);
+      return "";
+    }
+  }
+
   if (loading)
     return (
       <div className="min-h-screen flex items-center justify-center text-white bg-gray-900">
@@ -1064,7 +1124,7 @@ const UserProfile = () => {
         </h1>
 
         <div className="mb-8">
-          <LinkedinExperiences />
+          <LinkedinExperiences onImport={importExperiencesFromLinkedin} />
         </div>
 
         <ProfileDetails
