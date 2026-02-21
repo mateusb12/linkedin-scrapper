@@ -37,3 +37,7 @@ repomix-output.md
 /frontend/frontend.md
 /backend/backend.md
 *.db
+/backend/source/features/playwright_scrapper/linkedin_profile/
+/backend/source/features/playwright_scrapper/sniffer_hits/
+/backend/source/features/playwright_scrapper/*.txt
+/backend/source/features/playwright_scrapper/*.json
