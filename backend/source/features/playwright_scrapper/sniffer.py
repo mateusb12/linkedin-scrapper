@@ -277,148 +277,257 @@ class LinkedInSniffer(LinkedInBase):
                 print(f"[WARN] Erro ao fechar contexto: {e}")
 
 
-class LinkedInConnectionsScraper(LinkedInBase):
+class LinkedInConnectionsAPIScraper(LinkedInBase):
     """
-    Scraper para coletar TODAS as URLs das conexões na página
-    /mynetwork/invite-connect/connections/.
+    Coleta TODAS as conexões do LinkedIn usando a API que alimenta
+    a página /mynetwork/invite-connect/connections/ (lazy loading).
+
+    Ideia:
+      - Hook em responses que tenham "connectionsList" ou "relationships/connections"
+      - Decodificar body (utf-8/gzip/deflate)
+      - Extrair publicIdentifier / URLs
+      - Montar https://www.linkedin.com/in/<slug>/
+      - Salvar em .txt e .json
     """
 
     def __init__(
             self,
             target_url: str = "https://www.linkedin.com/mynetwork/invite-connect/connections/",
             user_data_dir: str = "linkedin_profile",
-            output_txt: str = "connections_urls.txt",
-            output_json: str = "connections_urls.json",
+            output_txt: str = "connections_urls_api.txt",
+            output_json: str = "connections_urls_api.json",
     ) -> None:
         super().__init__(target_url=target_url, user_data_dir=user_data_dir)
+
         self.output_txt = Path(output_txt)
         self.output_json = Path(output_json)
 
-    async def auto_scroll(self, max_loops: int = 50, delay_ms: int = 2000) -> set[str]:
+        # slug -> data
+        self._profiles: dict[str, dict] = {}
+
+    # ---------- helpers para reusar a lógica de decode do sniffer ----------
+
+    @staticmethod
+    def try_decode(body: bytes) -> str:
+        try:
+            return body.decode("utf-8")
+        except Exception:
+            pass
+
+        try:
+            import zlib
+            return zlib.decompress(body, zlib.MAX_WBITS | 16).decode("utf-8")
+        except Exception:
+            pass
+
+        try:
+            import zlib
+            return zlib.decompress(body).decode("utf-8")
+        except Exception:
+            pass
+
+        try:
+            return body.hex()
+        except Exception:
+            return ""
+
+    @staticmethod
+    def safe_json_loads(text: str):
+        try:
+            return json.loads(text)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _extract_public_identifiers_from_json(obj) -> list[dict]:
         """
-        Faz scroll na página inteira + tenta clicar em "Show more" / "Show more results".
-        Acumula URLs únicas de conexões enquanto rola e pagina.
-        Para quando não entra URL nova por alguns loops seguidos.
+        Procura recursivamente por estruturas que tenham publicIdentifier/occupation/nome.
+        Retorna uma lista de mini perfis:
+          { slug, name, headline }
+        """
+        found: list[dict] = []
+
+        def walk(node):
+            if isinstance(node, dict):
+                # caso clássico: miniProfile
+                if "publicIdentifier" in node:
+                    slug = node.get("publicIdentifier")
+                    first = (node.get("firstName") or "").strip()
+                    last = (node.get("lastName") or "").strip()
+                    name = f"{first} {last}".strip() or None
+                    headline = node.get("occupation") or node.get("headline")
+                    found.append(
+                        {
+                            "slug": slug,
+                            "name": name,
+                            "headline": headline,
+                        }
+                    )
+
+                # continua descendo
+                for v in node.values():
+                    walk(v)
+
+            elif isinstance(node, list):
+                for item in node:
+                    walk(item)
+
+        walk(obj)
+        return found
+
+    @staticmethod
+    def _extract_slugs_from_text(text: str) -> list[str]:
+        """
+        Fallback bem sujo: regex em texto/hex procurando por publicIdentifier.
+        Não é perfeito, mas às vezes resolve quando o JSON não é limpo.
+        """
+        slugs: set[str] = set()
+
+        # "publicIdentifier":"lucaspinheiro00"
+        for m in re.finditer(r'"publicIdentifier"\s*:\s*"([^"]+)"', text):
+            slugs.add(m.group(1))
+
+        # ...linkedin.com/in/slug...
+        for m in re.finditer(r"linkedin\.com/in/([A-Za-z0-9\-_%]+)", text):
+            slugs.add(m.group(1))
+
+        return list(slugs)
+
+    # ---------- handler de responses da API ----------
+
+    async def handle_response(self, response) -> None:
+        url = response.url
+
+        # só interessa connectionsList / relationships/connections
+        if (
+                "sdui.pagers.mynetwork.connectionsList" not in url
+                and "voyager/api/relationships/connections" not in url
+        ):
+            return
+
+        print(f"[API] Hit em conexões: {url}")
+
+        try:
+            body = await response.body()
+        except Exception:
+            print("[API] Falha ao ler body")
+            return
+
+        decoded = self.try_decode(body)
+        if not decoded:
+            print("[API] Body vazio/ilegível")
+            return
+
+        # 1) tenta como JSON mesmo
+        data = self.safe_json_loads(decoded)
+        mini_profiles: list[dict] = []
+
+        if data is not None:
+            mini_profiles = self._extract_public_identifiers_from_json(data)
+        else:
+            # 2) fallback: regex no texto bruto
+            slugs = self._extract_slugs_from_text(decoded)
+            mini_profiles = [{"slug": s, "name": None, "headline": None} for s in slugs]
+
+        if not mini_profiles:
+            print("[API] Nenhum publicIdentifier encontrado nessa resposta.")
+            return
+
+        # acumular no dicionário
+        before = len(self._profiles)
+        for mp in mini_profiles:
+            slug = mp.get("slug")
+            if not slug:
+                continue
+
+            url_profile = f"https://www.linkedin.com/in/{slug}/"
+
+            if slug not in self._profiles:
+                self._profiles[slug] = {
+                    "slug": slug,
+                    "url": url_profile,
+                    "name": mp.get("name"),
+                    "headline": mp.get("headline"),
+                }
+
+        after = len(self._profiles)
+        print(f"[API] Perfis acumulados: {after} (antes={before}, novos={after - before})")
+
+    # ---------- auto-scroll para forçar lazy loading / paginação ----------
+
+    async def _auto_scroll_js(self, loops: int = 60, delay_ms: int = 800) -> None:
+        """
+        Scroll na página inteira, igual você faria no console:
+
+        for (let i = 0; i < loops; i++) {
+          window.scrollTo(0, document.body.scrollHeight);
+          await new Promise(r => setTimeout(r, delayMs));
+        }
+
+        Aqui fazemos o loop no Python e só chamamos evaluate com uma string.
         """
         assert self.page is not None
 
-        seen_urls: set[str] = set()
-        stagnant_loops = 0
-        STAGNATION_LIMIT = 3
+        print(f"[JS] Scroll automático: loops={loops}, delay={delay_ms}ms")
 
-        for i in range(max_loops):
-            # 1) scroll "página inteira"
+        for i in range(loops):
             await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
             await self.page.wait_for_timeout(delay_ms)
+            print(f"[JS] scroll loop={i}")
 
-            # 2) tentar clicar em "Show more results" / "Show more"
-            clicked = False
-            for label in ["Show more results", "Show more", "See more"]:
-                btn = self.page.get_by_role("button", name=label)
-                if await btn.count() > 0:
-                    try:
-                        print(f"[SCROLL] loop={i} clicando botão: {label!r}")
-                        await btn.first.click()
-                        clicked = True
-                        await self.page.wait_for_timeout(delay_ms)
-                        break
-                    except Exception as e:
-                        print(f"[SCROLL] Erro ao clicar em {label!r}: {e}")
+    # ---------- salvar resultado ----------
 
-            # 3) coletar anchors /in/ e medir crescimento
-            loc = self.page.locator("a[href*='/in/']")
-            count = await loc.count()
-            urls_this_loop: set[str] = set()
+    def save_connections(self) -> None:
+        profiles = list(self._profiles.values())
+        profiles.sort(key=lambda p: (p["name"] or "", p["slug"]))
 
-            for idx in range(count):
-                a = loc.nth(idx)
-                href = await a.get_attribute("href")
-                if not href:
-                    continue
-                href_clean = href.split("?")[0]
-                urls_this_loop.add(href_clean)
-
-            before = len(seen_urls)
-            seen_urls |= urls_this_loop
-            after = len(seen_urls)
-
-            print(
-                f"[SCROLL] loop={i} anchors_dom={count} "
-                f"unique_before={before} unique_after={after}"
-            )
-
-            if after == before and not clicked:
-                stagnant_loops += 1
-                if stagnant_loops >= STAGNATION_LIMIT:
-                    print("[SCROLL] Nenhuma URL nova em vários loops. Parando.")
-                    break
-            else:
-                stagnant_loops = 0
-
-        print(f"[SCROLL] Scroll finalizado. URLs únicas coletadas: {len(seen_urls)}")
-        return seen_urls
-
-    async def extract_connections_from_urls(self, urls: set[str]) -> List[Dict[str, str]]:
-        """
-        A partir das URLs únicas, tenta extrair um nome razoável do DOM.
-        (Nem sempre vai ter o nome perfeito para todas, mas resolve bem).
-        """
-        assert self.page is not None
-
-        connections: List[Dict[str, str]] = []
-
-        for url in sorted(urls):
-            # tenta achar um anchor correspondente no DOM atual
-            loc = self.page.locator(f"a[href*='{url}']")
-            name = None
-            if await loc.count() > 0:
-                text = (await loc.first.inner_text() or "").strip()
-                name = text or None
-
-            connections.append(
-                {
-                    "name": name,
-                    "url": url,
-                }
-            )
-
-        print(f"[EXTRACT] Montadas {len(connections)} conexões a partir das URLs únicas.")
-        return connections
-
-    def save_connections(self, conns: List[Dict[str, str]]) -> None:
-        """
-        Salva em .txt (só URLs) e .json (nome + url).
-        """
+        # .txt → só URLs
         with self.output_txt.open("w", encoding="utf-8") as f:
-            for c in conns:
-                f.write(c["url"] + "\n")
+            for p in profiles:
+                f.write(p["url"] + "\n")
 
+        # .json → slug + name + headline + url
         with self.output_json.open("w", encoding="utf-8") as f:
-            json.dump(conns, f, indent=2, ensure_ascii=False)
+            json.dump(profiles, f, indent=2, ensure_ascii=False)
 
-        print(f"[SAVE] {len(conns)} conexões salvas em:")
+        print(f"[SAVE] {len(profiles)} conexões salvas em:")
         print(f"       - {self.output_txt}")
         print(f"       - {self.output_json}")
 
+    # ---------- fluxo principal ----------
+
     async def run(self) -> None:
         await self.setup_browser()
-        await self.goto_target()
-
-        print("[INFO] Se pedir login, faça APENAS uma vez. Persistência está ativa.")
-        print("[INFO] Aguardando página de conexões carregar...")
-
         assert self.page is not None
+
+        # hook nas responses da API
+        self.page.on("response", self.handle_response)
+
+        await self.goto_target()
+        print("[INFO] Se pedir login, faça APENAS uma vez. Persistência está ativa.")
+        print("[INFO] Aguardando render inicial...")
         await self.page.wait_for_timeout(2000)
 
-        urls = await self.auto_scroll()
-        conns = await self.extract_connections_from_urls(urls)
-        self.save_connections(conns)
+        try:
+            # força lazy-loading / paginação
+            await self._auto_scroll_js(loops=80, delay_ms=800)
 
-        await self.close()
+            # espera últimas requisições chegarem
+            await self.page.wait_for_timeout(3000)
+
+        finally:
+            # >>> MESMO SE DER CTRL+C, VAI PARAR AQUI <<<
+            print(f"[INFO] Finalizando. Perfis acumulados: {len(self._profiles)}")
+            self.save_connections()
+
+            try:
+                await self.close()
+            except Exception as e:
+                print(f"[WARN] Erro ao fechar contexto: {e}")
 
 
 if __name__ == "__main__":
-    MODE = "sniffer"
+    MODE = "connections"
 
     if MODE == "sniffer":
         search_terms = ["lucaspinheiro00"]
@@ -432,7 +541,7 @@ if __name__ == "__main__":
         asyncio.run(sniffer.start())
 
     elif MODE == "connections":
-        scraper = LinkedInConnectionsScraper()
+        scraper = LinkedInConnectionsAPIScraper()
         asyncio.run(scraper.run())
 
     else:
