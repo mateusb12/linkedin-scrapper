@@ -5,160 +5,182 @@ import zlib
 from pathlib import Path
 from playwright.async_api import async_playwright
 
-# ============================================================
-# CONFIGURAÇÕES
-# ============================================================
 
-SEARCH_TERMS = [
-    "otimizei",
-]
+class LinkedInSniffer:
+    """
+    Sniffer OOP para capturar responses do LinkedIn.
+    Suporta SDUI, GraphQL, JSON, streams, gzip e fallback hex.
+    Persistência real via launch_persistent_context.
+    """
 
-REGEX_MODE = False
+    def __init__(
+            self,
+            search_terms,
+            target_url,
+            user_data_dir="linkedin_profile",
+            hits_dir="sniffer_hits",
+            regex_mode=False
+    ):
+        self.search_terms = search_terms
+        self.target_url = target_url
+        self.regex_mode = regex_mode
 
-SAVE_DIR = Path("sniffer_hits")
-SAVE_DIR.mkdir(exist_ok=True)
+        self.user_data_dir = Path(user_data_dir)
+        self.hits_dir = Path(hits_dir)
 
-# Diretório DO PERFIL PERSISTENTE
-USER_DATA_DIR = Path("linkedin_profile")
-USER_DATA_DIR.mkdir(exist_ok=True)
+        self.user_data_dir.mkdir(exist_ok=True)
+        self.hits_dir.mkdir(exist_ok=True)
 
-
-# ============================================================
-# DECODIFICAÇÃO
-# ============================================================
-
-def try_decode(body: bytes) -> str:
-    """Tenta decodificar a resposta em todas as formas possíveis."""
-
-    try:
-        return body.decode("utf-8")
-    except:
-        pass
-
-    try:
-        return zlib.decompress(body, zlib.MAX_WBITS | 16).decode("utf-8")
-    except:
-        pass
-
-    try:
-        return zlib.decompress(body).decode("utf-8")
-    except:
-        pass
-
-    try:
-        return body.hex()
-    except:
-        return ""
+        self.playwright = None
+        self.context = None
+        self.page = None
 
 
-def pretty_format(text: str) -> str:
-    """Se for JSON, deixa indentado."""
-    try:
-        parsed = json.loads(text)
-        return json.dumps(parsed, indent=2, ensure_ascii=False)
-    except:
-        return text
+    @staticmethod
+    def try_decode(body: bytes) -> str:
+        """Decodifica JSON, SDUI ou stream em múltiplos formatos."""
+
+        try:
+            return body.decode("utf-8")
+        except:
+            pass
+
+        try:
+            return zlib.decompress(body, zlib.MAX_WBITS | 16).decode("utf-8")
+        except:
+            pass
+
+        try:
+            return zlib.decompress(body).decode("utf-8")
+        except:
+            pass
+
+        try:
+            return body.hex()
+        except:
+            return ""
+
+    @staticmethod
+    def pretty_format(text: str) -> str:
+        """Se for JSON, indentá-lo."""
+        try:
+            parsed = json.loads(text)
+            return json.dumps(parsed, indent=2, ensure_ascii=False)
+        except:
+            return text
 
 
-def matches_any(text: str) -> bool:
-    """Confere se algum termo alvo aparece na resposta."""
-    for term in SEARCH_TERMS:
-        if REGEX_MODE:
-            if re.search(term, text, re.IGNORECASE):
-                return True
-        else:
-            if term.lower() in text.lower():
-                return True
-    return False
+    def matches(self, text: str) -> bool:
+        """Verifica se algum termo alvo aparece na resposta."""
+        for term in self.search_terms:
+            if self.regex_mode:
+                if re.search(term, text, re.IGNORECASE):
+                    return True
+            else:
+                if term.lower() in text.lower():
+                    return True
+        return False
 
 
-# ============================================================
-# MAIN
-# ============================================================
+    async def handle_response(self, response):
+        url = response.url
 
-async def main():
-    async with async_playwright() as p:
+        if not any(k in url for k in ["experience", "graphql", "voyager", "sdui"]):
+            return
 
-        print("\n[PROFILE] Usando perfil físico persistente em:", USER_DATA_DIR)
+        try:
+            body = await response.body()
+        except:
+            return
 
-        # =====================================================
-        # CONTEXTO PERSISTENTE
-        # =====================================================
-        context = await p.chromium.launch_persistent_context(
-            user_data_dir=str(USER_DATA_DIR),
+        decoded = self.try_decode(body)
+        if not decoded:
+            return
+
+        if self.matches(decoded):
+            print("\n" + "=" * 70)
+            print("[HIT] Termo encontrado!")
+            print("URL:", url)
+            print("Status:", response.status)
+            print("Método:", response.request.method)
+            print("=" * 70)
+
+            safe_name = (
+                url.replace("/", "_")
+                .replace(":", "_")
+                .replace("?", "_")
+                .replace("&", "_")
+            )
+
+            filename = self.hits_dir / f"hit_{safe_name}.txt"
+
+            with filename.open("w", encoding="utf-8", errors="ignore") as f:
+                f.write("=== REQUEST HEADERS ===\n")
+                for k, v in response.request.headers.items():
+                    f.write(f"{k}: {v}\n")
+
+                f.write("\n=== RESPONSE HEADERS ===\n")
+                for k, v in response.headers.items():
+                    f.write(f"{k}: {v}\n")
+
+                f.write("\n=== BODY ===\n\n")
+                f.write(self.pretty_format(decoded))
+
+            print(f"[SALVO] {filename}\n")
+
+
+    async def setup_browser(self):
+        self.playwright = await async_playwright().start()
+
+        self.context = await self.playwright.chromium.launch_persistent_context(
+            user_data_dir=str(self.user_data_dir),
             headless=False,
             slow_mo=30,
-            args=[
-                "--disable-web-security",
-                "--no-sandbox",
-            ],
             ignore_https_errors=True,
+            args=["--disable-web-security"],
             user_agent=(
                 "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Chrome/123 Safari/537.36"
             ),
-            viewport={"width": 1440, "height": 900},
         )
 
-        # Abre nova página se não existir
-        page = context.pages[0] if context.pages else await context.new_page()
+        self.page = (
+            self.context.pages[0] if self.context.pages else await self.context.new_page()
+        )
 
-        print("[SNIFFER] Iniciado — procurando por:", SEARCH_TERMS)
+        print(f"[PROFILE] Usando perfil persistente: {self.user_data_dir}")
 
-        # =====================================================
-        # HANDLER DE RESPOSTAS
-        # =====================================================
-        async def handle_response(response):
-            url = response.url
-            ct = response.headers.get("content-type", "")
 
-            # ignora tracking
-            if any(x in url for x in [
-                "analytics", "pixel", "ads",
-                "voyager/api/identity",
-                "li/track",
-                "tracking"
-            ]):
-                return
+    def setup_listeners(self):
+        self.page.on("response", self.handle_response)
 
-            try:
-                body = await response.body()
-            except:
-                return
 
-            decoded = try_decode(body)
-            if not decoded:
-                return
+    async def start(self):
+        await self.setup_browser()
+        self.setup_listeners()
 
-            if matches_any(decoded):
-                print("\n" + "=" * 60)
-                print("[HIT] Texto encontrado!")
-                print("URL:", url)
-                print("Content-Type:", ct)
-                print("=" * 60)
+        print("[SNIFFER] Termos alvo:", self.search_terms)
+        print("[PAGE] Acessando:", self.target_url)
 
-                safe_name = url.replace("/", "_").replace(":", "_").replace("?", "_")
-                filename = SAVE_DIR / f"hit_{safe_name}.txt"
+        await self.page.goto(self.target_url)
 
-                with filename.open("w", encoding="utf-8", errors="ignore") as f:
-                    f.write(pretty_format(decoded))
+        print("[INFO] Se pedir login, faça APENAS uma vez. Persistência está ativa.")
+        print("[INFO] Sniffer rodando… navegue normalmente.\n")
 
-                print(f"[SALVO] Payload em: {filename}\n")
-
-        # Hook de resposta
-        page.on("response", handle_response)
-
-        # =====================================================
-        # ABRIR PERFIL
-        # =====================================================
-        print("\n[PAGE] Abrindo perfil...")
-        await page.goto("https://www.linkedin.com/in/lucaspinheiro00/")
-
-        print("[INFO] Se pedir login, faça login UMA ÚNICA vez. Depois nunca mais.")
-        print("[INFO] Sessão será armazenada permanentemente no diretório do usuário.")
-
-        # Mantém rodando o sniffer
         await asyncio.sleep(999999)
 
 
-asyncio.run(main())
+
+if __name__ == "__main__":
+    sniffer = LinkedInSniffer(
+        search_terms=[
+            "Otimizei drones",
+            "Otimizei",
+            "drones",
+            "otimizei drones"
+        ],
+        target_url="https://www.linkedin.com/in/me/details/experience/",
+        regex_mode=False
+    )
+
+    asyncio.run(sniffer.start())
