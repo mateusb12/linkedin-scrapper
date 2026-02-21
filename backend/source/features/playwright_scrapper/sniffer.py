@@ -455,25 +455,26 @@ class LinkedInConnectionsAPIScraper(LinkedInBase):
 
     # ---------- auto-scroll para forçar lazy loading / paginação ----------
 
-    async def _auto_scroll_js(self, loops: int = 60, delay_ms: int = 800) -> None:
-        """
-        Scroll na página inteira, igual você faria no console:
-
-        for (let i = 0; i < loops; i++) {
-          window.scrollTo(0, document.body.scrollHeight);
-          await new Promise(r => setTimeout(r, delayMs));
-        }
-
-        Aqui fazemos o loop no Python e só chamamos evaluate com uma string.
-        """
+    async def _auto_scroll_js(self, loops: int = 80, delay_ms: int = 800) -> None:
         assert self.page is not None
 
-        print(f"[JS] Scroll automático: loops={loops}, delay={delay_ms}ms")
+        print(f"[SMART SCROLL] Scroll automático rastreando o último elemento...")
 
         for i in range(loops):
-            await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
+            # Localiza todos os itens de lista (conexões) atualmente renderizados na tela
+            items = self.page.locator("li")
+
+            # Conta quantos existem no momento
+            count = await items.count()
+
+            if count > 0:
+                # Pega o ÚLTIMO elemento da lista e força o Playwright a rolar a página até ele
+                last_item = items.nth(count - 1)
+                await last_item.scroll_into_view_if_needed()
+
+            # Dá um tempo pro LinkedIn "respirar" e disparar a requisição da API
             await self.page.wait_for_timeout(delay_ms)
-            print(f"[JS] scroll loop={i}")
+            print(f"[SMART SCROLL] loop={i} | itens renderizados={count}")
 
     # ---------- salvar resultado ----------
 
