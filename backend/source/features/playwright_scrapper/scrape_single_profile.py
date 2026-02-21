@@ -1,61 +1,123 @@
 import asyncio
-import re
 import html
 import json
+import re
 import zlib
 from pathlib import Path
-from playwright.async_api import async_playwright, Page, BrowserContext
+
+from playwright.async_api import (
+    Error as PlaywrightError,
+    Page,
+    BrowserContext,
+    async_playwright,
+)
 
 
-def estruturar_dados_perfil(lista_bruta: list) -> dict:
-    perfil_estruturado = {}
-    secao_atual = "Resumo"  # O topo do perfil (Nome, Headline, etc) vai cair aqui
+def structure_profile_data(raw_list: list[str]) -> dict:
+    sections = ["Experience", "Education", "Licenses & certifications", "Skills", "About", "Languages",
+                "Recommendations"]
+    structured = {s: [] for s in sections}
+    structured["About"] = ""
 
-    # Palavras-chave que indicam mudança de seção no LinkedIn
-    secoes_linkedin = {
-        "Experience": "Experiencia",
-        "Education": "Educacao",
-        "Skills": "Habilidades",
-        "About": "Sobre",
-        "Licenses & certifications": "Certificacoes",
-        "Projects": "Projetos",
-        "Languages": "Idiomas",
-        "Interests": "Interesses",
-        "Recommendations": "Recomendacoes"
-    }
+    noise_patterns = [
+        r"^\$L\w+", r"^Show all$", r"^Endorse$", r"^Recommend", r"^Activity$",
+        r"followers$", r"no recent posts$", r"Nothing to see", r"^Follow$",
+        r"^Join$", r"^Subscribe$", r"^Cancel$", r"^Unfollow$", r"· \d[snrt][dt][h]$"
+    ]
 
-    # Lixos da interface que não agregam valor
-    ignorar_exatos = {
-        "Show all", "Follow", "Following", "Subscribe", "Subscribed",
-        "Join", "Joined", "Requested", "Cancel", "Unfollow", "Message",
-        "Highlights", "Endorse", "Nothing to see for now", "Show more", "Ver mais"
-    }
+    clean_list = []
+    active_skip = True  
+    in_interests = False
 
-    for item in lista_bruta:
+    for item in raw_list:
         item = item.strip()
+        if item == "Interests": in_interests = True
+        if in_interests and item in sections and item != "Interests": in_interests = False
 
-        # Ignora tokens do backend ($L11, $Ld, etc) e lixos conhecidos
-        if item.startswith("$L") or item in ignorar_exatos:
+        if item in sections: active_skip = False
+
+        if active_skip or in_interests: continue
+
+        if any(re.search(p, item) for p in noise_patterns) or "Please try again" in item:
             continue
 
-        # Ignora textos de erro de requisição do front-end
-        if "Sorry, unable to" in item or "Unable to" in item:
+        clean_list.append(item)
+
+    current_section = None
+    date_pattern = r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}\s-\s(Present|\w+\s\d{4})"
+    i = 0
+
+    while i < len(clean_list):
+        item = clean_list[i]
+
+        if item in sections:
+            current_section = item
+            i += 1
             continue
 
-        # Se for um título de seção, muda o contexto atual e continua
-        if item in secoes_linkedin:
-            secao_atual = secoes_linkedin[item]
-            perfil_estruturado.setdefault(secao_atual, [])
+        if not current_section:
+            i += 1
             continue
 
-        # Adiciona o texto na seção correspondente
-        perfil_estruturado.setdefault(secao_atual, []).append(item)
+        if current_section == "Experience":
+            found_date_idx = -1
+            for offset in range(3):
+                if i + offset < len(clean_list) and re.search(date_pattern, clean_list[i + offset]):
+                    found_date_idx = i + offset
+                    break
 
-    return perfil_estruturado
+            if found_date_idx != -1:
+                role = clean_list[i] if found_date_idx > i else "Unknown Role"
+                company = clean_list[i + 1] if found_date_idx > i + 1 else clean_list[i]
+
+                company = company.split(" · ")[0] if " · " in company else company
+
+                job = {
+                    "role": role if role != company else "Position",
+                    "company": company,
+                    "period": clean_list[found_date_idx],
+                    "location": clean_list[found_date_idx + 1] if found_date_idx + 1 < len(clean_list) and (
+                            "," in clean_list[found_date_idx + 1] or "Remote" in clean_list[
+                        found_date_idx + 1]) else "",
+                    "description": []
+                }
+
+                next_ptr = found_date_idx + (2 if job["location"] else 1)
+
+                while next_ptr < len(clean_list) and not re.search(date_pattern, clean_list[next_ptr]) and clean_list[
+                    next_ptr] not in sections:
+                    job["description"].append(clean_list[next_ptr])
+                    next_ptr += 1
+
+                job["description"] = "\n".join(job["description"])
+                structured["Experience"].append(job)
+                i = next_ptr
+                continue
+
+        if current_section == "Licenses & certifications":
+            if i + 2 < len(clean_list) and "Issued" in clean_list[i + 2]:
+                structured["Licenses & certifications"].append({
+                    "name": clean_list[i],
+                    "issuer": clean_list[i + 1],
+                    "date": clean_list[i + 2],
+                    "credential_id": clean_list[i + 3] if i + 3 < len(clean_list) and "ID" in clean_list[i + 3] else ""
+                })
+                i += 4 if (i + 3 < len(clean_list) and "ID" in clean_list[i + 3]) else 3
+                continue
+
+        if current_section == "About":
+            structured["About"] += item + "\n"
+        else:
+            structured[current_section].append(item)
+
+        i += 1
+
+    structured["About"] = structured["About"].strip()
+    return {k: v for k, v in structured.items() if v}
 
 
 class LinkedInBrowserSniffer:
-    """Classe Base: Gerencia o Playwright e decodificação do sniffer."""
+    """Base class: manages Playwright and response decoding."""
 
     def __init__(self, target_url: str, user_data_dir: str = "linkedin_profile") -> None:
         self.target_url = target_url
@@ -65,7 +127,7 @@ class LinkedInBrowserSniffer:
         self.playwright = None
         self.context: BrowserContext | None = None
         self.page: Page | None = None
-        self.pool_texts = []
+        self.pool_texts: list[str] = []
         self._processed = False
 
     async def setup_browser(self) -> None:
@@ -95,133 +157,157 @@ class LinkedInBrowserSniffer:
 
     @staticmethod
     def try_decode(body: bytes) -> str:
+        """Try common encodings/compressions used by responses."""
         try:
             return body.decode("utf-8")
-        except:
-            pass
-        try:
-            return zlib.decompress(body, zlib.MAX_WBITS | 16).decode("utf-8")
-        except:
-            pass
-        try:
-            return zlib.decompress(body).decode("utf-8")
-        except:
-            pass
-        return ""
-
-    async def handle_response(self, response):
-        raise NotImplementedError()
-
-    def setup_listeners(self):
-        assert self.page is not None
-        self.page.on("response", self.handle_response)
-
-    def extract_data(self):
-        raise NotImplementedError()
-
-
-class ProfileScraper(LinkedInBrowserSniffer):
-    """Extrator de Perfil Único (Salva em JSON)."""
-
-    async def handle_response(self, response):
-        url = response.url
-        if not ("profileCardsAboveActivity" in url or "profileCardsBelowActivityPart" in url or (
-                response.request.resource_type == "document" and "linkedin.com/in/" in url)):
-            return
-        try:
-            body_bytes = await response.body()
-            decoded = self.try_decode(body_bytes)
-            if decoded: self.pool_texts.append(decoded)
         except Exception:
             pass
 
-    def extract_data(self):
-        if self._processed: return
-        self._processed = True
+        try:
+            return zlib.decompress(body, zlib.MAX_WBITS | 16).decode("utf-8")
+        except Exception:
+            pass
 
-        print(f"\n[GARIMPO] Analisando a Pool capturada ({len(self.pool_texts)} respostas)...")
+        try:
+            return zlib.decompress(body).decode("utf-8")
+        except Exception:
+            pass
 
-        if not self.pool_texts:
-            print("[VAZIO] Nenhuma requisição importante foi capturada.")
+        return ""
+
+    async def handle_response(self, response):
+        raise NotImplementedError
+
+    def setup_listeners(self) -> None:
+        assert self.page is not None
+        self.page.on("response", self.handle_response)
+
+    def extract_data(self) -> None:
+        raise NotImplementedError
+
+
+class ProfileScraper(LinkedInBrowserSniffer):
+    """Single-profile extractor (saves to JSON)."""
+
+    async def handle_response(self, response):
+        url = response.url
+        is_target_payload = (
+                "api/identity/profiles" in url or
+                "profileCards" in url or
+                "member-relationship" in url
+        )
+
+        if not is_target_payload:
             return
 
-        textos_encontrados = []
+        status = response.status
+        print(f"[SNIFFER] Intercepted: {status} - {url}...")
+
+        try:
+            body_bytes = await response.body()
+            decoded = self.try_decode(body_bytes)
+            if decoded:
+                self.pool_texts.append(decoded)
+        except Exception as e:
+            pass
+
+    def extract_data(self) -> None:
+        if self._processed:
+            return
+        self._processed = True
+
+        if not self.pool_texts:
+            print("[EMPTY] No relevant requests were captured.")
+            return
+
+        found_texts: list[str] = []
+
         for text in self.pool_texts:
-            texto_limpo = html.unescape(text)
-            padroes = [
+            cleaned = html.unescape(text)
+            patterns = [
                 r'"text"\s*:\s*\[\s*"([^"]+)"\s*\]',
                 r'"children"\s*:\s*\[\s*"([^"]+)"\s*\]',
                 r'"summary"\s*:\s*"([^"]+)"',
                 r'"headline"\s*:\s*"([^"]+)"',
             ]
-            for padrao in padroes:
-                textos_encontrados.extend(re.findall(padrao, texto_limpo))
+            for pattern in patterns:
+                found_texts.extend(re.findall(pattern, cleaned))
 
-        lixos = ["Show more", "Ver mais", "Show credential", "logo", "Voltar", "Avançar", "•"]
-        resultado_limpo = []
-        for t in textos_encontrados:
-            t_clean = t.strip().replace('\\n', '\n')
-            if len(t_clean) < 2 or t_clean in lixos: continue
-            if not resultado_limpo or resultado_limpo[-1] != t_clean:
-                resultado_limpo.append(t_clean)
+        junk = {
+            "Show more", "See more", "Show credential", "logo", "Back", "Next", "•",
+        }
 
-        if not resultado_limpo:
-            print("⚠️ Nenhum texto extraído.")
+        deduped: list[str] = []
+        for t in found_texts:
+            t_clean = t.strip().replace("\\n", "\n")
+            if len(t_clean) < 2 or t_clean in junk:
+                continue
+            if not deduped or deduped[-1] != t_clean:
+                deduped.append(t_clean)
+
+        if not deduped:
+            print("⚠️ No text extracted.")
             return
 
-        dados_limpos_e_agrupados = estruturar_dados_perfil(resultado_limpo)
-        dados_perfil = {"url": self.target_url, "dados_extraidos": dados_limpos_e_agrupados}
-        output_file = Path("perfis_minerados.json")
-        dados_existentes = []
+        print("\n" + "=" * 50)
+        print("🕵️‍♂️ DEBUG: RAW EXTRACTED STRINGS (IN ORDER)")
+        print("=" * 50)
+        for i, text in enumerate(deduped):
+            preview = text.replace('\n', ' ')[:80]
+            print(f"[{i:03d}] {preview}{'...' if len(text) > 80 else ''}")
+        print("=" * 50 + "\n")
+
+        grouped = structure_profile_data(deduped)
+        profile_data = {"url": self.target_url, "extracted_data": grouped}
+
+        output_file = Path("mined_profiles.json")
+        existing: list[dict] = []
 
         if output_file.exists():
             try:
                 with output_file.open("r", encoding="utf-8") as f:
-                    dados_existentes = json.load(f)
+                    existing = json.load(f)
             except json.JSONDecodeError:
-                pass
+                existing = []
 
-        dados_existentes.append(dados_perfil)
+        existing.append(profile_data)
+
         with output_file.open("w", encoding="utf-8") as f:
-            json.dump(dados_existentes, f, ensure_ascii=False, indent=4)
+            json.dump(existing, f, ensure_ascii=False, indent=4)
 
-        print(f"✨ Sucesso! Dados salvos em {output_file.name}")
+        print(f"✨ Success! Saved data to {output_file.name}")
 
-    async def start(self):
+    async def start(self) -> None:
         await self.setup_browser()
         self.setup_listeners()
         await self.goto_target()
-        print("\n[INFO] 🕵️‍♂️ Sniffer Ativado. Role a página e aperte Stop (ou CTRL+C) para extrair.\n")
+        print("\n[INFO] 🕵️‍♂️ Sniffer active. Scroll the page, then press Stop (or CTRL+C) to extract.\n")
         await asyncio.sleep(999999)
 
 
-from playwright.async_api import Error as PlaywrightError
-
-
-async def run_scraper_instance(scraper):
-    """Garante o encerramento seguro e o trigger da extração."""
+async def run_scraper_instance(scraper: ProfileScraper) -> None:
+    """Ensures safe shutdown and triggers extraction."""
     try:
         await scraper.start()
     except (asyncio.CancelledError, KeyboardInterrupt):
-        print("\n[INFO] 🛑 Interrupção detectada. Extraindo dados...")
+        print("\n[INFO] 🛑 Interrupt detected. Extracting data...")
         scraper.extract_data()
     finally:
         try:
             await scraper.close()
         except PlaywrightError:
-            # Ignora o erro se o driver já tiver sido fechado à força pelo SO
             pass
-        except Exception as e:
-            print(f"[WARN] Erro ao fechar scraper: {e}")
+        except Exception as exc:
+            print(f"[WARN] Error while closing scraper: {exc}")
 
 
 if __name__ == "__main__":
-    # Teste Rápido para um único perfil
-    URL_TESTE = "https://www.linkedin.com/in/monicasbusatta/"
-    print(f"Iniciando scraper individual para: {URL_TESTE}")
-    bot = ProfileScraper(target_url=URL_TESTE)
+    TEST_URL = "https://www.linkedin.com/in/monicasbusatta/"
+    print(f"Starting single-profile scraper for: {TEST_URL}")
+
+    bot = ProfileScraper(target_url=TEST_URL)
 
     try:
         asyncio.run(run_scraper_instance(bot))
     except KeyboardInterrupt:
-        print("\n[SISTEMA] Encerrado pelo usuário.")
+        print("\n[SYSTEM] Closed by user.")
