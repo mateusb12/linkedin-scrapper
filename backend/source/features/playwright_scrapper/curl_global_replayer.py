@@ -106,17 +106,10 @@ def replay_curls():
 
 
 # ============================================
-#       SDUI DECODER (VERY IMPORTANT)
+#       SDUI DECODER
 # ============================================
 
 def parse_sdui_tree(text):
-    """
-    O SDUI vem como várias linhas:
-    1:I["...",[],"default"]
-    7:I["...",[],"ClientComponent"]
-    0:["$", "div", null, {...}]
-    A linha 0 contém a árvore raiz.
-    """
     lines = text.split("\n")
     tree = {}
 
@@ -141,12 +134,6 @@ def parse_sdui_tree(text):
 # ============================================
 
 def extract_useful_info(tree):
-    """
-    Faz um walk na árvore e extrai texto relevante.
-    Heurísticas simplificadas para: nome, headline, etc.
-    (Vamos refinando depois.)
-    """
-
     result = {
         "name": None,
         "headline": None,
@@ -156,10 +143,8 @@ def extract_useful_info(tree):
     }
 
     def walk(node):
-        # LinkedIn SDUI usa estrutura recursiva
         if isinstance(node, list):
 
-            # Caso seja ["$", "tag", null, {props}]
             if len(node) >= 4 and node[0] == "$":
                 props = node[3]
                 if isinstance(props, dict):
@@ -168,11 +153,9 @@ def extract_useful_info(tree):
                         for child in children:
                             walk(child)
 
-            # Listas só de texto → pegar conteúdo
             if all(isinstance(x, str) for x in node):
                 text = " ".join(node).strip()
 
-                # heurística de nome
                 if not result["name"] and len(text.split()) >= 2:
                     if text[0].isupper():
                         result["name"] = text
@@ -180,9 +163,6 @@ def extract_useful_info(tree):
         elif isinstance(node, dict):
             for v in node.values():
                 walk(v)
-
-        elif isinstance(node, str):
-            pass
 
     walk(tree)
     return result
@@ -221,23 +201,8 @@ def analyse_response_json():
 
 
 # ============================================
-#               MAIN SELECTOR
+#               MAIN (SÓ ANALISA)
 # ============================================
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage:")
-        print("  python curl_global_replayer.py replay")
-        print("  python curl_global_replayer.py analyse")
-        sys.exit(0)
-
-    mode = sys.argv[1].lower()
-
-    if mode == "replay":
-        replay_curls()
-
-    elif mode == "analyse":
-        analyse_response_json()
-
-    else:
-        print("Unknown mode:", mode)
+    analyse_response_json()
