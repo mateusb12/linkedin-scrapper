@@ -70,7 +70,7 @@ def is_interesting_url(url: str) -> bool:
 
 
 # ======================================================
-#              SCRAPER (PILOTO AUTOMÁTICO)
+#              SCRAPER (PILOTO AUTOMÁTICO + AUDITORIA)
 # ======================================================
 
 class AutoNuggetExtractor(LinkedInBrowserSniffer):
@@ -145,6 +145,33 @@ class AutoNuggetExtractor(LinkedInBrowserSniffer):
         except:
             pass
 
+    def verify_nugget(self, pepita: list):
+        """Audita se a pepita contém as informações chaves que esperamos."""
+        sopa_completa = " ".join(pepita).lower()
+
+        ouro_esperado = {
+            "Nome Completo": "Mônica Busatta",
+            "Headline": "Front-end Software Engineer | Full Stack",
+            "About (Resumo)": "I’m a Front-end Software Engineer with 7+ years of experience",
+            "Exp Dexian (Descrição)": "I’m a Front-end Engineer for Itti, a client based in Paraguay",
+            "Exp Freelance (Descrição)": "I’ve been collaborating with a Colombian design agency",
+            "Exp Tiba (Descrição)": "Responsible for the front-end development of a SaaS platform",
+            "Exp AZZ (Descrição)": "Developed business websites ranging from corporate showcase sites",
+            "Formação (Detalhe)": "Graduação em Sistemas para Internet com abrangimento em Banco de Dados",
+            "Skill Específica": "TypeScript"
+        }
+
+        print("=== AUDITORIA DA PEPITA BRUTA ===")
+        sucessos = 0
+        for chave, trecho in ouro_esperado.items():
+            if trecho.lower() in sopa_completa:
+                print(f"✅ ENCONTRADO: {chave}")
+                sucessos += 1
+            else:
+                print(f"❌ FALTANDO:  {chave}")
+
+        print(f"\nTotal: {sucessos}/{len(ouro_esperado)} itens vitais capturados.\n")
+
     def save_nugget(self) -> None:
         pepita_final = list(dict.fromkeys(self.sopa_de_letrinhas))
         output_file = Path("pepita_bruta.json")
@@ -153,6 +180,9 @@ class AutoNuggetExtractor(LinkedInBrowserSniffer):
         print(f"\n✨ SUCESSO! Captura finalizada com segurança.")
         print(f"💰 {len(pepita_final)} fragmentos de texto limpo salvos.")
         print(f"📁 Salvo em: {output_file}\n")
+
+        # Chama a verificação logo após gerar a lista final!
+        self.verify_nugget(pepita_final)
 
 
 async def run_scraper_instance(scraper: AutoNuggetExtractor) -> None:
