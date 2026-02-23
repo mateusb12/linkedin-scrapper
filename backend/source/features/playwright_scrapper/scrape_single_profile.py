@@ -2,227 +2,389 @@ import asyncio
 import html
 import json
 import re
-import zlib
+from dataclasses import dataclass, field, asdict
+from typing import List, Dict, Any
 from pathlib import Path
 
 from playwright.async_api import (
     Error as PlaywrightError,
-    Page,
-    BrowserContext,
     async_playwright,
 )
 
 from backend.source.features.playwright_scrapper.linkedin_core import LinkedInBrowserSniffer
 
 
-def structure_profile_data(raw_list: list[str]) -> dict:
-    sections = ["Experience", "Education", "Licenses & certifications", "Skills", "About", "Languages",
-                "Recommendations"]
-    structured = {s: [] for s in sections}
-    structured["About"] = ""
+# ======================================================
+#               EXPECTED PROFILE (MÔNICA)
+# ======================================================
 
-    noise_patterns = [
-        r"^\$L\w+", r"^Show all$", r"^Endorse$", r"^Recommend", r"^Activity$",
-        r"followers$", r"no recent posts$", r"Nothing to see", r"^Follow$",
-        r"^Join$", r"^Subscribe$", r"^Cancel$", r"^Unfollow$", r"· \d[snrt][dt][h]$"
-    ]
+@dataclass
+class ExperiencePattern:
+    label: str
+    patterns: List[str] = field(default_factory=list)
 
-    clean_list = []
-    active_skip = True
-    in_interests = False
 
-    for item in raw_list:
-        item = item.strip()
-        if item == "Interests": in_interests = True
-        if in_interests and item in sections and item != "Interests": in_interests = False
+@dataclass
+class ExpectedProfilePatterns:
+    # campos principais
+    name_variants: List[str]
+    headline_patterns: List[str]
+    location_patterns: List[str]
 
-        if item in sections: active_skip = False
+    about_patterns: List[str] = field(default_factory=list)
+    experience_patterns: List[ExperiencePattern] = field(default_factory=list)
+    education_patterns: List[str] = field(default_factory=list)
+    license_patterns: List[str] = field(default_factory=list)
+    skill_patterns: List[str] = field(default_factory=list)
 
-        if active_skip or in_interests: continue
 
-        if any(re.search(p, item) for p in noise_patterns) or "Please try again" in item:
+# ficha baseada no que você mandou
+EXPECTED = ExpectedProfilePatterns(
+    # nomes / variantes
+    name_variants=[
+        "mônica busatta",
+        "monica busatta",
+        "mônica",
+        "monica",
+    ],
+    # headline
+    headline_patterns=[
+        "front-end software engineer",
+        "full stack",
+        "react",
+        "typescript",
+        "node.js",
+    ],
+    # localização
+    location_patterns=[
+        "brazil",
+        "rio de janeiro, brazil",
+    ],
+    # about (pedaços marcantes)
+    about_patterns=[
+        "7+ years of experience",
+        "high-quality, user-friendly, and scalable web applications",
+        "solid experience in design and back-end technologies",
+        "my current stack includes react, typescript, next.js, node.js",
+        "deep understanding of the nuances of software development",
+        "combining speed, quality, and curiosity",
+    ],
+    # experiências
+    experience_patterns=[
+        ExperiencePattern(
+            label="experience1_dexian",
+            patterns=[
+                "dexian brasil",
+                "front-end software engineer",
+                "i’m a front-end engineer for itti",
+                "back-office platform",
+                "paraguay",
+                "next.js",
+                "tailwind css",
+                "github workflows",
+                "nestjs",
+            ],
+        ),
+        ExperiencePattern(
+            label="experience2_freelance",
+            patterns=[
+                "full stack web developer",
+                "freelance",
+                "colombian design agency",
+                "pixel-perfect accuracy",
+                "seo",
+                "performance",
+                "html, css, javascript, php, react, wordpress, and elementor",
+                "united states, england, norway, and india",
+            ],
+        ),
+        ExperiencePattern(
+            label="experience3_tiba",
+            patterns=[
+                "front-end software engineer",
+                "tiba",
+                "saas platform for small business management",
+                "react, typescript, graphql, and styled components",
+                "scrum methodology",
+                "jest",
+                "lead front-end developer",
+            ],
+        ),
+        ExperiencePattern(
+            label="experience4_azz",
+            patterns=[
+                "full stack developer",
+                "azz agência de marketing e publicidade digital",
+                "corporate showcase sites",
+                "e-commerce platforms",
+                "blogs",
+                "copywriting and ux",
+                "html, css, javascript",
+                "php, mysql",
+            ],
+        ),
+    ],
+    # educação
+    education_patterns=[
+        "universidade do sul de santa catarina",
+        "sistemas para internet",
+    ],
+    # licenças
+    license_patterns=[
+        "the web developer bootcamp 2022",
+        "mern ecommerce from scratch",
+        "udemy",
+        "credential id uc-",
+    ],
+    # skills (umas palavras-chave da stack)
+    skill_patterns=[
+        "react.js",
+        "react",
+        "next.js",
+        "typescript",
+        "node.js",
+        "graphql",
+        "styled components",
+        "tailwind css",
+        "bootstrap",
+        "php",
+        "mysql",
+    ],
+)
+
+
+# ======================================================
+#             NORMALIZAÇÃO E SCORING
+# ======================================================
+
+def normalize_text(raw: str) -> str:
+    """Normaliza para comparação: lower, unescape, simplifica whitespace."""
+    if not raw:
+        return ""
+    s = html.unescape(raw)
+    s = s.replace("\\n", "\n")
+    s = s.lower()
+    # simplificar espaços
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+
+def match_patterns(text: str, patterns: List[str]) -> List[str]:
+    """Retorna quais padrões aparecem no texto (substring simples)."""
+    hits: List[str] = []
+    for p in patterns:
+        p_norm = p.strip().lower()
+        if not p_norm:
             continue
+        if p_norm in text:
+            hits.append(p)
+    return hits
 
-        clean_list.append(item)
 
-    current_section = None
-    date_pattern = r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}\s-\s(Present|\w+\s\d{4})"
-    i = 0
+def score_response(text: str, expected: ExpectedProfilePatterns) -> Dict[str, Any]:
+    """
+    Devolve um dict com:
+      - score_total
+      - hits por categoria (nome, headline, about, exps, etc)
+    """
+    norm = normalize_text(text)
 
-    while i < len(clean_list):
-        item = clean_list[i]
+    # nome
+    name_hits = match_patterns(norm, expected.name_variants)
 
-        if item in sections:
-            current_section = item
-            i += 1
-            continue
+    # headline
+    headline_hits = match_patterns(norm, expected.headline_patterns)
 
-        if not current_section:
-            i += 1
-            continue
+    # location
+    location_hits = match_patterns(norm, expected.location_patterns)
 
-        if current_section == "Experience":
-            found_date_idx = -1
-            for offset in range(3):
-                if i + offset < len(clean_list) and re.search(date_pattern, clean_list[i + offset]):
-                    found_date_idx = i + offset
-                    break
+    # about
+    about_hits = match_patterns(norm, expected.about_patterns)
 
-            if found_date_idx != -1:
-                role = clean_list[i] if found_date_idx > i else "Unknown Role"
-                company = clean_list[i + 1] if found_date_idx > i + 1 else clean_list[i]
+    # experiences: por label
+    experience_hits: Dict[str, List[str]] = {}
+    for exp in expected.experience_patterns:
+        exp_hits = match_patterns(norm, exp.patterns)
+        if exp_hits:
+            experience_hits[exp.label] = exp_hits
 
-                company = company.split(" · ")[0] if " · " in company else company
+    # education
+    education_hits = match_patterns(norm, expected.education_patterns)
 
-                job = {
-                    "role": role if role != company else "Position",
-                    "company": company,
-                    "period": clean_list[found_date_idx],
-                    "location": clean_list[found_date_idx + 1] if found_date_idx + 1 < len(clean_list) and (
-                            "," in clean_list[found_date_idx + 1] or "Remote" in clean_list[
-                        found_date_idx + 1]) else "",
-                    "description": []
-                }
+    # licenses
+    license_hits = match_patterns(norm, expected.license_patterns)
 
-                next_ptr = found_date_idx + (2 if job["location"] else 1)
+    # skills
+    skill_hits = match_patterns(norm, expected.skill_patterns)
 
-                while next_ptr < len(clean_list) and not re.search(date_pattern, clean_list[next_ptr]) and clean_list[
-                    next_ptr] not in sections:
-                    job["description"].append(clean_list[next_ptr])
-                    next_ptr += 1
+    # score simples: 1 ponto por hit
+    score = (
+            len(name_hits)
+            + len(headline_hits)
+            + len(location_hits)
+            + len(about_hits)
+            + sum(len(v) for v in experience_hits.values())
+            + len(education_hits)
+            + len(license_hits)
+            + len(skill_hits)
+    )
 
-                job["description"] = "\n".join(job["description"])
-                structured["Experience"].append(job)
-                i = next_ptr
-                continue
+    return {
+        "score": score,
+        "name_hits": name_hits,
+        "headline_hits": headline_hits,
+        "location_hits": location_hits,
+        "about_hits": about_hits,
+        "experience_hits": experience_hits,
+        "education_hits": education_hits,
+        "license_hits": license_hits,
+        "skill_hits": skill_hits,
+    }
 
-        if current_section == "Licenses & certifications":
-            if i + 2 < len(clean_list) and "Issued" in clean_list[i + 2]:
-                structured["Licenses & certifications"].append({
-                    "name": clean_list[i],
-                    "issuer": clean_list[i + 1],
-                    "date": clean_list[i + 2],
-                    "credential_id": clean_list[i + 3] if i + 3 < len(clean_list) and "ID" in clean_list[i + 3] else ""
-                })
-                i += 4 if (i + 3 < len(clean_list) and "ID" in clean_list[i + 3]) else 3
-                continue
 
-        if current_section == "About":
-            structured["About"] += item + "\n"
-        else:
-            structured[current_section].append(item)
+# ======================================================
+#              SCRAPER BASEADO EM CURLs
+# ======================================================
 
-        i += 1
-
-    structured["About"] = structured["About"].strip()
-    return {k: v for k, v in structured.items() if v}
+@dataclass
+class CapturedResponse:
+    url: str
+    status: int
+    text: str
 
 
 class ProfileScraper(LinkedInBrowserSniffer):
-    """Single-profile extractor (saves to JSON)."""
+    """
+    Aqui a ideia NÃO é montar o JSON perfeito,
+    e sim descobrir quais CURLs tem o ouro.
+
+    - Sniffamos todas as responses
+    - Decodificamos
+    - Scoramos comparando com a ficha (EXPECTED)
+    - Geramos ranking de CURLs mais ricos em conteúdo de perfil
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.captured: List[CapturedResponse] = []
+
+    async def start(self):
+        """Abre o browser, registra listeners e vai pro perfil."""
+        await self.setup_browser()
+        self.setup_listeners()
+        await self.goto_target()
+
+        print("\n[INFO] Sniffer active. Scroll the profile page calmly.")
+        print("[INFO] When done, press CTRL+C to stop and analyze.\n")
+
+        # só fica "parado" esperando você interagir
+        await asyncio.sleep(999999)
 
     async def handle_response(self, response):
+        """Intercepta TODAS as responses, sem filtrar por URL."""
         url = response.url
-        is_target_payload = (
-                "api/identity/profiles" in url or
-                "profileCards" in url or
-                "member-relationship" in url
-        )
-
-        if not is_target_payload:
-            return
-
         status = response.status
-        print(f"[SNIFFER] Intercepted: {status} - {url}...")
 
         try:
             body_bytes = await response.body()
             decoded = self.try_decode(body_bytes)
             if decoded:
-                self.pool_texts.append(decoded)
-        except Exception as e:
+                self.captured.append(
+                    CapturedResponse(
+                        url=url,
+                        status=status,
+                        text=decoded,
+                    )
+                )
+                print(f"[SNIFFED] {status} - {url}")
+        except Exception:
+            # não queremos quebrar o fluxo por causa de 1 response bugada
             pass
 
     def extract_data(self) -> None:
+        """
+        Ponto principal:
+        - Para cada response capturada, gera massa de texto
+        - Compara com EXPECTED
+        - Gera ranking
+        - Salva em curl_ranking.json
+        """
         if self._processed:
             return
         self._processed = True
 
-        if not self.pool_texts:
-            print("[EMPTY] No relevant requests were captured.")
+        if not self.captured:
+            print("[EMPTY] No responses captured.")
             return
 
-        found_texts: list[str] = []
+        print(f"\n[INFO] Total captured responses: {len(self.captured)}")
+        print("[INFO] Scoring each response against expected profile...\n")
 
-        for text in self.pool_texts:
-            cleaned = html.unescape(text)
-            patterns = [
-                r'"text"\s*:\s*\[\s*"([^"]+)"\s*\]',
-                r'"children"\s*:\s*\[\s*"([^"]+)"\s*\]',
-                r'"summary"\s*:\s*"([^"]+)"',
-                r'"headline"\s*:\s*"([^"]+)"',
-            ]
-            for pattern in patterns:
-                found_texts.extend(re.findall(pattern, cleaned))
+        scored_items = []
 
-        junk = {
-            "Show more", "See more", "Show credential", "logo", "Back", "Next", "•",
-        }
+        for idx, resp in enumerate(self.captured):
+            metrics = score_response(resp.text, EXPECTED)
+            score = metrics["score"]
 
-        deduped: list[str] = []
-        for t in found_texts:
-            t_clean = t.strip().replace("\\n", "\n")
-            if len(t_clean) < 2 or t_clean in junk:
-                continue
-            if not deduped or deduped[-1] != t_clean:
-                deduped.append(t_clean)
+            item = {
+                "index": idx,
+                "url": resp.url,
+                "status": resp.status,
+                "score": score,
+                "matches": metrics,
+                # preview pra depurar rápido
+                "text_preview": normalize_text(resp.text)[:300],
+            }
 
-        if not deduped:
-            print("⚠️ No text extracted.")
-            return
+            scored_items.append(item)
 
-        print("\n" + "=" * 50)
-        print("🕵️‍♂️ DEBUG: RAW EXTRACTED STRINGS (IN ORDER)")
-        print("=" * 50)
-        for i, text in enumerate(deduped):
-            preview = text.replace('\n', ' ')[:80]
-            print(f"[{i:03d}] {preview}{'...' if len(text) > 80 else ''}")
-        print("=" * 50 + "\n")
+        # ordena por score desc
+        scored_items.sort(key=lambda x: x["score"], reverse=True)
 
-        grouped = structure_profile_data(deduped)
-        profile_data = {"url": self.target_url, "extracted_data": grouped}
+        # imprime um resumo dos top N
+        print("===== TOP RESPONSES (by score) =====\n")
+        for item in scored_items[:10]:
+            print(f"[#{item['index']:03d}] score={item['score']} status={item['status']}")
+            print(f"URL: {item['url']}")
+            m = item["matches"]
+            cats = []
+            if m["name_hits"]:
+                cats.append("name")
+            if m["headline_hits"]:
+                cats.append("headline")
+            if m["about_hits"]:
+                cats.append("about")
+            if m["experience_hits"]:
+                cats.append("experience")
+            if m["education_hits"]:
+                cats.append("education")
+            if m["license_hits"]:
+                cats.append("licenses")
+            if m["skill_hits"]:
+                cats.append("skills")
 
-        output_file = Path("mined_profiles.json")
-        existing: list[dict] = []
+            print(f"  Categories hit: {', '.join(cats) if cats else 'none'}")
+            print(f"  Preview: {item['text_preview'][:120]}...\n")
 
-        if output_file.exists():
-            try:
-                with output_file.open("r", encoding="utf-8") as f:
-                    existing = json.load(f)
-            except json.JSONDecodeError:
-                existing = []
+        # salva JSON com ranking completo
+        output_file = Path("curl_ranking.json")
+        output_file.write_text(
+            json.dumps(scored_items, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
-        existing.append(profile_data)
+        print(f"\n✨ SUCCESS: Saved curl ranking to {output_file}")
 
-        with output_file.open("w", encoding="utf-8") as f:
-            json.dump(existing, f, ensure_ascii=False, indent=4)
 
-        print(f"✨ Success! Saved data to {output_file.name}")
-
-    async def start(self) -> None:
-        await self.setup_browser()
-        self.setup_listeners()
-        await self.goto_target()
-        print("\n[INFO] 🕵️‍♂️ Sniffer active. Scroll the page, then press Stop (or CTRL+C) to extract.\n")
-        await asyncio.sleep(999999)
-
+# ======================================================
+#                       RUNNER
+# ======================================================
 
 async def run_scraper_instance(scraper: ProfileScraper) -> None:
-    """Ensures safe shutdown and triggers extraction."""
     try:
         await scraper.start()
     except (asyncio.CancelledError, KeyboardInterrupt):
-        print("\n[INFO] 🛑 Interrupt detected. Extracting data...")
+        print("\n[INFO] Interrupted. Analyzing captured data...")
         scraper.extract_data()
     finally:
         try:
@@ -235,7 +397,7 @@ async def run_scraper_instance(scraper: ProfileScraper) -> None:
 
 if __name__ == "__main__":
     TEST_URL = "https://www.linkedin.com/in/monicasbusatta/"
-    print(f"Starting single-profile scraper for: {TEST_URL}")
+    print(f"Starting single-profile CURL analyzer for: {TEST_URL}")
 
     bot = ProfileScraper(target_url=TEST_URL)
 
