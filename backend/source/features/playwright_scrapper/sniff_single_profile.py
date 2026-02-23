@@ -2,13 +2,13 @@ import asyncio
 import html
 import json
 import re
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from typing import List, Dict, Any
 from pathlib import Path
+from urllib.parse import urlparse  # ← ADICIONADO
 
 from playwright.async_api import (
     Error as PlaywrightError,
-    async_playwright,
 )
 
 from backend.source.features.playwright_scrapper.linkedin_core import LinkedInBrowserSniffer
@@ -243,6 +243,54 @@ def score_response(text: str, expected: ExpectedProfilePatterns) -> Dict[str, An
 
 
 # ======================================================
+#              URL FILTER – IGNORA LIXO
+# ======================================================
+
+def is_interesting_url(url: str) -> bool:
+    """
+    Filtra assets e lixo óbvio:
+    - static.licdn.com (js, css, imagens)
+    - tracking / analytics / recaptcha
+    - domínios não-linkedin
+    """
+    parsed = urlparse(url)
+
+    netloc = parsed.netloc or ""
+
+    # assets estáticos do linkedin
+    if netloc.startswith("static.licdn.com"):
+        return False
+
+    # tracking / analytics
+    if "protechts" in netloc:
+        return False
+    if "ads." in netloc or "ads/" in parsed.path:
+        return False
+    if "doubleclick" in netloc:
+        return False
+
+    # recaptcha / google
+    if "recaptcha" in netloc:
+        return False
+    if "google.com" in netloc or "gstatic.com" in netloc:
+        return False
+
+    # extensões comuns de asset
+    asset_exts = (
+        ".js", ".css", ".png", ".jpg", ".jpeg",
+        ".svg", ".gif", ".webp", ".ico", ".map", ".woff", ".woff2", ".ttf"
+    )
+    if parsed.path.endswith(asset_exts):
+        return False
+
+    # só nos interessamos por coisas do linkedin
+    if "linkedin.com" not in netloc:
+        return False
+
+    return True
+
+
+# ======================================================
 #              SCRAPER BASEADO EM CURLs
 # ======================================================
 
@@ -323,8 +371,16 @@ class ProfileScraper(LinkedInBrowserSniffer):
         scored_items = []
 
         for idx, resp in enumerate(self.captured):
+            # 🔥 NOVO: filtra URL lixo (static, tracking, assets)
+            if not is_interesting_url(resp.url):
+                continue
+
             metrics = score_response(resp.text, EXPECTED)
             score = metrics["score"]
+
+            # 🔥 NOVO: ignora responses que não bateram em NADA
+            if score == 0:
+                continue
 
             item = {
                 "index": idx,
@@ -337,6 +393,10 @@ class ProfileScraper(LinkedInBrowserSniffer):
             }
 
             scored_items.append(item)
+
+        if not scored_items:
+            print("[INFO] No interesting responses after filtering/scoring.")
+            return
 
         # ordena por score desc
         scored_items.sort(key=lambda x: x["score"], reverse=True)
@@ -369,11 +429,11 @@ class ProfileScraper(LinkedInBrowserSniffer):
         # salva JSON com ranking completo
         output_file = Path("curl_ranking.json")
         output_file.write_text(
-            json.dumps(scored_items, ensure_ascii=False, indent=2),
+            json.dumps(scored_items, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
 
-        print(f"\n✨ SUCCESS: Saved curl ranking to {output_file}")
+        print(f"\n✨ SUCCESS: Saved structured curl ranking to {output_file}")
 
 
 # ======================================================
