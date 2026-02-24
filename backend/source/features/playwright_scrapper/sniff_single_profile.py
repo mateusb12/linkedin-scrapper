@@ -76,7 +76,7 @@ def is_interesting_url(url: str) -> bool:
 class AutoNuggetExtractor(LinkedInBrowserSniffer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.sopa_de_letrinhas = []
+        self.sopa_de_letrinhas = {}
         self.captured_curls = 0
 
     async def start(self):
@@ -140,15 +140,18 @@ class AutoNuggetExtractor(LinkedInBrowserSniffer):
 
             if extracted:
                 self.captured_curls += 1
-                self.sopa_de_letrinhas.extend(extracted)
+
+                # Vincula o fragmento à sua URL de origem
+                for text in extracted:
+                    if text not in self.sopa_de_letrinhas:
+                        self.sopa_de_letrinhas[text] = url
+
                 print(f"[CAPTURA] {len(extracted):03d} fragmentos <- {url.split('?')[0][-40:]}")
         except:
             pass
 
-    def verify_nugget(self, pepita: list):
-        """Audita se a pepita contém as informações chaves que esperamos."""
-        sopa_completa = " ".join(pepita).lower()
-
+    def verify_nugget(self, pepita_rica: list):
+        """Audita a pepita, cruza com o ouro esperado e mapeia os endpoints campeões."""
         ouro_esperado = {
             "Nome Completo": "Mônica Busatta",
             "Headline": "Front-end Software Engineer | Full Stack",
@@ -161,27 +164,65 @@ class AutoNuggetExtractor(LinkedInBrowserSniffer):
             "Skill Específica": "TypeScript"
         }
 
-        print("=== AUDITORIA DA PEPITA BRUTA ===")
+        print("\n=== AUDITORIA DA PEPITA BRUTA ===")
+        mapa_urls = {}
         sucessos = 0
-        for chave, trecho in ouro_esperado.items():
-            if trecho.lower() in sopa_completa:
-                print(f"✅ ENCONTRADO: {chave}")
-                sucessos += 1
-            else:
+        encontrados = set()
+
+        for item in pepita_rica:
+            texto = item.get("fragmento", "").lower()
+            url = item.get("origem", "Desconhecida")
+
+            for chave, trecho in ouro_esperado.items():
+                if chave not in encontrados and trecho.lower() in texto:
+                    encontrados.add(chave)
+                    sucessos += 1
+                    print(f"✅ ENCONTRADO: {chave}")
+
+                    if url not in mapa_urls:
+                        mapa_urls[url] = []
+                    mapa_urls[url].append(chave)
+
+        for chave in ouro_esperado:
+            if chave not in encontrados:
                 print(f"❌ FALTANDO:  {chave}")
 
         print(f"\nTotal: {sucessos}/{len(ouro_esperado)} itens vitais capturados.\n")
 
+        # --- MAPA DO TESOURO ---
+        print("🗺️  MAPA DO TESOURO (ENDPOINTS COM OURO)")
+        print("=" * 60)
+
+        # Ordena as URLs pelas que trouxeram maior quantidade de itens úteis
+        endpoints_uteis = {}
+        for url, chaves in sorted(mapa_urls.items(), key=lambda x: len(x[1]), reverse=True):
+            url_base = url.split("?")[0]
+            print(f"\n📍 URL: {url_base}")
+            print(f"   ↳ Completa: {url[:150]}..." if len(url) > 150 else f"   ↳ Completa: {url}")
+            print(f"💎 Itens ({len(chaves)}/9): {', '.join(chaves)}")
+            endpoints_uteis[url] = chaves
+
+        # Salva o mapa do tesouro filtrado para facilitar a criação dos próximos Curls
+        with open("endpoints_uteis.json", "w", encoding="utf-8") as f:
+            json.dump(endpoints_uteis, f, indent=2, ensure_ascii=False)
+
+        print("\n🎯 Arquivo 'endpoints_uteis.json' gerado com os Curls exatos que precisamos focar.")
+
     def save_nugget(self) -> None:
-        pepita_final = list(dict.fromkeys(self.sopa_de_letrinhas))
+        # Prepara a lista rica (Fragmento + Origem)
+        pepita_final = [
+            {"fragmento": texto, "origem": url}
+            for texto, url in self.sopa_de_letrinhas.items()
+        ]
+
         output_file = Path("pepita_bruta.json")
         output_file.write_text(json.dumps(pepita_final, indent=2, ensure_ascii=False), encoding="utf-8")
 
         print(f"\n✨ SUCESSO! Captura finalizada com segurança.")
-        print(f"💰 {len(pepita_final)} fragmentos de texto limpo salvos.")
+        print(f"💰 {len(pepita_final)} fragmentos mapeados com suas origens.")
         print(f"📁 Salvo em: {output_file}\n")
 
-        # Chama a verificação logo após gerar a lista final!
+        # Passa a lista completa (com origens) para a auditoria
         self.verify_nugget(pepita_final)
 
 
