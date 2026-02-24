@@ -1,119 +1,142 @@
 import asyncio
 import re
 import html
-import sys
 from pathlib import Path
 
-# Importa toda a inteligência construída no arquivo 1
-from scrape_single_profile import LinkedInBrowserSniffer, ProfileScraper, run_scraper_instance
+from linkedin_core import LinkedInBrowserSniffer
 
 
-class ConnectionsScraper(LinkedInBrowserSniffer):
-    """Extrator focado em listar as conexões (Gera o TXT)."""
+class LiveConnectionsSniffer(LinkedInBrowserSniffer):
+    """
+    Sniffer que:
+      ✔ usa sua persistência
+      ✔ não quebra login
+      ✔ captura apenas requests novas
+      ✔ extrai slugs das conexões em QUALQUER payload
+    """
 
-    def __init__(self, target_url: str = "https://www.linkedin.com/mynetwork/invite-connect/connections/",
-                 user_data_dir: str = "linkedin_profile"):
-        super().__init__(target_url, user_data_dir)
+    def __init__(self, target_url="https://www.linkedin.com/mynetwork/invite-connect/connections/"):
+        super().__init__(target_url)
+        self.connections = {}
+        self.seen_urls = set()
+
+    # ---------------------------------------------------------------------
+
+    def extract_slugs_from_text(self, text: str) -> int:
+        """Tenta extrair qualquer slug útil do payload."""
+        found = 0
+        text = html.unescape(text)
+
+        # 1) URLs diretas
+        for m in re.findall(r'https://www\.linkedin\.com/in/([A-Za-z0-9\-_]+)/?', text):
+            slug = m
+            self.connections[slug] = f"https://www.linkedin.com/in/{slug}/"
+            found += 1
+
+        # 2) publicIdentifier
+        for m in re.findall(r'"publicIdentifier"\s*:\s*"([^"]+)"', text):
+            slug = m
+            self.connections[slug] = f"https://www.linkedin.com/in/{slug}/"
+            found += 1
+
+        # 3) vanityName
+        for m in re.findall(r'"vanityName"\s*:\s*"([^"]+)"', text):
+            slug = m
+            self.connections[slug] = f"https://www.linkedin.com/in/{slug}/"
+            found += 1
+
+        return found
+
+    # ---------------------------------------------------------------------
 
     async def handle_response(self, response):
+        """Intercepta cada resposta nova, filtra o lixo e extrai slugs."""
         url = response.url
-        if response.request.resource_type in ("xhr", "fetch") or (
-                "linkedin.com/mynetwork" in url and response.request.resource_type == "document"):
-            try:
-                body_bytes = await response.body()
-                decoded = self.try_decode(body_bytes)
-                if decoded: self.pool_texts.append(decoded)
-            except Exception:
-                pass
 
-    def extract_data(self):
-        if self._processed: return
-        self._processed = True
-
-        print(f"\n[GARIMPO] Procurando conexões em {len(self.pool_texts)} requisições capturadas...")
-        conexoes = {}
-
-        for text in self.pool_texts:
-            texto_limpo = html.unescape(text)
-            for linha in texto_limpo.split('\n'):
-                slug_match = re.search(r'"vanityName"\s*:\s*"([^"]+)"', linha)
-                url_match = re.search(r'"url"\s*:\s*"(https://www\.linkedin\.com/in/[^/]+/?)"', linha)
-
-                if slug_match:
-                    slug = slug_match.group(1)
-                    if slug not in conexoes and slug != "UNKNOWN":
-                        conexoes[slug] = {"url": f"https://www.linkedin.com/in/{slug}/"}
-                elif url_match:
-                    url_completa = url_match.group(1)
-                    slug = url_completa.strip('/').split('/')[-1]
-                    if slug not in conexoes and slug != "UNKNOWN":
-                        conexoes[slug] = {"url": url_completa}
-
-        if not conexoes:
-            print("⚠️ Nenhuma conexão encontrada. Você rolou a página de conexões?")
+        # 1. Early returns para evitar requests inúteis ou repetidas
+        if url in self.seen_urls:
             return
 
-        lista_final = sorted(list(conexoes.values()), key=lambda x: x['url'])
-        output_file = Path("minhas_conexoes.txt")
+        # 2. Ignorar redirecionamentos (Evita o erro "unavailable for redirect responses")
+        if response.status >= 300 and response.status <= 399:
+            return
 
-        with output_file.open("w", encoding="utf-8") as f:
-            for c in lista_final:
-                f.write(f"{c['url']}\n")
+        # 3. Filtrar apenas tráfego útil (ignorar imagens, css, fontes, etc)
+        # O LinkedIn manda os dados via XHR/Fetch ou embutido no Document principal
+        if response.request.resource_type not in ["xhr", "fetch", "document"]:
+            return
 
-        print(f"🎉 SUCESSO! {len(lista_final)} conexões capturadas e salvas em {output_file.name}")
+        self.seen_urls.add(url)
+
+        try:
+            # 4. Lê o body apenas das requests que passaram nos filtros
+            body_bytes = await response.body()
+            decoded = self.try_decode(body_bytes)
+
+            if not decoded:
+                return
+
+            # 5. Otimização: Só processar regex se a URL for o endpoint correto
+            # ou a página inicial de conexões.
+            if "connectionsList" in url or "mynetwork/invite-connect" in url:
+                qtd = self.extract_slugs_from_text(decoded)
+
+                if qtd > 0:
+                    print(f"\n==============================")
+                    print(f"📡 DADOS ENCONTRADOS")
+                    print(f"URL: {url}")
+                    print(f"💎 {qtd} conexões extraídas!")
+                    print(f"==============================\n")
+
+        except Exception as e:
+            # Captura erros residuais (ex: target closed) silenciosamente ou loga para debug
+            pass
+
+    # ---------------------------------------------------------------------
+
+    def save_results(self):
+        """Salvar minhas_conexoes.txt"""
+        if not self.connections:
+            print("\n⚠ Nenhuma conexão encontrada!")
+            return
+
+        final = sorted(self.connections.values())
+        output = Path("minhas_conexoes.txt")
+        output.write_text("\n".join(final), encoding="utf-8")
+
+        print(f"\n🎉 Total final: {len(final)} conexões")
+        print(f"💾 Salvo em: {output.absolute()}")
+
+    # ---------------------------------------------------------------------
 
     async def start(self):
+        """Fluxo real: abrir, sniffar e esperar scroll manual."""
         await self.setup_browser()
         self.setup_listeners()
-        await self.goto_target()
-        print("\n[INFO] 🕵️‍♂️ Extrator de Conexões Ativado!")
-        print("[INFO] Role a página para baixo e aperte Stop (ou CTRL+C) para exportar o .txt.\n")
-        await asyncio.sleep(999999)
 
+        print("\n🌐 Acesse a página de conexões…")
+        await self.goto_target()
+
+        print("\n🤖 Sniffer ligado!")
+        print("➡ Role manualmente a página")
+        print("➡ Cada nova CURL será capturada")
+        print("➡ Aperte CTRL+C para finalizar\n")
+
+        try:
+            while True:
+                await asyncio.sleep(0.5)
+        except KeyboardInterrupt:
+            print("\n🔻 Encerrando captura…")
+            self.save_results()
+            await self.close()
+
+
+# ---------------------------------------------------------------------
 
 async def main():
-    print("=" * 50)
-    print(" 🕵️‍♂️ LINKEDIN MULTI-SCRAPER")
-    print("=" * 50)
-    print("[1] Gerar arquivo de conexões (minhas_conexoes.txt)")
-    print("[2] Iniciar Loop de mineração de perfis (Lê o .txt)")
-    print("=" * 50)
-
-    escolha = input("Digite 1 ou 2: ").strip()
-
-    if escolha == "1":
-        bot = ConnectionsScraper()
-        await run_scraper_instance(bot)
-
-    elif escolha == "2":
-        arquivo = Path("minhas_conexoes.txt")
-        if not arquivo.exists():
-            print("\n⚠️ Erro: Arquivo 'minhas_conexoes.txt' não encontrado.")
-            print("Rode a opção [1] primeiro para gerar a lista.")
-            sys.exit(1)
-
-        with arquivo.open("r", encoding="utf-8") as f:
-            urls = [linha.strip() for linha in f if "linkedin.com/in/" in linha]
-
-        print(f"\n[INFO] Iniciando o Loop em {len(urls)} perfis...")
-        print("[DICA] Aperte CTRL+C / Stop na IDE para minerar o perfil atual e ir pro próximo.\n")
-
-        for index, url in enumerate(urls, start=1):
-            print(f"\n[{index}/{len(urls)}] 🚀 Abrindo: {url}")
-
-            # Instancia o scraper importado do arquivo 1
-            bot = ProfileScraper(target_url=url)
-            await run_scraper_instance(bot)
-
-            print(f"[{index}/{len(urls)}] ✅ Perfil concluído. Preparando o próximo...")
-            await asyncio.sleep(1.5)
-
-    else:
-        print("Opção inválida. Saindo...")
+    bot = LiveConnectionsSniffer()
+    await bot.start()
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\n[SISTEMA] Execução total encerrada pelo usuário.")
+    asyncio.run(main())
