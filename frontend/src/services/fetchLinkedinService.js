@@ -180,3 +180,18 @@ export async function getExperienceCurl() {
 export async function deleteExperienceCurl() {
   return axios.delete(`${CONFIG_URL}/experience`);
 }
+
+export async function getGenericCurl(name) {
+  const res = await axios.get(`${CONFIG_URL}/curl/${name}`);
+  return res.data;
+}
+
+export async function saveGenericCurl(name, curlString) {
+  return axios.put(`${CONFIG_URL}/curl/${name}`, curlString, {
+    headers: { "Content-Type": "text/plain" },
+  });
+}
+
+export async function deleteGenericCurl(name) {
+  return axios.delete(`${CONFIG_URL}/curl/${name}`);
+}

@@ -113,3 +113,20 @@ def handle_experience_config():
     )
 
     return {"message": "Experience config updated"}, 200
+
+
+@fetch_curl_bp.route("/profile/<string:vanity_name>/<string:config_name>", methods=["GET"])
+def fetch_profile_section(vanity_name: str, config_name: str):
+    """
+    Exemplo de uso: GET /config/profile/joao-silva/ProfileAboveActivity
+    """
+    result = FetchService.execute_dynamic_profile_fetch(config_name, vanity_name)
+
+    if not result:
+        return abort(500, description="Falha ao extrair os dados. A sessão pode ter expirado ou o perfil não existe.")
+
+    # Se a resposta for o stream bruto do RSC (texto puro), envia como plain text
+    if isinstance(result, str):
+        return result, 200, {'Content-Type': 'text/plain; charset=utf-8'}
+
+    return jsonify(result)

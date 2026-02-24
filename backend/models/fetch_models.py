@@ -95,8 +95,6 @@ class FetchCurl(Base):
             if hasattr(self, key):
                 setattr(self, key, value)
 
-        self.body = raw_body
-
     def construct_request(self, page_number: int = 1) -> Tuple[str, Dict]:
         """
         Output: Ready-to-use URL and Headers for requests.get().
@@ -170,10 +168,17 @@ class FlatFetchCall:
     body: Optional[str] = None
     referer: Optional[str] = None
 
+
 def _process_linkedin_url(raw_url: str) -> Dict[str, Any]:
     parsed_uri = urlparse(raw_url)
-    base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}{parsed_uri.path}"
     query_params = parse_qs(parsed_uri.query)
+
+    # CORREÇÃO: Se for GraphQL, limpamos a URL para reconstruir as variáveis depois.
+    # Mas se for um componente SDUI, precisamos da URL inteira (com o componentId).
+    if 'variables' in query_params or 'queryId' in query_params:
+        base_url = f"{parsed_uri.scheme}://{parsed_uri.netloc}{parsed_uri.path}"
+    else:
+        base_url = raw_url
 
     variables_raw = query_params.get('variables', [''])[0]
     variables_str = unquote(variables_raw)
@@ -197,6 +202,7 @@ def _process_linkedin_url(raw_url: str) -> Dict[str, Any]:
         "variables_start": find_val('start', is_int=True),
     }
 
+
 def parse_curl_string_flat(curl_string: str) -> Optional[FlatFetchCall]:
     curl_string = curl_string.replace('\\\n', ' ').replace('\n', ' ').strip()
     try:
@@ -211,16 +217,18 @@ def parse_curl_string_flat(curl_string: str) -> Optional[FlatFetchCall]:
 
     for i, token in enumerate(tokens):
         if token.startswith('http') and url is None:
-            if i == 0 or tokens[i-1] not in ('-H', '--header', '-d', '--data', '--data-raw', '--cookie', '-b', '-X', '--request'):
+            if i == 0 or tokens[i - 1] not in ('-H', '--header', '-d', '--data', '--data-raw', '--cookie', '-b', '-X',
+                                               '--request'):
                 url = token
         if token in ('-H', '--header') and i + 1 < len(tokens):
-            if ':' in tokens[i+1]:
-                key, value = tokens[i+1].split(':', 1)
+            if ':' in tokens[i + 1]:
+                key, value = tokens[i + 1].split(':', 1)
                 headers[key.strip()] = value.strip()
         if token in ('-b', '--cookie') and i + 1 < len(tokens):
-            headers['Cookie'] = tokens[i+1].strip()
+            headers['Cookie'] = tokens[i + 1].strip()
         if token in ('-d', '--data', '--data-raw') and i + 1 < len(tokens):
-            body = tokens[i+1]; method = "POST"
+            body = tokens[i + 1];
+            method = "POST"
 
     if not url: return None
     url_data = _process_linkedin_url(url)
@@ -228,6 +236,7 @@ def parse_curl_string_flat(curl_string: str) -> Optional[FlatFetchCall]:
     return FlatFetchCall(
         **url_data, method=method, headers=json.dumps(headers), body=body, referer=headers.get("Referer")
     )
+
 
 def parse_fetch_string_flat(fetch_string: str) -> Optional[FlatFetchCall]:
     try:
@@ -243,4 +252,5 @@ def parse_fetch_string_flat(fetch_string: str) -> Optional[FlatFetchCall]:
             body=json.dumps(options_data.get("body")),
             referer=options_data.get("headers", {}).get("Referer")
         )
-    except: return None
+    except:
+        return None

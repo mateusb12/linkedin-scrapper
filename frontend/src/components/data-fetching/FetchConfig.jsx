@@ -12,12 +12,19 @@ import {
   deletePaginationCurl,
   deleteIndividualJobCurl,
   deleteExperienceCurl,
+  getGenericCurl,
+  saveGenericCurl,
+  deleteGenericCurl,
   saveGmailToken,
   getProfiles,
   testGmailConnection,
 } from "../../services/fetchLinkedinService.js";
 
 import gmailIcon from "../../assets/ui_icons/gmail.png";
+
+const NETWORK_FILTER_PROFILE_MAIN = "/in/monicasbusatta/";
+const NETWORK_FILTER_PROFILE_ABOVE = "profileCardsAboveActivity";
+const NETWORK_FILTER_PROFILE_BELOW = "profileCardsBelowActivityPart1";
 
 const NETWORK_FILTER_PAGINATION = "jobCollectionSlug:recommended";
 const NETWORK_FILTER_INDIVIDUAL = "jobPostingDetailDescription_start";
@@ -51,6 +58,21 @@ const ConfigCard = ({
       btn: "bg-green-600 hover:bg-green-700",
       ring: "focus:ring-green-500",
       light: "bg-green-50 dark:bg-green-900/20",
+    },
+    orange: {
+      btn: "bg-orange-600 hover:bg-orange-700",
+      ring: "focus:ring-orange-500",
+      light: "bg-orange-50 dark:bg-orange-900/20",
+    },
+    teal: {
+      btn: "bg-teal-600 hover:bg-teal-700",
+      ring: "focus:ring-teal-500",
+      light: "bg-teal-50 dark:bg-teal-900/20",
+    },
+    rose: {
+      btn: "bg-rose-600 hover:bg-rose-700",
+      ring: "focus:ring-rose-500",
+      light: "bg-rose-50 dark:bg-rose-900/20",
     },
   };
   const theme = colors[colorClass] || colors.blue;
@@ -174,6 +196,10 @@ export default function FetchConfig() {
   const [profileId, setProfileId] = useState(null);
   const [profileLoading, setProfileLoading] = useState(true);
 
+  const [profMainConfig, setProfMainConfig] = useState(null);
+  const [profAboveConfig, setProfAboveConfig] = useState(null);
+  const [profBelowConfig, setProfBelowConfig] = useState(null);
+
   const clearStatusMessage = () => setTimeout(() => setStatusMessage({}), 4000);
 
   const loadAllData = async () => {
@@ -188,15 +214,21 @@ export default function FetchConfig() {
     };
 
     try {
-      const [pag, ind, exp] = await Promise.all([
+      const [pag, ind, exp, main, above, below] = await Promise.all([
         loadConfigSafe(getPaginationCurl),
         loadConfigSafe(getIndividualJobCurl),
         loadConfigSafe(getExperienceCurl),
+        loadConfigSafe(() => getGenericCurl("ProfileMain")),
+        loadConfigSafe(() => getGenericCurl("ProfileAboveActivity")),
+        loadConfigSafe(() => getGenericCurl("ProfileBelowActivity")),
       ]);
 
       setPagConfig(pag);
       setIndConfig(ind);
       setExpConfig(exp);
+      setProfMainConfig(main);
+      setProfAboveConfig(above);
+      setProfBelowConfig(below);
 
       const profiles = await getProfiles();
       if (profiles && profiles.length > 0) {
@@ -232,7 +264,6 @@ export default function FetchConfig() {
     try {
       await savePaginationCurl(curl);
       setStatusMessage({ general: "✅ Pagination cURL Updated!" });
-
       setPagConfig({ curl });
     } catch (error) {
       handleError(error);
@@ -302,6 +333,50 @@ export default function FetchConfig() {
       clearStatusMessage();
     }
   };
+
+  const createGenericHandler = (configName, stateSetter, label) => {
+    return {
+      onSave: async (curl) => {
+        setStatusMessage({ general: `Saving ${label}...` });
+        try {
+          await saveGenericCurl(configName, curl);
+          setStatusMessage({ general: `✅ ${label} Updated!` });
+          stateSetter({ curl });
+        } catch (error) {
+          handleError(error);
+        } finally {
+          clearStatusMessage();
+        }
+      },
+      onDelete: async () => {
+        try {
+          await deleteGenericCurl(configName);
+          stateSetter(null);
+          setStatusMessage({ general: `🗑️ ${label} Deleted.` });
+        } catch (error) {
+          handleError(error);
+        } finally {
+          clearStatusMessage();
+        }
+      },
+    };
+  };
+
+  const profMainHandlers = createGenericHandler(
+    "ProfileMain",
+    setProfMainConfig,
+    "Profile Main",
+  );
+  const profAboveHandlers = createGenericHandler(
+    "ProfileAboveActivity",
+    setProfAboveConfig,
+    "Profile Above",
+  );
+  const profBelowHandlers = createGenericHandler(
+    "ProfileBelowActivity",
+    setProfBelowConfig,
+    "Profile Below",
+  );
 
   const handleError = (error) => {
     console.error(error);
@@ -426,6 +501,39 @@ export default function FetchConfig() {
             onDelete={onDeleteExp}
             placeholder="Paste POST cURL with 'sdui.pagers.profile.details.experience' here..."
             colorClass="green"
+          />
+
+          <ConfigCard
+            title="👤 Profile Main Request"
+            description="Chamada base para carregar Header e Skills do perfil."
+            networkFilter={NETWORK_FILTER_PROFILE_MAIN}
+            savedData={profMainConfig}
+            onSave={profMainHandlers.onSave}
+            onDelete={profMainHandlers.onDelete}
+            placeholder="Cole o GET cURL da página base do perfil..."
+            colorClass="orange"
+          />
+
+          <ConfigCard
+            title="⬆️ Profile Above Activity"
+            description="Carrega o 'About' e resumo do usuário (GraphQL)."
+            networkFilter={NETWORK_FILTER_PROFILE_ABOVE}
+            savedData={profAboveConfig}
+            onSave={profAboveHandlers.onSave}
+            onDelete={profAboveHandlers.onDelete}
+            placeholder="Cole o POST cURL contendo 'profileCardsAboveActivity'..."
+            colorClass="teal"
+          />
+
+          <ConfigCard
+            title="⬇️ Profile Below Activity"
+            description="Carrega Experiência, Educação e Licenças (GraphQL)."
+            networkFilter={NETWORK_FILTER_PROFILE_BELOW}
+            savedData={profBelowConfig}
+            onSave={profBelowHandlers.onSave}
+            onDelete={profBelowHandlers.onDelete}
+            placeholder="Cole o POST cURL contendo 'profileCardsBelowActivityPart1'..."
+            colorClass="rose"
           />
         </div>
       </div>

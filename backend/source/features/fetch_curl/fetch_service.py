@@ -223,14 +223,8 @@ class FetchService:
 
             # ----------- SDUI / RSC STREAM -----------
             if "application/octet-stream" in content_type:
-                raw = response.content
-
-                # decompress manually if needed
-                if response.headers.get("content-encoding") == "br":
-                    import brotli
-                    raw = brotli.decompress(raw)
-
-                decoded = raw.decode("utf-8")
+                # requests decodes brotli/gzip automatically.
+                decoded = response.content.decode("utf-8")
 
                 if debug:
                     print("📦 RSC RAW (first 1000 chars):")
@@ -262,5 +256,110 @@ class FetchService:
             print(f"❌ Error deleting config '{name}': {e}")
             db.rollback()
             raise e
+        finally:
+            db.close()
+
+    @staticmethod
+    def execute_dynamic_profile_fetch(config_name: str, target_vanity_name: str) -> Optional[Any]:
+        """
+        Puxa um Curl template do banco, substitui a vanityName base
+        pelo alvo atual e executa a requisição (GET ou POST).
+        """
+        db = get_db_session()
+        try:
+            record = db.query(FetchCurl).filter(FetchCurl.name == config_name).first()
+            if not record:
+                print(f"❌ [FetchService] Configuração '{config_name}' não encontrada.")
+                return None
+
+            # Usamos a Mônica como a 'Template Variable' base que será sobrescrita
+            TEMPLATE_VANITY = "monicasbusatta"
+
+            # 1. Preparar Headers (O Referer contém a vanity name e precisa ser alterado)
+            headers = {}
+            if record.headers:
+                try:
+                    headers = json.loads(record.headers)
+                    for k, v in headers.items():
+                        if isinstance(v, str):
+                            headers[k] = v.replace(TEMPLATE_VANITY, target_vanity_name)
+                except Exception:
+                    pass
+
+            # 2. Preparar URL (Para a chamada principal que tem o /in/nome/)
+            url = record.base_url.replace(TEMPLATE_VANITY, target_vanity_name)
+
+            # 3. Preparar Body (Payload do GraphQL/SDUI)
+            body_bytes = None
+            if record.body:
+                # O string replace direto é a forma mais robusta e rápida aqui
+                body_str = record.body.replace(TEMPLATE_VANITY, target_vanity_name)
+                body_bytes = body_str.encode('utf-8')
+
+            method = record.method or "GET"
+
+            # ==========================================
+            # 🔍 RAIOS-X DA REQUISIÇÃO (PRINT DEBUG)
+            # ==========================================
+            print(f"\n{'=' * 50}")
+            print(f"📤 [DEBUG] ENVIANDO REQUISIÇÃO: {config_name}")
+            print(f"URL:    {url}")
+            print(f"METHOD: {method}")
+            print("\nHEADERS ENVIADOS:")
+            for k, v in headers.items():
+                # Trunca o Cookie para não poluir demais a tela, mas mostra o csrf e tokens
+                if k.lower() == 'cookie':
+                    print(f"  {k}: {v[:100]}... [TRUNCADO]")
+                else:
+                    print(f"  {k}: {v}")
+
+            if body_bytes:
+                print(f"\nBODY ENVIADO:\n{body_bytes.decode('utf-8')}")
+            else:
+                print("\nBODY ENVIADO: (Nenhum)")
+            print(f"{'=' * 50}\n")
+
+            # 4. Construir e Executar a Requisição
+            req = requests.Request(
+                method=method,
+                url=url,
+                headers=headers,
+                data=body_bytes
+            )
+            prepared = req.prepare()
+            session = requests.Session()
+            response = session.send(prepared, timeout=15)
+
+            content_type = response.headers.get("Content-Type", "")
+
+            # ==========================================
+            # 🔍 RAIOS-X DA RESPOSTA (PRINT DEBUG)
+            # ==========================================
+            print(f"📥 [DEBUG] RESPOSTA RECEBIDA: {config_name}")
+            print(f"STATUS: {response.status_code}")
+            print("HEADERS RECEBIDOS:")
+            for k, v in response.headers.items():
+                print(f"  {k}: {v}")
+
+            if response.status_code != 200:
+                print(f"\n❌ ERRO {response.status_code}. CONTEÚDO DA RESPOSTA:")
+                print(response.text[:1000])  # Mostra os primeiros 1000 caracteres do erro
+                print(f"{'=' * 50}\n")
+                return None
+
+            print(f"{'=' * 50}\n")
+
+            # --- Tratamento de Respostas Múltiplas ---
+            if "application/json" in content_type:
+                return response.json()
+
+            if "application/octet-stream" in content_type:
+                return response.content.decode("utf-8")
+
+            return response.text
+
+        except Exception as e:
+            print(f"❌ [FetchService] Erro no dynamic fetch: {e}")
+            return None
         finally:
             db.close()
