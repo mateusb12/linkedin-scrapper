@@ -80,195 +80,165 @@ def agrupar_dados_estruturados(textos: List[str]) -> Dict:
     certificados = []
     competencias = set()
 
-    if DEBUG:
-        print("\n" + "=" * 50)
-        print("🔍 [DEBUG] LISTA DE TEXTOS EXTRAÍDOS (ÍNDICE: TEXTO)")
-        print("=" * 50)
-        for i, t in enumerate(textos):
-            print(f"[{i:03d}] {t}")
-        print("=" * 50 + "\n")
-
     date_regex = re.compile(
         r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}|\b\d{4}\s*[-–]\s*(?:\d{4}|Present|Atual)\b)')
-    duracao_regex = re.compile(r'^\d+\s*(yr|yrs|mo|mos|ano|anos|mês|meses).*$')
-    tipo_trabalho = {"Full-time", "Part-time", "Self-employed", "Freelance", "Contract", "Internship", "Apprenticeship",
-                     "Tempo integral", "Meio período"}
     modelos_trabalho = {"On-site", "Hybrid", "Remote", "Presencial", "Híbrido", "Remoto"}
 
-    anchors = []
-    for i, t in enumerate(textos):
-        if date_regex.search(t) and "Issued" not in t and "Emitido" not in t:
-            anchors.append(i)
-
-    blocos = []
-    last_empresa = ""
-
-    for anchor_idx in anchors:
-        date_str = textos[anchor_idx]
-        window = textos[max(0, anchor_idx - 5): anchor_idx]
-        window.reverse()
-
-        w_idx = 0
-        tipo = ""
-        empresa = ""
-        role = ""
-
-        if w_idx < len(window):
-            if window[w_idx] in tipo_trabalho:
-                tipo = window[w_idx]
-                w_idx += 1
-            elif " · " in window[w_idx]:
-                parts = window[w_idx].split(" · ")
-                if len(parts) == 2 and parts[1] in tipo_trabalho:
-                    tipo = parts[1]
-                    empresa = parts[0]
-                    w_idx += 1
-
-        if w_idx < len(window):
-            role = window[w_idx]
-            w_idx += 1
-
-        if w_idx < len(window) and duracao_regex.match(window[w_idx]):
-            w_idx += 1
-
-        if w_idx < len(window) and not empresa:
-            c = window[w_idx]
-            if len(c) < 70 and " at " not in c and c not in modelos_trabalho:
-                empresa = c
-                w_idx += 1
-
-        if not empresa:
-            empresa = last_empresa
-        else:
-            last_empresa = empresa
-
-        start_idx = anchor_idx - w_idx
-
-        blocos.append({
-            "start_idx": start_idx,
-            "anchor_idx": anchor_idx,
-            "empresa": empresa,
-            "role": role,
-            "tipo": tipo,
-            "date_str": date_str
-        })
-
-    for i, bloco in enumerate(blocos):
-        empresa = bloco["empresa"]
-        role = bloco["role"]
-        date_str = bloco["date_str"]
-        tipo = bloco["tipo"]
-
-        is_edu = any(word.lower() in empresa.lower() for word in
-                     ["universidade", "school", "eeep", "institute", "faculdade", "college", "university", "puc",
-                      "senai", "fatec"]) or \
-                 any(word.lower() in role.lower() for word in
-                     ["bacharelado", "curso", "degree", "graduação", "bachelor", "master", "phd", "tecnologia",
-                      "licenciatura"])
-
-        obj = {}
-        if is_edu:
-            obj["instituicao"] = empresa
-            obj["curso"] = role
-        else:
-            obj["empresa"] = empresa
-            obj["cargo"] = role
-            if tipo: obj["tipo"] = tipo
-
-        if " · " in date_str:
-            parts = date_str.split(" · ")
-            d_parts = re.split(r'\s*(?:-|–)\s*', parts[0])
-            obj["inicio"] = d_parts[0].strip()
-            obj["fim"] = d_parts[1].strip() if len(d_parts) > 1 else ""
-            if not is_edu: obj["duracao"] = parts[1].strip()
-        else:
-            parts = re.split(r'\s*(?:-|–)\s*', date_str)
-            obj["inicio"] = parts[0].strip()
-            obj["fim"] = parts[1].strip() if len(parts) > 1 else ""
-
-        body_start = bloco["anchor_idx"] + 1
-        if body_start < len(textos) and duracao_regex.match(textos[body_start]):
-            if not is_edu: obj["duracao"] = textos[body_start]
-            body_start += 1
-
-        body_end = blocos[i + 1]["start_idx"] if i + 1 < len(blocos) else len(textos)
-        tecnologias = []
-
-        # =========================================================
-        # LOOP ESTRUTURAL GENÉRICO (Com Boundaries de Segurança)
-        # =========================================================
-        for j in range(body_start, body_end):
-            val = textos[j]
-
-            # Barreira: Se bater em Educação ou Certificados, encerra o bloco de Experiência atual
-            if any(w in val.lower() for w in
-                   ["universidade", "school", "faculdade", "college", "university", "certifications"]):
-                if len(val) < 80:
-                    if DEBUG: print(f"  [{j:03d}] 🛑 Barreira ativada. Encerrando bloco.")
-                    break
-
-            # Ignora lixo de Certificados soltos nas experiências
-            if any(w in val for w in ["Issued", "Emitido", "Udemy", "Credential"]):
-                continue
-
-            # 1. Mata-Lixo de Acessibilidade ("Cargo at Empresa" injetado pelo LinkedIn)
-            if (" at " in val or " na " in val) and (empresa in val or role in val):
-                continue
-
-            # 2. Modelo de Trabalho solto
-            if val in modelos_trabalho:
-                obj["modelo_trabalho"] = val
-                continue
-
-            # 3. Extração de Habilidades (Regex estrita focada no padrão exato do LinkedIn)
-            if re.search(r'(and|e)\s*\+\d+\s*(skills?|competências?)', val.lower()):
-                s_raw = re.sub(r'(and|e)\s*\+\d+\s*(skills?|competências?)', '', val, flags=re.IGNORECASE).replace(
-                    " and ", ", ").replace(" e ", ", ")
-                for s in s_raw.split(","):
-                    if s.strip() and len(s.strip()) < 30:
-                        tecnologias.append(s.strip())
-                        competencias.add(s.strip())
-                continue
-
-            # 4. A REGRA ESTRUTURAL (Local vs Descrição)
-            if " · " in val and any(m in val for m in modelos_trabalho):
-                partes = val.split(" · ")
-                obj["localizacao"] = partes[0].strip()
-                obj["modelo_trabalho"] = partes[1].strip()
-
-            elif len(val) < 60 and "descricao" not in obj and "localizacao" not in obj and " at " not in val:
-                obj["localizacao"] = val
-
-            else:
-                if len(val) > 10:
-                    if "descricao" not in obj:
-                        obj["descricao"] = val
-                    else:
-                        obj["descricao"] += "\n\n" + val
-
-        if tecnologias and not is_edu:
-            obj["tecnologias"] = tecnologias
-
-        if is_edu:
-            is_dup = any(e.get("curso") == obj.get("curso") and e.get("inicio") == obj.get("inicio") for e in formacao)
-            if not is_dup: formacao.append(obj)
-        else:
-            is_dup = any(
-                e.get("cargo") == obj.get("cargo") and e.get("inicio") == obj.get("inicio") for e in experiencias)
-            if not is_dup: experiencias.append(obj)
+    jobs_temp = []
+    edu_temp = []
 
     # =========================================================
-    # CORREÇÃO: Busca de Certificados (Nome e Instituição)
+    # PASSO 1: Extrair Cabeçalhos (Âncoras de Estrutura)
+    # =========================================================
+    for i, t in enumerate(textos):
+
+        # 1. Âncoras de Experiência (Identificadas pela Data)
+        if date_regex.search(t) and "Issued" not in t and "Emitido" not in t:
+            role = ""
+            empresa = ""
+            tipo = ""
+
+            if i >= 2:
+                c_str = textos[i - 1]
+                r_str = textos[i - 2]
+
+                if " · " in c_str:
+                    empresa, tipo = c_str.split(" · ", 1)
+                else:
+                    empresa = c_str
+                role = r_str
+
+            # Limpar extrações ruins
+            if len(role) < 3 or role.islower() or role == "expression": role = textos[
+                i - 3] if i >= 3 else "Cargo Oculto"
+
+            # Extrair Localização (geralmente logo após a data)
+            localizacao = ""
+            modelo = ""
+            loc_idx = i
+            if i + 1 < len(textos) and not date_regex.search(textos[i + 1]) and len(textos[i + 1]) < 60:
+                loc_str = textos[i + 1]
+                if " · " in loc_str and any(m in loc_str for m in modelos_trabalho):
+                    localizacao, modelo = loc_str.split(" · ", 1)
+                    loc_idx = i + 1
+                elif loc_str in modelos_trabalho:
+                    modelo = loc_str
+                    loc_idx = i + 1
+                elif " at " not in loc_str and " na " not in loc_str:
+                    localizacao = loc_str
+                    loc_idx = i + 1
+
+            # Parsing de Datas
+            inicio, fim, duracao = "", "", ""
+            if " · " in t:
+                d_parts = t.split(" · ")
+                datas = re.split(r'\s*(?:-|–)\s*', d_parts[0])
+                inicio = datas[0].strip()
+                if len(datas) > 1: fim = datas[1].strip()
+                duracao = d_parts[1].strip()
+            else:
+                datas = re.split(r'\s*(?:-|–)\s*', t)
+                inicio = datas[0].strip()
+                if len(datas) > 1: fim = datas[1].strip()
+
+            jobs_temp.append({
+                "empresa": empresa.strip(),
+                "cargo": role.strip(),
+                "tipo": tipo.strip(),
+                "inicio": inicio,
+                "fim": fim,
+                "duracao": duracao,
+                "localizacao": localizacao.strip(),
+                "modelo_trabalho": modelo.strip(),
+                "date_idx": i,
+                "loc_idx": loc_idx,
+                "descricao": "",
+                "tecnologias": []
+            })
+
+        # 2. Âncoras de Educação (Identificadas por Palavras-Chave, já que não há datas)
+        edu_keywords = ["universidade", "school", "faculdade", "college", "university", "institute", "puc", "senai",
+                        "fatec"]
+        if any(k in t.lower() for k in edu_keywords) and len(t) < 70:
+            # Garante que não é apenas o nome da empresa de um emprego já capturado
+            if not any(j['empresa'] == t for j in jobs_temp):
+                instituicao = t
+                curso = textos[i + 1] if i + 1 < len(textos) else ""
+                if len(curso) > 80: curso = ""  # Proteção contra engolir descrições
+
+                edu_temp.append({
+                    "instituicao": instituicao,
+                    "curso": curso,
+                    "header_idx": i
+                })
+
+    # =========================================================
+    # PASSO 2: Relacionar Descrições e Skills usando os Marcadores
+    # =========================================================
+    for job in jobs_temp:
+        expected_tag = f"{job['cargo']} at {job['empresa']}".lower()
+        expected_tag_br = f"{job['cargo']} na {job['empresa']}".lower()
+        tag_found = False
+
+        # Estratégia A: Caçar a Tag de Acessibilidade no DOM (resolve o caso do Freelance Invertido)
+        for i in range(job["date_idx"] + 1, len(textos)):
+            t_low = textos[i].lower()
+            if t_low == expected_tag or t_low == expected_tag_br:
+                tag_found = True
+                # A descrição é o bloco gigante ANTES da tag
+                if i - 1 > job["loc_idx"] and len(textos[i - 1]) > 40:
+                    job["descricao"] = textos[i - 1]
+
+                # As skills vêm DEPOIS da tag
+                if i + 1 < len(textos):
+                    skill_str = textos[i + 1]
+                    if re.search(r'(and|e)\s*\+\d+\s*(skills?|competências?)', skill_str.lower()):
+                        s_raw = re.sub(r'(and|e)\s*\+\d+\s*(skills?|competências?)', '', skill_str,
+                                       flags=re.IGNORECASE).replace(" and ", ", ").replace(" e ", ", ")
+                        job["tecnologias"] = [s.strip() for s in s_raw.split(",") if s.strip() and len(s.strip()) < 30]
+                break
+
+        # Estratégia B: Se não tem Tag amaradora, pegar a sequência visual (resolve o caso Dexian)
+        if not tag_found:
+            desc_cand_idx = job["loc_idx"] + 1
+            if desc_cand_idx < len(textos):
+                cand = textos[desc_cand_idx]
+                if len(cand) > 60 and " at " not in cand and not date_regex.search(cand):
+                    job["descricao"] = cand
+
+                    skill_cand_idx = desc_cand_idx + 1
+                    if skill_cand_idx < len(textos):
+                        skill_str = textos[skill_cand_idx]
+                        if re.search(r'(and|e)\s*\+\d+\s*(skills?|competências?)', skill_str.lower()):
+                            s_raw = re.sub(r'(and|e)\s*\+\d+\s*(skills?|competências?)', '', skill_str,
+                                           flags=re.IGNORECASE).replace(" and ", ", ").replace(" e ", ", ")
+                            job["tecnologias"] = [s.strip() for s in s_raw.split(",") if
+                                                  s.strip() and len(s.strip()) < 30]
+
+        for skill in job["tecnologias"]:
+            competencias.add(skill)
+
+    # Assinar Descrição da Educação sequencialmente
+    for edu in edu_temp:
+        h_idx = edu["header_idx"]
+        desc_idx = h_idx + 2 if edu["curso"] else h_idx + 1
+        if desc_idx < len(textos):
+            cand = textos[desc_idx]
+            if len(cand) > 40 and not date_regex.search(
+                    cand) and " at " not in cand and cand.lower() != "certifications":
+                edu["descricao"] = cand
+
+    # =========================================================
+    # PASSO 3: Resgate Híbrido de Certificados
     # =========================================================
     for i, t in enumerate(textos):
         if "Issued" in t or "Emitido" in t:
-            # Pela ordem do LinkedIn: [i-2] é o Nome, [i-1] é a Instituição
             nome_cert = textos[i - 2] if i > 1 else (textos[i - 1] if i > 0 else "")
             instituicao = textos[i - 1] if i > 0 else ""
 
-            # Prevenir que pegue a string errada se a ordem vier diferente
             if len(nome_cert) > 60:
                 nome_cert = textos[i - 1] if i > 0 else ""
+                instituicao = ""
 
             if not any(c.get("nome") == nome_cert for c in certificados):
                 certificados.append({
@@ -276,6 +246,34 @@ def agrupar_dados_estruturados(textos: List[str]) -> Dict:
                     "instituicao": instituicao,
                     "data_emissao": t.replace("Issued ", "").replace("Emitido ", "")
                 })
+
+            # Resgate: Puxa o certificado da linha de baixo que ficou sem a palavra "Issued" (Ex: MERN)
+            if i + 1 < len(textos):
+                cand_name = textos[i + 1]
+                if 5 < len(cand_name) < 50 and " at " not in cand_name and cand_name not in ["certifications",
+                                                                                             "expression"] and not re.search(
+                    r'(and|e)\s*\+\d+\s*(skills?)', cand_name.lower()):
+                    if not any(c.get("nome") == cand_name for c in certificados):
+                        certificados.append({
+                            "nome": cand_name,
+                            "instituicao": instituicao,  # Assume mesmo emissor
+                            "data_emissao": t.replace("Issued ", "").replace("Emitido ", "")  # Assume mesma data
+                        })
+
+    # =========================================================
+    # CLEANUP: Remoção de chaves temporárias e vazias
+    # =========================================================
+    for job in jobs_temp:
+        job.pop("date_idx", None)
+        job.pop("loc_idx", None)
+        # Limpa chaves vazias para JSON ficar enxuto
+        experiencias.append({k: v for k, v in job.items() if v or k == "tecnologias"})
+        if not experiencias[-1].get("tecnologias"):
+            experiencias[-1].pop("tecnologias", None)
+
+    for edu in edu_temp:
+        edu.pop("header_idx", None)
+        formacao.append({k: v for k, v in edu.items() if v})
 
     return {
         "experiencias": experiencias,
