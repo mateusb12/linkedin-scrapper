@@ -39,4 +39,4 @@ def fetch_and_save_raw(vanity_name: str) -> str:
 
 
 if __name__ == "__main__":
-    fetch_and_save_raw("cibellysousa")
+    fetch_and_save_raw("monicasbusatta")
