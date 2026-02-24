@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict
 
-DEBUG = False
+DEBUG = True
 
 
 # ======================================================
@@ -75,44 +75,49 @@ def eh_texto_humano(texto: str, vanity_name: str) -> bool:
 
 
 def agrupar_dados_estruturados(textos: List[str]) -> Dict:
-    """
-    O Agrupador Inteligente: Varre a lista de textos limpos usando Expressões
-    Regulares de Datas como "âncoras" para saber onde um emprego começa e termina.
-    """
     experiencias = []
     formacao = []
     certificados = []
     competencias = set()
 
-    date_regex = re.compile(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}')
-    duracao_regex = re.compile(r'^\d+\s*(yr|yrs|mo|mos).*$')
-    tipo_trabalho = {"Full-time", "Part-time", "Self-employed", "Freelance", "Contract", "Internship", "Apprenticeship"}
-    modelos_trabalho = {"On-site", "Hybrid", "Remote"}
+    if DEBUG:
+        print("\n" + "=" * 50)
+        print("🔍 [DEBUG] LISTA DE TEXTOS EXTRAÍDOS (ÍNDICE: TEXTO)")
+        print("=" * 50)
+        for i, t in enumerate(textos):
+            print(f"[{i:03d}] {t}")
+        print("=" * 50 + "\n")
+
+    date_regex = re.compile(
+        r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}|\b\d{4}\s*[-–]\s*(?:\d{4}|Present|Atual)\b)')
+    duracao_regex = re.compile(r'^\d+\s*(yr|yrs|mo|mos|ano|anos|mês|meses).*$')
+    tipo_trabalho = {"Full-time", "Part-time", "Self-employed", "Freelance", "Contract", "Internship", "Apprenticeship",
+                     "Tempo integral", "Meio período"}
+    modelos_trabalho = {"On-site", "Hybrid", "Remote", "Presencial", "Híbrido", "Remoto"}
 
     anchors = []
     for i, t in enumerate(textos):
-        if date_regex.search(t) and "Issued" not in t:
+        if date_regex.search(t) and "Issued" not in t and "Emitido" not in t:
             anchors.append(i)
 
+    blocos = []
     last_empresa = ""
 
-    for idx, anchor_idx in enumerate(anchors):
+    for anchor_idx in anchors:
         date_str = textos[anchor_idx]
-
-        # Pega as últimas 4 strings antes da data (É onde o LinkedIn esconde Empresa e Cargo)
-        window = textos[max(0, anchor_idx - 4): anchor_idx]
-        window.reverse()  # Inverte para ler de trás pra frente a partir da data
-
-        role = ""
-        tipo = ""
-        empresa = ""
+        window = textos[max(0, anchor_idx - 5): anchor_idx]
+        window.reverse()
 
         w_idx = 0
+        tipo = ""
+        empresa = ""
+        role = ""
+
         if w_idx < len(window):
             if window[w_idx] in tipo_trabalho:
                 tipo = window[w_idx]
                 w_idx += 1
-            elif " · " in window[w_idx]:  # Ex: Escolinha do PRECE · Apprenticeship
+            elif " · " in window[w_idx]:
                 parts = window[w_idx].split(" · ")
                 if len(parts) == 2 and parts[1] in tipo_trabalho:
                     tipo = parts[1]
@@ -124,98 +129,153 @@ def agrupar_dados_estruturados(textos: List[str]) -> Dict:
             w_idx += 1
 
         if w_idx < len(window) and duracao_regex.match(window[w_idx]):
-            w_idx += 1  # Ignora string de duração total da empresa
+            w_idx += 1
 
         if w_idx < len(window) and not empresa:
             c = window[w_idx]
-            # Validação heurística para garantir que não estamos pegando um texto longo como empresa
-            if len(c) < 60 and " at " not in c and c not in modelos_trabalho:
+            if len(c) < 70 and " at " not in c and c not in modelos_trabalho:
                 empresa = c
+                w_idx += 1
 
-        # Se a empresa não foi encontrada no topo do bloco, herda do emprego anterior (Cargos aninhados)
         if not empresa:
             empresa = last_empresa
         else:
             last_empresa = empresa
 
-        # Separa Formação Acadêmica de Experiência
-        is_edu = any(word in empresa for word in ["Universidade", "School", "EEEP", "Institute"]) or \
-                 any(word in role for word in ["Bacharelado", "Curso", "Degree"])
+        start_idx = anchor_idx - w_idx
+
+        blocos.append({
+            "start_idx": start_idx,
+            "anchor_idx": anchor_idx,
+            "empresa": empresa,
+            "role": role,
+            "tipo": tipo,
+            "date_str": date_str
+        })
+
+    for i, bloco in enumerate(blocos):
+        empresa = bloco["empresa"]
+        role = bloco["role"]
+        date_str = bloco["date_str"]
+        tipo = bloco["tipo"]
+
+        is_edu = any(word.lower() in empresa.lower() for word in
+                     ["universidade", "school", "eeep", "institute", "faculdade", "college", "university", "puc",
+                      "senai", "fatec"]) or \
+                 any(word.lower() in role.lower() for word in
+                     ["bacharelado", "curso", "degree", "graduação", "bachelor", "master", "phd", "tecnologia",
+                      "licenciatura"])
+
+        obj = {}
+        if is_edu:
+            obj["instituicao"] = empresa
+            obj["curso"] = role
+        else:
+            obj["empresa"] = empresa
+            obj["cargo"] = role
+            if tipo: obj["tipo"] = tipo
+
+        if " · " in date_str:
+            parts = date_str.split(" · ")
+            d_parts = re.split(r'\s*(?:-|–)\s*', parts[0])
+            obj["inicio"] = d_parts[0].strip()
+            obj["fim"] = d_parts[1].strip() if len(d_parts) > 1 else ""
+            if not is_edu: obj["duracao"] = parts[1].strip()
+        else:
+            parts = re.split(r'\s*(?:-|–)\s*', date_str)
+            obj["inicio"] = parts[0].strip()
+            obj["fim"] = parts[1].strip() if len(parts) > 1 else ""
+
+        body_start = bloco["anchor_idx"] + 1
+        if body_start < len(textos) and duracao_regex.match(textos[body_start]):
+            if not is_edu: obj["duracao"] = textos[body_start]
+            body_start += 1
+
+        body_end = blocos[i + 1]["start_idx"] if i + 1 < len(blocos) else len(textos)
+        tecnologias = []
+
+        # =========================================================
+        # LOOP ESTRUTURAL GENÉRICO (Com Boundaries de Segurança)
+        # =========================================================
+        for j in range(body_start, body_end):
+            val = textos[j]
+
+            # Barreira: Se bater em Educação ou Certificados, encerra o bloco de Experiência atual
+            if any(w in val.lower() for w in
+                   ["universidade", "school", "faculdade", "college", "university", "certifications"]):
+                if len(val) < 80:
+                    if DEBUG: print(f"  [{j:03d}] 🛑 Barreira ativada. Encerrando bloco.")
+                    break
+
+            # Ignora lixo de Certificados soltos nas experiências
+            if any(w in val for w in ["Issued", "Emitido", "Udemy", "Credential"]):
+                continue
+
+            # 1. Mata-Lixo de Acessibilidade ("Cargo at Empresa" injetado pelo LinkedIn)
+            if (" at " in val or " na " in val) and (empresa in val or role in val):
+                continue
+
+            # 2. Modelo de Trabalho solto
+            if val in modelos_trabalho:
+                obj["modelo_trabalho"] = val
+                continue
+
+            # 3. Extração de Habilidades (Regex estrita focada no padrão exato do LinkedIn)
+            if re.search(r'(and|e)\s*\+\d+\s*(skills?|competências?)', val.lower()):
+                s_raw = re.sub(r'(and|e)\s*\+\d+\s*(skills?|competências?)', '', val, flags=re.IGNORECASE).replace(
+                    " and ", ", ").replace(" e ", ", ")
+                for s in s_raw.split(","):
+                    if s.strip() and len(s.strip()) < 30:
+                        tecnologias.append(s.strip())
+                        competencias.add(s.strip())
+                continue
+
+            # 4. A REGRA ESTRUTURAL (Local vs Descrição)
+            if " · " in val and any(m in val for m in modelos_trabalho):
+                partes = val.split(" · ")
+                obj["localizacao"] = partes[0].strip()
+                obj["modelo_trabalho"] = partes[1].strip()
+
+            elif len(val) < 60 and "descricao" not in obj and "localizacao" not in obj and " at " not in val:
+                obj["localizacao"] = val
+
+            else:
+                if len(val) > 10:
+                    if "descricao" not in obj:
+                        obj["descricao"] = val
+                    else:
+                        obj["descricao"] += "\n\n" + val
+
+        if tecnologias and not is_edu:
+            obj["tecnologias"] = tecnologias
 
         if is_edu:
-            edu = {"instituicao": empresa, "curso": role}
-            if " - " in date_str or " – " in date_str:
-                parts = re.split(r'\s*(?:-|–)\s*', date_str)
-                edu["inicio"] = parts[0].strip()
-                edu["fim"] = parts[1].strip() if len(parts) > 1 else ""
-            formacao.append(edu)
-
+            is_dup = any(e.get("curso") == obj.get("curso") and e.get("inicio") == obj.get("inicio") for e in formacao)
+            if not is_dup: formacao.append(obj)
         else:
-            job = {"empresa": empresa, "cargo": role}
-            if tipo: job["tipo"] = tipo
+            is_dup = any(
+                e.get("cargo") == obj.get("cargo") and e.get("inicio") == obj.get("inicio") for e in experiencias)
+            if not is_dup: experiencias.append(obj)
 
-            # Quebra Data e Duração (Ex: Sep 2025 - Present · 6 mos)
-            if " · " in date_str:
-                parts = date_str.split(" · ")
-                d_parts = re.split(r'\s*(?:-|–)\s*', parts[0])
-                job["inicio"] = d_parts[0].strip()
-                job["fim"] = d_parts[1].strip() if len(d_parts) > 1 else ""
-                job["duracao"] = parts[1].strip()
-            else:
-                parts = re.split(r'\s*(?:-|–)\s*', date_str)
-                job["inicio"] = parts[0].strip()
-                job["fim"] = parts[1].strip() if len(parts) > 1 else ""
-
-            # Varredura pra frente (Busca Local, Modalidade, Skills e Descrição)
-            next_anchor = anchors[idx + 1] if idx + 1 < len(anchors) else len(textos)
-            tecnologias = []
-
-            for j in range(anchor_idx + 1, next_anchor):
-                val = textos[j]
-                if val in modelos_trabalho:
-                    job["modelo_trabalho"] = val
-                elif "Brazil" in val or "Brasil" in val or " · " in val:
-                    if " · " in val and val.split(" · ")[1] in modelos_trabalho:
-                        job["localizacao"] = val.split(" · ")[0].strip()
-                        job["modelo_trabalho"] = val.split(" · ")[1].strip()
-                    elif len(val) < 40:
-                        job["localizacao"] = val
-                elif len(val) > 50:
-                    job["descricao"] = val
-                elif " and " in val or " e " in val or "skills" in val:  # Extrai skills embaralhadas
-                    s_raw = re.sub(r'and \+\d+ skills?', '', val).replace(" and ", ", ").replace(" e ", ", ")
-                    for s in s_raw.split(","):
-                        if s.strip():
-                            tecnologias.append(s.strip())
-                            competencias.add(s.strip())
-                elif val in ["Serviços técnicos", "Ensino de matemática", "Matemática básica"]:
-                    job["area"] = val
-
-            if tecnologias:
-                job["tecnologias"] = tecnologias
-
-            # Bloqueador de Duplicatas (Resolve o bug do modal repetindo vagas)
-            is_dup = any(e.get("cargo") == job["cargo"] and e.get("inicio") == job["inicio"] for e in experiencias)
-            if not is_dup:
-                experiencias.append(job)
-
-    # ---------------------------------------------
-    # EXTRAÇÃO DE CERTIFICADOS ISOLADA
-    # ---------------------------------------------
+    # =========================================================
+    # CORREÇÃO: Busca de Certificados (Nome e Instituição)
+    # =========================================================
     for i, t in enumerate(textos):
-        if "Issued" in t:
-            nome_cert = textos[i - 1] if i > 0 else ""
-            if not any(c.get("nome") == nome_cert for c in certificados):
-                certificados.append({"nome": nome_cert, "emissao": t.replace("Issued ", "")})
-        elif t in ["Introduction to Data Quality", "Data Management Concepts"] and not any(
-                c.get("nome") == t for c in certificados):
-            certificados.append({"nome": t})
+        if "Issued" in t or "Emitido" in t:
+            # Pela ordem do LinkedIn: [i-2] é o Nome, [i-1] é a Instituição
+            nome_cert = textos[i - 2] if i > 1 else (textos[i - 1] if i > 0 else "")
+            instituicao = textos[i - 1] if i > 0 else ""
 
-    # Pega competências clássicas perdidas
-    known_skills = ["Administração de dados", "Qualidade dos dados", "Python", "SQL", "Data Analysis", "Tailwind CSS",
-                    "Next.js", "WordPress", "Linux", "Troubleshooting", "Elementor", "WPBakery"]
-    for t in textos:
-        if t in known_skills: competencias.add(t)
+            # Prevenir que pegue a string errada se a ordem vier diferente
+            if len(nome_cert) > 60:
+                nome_cert = textos[i - 1] if i > 0 else ""
+
+            if not any(c.get("nome") == nome_cert for c in certificados):
+                certificados.append({
+                    "nome": nome_cert,
+                    "instituicao": instituicao,
+                    "data_emissao": t.replace("Issued ", "").replace("Emitido ", "")
+                })
 
     return {
         "experiencias": experiencias,
