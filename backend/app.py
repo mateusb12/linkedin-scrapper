@@ -8,6 +8,7 @@ from flask import Flask
 from flask_cors import CORS
 
 from debugger import start_debugger_monitor
+from source.features.friends_connections.connections_controller import connections_bp
 
 from source.features.get_applied_jobs.services_controller import services_bp
 from source.features.gmail_service.gmail_controller import gmail_bp
@@ -48,23 +49,26 @@ app.register_blueprint(resume_bp)
 app.register_blueprint(profile_bp)
 app.register_blueprint(services_bp)
 app.register_blueprint(gmail_bp)
-
+app.register_blueprint(connections_bp)
 
 
 @app.route('/')
 def home():
     return "Hello, Flask!"
 
+
 @app.errorhandler(BadRequest)
 def handle_bad_request(e):
     print("🔥 BAD REQUEST CAUGHT:", e)
     return {"error": "Bad Request", "details": str(e)}, 400
+
 
 @app.errorhandler(Exception)
 def handle_all_exceptions(e):
     print("\n🔥🔥🔥 UNCAUGHT EXCEPTION 🔥🔥🔥")
     traceback.print_exc()
     return {"error": str(e)}, 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, use_reloader=False, host='0.0.0.0', port=5000)

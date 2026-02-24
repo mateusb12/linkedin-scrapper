@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Users,
   User,
+  Network,
 } from "lucide-react";
 import { useDarkMode } from "../../hooks/useDarkMode.jsx";
 
@@ -19,6 +20,7 @@ export const Sidebar = () => {
     { label: "Fetch Jobs", path: "/fetch", icon: Briefcase },
     { label: "Job Listings", path: "/jobs", icon: List },
     { label: "Job Tracking", path: "/dashboard", icon: ClipboardList },
+    { label: "Connections", path: "/connections", icon: Network },
     { label: "Match", path: "/match", icon: Users },
     { label: "Profile", path: "/profile", icon: User },
   ];

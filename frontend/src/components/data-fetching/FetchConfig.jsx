@@ -29,6 +29,7 @@ const NETWORK_FILTER_PROFILE_BELOW = "profileCardsBelowActivityPart1";
 const NETWORK_FILTER_PAGINATION = "jobCollectionSlug:recommended";
 const NETWORK_FILTER_INDIVIDUAL = "jobPostingDetailDescription_start";
 const NETWORK_FILTER_EXPERIENCE = "sdui.pagers.profile.details.experience";
+const NETWORK_FILTER_CONNECTIONS = "sdui.pagers.mynetwork.connectionsList";
 
 const ConfigCard = ({
   title,
@@ -189,6 +190,7 @@ export default function FetchConfig() {
   const [pagConfig, setPagConfig] = useState(null);
   const [indConfig, setIndConfig] = useState(null);
   const [expConfig, setExpConfig] = useState(null);
+  const [connectionsConfig, setConnectionsConfig] = useState(null);
 
   const [gmailToken, setGmailToken] = useState("");
   const [showToken, setShowToken] = useState(false);
@@ -214,13 +216,14 @@ export default function FetchConfig() {
     };
 
     try {
-      const [pag, ind, exp, main, above, below] = await Promise.all([
+      const [pag, ind, exp, main, above, below, conn] = await Promise.all([
         loadConfigSafe(getPaginationCurl),
         loadConfigSafe(getIndividualJobCurl),
         loadConfigSafe(getExperienceCurl),
         loadConfigSafe(() => getGenericCurl("ProfileMain")),
         loadConfigSafe(() => getGenericCurl("ProfileAboveActivity")),
         loadConfigSafe(() => getGenericCurl("ProfileBelowActivity")),
+        loadConfigSafe(() => getGenericCurl("Connections")),
       ]);
 
       setPagConfig(pag);
@@ -229,6 +232,7 @@ export default function FetchConfig() {
       setProfMainConfig(main);
       setProfAboveConfig(above);
       setProfBelowConfig(below);
+      setConnectionsConfig(conn);
 
       const profiles = await getProfiles();
       if (profiles && profiles.length > 0) {
@@ -327,6 +331,36 @@ export default function FetchConfig() {
       await deleteExperienceCurl();
       setExpConfig(null);
       setStatusMessage({ general: "🗑️ Experience Config Deleted." });
+    } catch (error) {
+      handleError(error);
+    } finally {
+      clearStatusMessage();
+    }
+  };
+
+  const onSaveConnections = async (curl) => {
+    setStatusMessage({ general: "Saving Connections Config..." });
+    try {
+      const processedCurl = curl.replace(
+        /"startIndex"\s*:\s*\d+/g,
+        '"startIndex":{START_INDEX}',
+      );
+
+      await saveGenericCurl("Connections", processedCurl);
+      setStatusMessage({ general: "✅ Connections cURL Template Saved!" });
+      setConnectionsConfig({ curl: processedCurl });
+    } catch (error) {
+      handleError(error);
+    } finally {
+      clearStatusMessage();
+    }
+  };
+
+  const onDeleteConnections = async () => {
+    try {
+      await deleteGenericCurl("Connections");
+      setConnectionsConfig(null);
+      setStatusMessage({ general: "🗑️ Connections Config Deleted." });
     } catch (error) {
       handleError(error);
     } finally {
@@ -534,6 +568,17 @@ export default function FetchConfig() {
             onDelete={profBelowHandlers.onDelete}
             placeholder="Cole o POST cURL contendo 'profileCardsBelowActivityPart1'..."
             colorClass="rose"
+          />
+
+          <ConfigCard
+            title="🤝 Connections Request"
+            description="Carrega a lista de conexões (paginada). O startIndex será formatado."
+            networkFilter={NETWORK_FILTER_CONNECTIONS}
+            savedData={connectionsConfig}
+            onSave={onSaveConnections}
+            onDelete={onDeleteConnections}
+            placeholder="Cole o POST cURL do connectionsList aqui..."
+            colorClass="purple"
           />
         </div>
       </div>
