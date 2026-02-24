@@ -1,17 +1,31 @@
-# backend/source/features/fetch_curl/linkedin_http_client.py
-
 import json
 import os
 import sys
 import requests
 import re
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 
 # --- Add project root to path ---
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
+
+
+# ============================================================
+# NEW: ParsedResponse (não quebra nada)
+# ============================================================
+
+class ParsedResponse:
+    """
+    Estrutura simples para armazenar a resposta já interpretada.
+    - format: "rsc" | "voyager"
+    - data: Dict/Any já parseado
+    """
+
+    def __init__(self, fmt: str, data: Any):
+        self.format = fmt
+        self.data = data
 
 
 # ---------------------------------------------------------------------
@@ -58,9 +72,9 @@ class LinkedInRequest(ABC):
         merged_headers.update(self._headers)
 
         if self.debug:
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("🚀 LINKEDIN REQUEST DEBUG")
-            print("="*80)
+            print("=" * 80)
 
             print("\n📌 METHOD:")
             print(self.method)
@@ -88,9 +102,9 @@ class LinkedInRequest(ABC):
             print("\n📌 GENERATED CURL:")
             print(self.to_curl(session.cookies))
 
-            print("="*80)
+            print("=" * 80)
             print("📡 SENDING REQUEST...")
-            print("="*80)
+            print("=" * 80)
 
         response = session.request(
             method=self.method,
@@ -109,9 +123,9 @@ class LinkedInRequest(ABC):
             print("\n📥 RESPONSE BODY (first 1000 chars):")
             print(response.text[:1000])
 
-            print("="*80)
+            print("=" * 80)
             print("🏁 END DEBUG")
-            print("="*80 + "\n")
+            print("=" * 80 + "\n")
 
         return response
 
@@ -123,11 +137,10 @@ class VoyagerGraphQLRequest(LinkedInRequest):
     """
 
     def __init__(self, base_url: str, query_id: str, variables: str):
-        # Monta a URL no padrão Voyager: ?variables=(...)&queryId=...
-        # Garante que não haja duplicidade de ? ou &
         separator = "&" if "?" in base_url else "?"
         final_url = f"{base_url}{separator}variables={variables}&queryId={query_id}"
         super().__init__("GET", final_url)
+
 
 class SduiPaginationRequest(LinkedInRequest):
     """
@@ -157,10 +170,71 @@ class LinkedInClient:
         self.csrf_token = None
 
         if self.config:
-            # Aplica headers base da configuração
             self.session.headers.update(self.config.get("headers", {}))
-            # Tenta extrair CSRF
             self.csrf_token = self._extract_csrf()
+
+    # ============================================================
+    # *NEW* Método seguro: execute_parsed (não quebra nada)
+    # ============================================================
+
+    def execute_parsed(self, request: LinkedInRequest, timeout=15) -> ParsedResponse:
+        """
+        Envia a requisição normalmente (igual execute),
+        mas retorna ParsedResponse ao invés de requests.Response.
+        """
+        raw_response = request.execute(self.session, timeout=timeout)
+        return self._parse_response(raw_response)
+
+    # ============================================================
+    # *NEW* Parser master
+    # ============================================================
+
+    def _parse_response(self, response: requests.Response) -> ParsedResponse:
+        content_type = response.headers.get("Content-Type", "")
+
+        if "application/octet-stream" in content_type:
+            parsed = self._parse_rsc_stream(response.text)
+            return ParsedResponse("rsc", parsed)
+
+        # Default: JSON / Voyager
+        parsed = self._parse_voyager_json(response.text)
+        return ParsedResponse("voyager", parsed)
+
+    # ============================================================
+    # *NEW* RSC Stream parser
+    # ============================================================
+
+    def _parse_rsc_stream(self, text: str) -> Dict[str, Any]:
+        """
+        Converte o stream RSC num formato simples: {"rsc_dump": [...objects...]}
+        """
+        raw_objects = []
+        for line in text.split('\n'):
+            if not line.strip() or ':' not in line:
+                continue
+            try:
+                _, json_part = line.split(':', 1)
+                raw_objects.append(json.loads(json_part))
+            except:
+                continue
+        return {"rsc_dump": raw_objects}
+
+    # ============================================================
+    # *NEW* Voyager JSON parser
+    # ============================================================
+
+    def _parse_voyager_json(self, text: str) -> Any:
+        clean_text = text.lstrip()
+        if clean_text.startswith(")]}'"):
+            clean_text = clean_text.split("\n", 1)[-1]
+        try:
+            return json.loads(clean_text)
+        except:
+            return {}
+
+    # ============================================================
+    # Config loader (unchanged)
+    # ============================================================
 
     def _load_config(self) -> Optional[dict]:
         from database.database_connection import get_db_session
@@ -176,18 +250,12 @@ class LinkedInClient:
             session_db.close()
             return None
 
-        # -------------------------
-        # HEADERS
-        # -------------------------
         try:
             headers_dict = json.loads(record.headers) if record.headers else {}
         except Exception as e:
             print("❌ Failed to parse headers JSON:", e)
             headers_dict = {}
 
-        # -------------------------
-        # COOKIES (FIX CRÍTICO)
-        # -------------------------
         if record.cookies:
             try:
                 cookie_dict = json.loads(record.cookies)
@@ -219,29 +287,31 @@ class LinkedInClient:
         session_db.close()
         return config
 
-
     def _extract_csrf(self) -> Optional[str]:
-        """Tenta extrair o CSRF token (JSESSIONID) dos cookies"""
-        # 1. Tenta direto do jar de cookies (se requests gerencia)
         if "JSESSIONID" in self.session.cookies:
             return self.session.cookies.get("JSESSIONID").strip('"')
 
-        # 2. Tenta do header 'Cookie' bruto
         cookie_header = self.session.headers.get("Cookie", "")
         m = re.search(r'JSESSIONID="?([^";]+)', cookie_header)
         return m.group(1) if m else None
 
+    # ============================================================
+    # execute() (UNCHANGED) — mantém compatibilidade total
+    # ============================================================
+
     def execute(self, request: LinkedInRequest) -> requests.Response:
-        """Executa um request usando a sessão configurada"""
+        """
+        NÃO ALTERADO!
+        Mantido exatamente igual, para evitar qualquer quebra.
+        """
         return request.execute(self.session)
 
 
 # ---------------------------------------------------------------------
-# 3) LEGACY / HELPER FUNCTIONS (Mantidas para compatibilidade se necessário)
+# 3) LEGACY HELPERS (unchanged)
 # ---------------------------------------------------------------------
 
 def get_linkedin_fetch_artefacts() -> Optional[Tuple[requests.Session, Dict[str, Any]]]:
-    """Helper legado caso algum outro script ainda use"""
     client = LinkedInClient('LinkedIn_Saved_Jobs_Scraper')
     if not client.config:
         return None
@@ -252,10 +322,9 @@ def save_linkedin_config_to_db():
     from database.database_connection import get_db_session
     from models.fetch_models import FetchCurl
 
-    # Exemplo de headers padrão para salvar
     HEADERS_DICT = {
         'accept': 'application/vnd.linkedin.normalized+json+2.1',
-        'csrf-token': 'ajax:2584240299603910567',  # Exemplo
+        'csrf-token': 'ajax:2584240299603910567',
         'x-li-lang': 'en_US',
         'x-restli-protocol-version': '2.0.0'
     }
@@ -289,7 +358,6 @@ def save_experience_config_to_db():
 
     CONFIG_NAME = "Experience"
 
-    # Headers simplificados para exemplo
     EXPERIENCE_HEADERS = {
         "Accept": "application/vnd.linkedin.normalized+json+2.1",
         "x-restli-protocol-version": "2.0.0",
