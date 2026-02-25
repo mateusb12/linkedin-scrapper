@@ -6,9 +6,6 @@ from typing import List, Dict
 DEBUG = True
 
 
-# ======================================================
-#              ESTRUTURA DE DADOS (JSON FORMATADO)
-# ======================================================
 @dataclass
 class FichaCandidato:
     vanity_name: str = ""
@@ -24,9 +21,57 @@ class FichaCandidato:
         return json.dumps(asdict(self), indent=2, ensure_ascii=False)
 
 
-# ======================================================
-#                    FILTRO DE TEXTO ÚTIL
-# ======================================================
+LIXO_EXATO = {
+    "children", "value", "namespace", "collapsed", "persistence", "role",
+    "section", "componentkey", "direction", "figure", "style", "category",
+    "icon", "display", "block", "width", "height", "text", "size", "small",
+    "location", "center", "isolation", "isolate", "triggers", "action",
+    "actions", "content", "screen", "title", "payload", "type", "click",
+    "disabled", "loading", "interop", "list", "listitem", "state", "modal",
+    "position", "button", "span", "color", "sans", "normal", "open", "start",
+    "more", "expanded", "context", "shape", "rounded", "a11ytext", "weight",
+    "default", "media", "show all", "show credential", "show all licenses",
+    "show all skills", "endorse", "horizontal", "presentation", "breadcrumb",
+    "fitcontent", "openinnewtab", "suppresshydrationwarning", "fetchpriority",
+    "expandbuttontext", "shouldcollapsenewlines", "expandbuttontextcolorexpression",
+    "maxlinecountexpression", "onshowmoreaction", "onshowlessaction",
+    "textcolorexpression", "isexpandabletextv2enabled", "designsystemimage",
+    "memorynamespace", "textprops", "fontfamily", "fontsize", "fontstyle",
+    "fontweight", "lineheight", "tagname", "textalign", "lineclamp", "wordbreak",
+    "hasshowmore", "noopoverride", "bindingkey", "expansionkey", "statevalue",
+    "renderpayload", "rooturl", "imagerenditions", "suffixurl", "selectionmethod",
+    "imageid", "aria-label", "aria-hidden", "offsetstart", "offsetend", "alignself",
+    "flexstart", "flexshrink", "booleanvalue", "intvalue", "triggerbutton",
+    "1x", "1.5x", "2x", "3x", "4x", "5x", "6x", "fillavailable", "offsettop",
+    "mensagem", "message", "ver perfil", "view profile", "p",
+    "shoulduseimagetracking", "enablemediastatsfornerds", "enablehighqualityimagerendition",
+    "require-trusted-types-for", "trusted-types", "dompurify", "goog#html", "jsecure"
+}
+
+TOXICOS = [
+    "com.linkedin.", "props:", "$type", "$case", "$undefined", "presentationstyle_",
+    "colorscheme_", "modalsize_", "position_", "linkformatting_", "urn:li:",
+    "$sreact", "proto.sdui", "width_and_height", "thumbnail for", "skills for ",
+    "profile-card", "entity_image", "interactiontypes", "viewtrackingspecs", "certificate.pdf",
+    "/in/", "?url=", "&body=", "subject=", "&intero", "%2c", "%20", "fsd_profile",
+    "profileendorseskillbuttonloading", "expandable_text_block_auto-component",
+    "experience-dividerentity", "experience-footer", "experience-position-total",
+    "profile_education_top_anchor", "profile_experience_top_anchor",
+    "company-logo_", "profile-treasury-image", "urn:li:digitalmediaasset",
+    "===", "==", "sduimodalprovider", "sduiglobalstoreprovider", "qualtricssurveycontextprovider",
+    "rtcmanager", "badgecountmanager", "debuginfoprovider", "toasts", "globalfeedback",
+    "overlaymanager", "streamingsubscribers", "interopactionsubscriber", "dialogcontainer",
+    "route", "errorpage", "&#x27;"
+]
+
+PADROES_SOCIAIS = [
+    "you both studied", "vocês estudaram",
+    "you both worked", "vocês trabalharam",
+    "you both know", "vocês conhecem",
+    "1st degree connection", "2nd degree connection", "3rd degree connection"
+]
+
+
 def eh_texto_humano(texto: str, vanity_name: str) -> bool:
     t = texto.strip()
     t_lower = t.lower()
@@ -34,112 +79,38 @@ def eh_texto_humano(texto: str, vanity_name: str) -> bool:
     if t.startswith("🧠") or "🧠" in t:
         return True
 
-    if len(t) < 5:
+    if len(t) < 3:
         return False
     if t_lower == vanity_name.lower() or t_lower == "secondary":
         return False
 
-    # Filtro para lixo de React/Webpack (Ex: 12:I["ed8c681e...])
-    if re.match(r'^\d+:[A-Z]\[".*?"', t):
+    if re.match(r'^\d+:[A-Z]\[', t):
         return False
 
-    lixo_exato = {
-        "children", "value", "namespace", "collapsed", "persistence", "role",
-        "section", "componentkey", "direction", "figure", "style", "category",
-        "icon", "display", "block", "width", "height", "text", "size", "small",
-        "location", "center", "isolation", "isolate", "triggers", "action",
-        "actions", "content", "screen", "title", "payload", "type", "click",
-        "disabled", "loading", "interop", "list", "listitem", "state", "modal",
-        "position", "button", "span", "color", "sans", "normal", "open", "start",
-        "more", "expanded", "context", "shape", "rounded", "a11ytext", "weight",
-        "default", "media", "show all", "show credential", "show all licenses",
-        "show all skills", "endorse", "horizontal", "presentation", "breadcrumb",
-        "fitcontent", "openinnewtab", "suppresshydrationwarning", "fetchpriority",
-        "expandbuttontext", "shouldcollapsenewlines", "expandbuttontextcolorexpression",
-        "maxlinecountexpression", "onshowmoreaction", "onshowlessaction",
-        "textcolorexpression", "isexpandabletextv2enabled", "designsystemimage",
-        "memorynamespace", "textprops", "fontfamily", "fontsize", "fontstyle",
-        "fontweight", "lineheight", "tagname", "textalign", "lineclamp", "wordbreak",
-        "hasshowmore", "noopoverride", "bindingkey", "expansionkey", "statevalue",
-        "renderpayload", "rooturl", "imagerenditions", "suffixurl", "selectionmethod",
-        "imageid", "aria-label", "aria-hidden", "offsetstart", "offsetend", "alignself",
-        "flexstart", "flexshrink", "booleanvalue", "intvalue", "triggerbutton",
-        "1x", "1.5x", "2x", "3x", "4x", "5x", "6x", "fillavailable", "offsettop",
-        "mensagem", "message", "ver perfil", "view profile", "p", "about", "sobre",
-        "shoulduseimagetracking", "enablemediastatsfornerds", "enablehighqualityimagerendition"
-    }
-    if t_lower in lixo_exato:
+    if t_lower in LIXO_EXATO:
         return False
 
-    toxicos = [
-        "com.linkedin.", "props:", "$type", "$case", "$undefined", "presentationstyle_",
-        "colorscheme_", "modalsize_", "position_", "linkformatting_", "urn:li:",
-        "$sreact", "proto.sdui", "width_and_height", "thumbnail for", "skills for ",
-        "profile-card", "entity_image", "interactiontypes", "viewtrackingspecs", "certificate.pdf",
-        "/in/", "?url=", "&body=", "subject=", "&intero", "%2c", "%20", "fsd_profile",
-        "profileendorseskillbuttonloading", "expandable_text_block_auto-component",
-        "experience-dividerentity", "experience-footer", "experience-position-total",
-        "profile_education_top_anchor", "profile_experience_top_anchor",
-        "company-logo_", "profile-treasury-image", "urn:li:digitalmediaasset",
-        "===", "==", "sduimodalprovider", "sduiglobalstoreprovider", "qualtricssurveycontextprovider",
-        "rtcmanager", "badgecountmanager", "debuginfoprovider", "toasts", "globalfeedback",
-        "overlaymanager", "streamingsubscribers", "interopactionsubscriber", "dialogcontainer",
-        "route", "errorpage"
-    ]
-    if any(x in t_lower for x in toxicos):
+    if any(x in t_lower for x in TOXICOS):
         return False
 
-    padroes_sociais = [
-        "you both studied", "vocês estudaram",
-        "you both worked", "vocês trabalharam",
-        "you both know", "vocês conhecem",
-        "1st degree connection", "2nd degree connection", "3rd degree connection"
-    ]
-    if any(p in t_lower for p in padroes_sociais):
+    if any(p in t_lower for p in PADROES_SOCIAIS):
         return False
 
-    if re.match(r'^[A-Za-z0-9+/=]{40,}$', t):
-        return False
-
-    if re.match(r'^[0-9\.]+(rem|em|px|vh|vw|x|%)$', t_lower):
-        return False
-
-    if t_lower.startswith("http://") or t_lower.startswith("https://"):
-        return False
-
-    if re.match(r'^\$[A-Za-z0-9\.]+$', t):
-        return False
-    if re.search(r'^\$[A-Za-z0-9]+:', t):
-        return False
-
-    if re.match(r'^[A-Za-z0-9\-_]{30,}$', t):
-        return False
-    if re.search(r'_[a-f0-9]{6,}', t):
-        return False
-
-    t_no_hyphen = t.replace("-", "")
-    if re.match(r'^[a-f0-9]{32}$', t_no_hyphen.lower()):
-        return False
+    if re.match(r'^[A-Za-z0-9+/=]{40,}$', t): return False
+    if re.match(r'^[0-9\.]+(rem|em|px|vh|vw|x|%)$', t_lower): return False
+    if t_lower.startswith("http://") or t_lower.startswith("https://"): return False
+    if re.match(r'^\$[A-Za-z0-9\.]+$', t): return False
+    if re.search(r'^\$[A-Za-z0-9]+:', t): return False
+    if re.match(r'^[A-Za-z0-9\-_]{30,}$', t): return False
+    if re.search(r'_[a-f0-9]{6,}', t): return False
+    if re.match(r'^[a-f0-9]{32}$', t.replace("-", "").lower()): return False
 
     return True
-
-
-# ======================================================
-#               NOVA EXTRAÇÃO DE STRINGS HÍBRIDA
-# ======================================================
-def extrair_todos_textos(raw_stream: str, vanity_name: str) -> List[str]:
-    textos_crus = extrair_strings_sem_filtro(raw_stream)
-    textos_limpos = []
-    for texto in textos_crus:
-        if eh_texto_humano(texto, vanity_name) and texto not in textos_limpos:
-            textos_limpos.append(texto)
-    return textos_limpos
 
 
 def extrair_strings_sem_filtro(raw_stream: str) -> List[str]:
     encontrados = []
 
-    # 1. Padrão JSON normal (textos entre aspas) com Fallback Anti-Crash
     for match in re.finditer(r'"([^"\\]*(?:\\.[^"\\]*)*)"', raw_stream):
         s_crua = match.group(1)
         try:
@@ -154,7 +125,6 @@ def extrair_strings_sem_filtro(raw_stream: str) -> List[str]:
         if txt:
             encontrados.append((match.start(), txt))
 
-    # 2. Padrão RSC / SDUI do LinkedIn (Textos soltos sem aspas)
     rsc_pattern = r':T\d+,(.*?)(?=\n[a-zA-Z_$]{1,3}:|\Z)'
     for match in re.finditer(rsc_pattern, raw_stream, flags=re.DOTALL):
         txt = match.group(1).replace('\u200b', '').replace('\xa0', ' ').strip()
@@ -166,7 +136,6 @@ def extrair_strings_sem_filtro(raw_stream: str) -> List[str]:
     out = []
     vistos = set()
     for _, txt in encontrados:
-        # Limpa Zero-Width Space invisível
         txt_clean = txt.replace('\u200b', '').strip()
         if txt_clean and txt_clean not in vistos:
             vistos.add(txt_clean)
@@ -175,9 +144,191 @@ def extrair_strings_sem_filtro(raw_stream: str) -> List[str]:
     return out
 
 
-# ======================================================
-#     PARSER PRINCIPAL - ANALISAR ARQUIVO MEGA
-# ======================================================
+def _normalize_text(t: str) -> str:
+    if not t:
+        return ""
+    t = t.replace("\\n", "\n")
+    t = t.replace("\u200b", "").replace("\xa0", " ")
+    t = re.sub(r"[ \t]+\n", "\n", t)
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    return t.strip()
+
+
+def extrair_about_generico(combined_streams: str, vanity_name: str, strings_raw: List[str] | None = None) -> str:
+    hay = combined_streams
+    low = hay.lower()
+
+    anchors = [
+        ("profile-card-about", "profile-card-about"),
+        ("aboutSection", "com.linkedin.sdui.impl.profile.components.aboutsection"),
+        ("about-word", "about"),
+    ]
+
+    start_pos = -1
+    anchor_used = None
+    for label, a in anchors:
+        p = low.find(a.lower())
+        if p != -1:
+            start_pos = p
+            anchor_used = label
+            break
+
+    if DEBUG:
+        print(f"\n🧭 ABOUT DEBUG: start_pos={start_pos} anchor_used={anchor_used}")
+
+    # fallback: via strings_raw (não é o foco agora)
+    if start_pos == -1 and strings_raw:
+        try:
+            idx = next(i for i, t in enumerate(strings_raw) if t.strip().lower() == "about")
+        except StopIteration:
+            return ""
+        buf = []
+        for j in range(idx + 1, min(len(strings_raw), idx + 80)):
+            t = strings_raw[j].strip()
+            if not t:
+                continue
+            tl = t.lower()
+            if tl in ("experience", "experiência"):
+                break
+            if "profile-card-experience" in tl or "profile_experience_top_anchor" in tl:
+                break
+            if eh_texto_humano(t, vanity_name):
+                buf.append(t)
+                if sum(len(x) for x in buf) > 2500:
+                    break
+        return _normalize_text("\n".join(buf))
+
+    if start_pos == -1:
+        return ""
+
+    window = hay[start_pos:start_pos + 200000]
+
+    # primeiro texto humano grande entre aspas após a âncora
+    candidates = []
+    for m in re.finditer(r'"([^"\\]*(?:\\.[^"\\]*)*)"', window):
+        s_crua = m.group(1)
+        try:
+            txt = json.loads(f'"{s_crua}"')
+        except:
+            txt = s_crua.replace('\\n', '\n').replace('\\"', '"')
+
+        txt = txt.replace("\u200b", "").replace("\xa0", " ").strip()
+        if not txt:
+            continue
+        if len(txt) < 80:
+            continue
+        if not eh_texto_humano(txt, vanity_name):
+            continue
+
+        score = 1 if (re.search(r'\s(at|na)\s', txt.lower()) and len(txt) < 140) else 2
+        candidates.append((score, m.start(), txt))
+        if len(candidates) >= 8:
+            break
+
+    if not candidates:
+        if DEBUG:
+            print("🧭 ABOUT DEBUG: sem candidates (strings humanas) depois da âncora.")
+        return ""
+
+    candidates.sort(key=lambda x: (-x[0], x[1]))
+    rel_start = candidates[0][1]
+    about_start = start_pos + rel_start
+
+    if DEBUG:
+        print(f"🧭 ABOUT DEBUG: about_start(abs)={about_start} rel_start={rel_start}")
+
+    chunk = hay[about_start:about_start + 20000]
+
+    if DEBUG:
+        head = chunk[:140].replace("\n", "\\n")
+        tail = chunk[-140:].replace("\n", "\\n")
+        print(f"🧭 ABOUT DEBUG: chunk HEAD(before trim)={head!r}")
+        print(f"🧭 ABOUT DEBUG: chunk TAIL(before trim)={tail!r}")
+
+    # ======================================================
+    # START-TRIM (debugado)
+    # - remove prefixo tipo "e:T5d3," / "13:T834," mesmo se não tiver boundary bonitinho
+    # ======================================================
+    prefix_re = re.compile(r'([A-Za-z0-9]{1,4}:T[0-9A-Za-z]{2,8},)')
+    m = prefix_re.search(chunk[:220])
+    if DEBUG:
+        if m:
+            print("🧭 ABOUT DEBUG: prefix_match=", repr(m.group(1)), "at=", m.start())
+        else:
+            print("🧭 ABOUT DEBUG: prefix_match=None at=None")
+
+    if m:
+        chunk = chunk[m.end():]
+
+    # corta lixo antes da primeira letra (se sobrar algum ]}]] etc)
+    m2 = re.search(r'[A-Za-zÀ-ÿ]', chunk[:200])
+    if DEBUG:
+        print(f"🧭 ABOUT DEBUG: first_letter_pos={m2.start() if m2 else None}")
+
+    if m2 and 0 < m2.start() < 120:
+        chunk = chunk[m2.start():]
+
+    if DEBUG:
+        head2 = chunk[:140].replace("\n", "\\n")
+        print(f"🧭 ABOUT DEBUG: chunk HEAD(after trim)={head2!r}")
+
+    # ======================================================
+    # STOP (debugado): corta na primeira estrutura SDUI / próxima seção
+    # ======================================================
+    stop_patterns = [
+        ('STOP_f', '\nf:["$","$'),
+        ('STOP_a', '\na:["$","$'),
+        ('STOP_0div', '\n0:["$","div'),
+        ('STOP_stream_I', '\n14:I['),
+        ('STOP_experience_card', 'profile-card-experience'),
+        ('STOP_experience_anchor', 'profile_experience_top_anchor'),
+        ('STOP_experience_word', '\nExperience\n'),
+        ('STOP_experiencia_word', '\nExperiência\n'),
+    ]
+
+    stop_pos = None
+    stop_hit = None
+    chunk_low = chunk.lower()
+    for label, sp in stop_patterns:
+        p = chunk_low.find(sp.lower())
+        if p != -1:
+            if stop_pos is None or p < stop_pos:
+                stop_pos = p
+                stop_hit = (label, sp, p)
+
+    if DEBUG:
+        print(f"🧭 ABOUT DEBUG: stop_hit={stop_hit}")
+
+        # mostra um preview ao redor do stop, se houver
+        if stop_pos is not None:
+            around = chunk[max(0, stop_pos - 60): stop_pos + 120].replace("\n", "\\n")
+            print(f"🧭 ABOUT DEBUG: around_stop={around!r}")
+
+    if stop_pos is not None and stop_pos > 50:
+        chunk = chunk[:stop_pos]
+
+    chunk = _normalize_text(chunk)
+
+    # corte final anti-contaminação (sem prints)
+    contaminations = [
+        'a:["$","$',
+        'f:["$","$',
+        '0:["$","div',
+        'proto.sdui',
+        'com.linkedin.sdui',
+    ]
+    cl = chunk.lower()
+    cut2 = None
+    for c in contaminations:
+        p = cl.find(c)
+        if p != -1:
+            cut2 = p if cut2 is None else min(cut2, p)
+    if cut2 is not None and cut2 > 50:
+        chunk = chunk[:cut2].strip()
+
+    return chunk
+
+
 def analyze_mega_file(vanity_name: str, file_path: str) -> FichaCandidato:
     try:
         with open(file_path, "r", encoding="utf-8") as f:
@@ -203,155 +354,35 @@ def analyze_mega_file(vanity_name: str, file_path: str) -> FichaCandidato:
             nome_escaped = re.escape(ficha.nome_completo)
             regex_headline = rf'>{nome_escaped}</[a-zA-Z0-9]+>\s*(?:<[^>]+>\s*)*([^<]+)</'
             headline_match = re.search(regex_headline, main_html)
-
             if headline_match:
                 ficha.headline = headline_match.group(1).strip()
                 if len(ficha.headline) < 5 or ficha.headline.lower() == "linkedin":
                     ficha.headline = ""
 
     combined_streams = (
-            raw_data.get("ProfileMain", "") +
-            raw_data.get("ProfileAboveActivity", "") +
+            raw_data.get("ProfileMain", "") + "\n" +
+            raw_data.get("ProfileAboveActivity", "") + "\n" +
             raw_data.get("ProfileBelowActivity", "")
     )
 
-    print(f"\n\n=======================================================")
-    print(f"🕵️ DOSSIÊ DE DEBUG DO ABOUT: {ficha.nome_completo}")
-    print(f"=======================================================")
-
     strings_raw = extrair_strings_sem_filtro(combined_streams)
+    textos_limpos = [t for t in strings_raw if eh_texto_humano(t, vanity_name)]
 
-    # Pre-filtragem pesada para não lidar com lixo
-    textos_limpos = []
-    for t in strings_raw:
-        if eh_texto_humano(t, vanity_name) and t not in textos_limpos:
-            textos_limpos.append(t)
+    ficha.resumo_about = extrair_about_generico(combined_streams, vanity_name, strings_raw=strings_raw)
 
-    # ======================================================
-    # ETAPA INVERTIDA: Extrair Experiências/Educação PRIMEIRO
-    # ======================================================
+    if DEBUG:
+        if ficha.resumo_about:
+            print("\n✅ ABOUT (genérico) ENCONTRADO!")
+            print(f"   len={len(ficha.resumo_about)}")
+            print(f"   preview={ficha.resumo_about[:160].replace(chr(10), ' ')}...")
+        else:
+            print("\n❌ ABOUT (genérico) NÃO encontrado.")
+
     dados_estruturados = agrupar_dados_estruturados(textos_limpos)
     ficha.experiencias = dados_estruturados["experiencias"]
     ficha.formacao_academica = dados_estruturados["formacao_academica"]
     ficha.licencas_e_certificados = dados_estruturados["licencas_e_certificados"]
     ficha.competencias = dados_estruturados["competencias"]
-
-    # POP ESTRATÉGICO: Coleta todas as descrições/títulos já pertencentes a vagas/formação
-    textos_usados = set()
-    for exp in ficha.experiencias:
-        if exp.get("descricao"): textos_usados.add(exp["descricao"])
-        if exp.get("cargo"): textos_usados.add(exp["cargo"])
-        if exp.get("empresa"): textos_usados.add(exp["empresa"])
-    for edu in ficha.formacao_academica:
-        if edu.get("descricao"): textos_usados.add(edu["descricao"])
-        if edu.get("instituicao"): textos_usados.add(edu["instituicao"])
-        if edu.get("curso"): textos_usados.add(edu["curso"])
-    for cert in ficha.licencas_e_certificados:
-        if cert.get("nome"): textos_usados.add(cert["nome"])
-    if ficha.headline:
-        textos_usados.add(ficha.headline)
-
-    STOP_SECTIONS = {
-        "about", "sobre", "sobre mim",
-        "top skills", "principais competências", "skills",
-        "experience", "experiência",
-        "education", "formação acadêmica", "formação",
-        "projects", "projetos",
-        "activity", "atividade",
-        "featured", "destaques",
-    }
-
-    def is_section_header(s: str) -> bool:
-        return s.strip().lower() in STOP_SECTIONS
-
-    def looks_like_skills_line(s: str) -> bool:
-        if "•" in s and "\n" not in s:
-            parts = [p.strip() for p in s.split("•") if p.strip()]
-            if len(parts) >= 3 and all(len(p) < 60 for p in parts):
-                return True
-        return False
-
-    about_text = ""
-    anchor_idx = None
-
-    # Remove as informações já utilizadas do escopo de análise do About
-    textos_disponiveis = [t for t in textos_limpos if t not in textos_usados]
-
-    # TENTATIVA 1: O bloco de texto JÁ CONTÉM o título (Ex: Adriano Monteiro com o cérebro)
-    for i, t in enumerate(textos_disponiveis):
-        t_low = t.lower()
-        t_clean = re.sub(r'^[\W_]+', '', t_low)
-
-        if len(t) > 60 and (t_clean.startswith("sobre") or t_clean.startswith("about") or "🧠" in t_low):
-            about_text = t
-            print(f"🎯 [MÉTODO 1] ABOUT CAPTURADO EM BLOCO ÚNICO!")
-            break
-
-    # TENTATIVA 2: Busca por âncora tradicional no payload original (strings_raw tem a ordem correta)
-    if not about_text:
-        for i, t in enumerate(strings_raw):
-            t_low = t.lower()
-            if t_low in {"about", "sobre", "sobre mim"}:
-                anchor_idx = i
-
-        if anchor_idx is not None:
-            about_lines = []
-            print(f"⚓ [MÉTODO 2] Âncora encontrada no índice [{anchor_idx}].")
-            for j in range(anchor_idx + 1, min(anchor_idx + 150, len(strings_raw))):
-                st = strings_raw[j].strip()
-                if not st: continue
-
-                if is_section_header(st): break
-                if not eh_texto_humano(st, vanity_name): continue
-                if st in textos_usados: continue  # <- O "POP" aplicado! Pula o que já foi usado
-                if looks_like_skills_line(st): continue
-
-                low = st.lower()
-                if low in {"see more", "ver mais", "show more", "mostrar mais", "edit", "editar"}: continue
-
-                tokens = st.split()
-                if tokens and all(re.match(r'^_?[a-f0-9]{6,10}$', tk) for tk in tokens): continue
-                if " " not in st and len(st) < 15: continue
-
-                about_lines.append(st)
-
-            about_text = "\n".join(about_lines).strip()
-            if about_text:
-                print(f"✅ [MÉTODO 2] ABOUT FINALIZADO COM SUCESSO via âncora.")
-
-    # TENTATIVA 3: A BALA DE PRATA (Maior Bloco de Texto Descolado)
-    if not about_text:
-        print("⚠ [FALLBACK] Âncora falhou. Procurando o maior bloco de texto livre no payload...")
-        maior_bloco = ""
-
-        for t in textos_disponiveis:
-            # Avalia se a string tem cara de texto livre (não é apenas uma lista de palavras soltas)
-            densidade_espacos = t.count(" ") / len(t) if len(t) > 0 else 0
-
-            if len(t) > len(maior_bloco) and densidade_espacos > 0.05:  # Pelo menos 5% de espaços
-                t_low = t.lower()
-                # Impede que ele pegue cabeçalhos, cargos isolados ou recomendações
-                if is_section_header(t): continue
-                if " at " in t_low and len(t) < 100: continue
-                if " na " in t_low and len(t) < 100: continue
-                if "com.linkedin." in t_low: continue
-                if re.match(r'^\d+:[A-Z]\[', t): continue
-
-                maior_bloco = t
-
-        if len(maior_bloco) > 100:
-            about_text = maior_bloco
-            print(f"🚀 [MÉTODO 3] SUCESSO! About capturado via Fallback do Maior Bloco ({len(about_text)} caracteres).")
-
-    print(f"=======================================================\n")
-
-    if about_text:
-        # LIMPEZA FINAL DO ABOUT: Remove sujeiras estruturais (caso Adriano Monteiro)
-        about_text = re.sub(r'a:\[.*?\]$', '', about_text, flags=re.DOTALL)  # Corta final zoado de json
-        about_text = re.sub(r'\{"textProps":.*$', '', about_text, flags=re.DOTALL)  # Corta outro final zoado
-        about_text = about_text.replace("\\n", "\n").strip()
-
-    ficha.resumo_about = about_text
 
     ficha_path = f"ficha_{vanity_name}.json"
     with open(ficha_path, "w", encoding="utf-8") as f:
@@ -360,9 +391,6 @@ def analyze_mega_file(vanity_name: str, file_path: str) -> FichaCandidato:
     return ficha
 
 
-# ======================================================
-#            AGRUPAMENTO ESTRUTURADO (EXPERIENCIAS)
-# ======================================================
 def agrupar_dados_estruturados(textos: List[str]) -> Dict:
     experiencias = []
     formacao = []
@@ -370,7 +398,8 @@ def agrupar_dados_estruturados(textos: List[str]) -> Dict:
     competencias = set()
 
     date_regex = re.compile(
-        r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}|\b\d{4}\s*[-–]\s*(?:\d{4}|Present|Atual)\b)')
+        r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}|\b\d{4}\s*[-–]\s*(?:\d{4}|Present|Atual)\b)'
+    )
     modelos_trabalho = {"On-site", "Hybrid", "Remote", "Presencial", "Híbrido", "Remoto"}
 
     jobs_temp = []
@@ -378,7 +407,6 @@ def agrupar_dados_estruturados(textos: List[str]) -> Dict:
     ultima_empresa_lida = ""
 
     for i, t in enumerate(textos):
-
         if date_regex.search(t) and "Issued" not in t and "Emitido" not in t:
             role = ""
             empresa = ""
@@ -454,89 +482,7 @@ def agrupar_dados_estruturados(textos: List[str]) -> Dict:
                 curso = textos[i + 1] if i + 1 < len(textos) else ""
                 if len(curso) > 80:
                     curso = ""
-
-                edu_temp.append({
-                    "instituicao": instituicao,
-                    "curso": curso,
-                    "header_idx": i
-                })
-
-    for job in jobs_temp:
-        expected_tag = f"{job['cargo']} at {job['empresa']}".lower()
-        expected_tag_br = f"{job['cargo']} na {job['empresa']}".lower()
-        tag_found = False
-
-        for i in range(job["date_idx"] + 1, len(textos)):
-            t_low = textos[i].lower()
-            if t_low == expected_tag or t_low == expected_tag_br:
-                tag_found = True
-                if i - 1 > job["loc_idx"] and len(textos[i - 1]) > 40:
-                    job["descricao"] = textos[i - 1]
-
-                if i + 1 < len(textos):
-                    skill_str = textos[i + 1]
-                    if re.search(r'(and|e)\s*\+\d+\s*(skills?|competências?)', skill_str.lower()):
-                        s_raw = re.sub(r'(and|e)\s*\+\d+\s*(skills?|competências?)', '', skill_str,
-                                       flags=re.IGNORECASE).replace(" and ", ", ").replace(" e ", ", ")
-                        job["tecnologias"] = [s.strip() for s in s_raw.split(",") if s.strip() and len(s.strip()) < 30]
-                break
-
-        if not tag_found:
-            desc_cand_idx = job["loc_idx"] + 1
-            if desc_cand_idx < len(textos):
-                cand = textos[desc_cand_idx]
-                if len(cand) > 60 and " at " not in cand and not date_regex.search(cand):
-                    job["descricao"] = cand
-
-                    skill_cand_idx = desc_cand_idx + 1
-                    if skill_cand_idx < len(textos):
-                        skill_str = textos[skill_cand_idx]
-                        if re.search(r'(and|e)\s*\+\d+\s*(skills?|competências?)', skill_str.lower()):
-                            s_raw = re.sub(r'(and|e)\s*\+\d+\s*(skills?|competências?)', '', skill_str,
-                                           flags=re.IGNORECASE).replace(" and ", ", ").replace(" e ", ", ")
-                            job["tecnologias"] = [s.strip() for s in s_raw.split(",") if
-                                                  s.strip() and len(s.strip()) < 30]
-
-        for skill in job["tecnologias"]:
-            competencias.add(skill)
-
-    for edu in edu_temp:
-        h_idx = edu["header_idx"]
-        desc_idx = h_idx + 2 if edu["curso"] else h_idx + 1
-        if desc_idx < len(textos):
-            cand = textos[desc_idx]
-            if len(cand) > 40 and not date_regex.search(
-                    cand) and " at " not in cand and cand.lower() != "certifications" and cand.lower() != "licenças e certificados":
-                edu["descricao"] = cand
-
-    for i, t in enumerate(textos):
-        if "Issued" in t or "Emitido" in t:
-            nome_cert = textos[i - 2] if i > 1 else (textos[i - 1] if i > 0 else "")
-            instituicao = textos[i - 1] if i > 0 else ""
-
-            if len(nome_cert) > 60:
-                nome_cert = textos[i - 1] if i > 0 else ""
-                instituicao = ""
-
-            if not any(c.get("nome") == nome_cert for c in certificados):
-                certificados.append({
-                    "nome": nome_cert,
-                    "instituicao": instituicao,
-                    "data_emissao": t.replace("Issued ", "").replace("Emitido ", "")
-                })
-
-            if i + 1 < len(textos):
-                cand_name = textos[i + 1]
-                if 5 < len(cand_name) < 50 and " at " not in cand_name and cand_name not in ["certifications",
-                                                                                             "expression",
-                                                                                             "licenças e certificados"] and not re.search(
-                    r'(and|e)\s*\+\d+\s*(skills?)', cand_name.lower()):
-                    if not any(c.get("nome") == cand_name for c in certificados):
-                        certificados.append({
-                            "nome": cand_name,
-                            "instituicao": instituicao,
-                            "data_emissao": t.replace("Issued ", "").replace("Emitido ", "")
-                        })
+                edu_temp.append({"instituicao": instituicao, "curso": curso, "header_idx": i})
 
     for job in jobs_temp:
         job.pop("date_idx", None)

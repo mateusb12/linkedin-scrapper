@@ -1,6 +1,6 @@
 import re
 
-from flask import Blueprint, jsonify, Response, stream_with_context
+from flask import Blueprint, jsonify, Response, stream_with_context, request
 import json
 
 from database.database_connection import get_db_session
@@ -126,6 +126,59 @@ def reset_bugged_profiles():
     except Exception as e:
         db.rollback()
         return jsonify({"error": str(e)}), 500
+
+    finally:
+        db.close()
+
+
+@connections_bp.route("/refresh-profile", methods=["POST"])
+def refresh_profile():
+    """Força o scrape síncrono de APENAS UM perfil por ID ou Nome"""
+    data = request.get_json()
+    search_id = data.get("id")
+    search_name = data.get("name")
+
+    db = get_db_session()
+    try:
+        if search_id:
+            conn = db.query(LinkedInConnection).filter_by(id=search_id).first()
+        elif search_name:
+            # ilike permite buscar por "diana", "Diana Honcharova", etc.
+            conn = db.query(LinkedInConnection).filter(LinkedInConnection.name.ilike(f"%{search_name}%")).first()
+        else:
+            return jsonify({"error": "Forneça 'id' ou 'name'"}), 400
+
+        if not conn:
+            return jsonify({"error": "Perfil não encontrado no banco."}), 404
+
+        print(f"\n\n=======================================================")
+        print(f"🔄 INICIANDO REFRESH FORÇADO PARA: {conn.name}")
+        print(f"=======================================================")
+
+        enricher = ProfileEnrichmentService(debug=True)
+
+        try:
+            # 1. Puxa os dados crus novamente do LinkedIn
+            raw_data = enricher._fetch_raw_profile_data(conn.vanity_name)
+
+            # 2. Roda a nossa engine de análise
+            ficha = enricher._analyze_raw_data(conn.vanity_name, raw_data)
+
+            if ficha:
+                # 3. Atualiza o banco direto
+                enricher._update_connection_in_db(db, conn, ficha)
+                db.commit()
+                return jsonify({
+                    "status": "ok",
+                    "message": f"Perfil de {conn.name} atualizado com sucesso!",
+                    "data": conn.to_dict()
+                }), 200
+            else:
+                return jsonify({"error": "Não foi possível gerar a ficha deste perfil."}), 500
+
+        except Exception as e:
+            db.rollback()
+            return jsonify({"error": f"Erro durante o scrape: {str(e)}"}), 500
 
     finally:
         db.close()
