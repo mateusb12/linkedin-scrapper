@@ -231,6 +231,12 @@ export default function Connections() {
                     {displayHeadline}
                   </div>
 
+                  {isExpanded && conn.about && (
+                    <p className="text-sm mb-3 text-gray-700 dark:text-gray-300 mt-2 text-left whitespace-pre-line">
+                      {conn.about}
+                    </p>
+                  )}
+
                   <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-5 flex items-center gap-1.5 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full">
                     <Clock size={12} />{" "}
                     {conn.connected_time || "Recently Added"}
