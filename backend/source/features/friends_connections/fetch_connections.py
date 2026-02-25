@@ -46,34 +46,35 @@ class LinkedInConnectionsFetcher:
             db.close()
 
     def fetch_all(self, batch_size: int = 10, max_pages: int = 50) -> List[Dict]:
-        """Varre as páginas, salva as URLs no banco e para ao encontrar cache."""
+        """Varre as páginas, salva as URLs no banco e E-MITE EVENTOS em tempo real."""
         db = get_db_session()
         try:
             start_index = 0
             pages_fetched = 0
             has_more = True
             found_existing = False
+            new_conns = 0
+
+            yield {"status": "start", "message": "Iniciando varredura na rede de contatos..."}
 
             while has_more and pages_fetched < max_pages and not found_existing:
-                if self.debug:
-                    print(f"🔄 Buscando conexões [Offset: {start_index}]...")
+                yield {"status": "progress", "message": f"Lendo página de conexões {pages_fetched + 1}..."}
 
                 current_payload = self.base_body_str.replace("{START_INDEX}", str(start_index))
                 req = RawStringRequest(method=self.method, url=self.url, body_str=current_payload, debug=False)
                 response = self.client.execute(req)
 
                 if response.status_code != 200:
-                    print(f"❌ Falha no LinkedIn API (Status {response.status_code})")
+                    yield {"status": "error", "message": f"🚨 Erro do LinkedIn: Status {response.status_code}"}
                     break
 
                 content_type = response.headers.get("Content-Type", "")
 
-                # --- 1. Formata a Resposta ---
+                # --- Formata a Resposta ---
                 if "application/octet-stream" in content_type:
                     raw_objects = []
                     for line in response.text.split('\n'):
-                        if not line.strip() or ':' not in line:
-                            continue
+                        if not line.strip() or ':' not in line: continue
                         try:
                             _, json_part = line.split(':', 1)
                             raw_objects.append(json.loads(json_part))
@@ -89,66 +90,52 @@ class LinkedInConnectionsFetcher:
                     except json.JSONDecodeError:
                         break
 
-                # --- 2. Extrai as URLs ---
+                # --- Extrai as URLs ---
                 extracted_profiles = self._extract_profiles(data, is_rsc="application/octet-stream" in content_type)
 
                 if not extracted_profiles:
-                    if self.debug:
-                        print("✅ Nenhuma conexão retornada. Fim da rede.")
+                    yield {"status": "info", "message": "Fim da rede alcançado."}
                     has_more = False
                     break
 
-                # --- 3. PERSISTÊNCIA NO BANCO (CACHE INTELIGENTE) ---
+                # --- PERSISTÊNCIA (CACHE INTELIGENTE) ---
                 for prof in extracted_profiles:
                     p_url = prof["profile_url"]
-
-                    # Verifica se já existe na tabela linkedin_connections
                     existing = db.query(LinkedInConnection).filter_by(profile_url=p_url).first()
 
                     if existing:
-                        if self.debug:
-                            print(f"🛑 [CACHE HIT] URL {p_url} já no BD. Parando loop.")
                         found_existing = True
-                        break  # Para de adicionar
+                        break
                     else:
-                        # Extrai a vanity_name da URL para criar um nome amigável
                         v_name = None
                         m = re.search(r'/in/([^/]+)', p_url)
-                        if m:
-                            v_name = m.group(1)
-
+                        if m: v_name = m.group(1)
                         display_name = v_name.replace('-', ' ').title() if v_name else "LinkedIn Connection"
 
-                        # Grava o novo registro no banco
                         new_conn = LinkedInConnection(
-                            profile_url=p_url,
-                            name=display_name,
-                            headline="1st Degree Connection",
-                            image_url=None,
-                            connected_time="",
-                            vanity_name=v_name,
-                            is_fully_scraped=False
+                            profile_url=p_url, name=display_name, headline="1st Degree Connection",
+                            image_url=None, connected_time="", vanity_name=v_name, is_fully_scraped=False
                         )
                         db.add(new_conn)
-                        if self.debug:
-                            print(f"➕ [DB] Salvo: {p_url}")
+                        new_conns += 1
 
-                db.commit()  # Efetiva o lote salvo
+                db.commit()
 
                 if found_existing:
+                    yield {"status": "info", "message": "Conexões antigas encontradas. Encerrando varredura."}
                     break
 
                 start_index += batch_size
                 pages_fetched += 1
+
+                yield {"status": "wait", "message": "Pausa anti-block..."}
                 time.sleep(1.5)
 
-            # --- 4. Retorno: Puxa o banco inteiro para o Frontend ---
-            all_db_connections = db.query(LinkedInConnection).order_by(LinkedInConnection.id.desc()).all()
-            return [conn.to_dict() for conn in all_db_connections]
+            yield {"status": "complete", "message": f"Varredura finalizada. +{new_conns} perfis novos adicionados."}
 
         except Exception as e:
             db.rollback()
-            raise e
+            yield {"status": "error", "message": f"Falha na varredura: {str(e)}"}
         finally:
             db.close()
 

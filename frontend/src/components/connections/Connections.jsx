@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   User,
   Link as LinkIcon,
@@ -24,28 +24,79 @@ export default function Connections() {
     return "LinkedIn Connection";
   };
 
+  const loadDatabase = async () => {
+    try {
+      const response = await fetch("http://localhost:5000/connections/");
+      const data = await response.json();
+      setConnections(data);
+    } catch (error) {
+      console.error("Erro ao carregar banco:", error);
+    }
+  };
+
+  useEffect(() => {
+    loadDatabase();
+  }, []);
+
   const handleFetch = async () => {
     setLoading(true);
-    setStatus("Sincronizando...");
+    setStatus("Conectando ao bot...");
 
     try {
       const response = await fetch("http://localhost:5000/connections/sync");
-      const result = await response.json();
+      if (!response.ok) throw new Error("Erro de comunicação com o servidor.");
 
-      if (!response.ok) {
-        throw new Error(result.error || "Erro desconhecido");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.substring(6));
+
+              if (["start", "progress", "wait"].includes(data.status)) {
+                if (data.total) {
+                  setStatus(
+                    `${data.message} (${data.processed}/${data.total})`,
+                  );
+                } else {
+                  setStatus(data.message);
+                }
+              } else if (data.status === "error") {
+                setStatus(`❌ ${data.message}`);
+
+                setTimeout(() => {
+                  setLoading(false);
+                  setStatus("");
+                }, 5000);
+                return;
+              } else if (data.status === "complete" || data.status === "info") {
+                setStatus(`✅ ${data.message}`);
+
+                loadDatabase();
+              }
+            } catch (e) {
+              console.error("Erro ao processar linha:", e, "Linha:", line);
+            }
+          }
+        }
       }
-
-      setConnections(result.data);
-
-      setStatus(result.message || "Concluído!");
-
-      setTimeout(() => setStatus(""), 3000);
     } catch (error) {
-      console.error(error);
       setStatus(`Erro: ${error.message}`);
     } finally {
-      setLoading(false);
+      setTimeout(() => {
+        setLoading(false);
+        setStatus("");
+      }, 3000);
     }
   };
 
@@ -65,7 +116,7 @@ export default function Connections() {
         <button
           onClick={handleFetch}
           disabled={loading}
-          className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2.5 rounded-lg font-bold flex items-center gap-2 disabled:opacity-70 transition-colors shadow-sm"
+          className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2.5 rounded-lg font-bold flex items-center gap-2 disabled:opacity-70 transition-colors shadow-sm min-w-[200px] justify-center"
         >
           {loading ? (
             <>
@@ -89,7 +140,7 @@ export default function Connections() {
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 ></path>
               </svg>
-              {status}
+              <span className="text-sm">{status}</span>
             </>
           ) : (
             "Sync Connections"
@@ -113,12 +164,20 @@ export default function Connections() {
             return (
               <div
                 key={index}
-                className="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6 flex flex-col items-center text-center transition-transform hover:-translate-y-1 hover:shadow-lg relative overflow-hidden"
+                className={`bg-white dark:bg-gray-800 rounded-xl shadow-md border ${conn.is_fully_scraped ? "border-purple-400 dark:border-purple-600" : "border-gray-200 dark:border-gray-700"} p-6 flex flex-col items-center text-center transition-transform hover:-translate-y-1 hover:shadow-lg relative overflow-hidden`}
               >
                 <div className="absolute top-0 left-0 w-full h-16 bg-gradient-to-r from-purple-500 to-blue-500 opacity-20 dark:opacity-40"></div>
 
                 <div className="w-24 h-24 rounded-full bg-gray-100 dark:bg-gray-700 mb-4 mt-2 overflow-hidden border-4 border-white dark:border-gray-800 relative z-10 shadow-sm flex items-center justify-center">
-                  <User className="w-12 h-12 text-gray-400 dark:text-gray-500" />
+                  {conn.image ? (
+                    <img
+                      src={conn.image}
+                      alt={displayName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="w-12 h-12 text-gray-400 dark:text-gray-500" />
+                  )}
                 </div>
 
                 <h3
