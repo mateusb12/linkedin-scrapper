@@ -68,22 +68,29 @@ class LinkedInConnectionsFetcher:
                     yield {"status": "error", "message": f"🚨 Erro do LinkedIn: Status {response.status_code}"}
                     break
 
+                # -----------------------
+                # 🔤 FIX UTF-8 AQUI
+                # -----------------------
+                raw_body = response.content.decode("utf-8", errors="replace")
+
                 content_type = response.headers.get("Content-Type", "")
 
                 # --- Formata a Resposta ---
                 if "application/octet-stream" in content_type:
                     raw_objects = []
-                    for line in response.text.split('\n'):
-                        if not line.strip() or ':' not in line: continue
+                    for line in raw_body.split('\n'):
+                        if not line.strip() or ':' not in line:
+                            continue
                         try:
                             _, json_part = line.split(':', 1)
                             raw_objects.append(json.loads(json_part))
                         except Exception:
                             pass
                     data = {"rsc_dump": raw_objects}
+
                 else:
                     try:
-                        clean_text = response.text.lstrip()
+                        clean_text = raw_body.lstrip()
                         if clean_text.startswith(")]}'"):
                             clean_text = clean_text.split("\n", 1)[-1]
                         data = json.loads(clean_text)
@@ -109,12 +116,19 @@ class LinkedInConnectionsFetcher:
                     else:
                         v_name = None
                         m = re.search(r'/in/([^/]+)', p_url)
-                        if m: v_name = m.group(1)
+                        if m:
+                            v_name = m.group(1)
+
                         display_name = v_name.replace('-', ' ').title() if v_name else "LinkedIn Connection"
 
                         new_conn = LinkedInConnection(
-                            profile_url=p_url, name=display_name, headline="1st Degree Connection",
-                            image_url=None, connected_time="", vanity_name=v_name, is_fully_scraped=False
+                            profile_url=p_url,
+                            name=display_name,
+                            headline="1st Degree Connection",
+                            image_url=None,
+                            connected_time="",
+                            vanity_name=v_name,
+                            is_fully_scraped=False
                         )
                         db.add(new_conn)
                         new_conns += 1
@@ -166,6 +180,7 @@ class LinkedInConnectionsFetcher:
                                 }
                 for item in obj:
                     _scan(item)
+
             elif isinstance(obj, dict):
                 for value in obj.values():
                     _scan(value)
