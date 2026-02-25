@@ -2,12 +2,11 @@ import json
 import os
 import time
 import random
-from dataclasses import asdict
 
 from database.database_connection import get_db_session
 from models.connection_models import LinkedInConnection
 from source.features.fetch_curl.fetch_service import FetchService
-from source.features.playwright_scrapper.analyze_profile import analyze_mega_file, FichaCandidato
+from source.features.friends_connections.analyze_profile import analyze_mega_file, FichaCandidato
 
 import html
 
