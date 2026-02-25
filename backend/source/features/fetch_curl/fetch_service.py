@@ -298,27 +298,6 @@ class FetchService:
 
             method = record.method or "GET"
 
-            # ==========================================
-            # 🔍 RAIOS-X DA REQUISIÇÃO (PRINT DEBUG)
-            # ==========================================
-            print(f"\n{'=' * 50}")
-            print(f"📤 [DEBUG] ENVIANDO REQUISIÇÃO: {config_name}")
-            print(f"URL:    {url}")
-            print(f"METHOD: {method}")
-            print("\nHEADERS ENVIADOS:")
-            for k, v in headers.items():
-                # Trunca o Cookie para não poluir demais a tela, mas mostra o csrf e tokens
-                if k.lower() == 'cookie':
-                    print(f"  {k}: {v[:100]}... [TRUNCADO]")
-                else:
-                    print(f"  {k}: {v}")
-
-            if body_bytes:
-                print(f"\nBODY ENVIADO:\n{body_bytes.decode('utf-8')}")
-            else:
-                print("\nBODY ENVIADO: (Nenhum)")
-            print(f"{'=' * 50}\n")
-
             # 4. Construir e Executar a Requisição
             req = requests.Request(
                 method=method,
@@ -332,19 +311,7 @@ class FetchService:
 
             content_type = response.headers.get("Content-Type", "")
 
-            # ==========================================
-            # 🔍 RAIOS-X DA RESPOSTA (PRINT DEBUG)
-            # ==========================================
-            print(f"📥 [DEBUG] RESPOSTA RECEBIDA: {config_name}")
-            print(f"STATUS: {response.status_code}")
-            print("HEADERS RECEBIDOS:")
-            for k, v in response.headers.items():
-                print(f"  {k}: {v}")
-
             if response.status_code != 200:
-                print(f"\n❌ ERRO {response.status_code}. CONTEÚDO DA RESPOSTA:")
-                print(response.text[:1000])  # Mostra os primeiros 1000 caracteres do erro
-                print(f"{'=' * 50}\n")
                 return None
 
             print(f"{'=' * 50}\n")

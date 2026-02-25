@@ -1,3 +1,5 @@
+import re
+
 from flask import Blueprint, jsonify, Response, stream_with_context
 import json
 
@@ -73,11 +75,53 @@ def reset_one():
         conn.image_url = None
         conn.headline = None
         conn.connected_time = ""
-        conn.is_fully_scraped = 0
+        conn.is_fully_scraped = False
 
         db.commit()
 
         return jsonify({"status": "ok", "reset_id": conn_id}), 200
+
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        db.close()
+
+
+@connections_bp.route("/reset-bugged", methods=["POST"])
+def reset_bugged_profiles():
+    """
+    RESET ALL:
+    Reseta todos os perfis, limpando dados enriquecidos (about, experiências, etc)
+    e marcando is_fully_scraped = False, igual ao UPDATE que você roda no sqlite3.
+    """
+    db = get_db_session()
+    try:
+        # Faz o UPDATE em todas as linhas da tabela linkedin_connections
+        affected = db.query(LinkedInConnection).update(
+            {
+                LinkedInConnection.about: None,
+                LinkedInConnection.experiences: None,
+                LinkedInConnection.education: None,
+                LinkedInConnection.certifications: None,
+                LinkedInConnection.skills: None,
+                LinkedInConnection.image_url: None,
+                LinkedInConnection.headline: None,
+                LinkedInConnection.connected_time: "",
+                LinkedInConnection.is_fully_scraped: False,
+            },
+            synchronize_session=False,  # não precisa sincronizar objetos em memória
+        )
+
+        db.commit()
+
+        return jsonify(
+            {
+                "status": "ok",
+                "message": f"{affected} perfis foram resetados (reset all).",
+            }
+        ), 200
 
     except Exception as e:
         db.rollback()
