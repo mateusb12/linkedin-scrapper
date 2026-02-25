@@ -108,7 +108,8 @@ class LinkedInConnectionsFetcher:
                 # --- PERSISTÊNCIA (CACHE INTELIGENTE) ---
                 for prof in extracted_profiles:
                     p_url = prof["profile_url"]
-                    existing = db.query(LinkedInConnection).filter_by(profile_url=p_url).first()
+                    existing = db.query(LinkedInConnection).filter_by(profile_url=p_url).order_by(
+                        LinkedInConnection.name.asc()).first()
 
                     if existing:
                         found_existing = True

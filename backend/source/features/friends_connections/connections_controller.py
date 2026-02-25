@@ -14,7 +14,7 @@ def get_connections():
     """Retorna os dados do banco para preencher a tela inicialmente."""
     db = get_db_session()
     try:
-        conns = db.query(LinkedInConnection).order_by(LinkedInConnection.id.desc()).all()
+        conns = db.query(LinkedInConnection).order_by(LinkedInConnection.name.asc()).all()
         return jsonify([c.to_dict() for c in conns]), 200
     finally:
         db.close()
@@ -46,3 +46,42 @@ def sync_connections_stream():
             db.close()
 
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
+
+
+@connections_bp.route("/reset-one", methods=["POST"])
+def reset_one():
+    from flask import request
+    db = get_db_session()
+    try:
+        data = request.get_json()
+        conn_id = data.get("id")
+
+        if not conn_id:
+            return jsonify({"error": "id obrigatório"}), 400
+
+        conn = db.query(LinkedInConnection).filter_by(id=conn_id).first()
+
+        if not conn:
+            return jsonify({"error": "perfil não encontrado"}), 404
+
+        # apaga dados enriquecidos
+        conn.about = None
+        conn.experiences = None
+        conn.education = None
+        conn.certifications = None
+        conn.skills = None
+        conn.image_url = None
+        conn.headline = None
+        conn.connected_time = ""
+        conn.is_fully_scraped = 0
+
+        db.commit()
+
+        return jsonify({"status": "ok", "reset_id": conn_id}), 200
+
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        db.close()

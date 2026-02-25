@@ -9,6 +9,21 @@ from models.connection_models import LinkedInConnection
 from source.features.fetch_curl.fetch_service import FetchService
 from source.features.playwright_scrapper.analyze_profile import analyze_mega_file, FichaCandidato
 
+import html
+
+
+def fix_utf8(t: str):
+    if not t:
+        return t
+    # decode entidades HTML (&amp;)
+    t = html.unescape(t)
+    # tentar corrigir UTF-8 duplo
+    try:
+        t = t.encode("latin1").decode("utf-8")
+    except:
+        pass
+    return t
+
 
 class ProfileEnrichmentService:
     def __init__(self, debug=True):
@@ -18,7 +33,8 @@ class ProfileEnrichmentService:
         """Generator que enriquece os perfis e emite eventos SSE de progresso."""
         db = get_db_session()
         try:
-            pending_connections = db.query(LinkedInConnection).filter_by(is_fully_scraped=False).limit(limit).all()
+            pending_connections = db.query(LinkedInConnection).filter_by(is_fully_scraped=False).order_by(
+                LinkedInConnection.name.asc()).limit(limit).all()
             total = len(pending_connections)
 
             if total == 0:
@@ -47,7 +63,7 @@ class ProfileEnrichmentService:
 
                 # --- 🛑 JITTER BACKOFF ENTRE PERFIS ---
                 if idx < total - 1:
-                    delay = random.uniform(4.0, 7.5)  # Pausa média de 4 a 7.5 segs
+                    delay = random.uniform(0.5, 2.2)  # Pausa média de 4 a 7.5 segs
                     yield {"status": "wait", "total": total, "processed": idx + 1,
                            "message": f"Jitter de {delay:.1f}s para evitar rate-limit..."}
                     time.sleep(delay)
@@ -75,7 +91,7 @@ class ProfileEnrichmentService:
 
             # --- 🛑 JITTER BACKOFF INTERNO ---
             if i < len(configs_to_fetch) - 1:
-                time.sleep(random.uniform(1.2, 2.8))  # Pausa curta entre endpoints do mesmo perfil
+                time.sleep(random.uniform(0.4, 2.5))  # Pausa curta entre endpoints do mesmo perfil
 
         return raw_data
 
@@ -93,10 +109,13 @@ class ProfileEnrichmentService:
             return None
 
     def _update_connection_in_db(self, db_session, conn: LinkedInConnection, ficha: FichaCandidato):
-        if ficha.nome_completo: conn.name = ficha.nome_completo
-        if ficha.headline: conn.headline = ficha.headline
+        if ficha.nome_completo:
+            conn.name = fix_utf8(ficha.nome_completo)
 
-        conn.about = ficha.resumo_about
+        if ficha.headline:
+            conn.headline = fix_utf8(ficha.headline)
+
+        conn.about = fix_utf8(ficha.resumo_about)
         conn.experiences = ficha.experiencias
         conn.education = ficha.formacao_academica
         conn.certifications = ficha.licencas_e_certificados
