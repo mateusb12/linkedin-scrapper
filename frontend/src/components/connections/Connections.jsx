@@ -5,12 +5,17 @@ import {
   Briefcase,
   Clock,
   Network,
+  ChevronDown,
+  Code,
+  Award,
+  ExternalLink,
 } from "lucide-react";
 
 export default function Connections() {
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const [expandedCard, setExpandedCard] = useState(null);
 
   const formatNameFromUrl = (url) => {
     if (!url) return "LinkedIn Connection";
@@ -81,7 +86,6 @@ export default function Connections() {
                 return;
               } else if (data.status === "complete" || data.status === "info") {
                 setStatus(`✅ ${data.message}`);
-
                 loadDatabase();
               }
             } catch (e) {
@@ -98,6 +102,22 @@ export default function Connections() {
         setStatus("");
       }, 3000);
     }
+  };
+
+  const toggleExpand = (id) => {
+    setExpandedCard(expandedCard === id ? null : id);
+  };
+
+  const safeParse = (data) => {
+    if (!data) return [];
+    if (typeof data === "string") {
+      try {
+        return JSON.parse(data);
+      } catch (e) {
+        return [];
+      }
+    }
+    return Array.isArray(data) ? data : [];
   };
 
   return (
@@ -149,9 +169,11 @@ export default function Connections() {
       </div>
 
       {connections.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fadeIn">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fadeIn items-start">
           {connections.map((conn, index) => {
             const profileUrl = conn.profile_url || "#";
+            const isExpanded = expandedCard === profileUrl;
+
             const displayName =
               conn.name === "div" || !conn.name
                 ? formatNameFromUrl(profileUrl)
@@ -161,50 +183,193 @@ export default function Connections() {
                 ? "1st Degree Connection"
                 : conn.headline;
 
+            const experiences = safeParse(conn.experiences);
+            const skills = safeParse(conn.skills);
+            const certifications = safeParse(conn.certifications);
+
             return (
               <div
                 key={index}
-                className={`bg-white dark:bg-gray-800 rounded-xl shadow-md border ${conn.is_fully_scraped ? "border-purple-400 dark:border-purple-600" : "border-gray-200 dark:border-gray-700"} p-6 flex flex-col items-center text-center transition-transform hover:-translate-y-1 hover:shadow-lg relative overflow-hidden`}
+                className={`bg-white dark:bg-gray-800 rounded-xl shadow-md border ${
+                  conn.is_fully_scraped
+                    ? "border-purple-400 dark:border-purple-600"
+                    : "border-gray-200 dark:border-gray-700"
+                } transition-all duration-300 relative overflow-hidden flex flex-col ${
+                  isExpanded
+                    ? "col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-4 flex-col md:flex-row"
+                    : "hover:-translate-y-1 hover:shadow-lg"
+                }`}
               >
                 <div className="absolute top-0 left-0 w-full h-16 bg-gradient-to-r from-purple-500 to-blue-500 opacity-20 dark:opacity-40"></div>
 
-                <div className="w-24 h-24 rounded-full bg-gray-100 dark:bg-gray-700 mb-4 mt-2 overflow-hidden border-4 border-white dark:border-gray-800 relative z-10 shadow-sm flex items-center justify-center">
-                  {conn.image ? (
-                    <img
-                      src={conn.image}
-                      alt={displayName}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <User className="w-12 h-12 text-gray-400 dark:text-gray-500" />
-                  )}
-                </div>
-
-                <h3
-                  className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1 line-clamp-1 w-full"
-                  title={displayName}
+                <div
+                  className={`p-6 flex flex-col items-center text-center relative z-10 ${isExpanded ? "w-full md:w-1/3 md:border-r border-gray-200 dark:border-gray-700 shrink-0" : "w-full h-full"}`}
                 >
-                  {displayName}
-                </h3>
+                  <div className="w-24 h-24 rounded-full bg-gray-100 dark:bg-gray-700 mb-4 mt-2 overflow-hidden border-4 border-white dark:border-gray-800 relative shadow-sm flex items-center justify-center">
+                    {conn.image ? (
+                      <img
+                        src={conn.image}
+                        alt={displayName}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <User className="w-12 h-12 text-gray-400 dark:text-gray-500" />
+                    )}
+                  </div>
 
-                <div className="text-sm text-gray-600 dark:text-gray-300 mb-4 h-10 flex items-start justify-center w-full">
-                  <span className="line-clamp-2" title={displayHeadline}>
+                  <h3
+                    className="font-bold text-lg text-gray-900 dark:text-gray-100 mb-1 w-full"
+                    title={displayName}
+                  >
+                    {displayName}
+                  </h3>
+
+                  <div
+                    className={`text-sm text-gray-600 dark:text-gray-300 mb-4 flex justify-center w-full ${isExpanded ? "" : "h-10 items-start line-clamp-2"}`}
+                    title={displayHeadline}
+                  >
                     {displayHeadline}
-                  </span>
+                  </div>
+
+                  <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-5 flex items-center gap-1.5 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full">
+                    <Clock size={12} />{" "}
+                    {conn.connected_time || "Recently Added"}
+                  </div>
+
+                  <div className="mt-auto w-full flex flex-col gap-2">
+                    {isExpanded && (
+                      <a
+                        href={profileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="w-full py-2 bg-purple-600 text-white text-sm font-bold rounded-lg hover:bg-purple-700 transition-colors flex justify-center items-center gap-2"
+                      >
+                        Ver no LinkedIn <ExternalLink size={14} />
+                      </a>
+                    )}
+                    <button
+                      onClick={() => toggleExpand(profileUrl)}
+                      className={`w-full py-2 border border-purple-500 text-purple-600 dark:text-purple-400 dark:border-purple-400 text-sm font-bold rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/30 transition-colors flex justify-center items-center gap-2 ${isExpanded ? "bg-purple-50 dark:bg-purple-900/20" : ""}`}
+                    >
+                      {isExpanded ? "Collapse" : "View Profile"}{" "}
+                      <ChevronDown
+                        size={14}
+                        className={`transform transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                      />
+                    </button>
+                  </div>
                 </div>
 
-                <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-5 flex items-center gap-1.5 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full">
-                  <Clock size={12} /> {conn.connected_time || "Recently Added"}
-                </div>
+                {isExpanded && (
+                  <div className="p-6 w-full md:w-2/3 flex flex-col gap-6 relative z-10 bg-gray-50 dark:bg-gray-800/50">
+                    {skills.length > 0 && (
+                      <div>
+                        <h4 className="flex items-center gap-2 font-bold text-gray-800 dark:text-gray-200 mb-3 border-b border-gray-200 dark:border-gray-700 pb-2">
+                          <Code size={18} className="text-purple-500" /> Skills
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {skills.map((skill, i) => (
+                            <span
+                              key={i}
+                              className="px-3 py-1 bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300 rounded-full text-xs font-medium border border-purple-200 dark:border-purple-700"
+                            >
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
-                <a
-                  href={profileUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-auto w-full py-2 border border-purple-500 text-purple-600 dark:text-purple-400 dark:border-purple-400 text-sm font-bold rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/30 transition-colors flex justify-center items-center gap-2"
-                >
-                  View Profile <LinkIcon size={14} />
-                </a>
+                    {experiences.length > 0 && (
+                      <div>
+                        <h4 className="flex items-center gap-2 font-bold text-gray-800 dark:text-gray-200 mb-3 border-b border-gray-200 dark:border-gray-700 pb-2">
+                          <Briefcase size={18} className="text-blue-500" />{" "}
+                          Experiência
+                        </h4>
+                        <div className="flex flex-col gap-4">
+                          {experiences.map((exp, i) => (
+                            <div key={i} className="flex flex-col gap-1">
+                              <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                {exp.cargo}
+                              </span>
+
+                              <span className="text-sm text-gray-700 dark:text-gray-300">
+                                {exp.empresa}
+                                {exp.tipo ? ` · ${exp.tipo}` : ""}
+                                {exp.modelo_trabalho
+                                  ? ` · ${exp.modelo_trabalho}`
+                                  : ""}
+                              </span>
+
+                              {exp.localizacao && (
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                  📍 {exp.localizacao}
+                                </span>
+                              )}
+
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                {exp.inicio} – {exp.fim}{" "}
+                                {exp.duracao ? `• ${exp.duracao}` : ""}
+                              </span>
+
+                              {exp.descricao && (
+                                <p className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-line mt-2">
+                                  {exp.descricao}
+                                </p>
+                              )}
+
+                              {Array.isArray(exp.tecnologias) &&
+                                exp.tecnologias.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-2">
+                                    {exp.tecnologias.map((tech, tIndex) => (
+                                      <span
+                                        key={tIndex}
+                                        className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 rounded-full text-[10px] border border-blue-200 dark:border-blue-700"
+                                      >
+                                        {tech}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {certifications.length > 0 && (
+                      <div>
+                        <h4 className="flex items-center gap-2 font-bold text-gray-800 dark:text-gray-200 mb-3 border-b border-gray-200 dark:border-gray-700 pb-2">
+                          <Award size={18} className="text-yellow-500" />{" "}
+                          Certificações
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {certifications.map((cert, i) => (
+                            <div
+                              key={i}
+                              className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700"
+                            >
+                              <p
+                                className="font-semibold text-sm text-gray-900 dark:text-gray-100 line-clamp-1"
+                                title={cert.nome}
+                              >
+                                {cert.nome}
+                              </p>
+                              <p className="text-xs text-gray-600 dark:text-gray-400">
+                                {cert.instituicao}
+                              </p>
+                              {cert.data_emissao && (
+                                <p className="text-xs text-gray-500 mt-1">
+                                  {cert.data_emissao}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
