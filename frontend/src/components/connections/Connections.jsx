@@ -26,7 +26,7 @@ export default function Connections() {
 
   const handleFetch = async () => {
     setLoading(true);
-    setStatus("Buscando conexões...");
+    setStatus("Sincronizando...");
 
     try {
       const response = await fetch("http://localhost:5000/connections/sync");
@@ -37,7 +37,10 @@ export default function Connections() {
       }
 
       setConnections(result.data);
-      setStatus("Concluído!");
+
+      setStatus(result.message || "Concluído!");
+
+      setTimeout(() => setStatus(""), 3000);
     } catch (error) {
       console.error(error);
       setStatus(`Erro: ${error.message}`);
