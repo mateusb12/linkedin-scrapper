@@ -30,6 +30,7 @@ const NETWORK_FILTER_PAGINATION = "jobCollectionSlug:recommended";
 const NETWORK_FILTER_INDIVIDUAL = "jobPostingDetailDescription_start";
 const NETWORK_FILTER_EXPERIENCE = "sdui.pagers.profile.details.experience";
 const NETWORK_FILTER_CONNECTIONS = "sdui.pagers.mynetwork.connectionsList";
+const NETWORK_FILTER_SAVED_JOBS = "/jobs-tracker/?stage=saved";
 
 const ConfigCard = ({
   title,
@@ -191,6 +192,7 @@ export default function FetchConfig() {
   const [indConfig, setIndConfig] = useState(null);
   const [expConfig, setExpConfig] = useState(null);
   const [connectionsConfig, setConnectionsConfig] = useState(null);
+  const [savedJobsConfig, setSavedJobsConfig] = useState(null);
 
   const [gmailToken, setGmailToken] = useState("");
   const [showToken, setShowToken] = useState(false);
@@ -216,15 +218,17 @@ export default function FetchConfig() {
     };
 
     try {
-      const [pag, ind, exp, main, above, below, conn] = await Promise.all([
-        loadConfigSafe(getPaginationCurl),
-        loadConfigSafe(getIndividualJobCurl),
-        loadConfigSafe(getExperienceCurl),
-        loadConfigSafe(() => getGenericCurl("ProfileMain")),
-        loadConfigSafe(() => getGenericCurl("ProfileAboveActivity")),
-        loadConfigSafe(() => getGenericCurl("ProfileBelowActivity")),
-        loadConfigSafe(() => getGenericCurl("Connections")),
-      ]);
+      const [pag, ind, exp, main, above, below, conn, savedJobs] =
+        await Promise.all([
+          loadConfigSafe(getPaginationCurl),
+          loadConfigSafe(getIndividualJobCurl),
+          loadConfigSafe(getExperienceCurl),
+          loadConfigSafe(() => getGenericCurl("ProfileMain")),
+          loadConfigSafe(() => getGenericCurl("ProfileAboveActivity")),
+          loadConfigSafe(() => getGenericCurl("ProfileBelowActivity")),
+          loadConfigSafe(() => getGenericCurl("Connections")),
+          loadConfigSafe(() => getGenericCurl("SavedJobs")),
+        ]);
 
       setPagConfig(pag);
       setIndConfig(ind);
@@ -233,6 +237,7 @@ export default function FetchConfig() {
       setProfAboveConfig(above);
       setProfBelowConfig(below);
       setConnectionsConfig(conn);
+      setSavedJobsConfig(savedJobs);
 
       const profiles = await getProfiles();
       if (profiles && profiles.length > 0) {
@@ -411,6 +416,11 @@ export default function FetchConfig() {
     setProfBelowConfig,
     "Profile Below",
   );
+  const savedJobsHandlers = createGenericHandler(
+    "SavedJobs",
+    setSavedJobsConfig,
+    "Saved Jobs",
+  );
 
   const handleError = (error) => {
     console.error(error);
@@ -579,6 +589,17 @@ export default function FetchConfig() {
             onDelete={onDeleteConnections}
             placeholder="Cole o POST cURL do connectionsList aqui..."
             colorClass="purple"
+          />
+
+          <ConfigCard
+            title="📌 Saved Jobs Request"
+            description="Carrega a lista de vagas salvas ou aplicadas no Job Tracker."
+            networkFilter={NETWORK_FILTER_SAVED_JOBS}
+            savedData={savedJobsConfig}
+            onSave={savedJobsHandlers.onSave}
+            onDelete={savedJobsHandlers.onDelete}
+            placeholder="Cole o POST cURL contendo '/jobs-tracker/?stage=saved'..."
+            colorClass="blue"
           />
         </div>
       </div>
