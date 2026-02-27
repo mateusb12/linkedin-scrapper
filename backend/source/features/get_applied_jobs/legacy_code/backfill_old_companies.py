@@ -5,11 +5,12 @@ from pathlib import Path
 # Add backend to path so we can import internal modules
 sys.path.append(str(Path(__file__).parent))
 
-from source.features.get_applied_jobs.fetch_linkedin_applied_jobs import (
+from source.features.get_applied_jobs.legacy_code.fetch_linkedin_applied_jobs import (
     _process_page_data,
     get_linkedin_fetch_artefacts
 )
 from source.features.job_population.job_repository import JobRepository
+
 
 def run_deep_clean():
     print("\n--- 🧹 STARTING DEEP BACKFILL (FIXING ALL COMPANIES) ---")
@@ -75,6 +76,7 @@ def run_deep_clean():
 
     print("\n--- ✨ DEEP CLEAN COMPLETE ---")
     repo.close()
+
 
 if __name__ == "__main__":
     run_deep_clean()

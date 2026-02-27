@@ -10,12 +10,12 @@ from dateutil.parser import parse as parse_datetime
 from sqlalchemy import or_, func
 
 from models import Job, FetchCurl, Email, Company
-from source.features.get_applied_jobs.fetch_linkedin_saved_jobs import fetch_linkedin_saved_jobs
+from source.features.get_applied_jobs.legacy_code.fetch_linkedin_saved_jobs import fetch_linkedin_saved_jobs
 from source.features.fetch_curl.linkedin_http_client import get_linkedin_fetch_artefacts
 from source.features.job_population.job_repository import JobRepository
 from services.job_tracking.huntr_service import get_huntr_jobs_data
 from database.database_connection import get_db_session
-from source.features.get_applied_jobs.fetch_linkedin_applied_jobs import fetch_all_linkedin_jobs
+from source.features.get_applied_jobs.legacy_code.fetch_linkedin_applied_jobs import fetch_all_linkedin_jobs
 from source.features.job_population.population_service import PopulationService
 from source.features.profile.fetch_linkedin_profile_experiences import fetch_linkedin_profile_experiences
 from source.services.experience_extractor import extract_years_experience
