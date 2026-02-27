@@ -1,10 +1,15 @@
 import json
 import re
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 from database.database_connection import get_db_session
 from models.fetch_models import FetchCurl
 from source.features.fetch_curl.linkedin_http_client import LinkedInClient, LinkedInRequest
 
+
+# ============================================================
+# RAW REQUEST WRAPPER
+# ============================================================
 
 class RawStringRequest(LinkedInRequest):
     def __init__(self, method: str, url: str, body_str: str, debug: bool = False):
@@ -13,9 +18,10 @@ class RawStringRequest(LinkedInRequest):
 
     def execute(self, session, timeout=15):
         merged_headers = session.headers.copy()
+
         for k, v in self._headers.items():
-            # Remove headers que atrapalham a descompressão automática do requests
-            if k.lower() in ["accept-encoding", "content-length"]: continue
+            if k.lower() in ["accept-encoding", "content-length"]:
+                continue
             merged_headers[k] = v
 
         if self.debug:
@@ -25,108 +31,93 @@ class RawStringRequest(LinkedInRequest):
             method=self.method,
             url=self.url,
             headers=merged_headers,
-            data=self.body_str.encode('utf-8') if self.body_str else None,
-            timeout=timeout
+            data=self.body_str.encode("utf-8") if self.body_str else None,
+            timeout=timeout,
         )
 
 
+# ============================================================
+# STREAM PARSER
+# ============================================================
+
 def parse_linkedin_stream(raw_text: str) -> list:
-    """
-    Transforma o stream (React Server Components) em uma lista plana de objetos JSON.
-    Lida com linhas no formato "ID:JSON" e linhas de JSON puro.
-    """
     parsed_items = []
-    lines = raw_text.split('\n')
+    lines = raw_text.split("\n")
 
     for line in lines:
-        if not line.strip(): continue
+        if not line.strip():
+            continue
 
         try:
-            # Tenta separar ID:JSON (ex: "123:{"key":"val"}")
-            if ':' in line and len(line) > 1 and line[0].isalnum():
-                parts = line.split(':', 1)
-                # Heurística: IDs geralmente são curtos (<20 chars).
+            if ":" in line and len(line) > 1 and line[0].isalnum():
+                parts = line.split(":", 1)
                 if len(parts[0]) < 20:
                     json_val = json.loads(parts[1])
                     parsed_items.append({"stream_id": parts[0], "content": json_val})
                 else:
-                    # Se não parecer um ID curto, tenta parsear a linha toda
                     parsed_items.append(json.loads(line))
             else:
                 parsed_items.append(json.loads(line))
         except Exception:
-            # Ignora linhas de controle ou lixo
             pass
 
     return parsed_items
 
 
+# ============================================================
+# RECURSIVE JOB FINDER
+# ============================================================
+
 def find_job_objects_recursive(data):
-    """
-    Função 'Furadeira': Entra recursivamente em Listas e Dicionários
-    até achar um objeto que pareça uma vaga (tem 'companyName').
-    """
     found_jobs = []
 
     if isinstance(data, dict):
-        # BINGO! Achamos um objeto que tem nome de empresa
         if "companyName" in data:
             found_jobs.append(data)
 
-        # Continua procurando nos valores deste dicionário
-        for key, value in data.items():
+        for value in data.values():
             found_jobs.extend(find_job_objects_recursive(value))
 
     elif isinstance(data, list):
-        # Se for lista, entra em cada item recursivamente
         for item in data:
             found_jobs.extend(find_job_objects_recursive(item))
 
     return found_jobs
 
 
+# ============================================================
+# UTIL
+# ============================================================
+
+def ms_to_datetime(ms):
+    try:
+        return datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc)
+    except:
+        return None
+
+
+# ============================================================
+# EXTRAÇÃO
+# ============================================================
+
 def extract_jobs_from_stream(stream_items: list) -> list:
-    """
-    Pipeline atualizado para o novo payload do LinkedIn (2026).
-    Compatível com:
-    - jobTitle (novo)
-    - jobId (novo)
-    - locationPrimary (novo)
-    - title / jobPostingUrn (legacy fallback)
-    """
-
-    print("\n" + "=" * 80)
-    print("🚨 [EXTRACTOR START]")
-    print(f"🔍 Itens de topo recebidos: {len(stream_items)}")
-    print("=" * 80)
-
     jobs = []
     seen_ids = set()
     all_candidates = []
 
-    # 1️⃣ Busca recursiva profunda
     for item in stream_items:
         content = item.get("content", item) if isinstance(item, dict) else item
         found = find_job_objects_recursive(content)
         all_candidates.extend(found)
 
-    print(f"🎯 Total candidatos brutos encontrados: {len(all_candidates)}")
-
-    # 2️⃣ Processamento final
-    for idx, data in enumerate(all_candidates):
+    for data in all_candidates:
         try:
-            print(f"\n➡️ Processando candidato #{idx}")
-
-            # 🔹 Título (novo + fallback antigo)
             title = data.get("title") or data.get("jobTitle")
             if not title:
-                print("⛔ Ignorado: não possui title nem jobTitle")
                 continue
 
-            # 🔹 Empresa
             company = data.get("companyName", "Unknown")
 
-            # 🔹 ID (novo + fallback antigo)
             raw_id = (
                     data.get("jobPostingUrn")
                     or data.get("entityUrn")
@@ -136,15 +127,12 @@ def extract_jobs_from_stream(stream_items: list) -> list:
             if not raw_id:
                 unique_str = f"{title}-{company}"
                 raw_id = f"gen_{hash(unique_str)}"
-                print("⚠️ ID gerado via hash")
 
             if raw_id in seen_ids:
-                print("🔁 Ignorado: ID duplicado")
                 continue
 
             seen_ids.add(raw_id)
 
-            # 🔹 Localização (novo + fallback antigo)
             location = (
                     data.get("location")
                     or data.get("formattedLocation")
@@ -152,74 +140,121 @@ def extract_jobs_from_stream(stream_items: list) -> list:
                     or ""
             )
 
-            # 🔹 URL da vaga baseada no jobId (novo padrão)
             job_url = ""
+            job_id = None
             if data.get("jobId"):
-                job_url = f"https://www.linkedin.com/jobs/view/{data['jobId']}/"
+                job_id = data["jobId"]
+                job_url = f"https://www.linkedin.com/jobs/view/{job_id}/"
+            else:
+                # fallback extração via URN
+                urn = data.get("jobPostingUrn")
+                if urn:
+                    match = re.search(r'jobPosting:(\d+)', urn)
+                    if match:
+                        job_id = match.group(1)
+                        job_url = f"https://www.linkedin.com/jobs/view/{job_id}/"
 
-            # 🔹 Data
-            date_str = "Recente"
-            timestamp = data.get("listedAt") or data.get("originallyListedAt")
-            if timestamp:
-                try:
-                    dt = datetime.fromtimestamp(int(timestamp) / 1000)
-                    date_str = dt.strftime("%Y-%m-%d")
-                except:
-                    pass
-
-            print(f"✅ Aceito: {title} @ {company}")
+            listed_dt = ms_to_datetime(data.get("listedAt"))
+            original_dt = ms_to_datetime(data.get("originallyListedAt"))
 
             jobs.append({
                 "title": title,
                 "company": company,
                 "location": location,
                 "source_id": raw_id,
-                "date_posted": date_str,
+                "job_id": job_id,
                 "job_url": job_url,
-                "company_url": "",
-                "apply_method": data.get("currentStageKey", "UNKNOWN")
+                "date_posted": listed_dt.strftime("%Y-%m-%d") if listed_dt else None,
+                "listed_at": listed_dt.isoformat() if listed_dt else None,
+                "originally_listed_at": original_dt.isoformat() if original_dt else None,
+                "is_reposted": bool(
+                    listed_dt and original_dt and listed_dt != original_dt
+                ),
+                "apply_method": data.get("currentStageKey", "UNKNOWN"),
             })
 
         except Exception as e:
-            print(f"🔥 ERRO processando candidato #{idx}: {e}")
-
-    print("\n" + "=" * 80)
-    print(f"🏁 EXTRAÇÃO FINALIZADA — {len(jobs)} JOBS VÁLIDOS")
-    print("=" * 80)
+            print(f"Erro extraindo job: {e}")
 
     return jobs
 
 
+# ============================================================
+# FETCHER
+# ============================================================
+
 class JobTrackerFetcher:
+
     def __init__(self, debug: bool = False):
         self.debug = debug
         self.client = LinkedInClient("SavedJobs")
-        if not self.client.config: raise ValueError("Configuração 'SavedJobs' não encontrada.")
+
+        if not self.client.config:
+            raise ValueError("Configuração 'SavedJobs' não encontrada.")
 
         db = get_db_session()
         try:
             record = db.query(FetchCurl).filter(FetchCurl.name == "SavedJobs").first()
-            if not record: raise ValueError("Registro 'SavedJobs' não existe.")
+            if not record:
+                raise ValueError("Registro 'SavedJobs' não existe.")
+
             self.base_url = record.base_url
             self.method = record.method or "POST"
             self.base_body_str = record.body or ""
         finally:
             db.close()
 
+    # ----------------------------------------------------------
+    # 🔥 NOVO: busca appliedAt via jobPostings
+    # ----------------------------------------------------------
+
+    def fetch_applied_at(self, job_id: str):
+        session = self.client.session
+
+        csrf = session.cookies.get("JSESSIONID")
+        if csrf:
+            csrf = csrf.replace('"', '')
+
+        url = f"https://www.linkedin.com/voyager/api/jobs/jobPostings/{job_id}"
+
+        headers = {
+            "accept": "application/json",
+            "x-restli-protocol-version": "2.0.0",
+            "csrf-token": csrf,
+        }
+
+        print("🔎 Fetching appliedAt for", job_id)
+        print("CSRF:", csrf)
+
+        response = session.get(url, headers=headers)
+
+        print(response.text[:300])
+
+        if response.status_code != 200:
+            return None
+
+        try:
+            data = response.json()
+            ts = data.get("applyingInfo", {}).get("appliedAt")
+            if ts:
+                return ms_to_datetime(ts)
+        except:
+            pass
+
+        return None
+
+    # ----------------------------------------------------------
+
     def fetch_jobs(self, stage: str = "saved") -> dict:
+
         target_url = self.base_url
         target_body = self.base_body_str
 
-        # Swap de flag (saved <-> applied) para reutilizar o cURL
         if stage != "saved":
             target_url = target_url.replace("stage=saved", f"stage={stage}")
             if target_body:
                 target_body = target_body.replace('"stage":"saved"', f'"stage":"{stage}"')
-                target_body = target_body.replace('current_page_saved', f'current_page_{stage}')
-                target_body = target_body.replace('stage=saved', f'stage={stage}')
-
-        if self.debug:
-            print(f"\n🔌 [FETCHER] Disparando request para stage='{stage}'...")
+                target_body = target_body.replace("stage=saved", f"stage={stage}")
 
         req = RawStringRequest(self.method, target_url, target_body, self.debug)
         response = self.client.execute(req)
@@ -227,17 +262,36 @@ class JobTrackerFetcher:
         if response.status_code != 200:
             raise Exception(f"Erro LinkedIn: {response.status_code}")
 
-        try:
-            raw_text = response.content.decode("utf-8")
-        except:
-            raw_text = response.content.decode("latin-1")
+        raw_text = response.content.decode("utf-8", errors="ignore")
 
-        # Pipeline: Parse -> Extração Recursiva
         stream_items = parse_linkedin_stream(raw_text)
         clean_jobs = extract_jobs_from_stream(stream_items)
+
+        # 🔥 ENRIQUECIMENTO applied_at
+        if stage == "applied":
+            print("\n🔍 Buscando appliedAt individual...")
+            for job in clean_jobs:
+                try:
+                    job_id = job.get("job_id")
+                    if not job_id:
+                        job["applied_at"] = None
+                        continue
+
+                    applied_dt = self.fetch_applied_at(job_id)
+
+                    if applied_dt:
+                        job["applied_at"] = applied_dt.isoformat()
+                    else:
+                        job["applied_at"] = None
+
+                    time.sleep(0.2)  # evitar flood
+
+                except Exception as e:
+                    print(f"Erro buscando appliedAt: {e}")
+                    job["applied_at"] = None
 
         return {
             "count": len(clean_jobs),
             "jobs": clean_jobs,
-            "stage": stage
+            "stage": stage,
         }
