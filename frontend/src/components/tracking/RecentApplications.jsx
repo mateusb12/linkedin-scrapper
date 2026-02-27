@@ -1,523 +1,276 @@
 import React, { useState, useMemo, useEffect, memo } from "react";
 import {
   ChevronRight,
-  ChevronLeft,
-  Building2,
-  Calendar,
-  Users,
-  Briefcase,
   Search,
-  AlertCircle,
-  Eye,
-  Copy,
-  CheckCircle2,
-  User,
-  Code2,
-  Clock,
+  RefreshCw,
+  Database,
+  DownloadCloud,
 } from "lucide-react";
-import { formatCustomDate } from "../../utils/dateUtils";
+
 import {
-  getCompetitionStyle,
-  extractExperienceFromDescription,
-  extractSeniorityFromDescription,
-  extractJobTypeFromDescription,
-  getSeniorityStyle,
-  getTypeStyle,
-  getExperienceStyle,
-} from "./utils/jobUtils";
+  fetchAppliedJobs,
+  syncAppliedIncremental,
+  syncAppliedBackfillStream,
+} from "../../services/myJobsService";
 
-const getJobRiskConfig = (job) => {
-  const minExp = job.experienceData?.min || 0;
-  const seniority = (job.seniority || "").toLowerCase();
+const StatusBadge = memo(({ status }) => (
+  <span className="px-2 py-1 rounded-full text-xs font-medium border bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
+    {status || "Waiting"}
+  </span>
+));
 
-  const isSafeSeniority =
-      seniority.includes("júnior") ||
-      seniority.includes("junior") ||
-      seniority.includes("pleno") ||
-      seniority.includes("mid-level");
-
-  const isLowExperience = job.experienceData && minExp < 4;
-
-  if (isSafeSeniority || isLowExperience) {
-    return "bg-green-500/5 hover:bg-green-500/10 border-green-500/20";
-  }
-
-  if (minExp >= 7) {
-    return "bg-red-500/5 hover:bg-red-500/10 border-red-500/20";
-  }
-
-  if (minExp >= 5) {
-    return "bg-orange-500/5 hover:bg-orange-500/10 border-orange-500/20";
-  }
-
-  return "hover:bg-gray-700/30 border-transparent";
+const formatDateBR = (date) => {
+  const day = String(date.getDate()).padStart(2, "0");
+  const months = [
+    "jan",
+    "fev",
+    "mar",
+    "abr",
+    "mai",
+    "jun",
+    "jul",
+    "ago",
+    "set",
+    "out",
+    "nov",
+    "dez",
+  ];
+  const month = months[date.getMonth()];
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
 };
 
-const STATUS_STYLES = {
-  waiting: {
-    css: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-    icon: null,
-  },
-  refused: {
-    css: "bg-red-500/10 text-red-500 border-red-500/20",
-    icon: null,
-  },
-  interview: {
-    css: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-    icon: null,
-  },
-  accepted: {
-    css: "bg-green-500/10 text-green-500 border-green-500/20",
-    icon: null,
-  },
-  "actively reviewing": {
-    css: "bg-purple-500/10 text-purple-400 border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.2)]",
-    icon: <Eye size={12} className="mr-1 inline-block" />,
-  },
-  "actively reviewing applicants": {
-    css: "bg-purple-500/10 text-purple-400 border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.2)]",
-    icon: <Eye size={12} className="mr-1 inline-block" />,
-  },
-  "no longer accepting": {
-    css: "bg-gray-700/50 text-gray-400 border-gray-600/50",
-    icon: <AlertCircle size={12} className="mr-1 inline-block" />,
-  },
-  "no longer accepting applications": {
-    css: "bg-gray-700/50 text-gray-400 border-gray-600/50",
-    icon: <AlertCircle size={12} className="mr-1 inline-block" />,
-  },
-};
-
-const StatusBadge = memo(({ status }) => {
-  const normalizedStatus = (status || "Waiting").toLowerCase();
-  const config = STATUS_STYLES[normalizedStatus] || STATUS_STYLES["waiting"];
-  const displayLabel =
-    status && status.length > 20 ? status.substring(0, 18) + "..." : status;
-
-  return (
-    <span
-      className={`px-2.5 py-0.5 rounded-full text-xs font-medium border flex items-center w-fit ${config.css}`}
-    >
-      {config.icon}
-      {displayLabel || "Waiting"}
-    </span>
-  );
-});
-
-const ApplicationTable = memo(({ jobs, onSelectJob }) => {
-  if (jobs.length === 0) {
-    return (
-      <div className="p-8 text-center text-gray-500">
-        No applications found matching your search.
-      </div>
-    );
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left border-collapse">
-        <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
-          <tr>
-            <th className="px-6 py-4">Application</th>
-            <th className="px-6 py-4">Seniority</th>
-            <th className="px-6 py-4">Type</th>
-            <th className="px-6 py-4">Experience</th>
-            <th className="px-6 py-4">Applied</th>
-            <th className="px-6 py-4">Applicants</th>
-            <th className="px-6 py-4">App Status</th>
-            <th className="px-6 py-4 text-right">Action</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-700">
-          {jobs.map((job) => {
-            const hasApplicants =
-              job.applicants !== null &&
-              job.applicants !== undefined &&
-              job.applicants > 0;
-
-            const riskStyleClass = getJobRiskConfig(job);
-
-            return (
-              <tr
-                key={job.urn}
-                onClick={() => onSelectJob(job)}
-                className={`group transition-colors cursor-pointer border-l-4 ${riskStyleClass}`}
-              >
-                {}
-                <td className="px-6 py-4">
-                  <div className="font-bold text-gray-200 text-base mb-1 group-hover:text-blue-400 transition-colors flex items-center gap-2">
-                    <Briefcase size={16} className="text-purple-400" />
-                    {job.title}
-                  </div>
-                  <div className="flex items-center gap-2 pl-6 text-sm text-gray-400">
-                    <div className="flex items-center gap-1.5 font-medium">
-                      <Building2 size={12} className="text-gray-500" />
-                      {job.company}
-                    </div>
-                    <span className="text-gray-600 text-xs">•</span>
-                    <div className="text-xs text-gray-500 uppercase">
-                      {job.source || "Linkedin"}
-                    </div>
-                  </div>
-                </td>
-
-                {}
-                <td className="px-6 py-4">
-                  {job.seniority ? (
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getSeniorityStyle(
-                        job.seniority,
-                      )}`}
-                    >
-                      {job.seniority}
-                    </span>
-                  ) : (
-                    <span className="text-gray-600 text-xs italic opacity-50 flex items-center gap-1">
-                      <User size={12} /> -
-                    </span>
-                  )}
-                </td>
-
-                {}
-                <td className="px-6 py-4">
-                  {job.jobType ? (
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getTypeStyle(
-                        job.jobType,
-                      )}`}
-                    >
-                      {job.jobType}
-                    </span>
-                  ) : (
-                    <span className="text-gray-600 text-xs italic opacity-50 flex items-center gap-1">
-                      <Code2 size={12} /> -
-                    </span>
-                  )}
-                </td>
-
-                {}
-                <td className="px-6 py-4">
-                  {job.experienceData ? (
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap border ${getExperienceStyle(
-                        job.experienceData,
-                      )}`}
-                    >
-                      {job.experienceData.text}
-                    </span>
-                  ) : (
-                    <span className="text-gray-600 text-xs italic opacity-50 flex items-center gap-1">
-                      <Clock size={12} /> N/A
-                    </span>
-                  )}
-                </td>
-
-                {}
-                <td className="px-6 py-4 text-gray-400 text-sm whitespace-nowrap">
-                  <div className="flex items-center gap-2">
-                    <Calendar size={14} className="text-green-400" />
-                    {formatCustomDate(job.appliedAt)}
-                  </div>
-                  <div className="text-xs text-gray-400 mt-1 pl-6 font-medium">
-                    {new Date(job.appliedAt).toLocaleTimeString("pt-BR", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      hour12: false,
-                    })}
-                  </div>
-                </td>
-
-                {}
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2 text-gray-300 text-sm">
-                    <Users
-                      size={14}
-                      className={
-                        hasApplicants ? "text-gray-500" : "text-gray-600"
-                      }
-                    />
-                    {hasApplicants ? (
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-bold border ${getCompetitionStyle(
-                          job.applicants,
-                        )}`}
-                      >
-                        {job.applicants.toLocaleString()}
-                      </span>
-                    ) : (
-                      <span className="text-gray-600 italic">-</span>
-                    )}
-                  </div>
-                </td>
-
-                {}
-                <td className="px-6 py-4">
-                  <StatusBadge status={job.application_status} />
-                </td>
-
-                {}
-                <td className="px-6 py-4 text-right">
-                  <button className="text-gray-500 hover:text-white p-2 rounded-full hover:bg-gray-600 transition-colors">
-                    <ChevronRight size={16} />
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-});
-
-const PaginationControls = ({ currentPage, totalPages, onPageChange }) => {
-  const getPageNumbers = () => {
-    const pages = [];
-    pages.push(1);
-    let start = Math.max(2, currentPage - 1);
-    let end = Math.min(totalPages - 1, currentPage + 1);
-    if (start > 2) pages.push("...");
-    for (let i = start; i <= end; i++) pages.push(i);
-    if (end < totalPages - 1) pages.push("...");
-    if (totalPages > 1) pages.push(totalPages);
-    return pages;
-  };
-
-  return (
-    <div className="flex items-center justify-end gap-2 p-4 border-t border-gray-700 bg-gray-800">
-      <button
-        onClick={() => onPageChange(currentPage - 1)}
-        disabled={currentPage === 1}
-        className="p-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-400 hover:text-white transition-colors"
-      >
-        <ChevronLeft size={20} />
-      </button>
-      {getPageNumbers().map((page, idx) => (
-        <button
-          key={idx}
-          onClick={() => (typeof page === "number" ? onPageChange(page) : null)}
-          disabled={typeof page !== "number"}
-          className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-            page === currentPage
-              ? "bg-blue-600 text-white shadow-md"
-              : typeof page === "number"
-                ? "bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700"
-                : "text-gray-500 cursor-default"
-          }`}
-        >
-          {page}
-        </button>
-      ))}
-      <button
-        onClick={() => onPageChange(currentPage + 1)}
-        disabled={currentPage === totalPages}
-        className="p-2 rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-gray-400 hover:text-white transition-colors"
-      >
-        <ChevronRight size={20} />
-      </button>
-    </div>
-  );
-};
-
-const RecentApplications = ({ jobs, allJobs, onSelectJob, pagination }) => {
+const RecentApplications = ({ onSelectJob }) => {
+  const [jobs, setJobs] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
-  const [copyStartDate, setCopyStartDate] = useState("");
-  const [isCopied, setIsCopied] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [streamStatus, setStreamStatus] = useState(null);
+  const [cutoffMonth, setCutoffMonth] = useState("2025-12");
+
+  const loadJobs = async () => {
+    try {
+      const { jobs } = await fetchAppliedJobs();
+      setJobs(jobs);
+    } catch (err) {
+      console.error("Failed to load jobs:", err);
+      setJobs([]);
+    }
+  };
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-    }, 300);
+    loadJobs();
+  }, []);
 
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
+  const handleReloadFromSQL = async () => {
+    await loadJobs();
+  };
 
-  const enrichedJobs = useMemo(() => {
-    const isSearching = debouncedSearchTerm.trim() !== "";
+  const handleIncrementalSync = async () => {
+    setIsSyncing(true);
+    await syncAppliedIncremental();
+    await loadJobs();
+    setIsSyncing(false);
+  };
 
-    const sourceData = isSearching && allJobs ? allJobs : jobs;
+  const handleBackfill = () => {
+    setIsSyncing(true);
+    setStreamStatus("Starting backfill...");
 
-    if (!sourceData) return [];
+    syncAppliedBackfillStream({
+      from: cutoffMonth,
 
-    return sourceData.map((job) => {
-      const description = job.description || job.description_full || "";
-      const fullTextContext = `${job.title} ${description}`;
+      onProgress: (data) => {
+        setStreamStatus(
+          `#${data.processed} - ${data.timestamp} - ${data.title}`,
+        );
+      },
 
-      const experienceData = extractExperienceFromDescription(description);
-      const seniority = extractSeniorityFromDescription(fullTextContext);
-      const jobType = extractJobTypeFromDescription(fullTextContext);
+      onFinish: async (data) => {
+        setStreamStatus(`Finished. Inserted ${data.inserted} jobs.`);
+        await loadJobs();
+        setIsSyncing(false);
+      },
 
-      return {
-        ...job,
-        experienceData,
-        seniority,
-        jobType,
-      };
-    });
-  }, [jobs, allJobs, debouncedSearchTerm]);
-
-  const filteredJobs = useMemo(() => {
-    const term = debouncedSearchTerm.toLowerCase();
-    const isSearching = term.trim() !== "";
-
-    if (!isSearching) return enrichedJobs;
-
-    const filtered = enrichedJobs.filter((j) => {
-      const title = j.title?.toLowerCase() || "";
-      const company = j.company?.toLowerCase() || "";
-      const location = j.location?.toLowerCase() || "";
-      const seniority = j.seniority?.toLowerCase() || "";
-      const jobType = j.jobType?.toLowerCase() || "";
-      const description = j.description_full?.toLowerCase() || "";
-
-      return (
-        title.includes(term) ||
-        company.includes(term) ||
-        location.includes(term) ||
-        seniority.includes(term) ||
-        jobType.includes(term) ||
-        description.includes(term)
-      );
-    });
-
-    return filtered.slice(0, 100);
-  }, [enrichedJobs, debouncedSearchTerm]);
-
-  const jobsToExport = useMemo(() => {
-    const sourceData = allJobs && allJobs.length > 0 ? allJobs : jobs;
-
-    if (!copyStartDate || !sourceData) return [];
-
-    const startDate = new Date(copyStartDate);
-    startDate.setHours(0, 0, 0, 0);
-
-    const dateFiltered = sourceData.filter((job) => {
-      if (!job.appliedAt) return false;
-      const jobDate = new Date(job.appliedAt);
-      const jobDateMidnight = new Date(jobDate);
-      jobDateMidnight.setHours(0, 0, 0, 0);
-      return jobDateMidnight >= startDate;
-    });
-
-    return dateFiltered.map((job) => {
-      const description = job.description || job.description_full || "";
-      const fullTextContext = `${job.title} ${description}`;
-
-      const experienceData = extractExperienceFromDescription(description);
-      const seniority = extractSeniorityFromDescription(fullTextContext);
-      const jobType = extractJobTypeFromDescription(fullTextContext);
-
-      return {
-        ...job,
-        extracted_seniority: seniority || "N/A",
-        extracted_type: jobType || "N/A",
-        extracted_experience: experienceData ? experienceData.text : "N/A",
-        experience_details: experienceData,
-      };
-    });
-  }, [allJobs, jobs, copyStartDate]);
-
-  const handleCopyJobs = () => {
-    if (jobsToExport.length === 0) return;
-
-    const dataStr = JSON.stringify(jobsToExport, null, 2);
-    navigator.clipboard.writeText(dataStr).then(() => {
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
+      onError: () => {
+        setStreamStatus("Error during backfill.");
+        setIsSyncing(false);
+      },
     });
   };
 
+  const filteredJobs = useMemo(() => {
+    if (!searchTerm.trim()) return jobs;
+    const term = searchTerm.toLowerCase();
+
+    return jobs.filter(
+      (j) =>
+        j.title?.toLowerCase().includes(term) ||
+        j.company?.toLowerCase().includes(term) ||
+        j.location?.toLowerCase().includes(term),
+    );
+  }, [jobs, searchTerm]);
+
   return (
-    <div className="space-y-4">
-      <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-xl overflow-hidden mt-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-        {}
-        <div className="p-6 border-b border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-800">
-          <div className="flex items-center gap-4">
-            <h3 className="text-xl font-bold text-white flex items-center gap-2">
-              Recent Applications
-            </h3>
-            {pagination && (
-              <span className="text-xs font-mono text-blue-300 bg-blue-900/30 px-2 py-1 rounded border border-blue-800/50">
-                Total: {pagination.total}
-              </span>
-            )}
-          </div>
-          <div className="relative w-full md:w-64">
-            <input
-              type="text"
-              placeholder="Search applications..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-700 text-gray-200 text-sm rounded-lg pl-10 pr-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-            />
-            <div className="absolute left-3 top-2.5 text-gray-500">
-              <Search size={14} />
+    <div className="space-y-6">
+      <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <h2 className="text-xl font-bold text-white">Recent Applications</h2>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={handleReloadFromSQL}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition"
+            >
+              <DownloadCloud size={16} />
+              Pull SQL
+            </button>
+
+            <button
+              onClick={handleIncrementalSync}
+              disabled={isSyncing}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition disabled:opacity-50"
+            >
+              <RefreshCw size={16} />
+              Force Fetch
+            </button>
+
+            <div className="flex items-center gap-2 bg-gray-900 border border-gray-600 rounded-lg px-2 py-1">
+              <input
+                type="month"
+                value={cutoffMonth}
+                onChange={(e) => setCutoffMonth(e.target.value)}
+                className="bg-transparent text-white text-sm outline-none"
+              />
+              <button
+                onClick={handleBackfill}
+                disabled={isSyncing}
+                className="flex items-center gap-2 px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded-md transition disabled:opacity-50"
+              >
+                <Database size={16} />
+                Backfill
+              </button>
             </div>
           </div>
         </div>
 
-        {}
-        <ApplicationTable jobs={filteredJobs} onSelectJob={onSelectJob} />
-
-        {}
-        {!searchTerm && pagination && pagination.totalPages > 1 && (
-          <PaginationControls
-            currentPage={pagination.page}
-            totalPages={pagination.totalPages}
-            onPageChange={pagination.onPageChange}
-          />
+        {streamStatus && (
+          <div className="text-sm text-blue-400 font-mono bg-gray-900 p-3 rounded border border-gray-700">
+            {streamStatus}
+          </div>
         )}
+
+        <div className="relative w-full md:w-64">
+          <input
+            type="text"
+            placeholder="Search applications..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-gray-900 border border-gray-700 text-gray-200 text-sm rounded-lg pl-10 pr-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
+          />
+          <Search size={14} className="absolute left-3 top-2.5 text-gray-500" />
+        </div>
       </div>
 
-      {}
-      <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 flex flex-col md:flex-row justify-between items-center gap-4">
-        <div className="flex items-center gap-4 w-full md:w-auto">
-          <div className="flex flex-col">
-            <label className="text-xs text-gray-400 font-bold uppercase mb-1 ml-1">
-              Copy Data From
-            </label>
-            <input
-              type="date"
-              value={copyStartDate}
-              onChange={(e) => setCopyStartDate(e.target.value)}
-              className="bg-gray-900 border border-gray-600 text-white text-sm rounded-lg px-3 py-2 outline-none focus:border-blue-500"
-            />
-          </div>
+      <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+        <table className="w-full text-left">
+          <thead className="bg-gray-900 text-gray-400 text-xs uppercase">
+            <tr>
+              <th className="px-6 py-4">Application</th>
+              <th className="px-6 py-4">Applied</th>
+              <th className="px-6 py-4">Posted</th>
+              <th className="px-6 py-4">Status</th>
+              <th className="px-6 py-4 text-right">Action</th>
+            </tr>
+          </thead>
 
-          <div className="flex flex-col justify-end h-full pt-5">
-            <span className="text-sm font-medium text-gray-300 bg-gray-900 px-3 py-2 rounded-lg border border-gray-700 min-w-[100px] text-center">
-              {}
-              Count:{" "}
-              <span className="text-blue-400 font-bold">
-                {jobsToExport.length}
-              </span>
-            </span>
-          </div>
-        </div>
+          <tbody className="divide-y divide-gray-700">
+            {filteredJobs.map((job) => {
+              const appliedDate = job.appliedAt
+                ? new Date(job.appliedAt)
+                : null;
 
-        <button
-          onClick={handleCopyJobs}
-          disabled={jobsToExport.length === 0}
-          className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-bold transition-all duration-200 ${
-            isCopied
-              ? "bg-green-600 text-white"
-              : jobsToExport.length === 0
-                ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                : "bg-blue-600 hover:bg-blue-500 text-white shadow-lg hover:shadow-blue-500/20"
-          }`}
-        >
-          {isCopied ? (
-            <>
-              <CheckCircle2 size={18} /> Copied!
-            </>
-          ) : (
-            <>
-              <Copy size={18} /> Copy{" "}
-              {jobsToExport.length > 0 ? `(${jobsToExport.length})` : ""} JSON
-            </>
-          )}
-        </button>
+              const postedDate = job.postedAt ? new Date(job.postedAt) : null;
+
+              const now = new Date();
+              const delayDays = postedDate
+                ? Math.floor((now - postedDate) / (1000 * 60 * 60 * 24))
+                : null;
+
+              return (
+                <tr
+                  key={job.urn}
+                  onClick={() => onSelectJob && onSelectJob(job)}
+                  className="cursor-pointer hover:bg-gray-700/40 transition"
+                >
+                  <td className="px-6 py-4">
+                    <div className="font-bold text-gray-200">{job.title}</div>
+                    <div className="text-sm text-gray-400">{job.company}</div>
+                  </td>
+
+                  <td className="px-6 py-4">
+                    {appliedDate ? (
+                      <>
+                        <div className="text-gray-200 font-medium">
+                          {formatDateBR(appliedDate)}
+                        </div>
+                        <div className="text-sm font-mono text-blue-300 mt-1">
+                          {appliedDate.toLocaleTimeString("pt-BR", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: false,
+                          })}
+                        </div>
+                      </>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+
+                  <td className="px-6 py-4">
+                    {postedDate ? (
+                      <>
+                        <div className="text-gray-300 font-medium">
+                          {formatDateBR(postedDate)}
+                        </div>
+                        {delayDays !== null && (
+                          <div className="mt-1">
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs font-semibold border ${
+                                delayDays <= 3
+                                  ? "bg-green-500/10 text-green-400 border-green-500/20"
+                                  : delayDays <= 14
+                                    ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
+                                    : "bg-red-500/10 text-red-400 border-red-500/20"
+                              }`}
+                            >
+                              {delayDays}d
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+
+                  <td className="px-6 py-4">
+                    <StatusBadge status={job.application_status} />
+                  </td>
+
+                  <td className="px-6 py-4 text-right">
+                    <ChevronRight size={16} className="text-gray-500" />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        {filteredJobs.length === 0 && (
+          <div className="p-8 text-center text-gray-500">
+            No applications found.
+          </div>
+        )}
       </div>
     </div>
   );

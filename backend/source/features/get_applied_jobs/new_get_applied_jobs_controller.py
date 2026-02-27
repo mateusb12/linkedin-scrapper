@@ -13,16 +13,41 @@ job_tracker_bp = Blueprint("job_tracker", __name__, url_prefix="/job-tracker")
 
 @job_tracker_bp.route("/applied", methods=["GET"])
 def get_applied_jobs():
+    """
+    Retorna vagas aplicadas do BANCO.
+    NÃO chama LinkedIn.
+    """
+
     try:
-        fetcher = JobTrackerFetcher(debug=True)
-        raw_data = fetcher.fetch_jobs(stage="applied")
-        return jsonify({
-            "status": "success",
-            "stage": "applied",
-            "data": raw_data
-        }), 200
+        from database.database_connection import get_db_session
+        from models.job_models import Job
+
+        db = get_db_session()
+
+        try:
+            jobs = (
+                db.query(Job)
+                .filter(Job.has_applied == True)
+                .order_by(Job.applied_on.desc())
+                .all()
+            )
+
+            return jsonify({
+                "status": "success",
+                "data": {
+                    "count": len(jobs),
+                    "jobs": [job.to_dict() for job in jobs]
+                }
+            }), 200
+
+        finally:
+            db.close()
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
 
 
 # ============================================================
