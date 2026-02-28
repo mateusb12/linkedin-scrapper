@@ -31,6 +31,8 @@ const NETWORK_FILTER_INDIVIDUAL = "jobPostingDetailDescription_start";
 const NETWORK_FILTER_EXPERIENCE = "sdui.pagers.profile.details.experience";
 const NETWORK_FILTER_CONNECTIONS = "sdui.pagers.mynetwork.connectionsList";
 const NETWORK_FILTER_SAVED_JOBS = "/jobs-tracker/?stage=saved";
+const NETWORK_FILTER_PREMIUM_INSIGHTS =
+  "com.linkedin.sdui.generated.premium.dsl.impl.premiumApplicantInsights";
 
 const ConfigCard = ({
   title,
@@ -193,6 +195,7 @@ export default function FetchConfig() {
   const [expConfig, setExpConfig] = useState(null);
   const [connectionsConfig, setConnectionsConfig] = useState(null);
   const [savedJobsConfig, setSavedJobsConfig] = useState(null);
+  const [premiumInsightsConfig, setPremiumInsightsConfig] = useState(null);
 
   const [gmailToken, setGmailToken] = useState("");
   const [showToken, setShowToken] = useState(false);
@@ -218,7 +221,7 @@ export default function FetchConfig() {
     };
 
     try {
-      const [pag, ind, exp, main, above, below, conn, savedJobs] =
+      const [pag, ind, exp, main, above, below, conn, savedJobs, insights] =
         await Promise.all([
           loadConfigSafe(getPaginationCurl),
           loadConfigSafe(getIndividualJobCurl),
@@ -228,6 +231,7 @@ export default function FetchConfig() {
           loadConfigSafe(() => getGenericCurl("ProfileBelowActivity")),
           loadConfigSafe(() => getGenericCurl("Connections")),
           loadConfigSafe(() => getGenericCurl("SavedJobs")),
+          loadConfigSafe(() => getGenericCurl("PremiumInsights")),
         ]);
 
       setPagConfig(pag);
@@ -238,6 +242,7 @@ export default function FetchConfig() {
       setProfBelowConfig(below);
       setConnectionsConfig(conn);
       setSavedJobsConfig(savedJobs);
+      setPremiumInsightsConfig(insights);
 
       const profiles = await getProfiles();
       if (profiles && profiles.length > 0) {
@@ -421,6 +426,11 @@ export default function FetchConfig() {
     setSavedJobsConfig,
     "Saved Jobs",
   );
+  const premiumInsightsHandlers = createGenericHandler(
+    "PremiumInsights",
+    setPremiumInsightsConfig,
+    "Premium Insights",
+  );
 
   const handleError = (error) => {
     console.error(error);
@@ -600,6 +610,17 @@ export default function FetchConfig() {
             onDelete={savedJobsHandlers.onDelete}
             placeholder="Cole o POST cURL contendo '/jobs-tracker/?stage=saved'..."
             colorClass="blue"
+          />
+
+          <ConfigCard
+            title="💎 Premium Insights Request"
+            description="Carrega insights de comparação com outros candidatos (Premium)."
+            networkFilter={NETWORK_FILTER_PREMIUM_INSIGHTS}
+            savedData={premiumInsightsConfig}
+            onSave={premiumInsightsHandlers.onSave}
+            onDelete={premiumInsightsHandlers.onDelete}
+            placeholder="Cole o POST cURL contendo 'premiumApplicantInsights'..."
+            colorClass="orange"
           />
         </div>
       </div>
