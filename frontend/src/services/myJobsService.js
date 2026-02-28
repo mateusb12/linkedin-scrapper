@@ -20,6 +20,7 @@ export const formatDateBR = (isoString) => {
     "nov",
     "dez",
   ];
+
   const month = months[date.getMonth()];
   const year = date.getFullYear();
 
@@ -39,14 +40,18 @@ export const calculateJobAge = (postedIso) => {
   if (!postedIso) return null;
   const posted = new Date(postedIso);
   const now = new Date();
+
   const diffTime = Math.abs(now - posted);
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
   return diffDays;
 };
 
 class AppliedJobModel {
   constructor(raw) {
-    if (!raw) throw new Error("AppliedJobModel: empty object");
+    if (!raw) {
+      throw new Error("AppliedJobModel: empty object");
+    }
 
     this.urn = raw.urn || raw.job_id;
     this.id = this.urn;
@@ -54,36 +59,38 @@ class AppliedJobModel {
     this.title = raw.title || "Sem Título";
 
     if (raw.company && typeof raw.company === "object") {
-      this.company = raw.company.name || "Unknown";
+      this.company = raw.company.name || "Unknown Company";
     } else {
-      this.company = raw.company || "Unknown";
+      this.company = raw.company || "Unknown Company";
     }
+
+    this.description = raw.description_full || "";
 
     this.location = raw.location || "";
     this.jobUrl = raw.job_url || "";
     this.workRemoteAllowed = Boolean(raw.work_remote_allowed);
-    this.employmentStatus =
-      raw.employment_status?.replace("urn:li:fs_employmentStatus:", "") ||
-      "Unknown";
 
     this.appliedAt = raw.applied_on || raw.applied_at || null;
-
-    this.postedAt =
-      raw.posted_on || raw.listed_at || raw.original_listed_at || null;
-
+    this.postedAt = raw.posted_on || raw.listed_at || null;
     this.expireAt = raw.expire_at || null;
 
     this.applicationStatus = raw.application_status || "Waiting";
     this.jobState = raw.job_state || "LISTED";
     this.applicationClosed = Boolean(raw.application_closed);
+    this.employmentStatus =
+      raw.employment_status?.replace("urn:li:fs_employmentStatus:", "") || null;
 
     this.applicants = raw.applicants || 0;
     this.applicantsVelocity = raw.applicants_velocity || 0;
     this.competitionLevel = raw.competition_level || null;
+    this.premiumTitle = raw.premium_title || "";
+    this.premiumDescription = raw.premium_description || "";
   }
 
   static fromApiArray(rawJobs) {
-    if (!Array.isArray(rawJobs)) return [];
+    if (!Array.isArray(rawJobs)) {
+      return [];
+    }
     return rawJobs.map((job) => new AppliedJobModel(job));
   }
 }
@@ -91,10 +98,40 @@ class AppliedJobModel {
 export const fetchAppliedJobs = async () => {
   const response = await fetch(`${API_BASE}/job-tracker/applied`);
   const json = await handleResponse(response, "Failed to fetch applied jobs");
-  if (!json?.data?.jobs) return { count: 0, jobs: [] };
+
+  if (!json || json.status !== "success") {
+    throw new Error("Invalid API response format (status)");
+  }
+
+  if (!json.data || !Array.isArray(json.data.jobs)) {
+    return { count: 0, jobs: [] };
+  }
+
+  const jobs = AppliedJobModel.fromApiArray(json.data.jobs);
+
   return {
     count: json.data.count,
-    jobs: AppliedJobModel.fromApiArray(json.data.jobs),
+    jobs,
+  };
+};
+
+export const fetchAppliedJobsLive = async () => {
+  const response = await fetch(`${API_BASE}/job-tracker/applied-live`);
+  const json = await handleResponse(
+    response,
+    "Failed to fetch applied jobs (live)",
+  );
+
+  if (!json || json.status !== "success") {
+    throw new Error("Invalid API response format (status)");
+  }
+
+  const jobsData = json.data.jobs || [];
+  const jobs = AppliedJobModel.fromApiArray(jobsData);
+
+  return {
+    count: json.data?.count || 0,
+    jobs,
   };
 };
 
@@ -103,6 +140,7 @@ export const syncAppliedIncremental = async () => {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
+
   return handleResponse(response, "Failed to sync applied jobs");
 };
 
@@ -112,29 +150,42 @@ export const syncAppliedBackfillStream = ({
   onFinish,
   onError,
 }) => {
-  if (!from) throw new Error("Parameter 'from' is required");
+  if (!from) {
+    throw new Error("Parameter 'from' is required (format YYYY-MM)");
+  }
+
   const url = `${API_BASE}/job-tracker/sync-applied-backfill-stream?from=${from}`;
   const eventSource = new EventSource(url);
 
   eventSource.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
-      if (data.type === "progress") onProgress && onProgress(data);
+
+      if (data.type === "progress") {
+        onProgress && onProgress(data);
+      }
+
       if (data.type === "finished") {
         onFinish && onFinish(data);
         eventSource.close();
       }
+
       if (data.type === "error") {
         onError && onError(data);
         eventSource.close();
       }
     } catch (err) {
-      console.error(err);
+      console.error("Stream parse error:", err);
     }
   };
+
   eventSource.onerror = (err) => {
+    console.error("SSE error:", err);
     onError && onError(err);
     eventSource.close();
   };
-  return () => eventSource.close();
+
+  return () => {
+    eventSource.close();
+  };
 };
