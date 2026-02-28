@@ -596,8 +596,8 @@ const SavedJobs = () => {
                         </div>
                       </td>
 
-                      <td className="px-6 py-4 max-w-[200px]">
-                        <div className="flex flex-wrap items-center gap-2">
+                      <td className="px-6 py-4 min-w-[150px] max-w-[220px]">
+                        <div className="grid grid-cols-3 gap-2 justify-items-center">
                           {job.foundations && job.foundations.length > 0 ? (
                             job.foundations.map((tech, index) => {
                               const iconSrc = getTechIcon(tech);
@@ -624,20 +624,22 @@ const SavedJobs = () => {
                               return (
                                 <span
                                   key={tech}
-                                  className={`px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm ${getTechBadgeStyle(index, tech)}`}
+                                  className={`col-span-3 px-2 py-0.5 rounded text-[10px] font-bold border shadow-sm w-full text-center ${getTechBadgeStyle(index, tech)}`}
                                 >
                                   {tech}
                                 </span>
                               );
                             })
                           ) : (
-                            <span className="text-gray-700 text-xs">-</span>
+                            <span className="text-gray-700 text-xs col-span-3">
+                              -
+                            </span>
                           )}
                         </div>
                       </td>
 
-                      <td className="px-6 py-4 max-w-[250px]">
-                        <div className="flex flex-wrap gap-1.5">
+                      <td className="px-6 py-4 min-w-[150px] max-w-[250px]">
+                        <div className="grid grid-cols-3 gap-2 justify-items-center">
                           {job.specifics && job.specifics.length > 0 ? (
                             job.specifics.map((tech, index) => {
                               const iconSrc = getTechIcon(tech);
@@ -664,14 +666,16 @@ const SavedJobs = () => {
                               return (
                                 <span
                                   key={tech}
-                                  className={`px-2 py-0.5 rounded text-[10px] font-medium border shadow-sm ${getTechBadgeStyle(index + 5, tech)}`}
+                                  className={`col-span-3 px-2 py-0.5 rounded text-[10px] font-medium border shadow-sm w-full text-center ${getTechBadgeStyle(index + 5, tech)}`}
                                 >
                                   {tech}
                                 </span>
                               );
                             })
                           ) : (
-                            <span className="text-gray-700 text-xs">-</span>
+                            <span className="text-gray-700 text-xs col-span-3">
+                              -
+                            </span>
                           )}
                         </div>
                       </td>

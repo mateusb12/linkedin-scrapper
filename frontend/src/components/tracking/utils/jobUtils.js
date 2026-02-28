@@ -17,6 +17,12 @@ import gitIcon from "../../../assets/skills_icons/git.png";
 import mysqlIcon from "../../../assets/skills_icons/mysql.png";
 import reactnativeIcon from "../../../assets/skills_icons/react-native.png";
 import llmIcon from "../../../assets/skills_icons/llm.png";
+import flaskIcon from "../../../assets/skills_icons/flask.png";
+import pandasIcon from "../../../assets/skills_icons/pandas.png";
+import postgresIcon from "../../../assets/skills_icons/postgres.png";
+import rabbitIcon from "../../../assets/skills_icons/rabbit.svg";
+import kafkaIcon from "../../../assets/skills_icons/kafka.svg";
+import terraformIcon from "../../../assets/skills_icons/terraform.svg";
 
 const NEGATIVE_KEYWORDS = [
   "rpa",
@@ -590,6 +596,12 @@ const techIconsMap = {
   MySQL: mysqlIcon,
   "React Native": reactnativeIcon,
   LLM: llmIcon,
+  Flask: flaskIcon,
+  Pandas: pandasIcon,
+  PostgreSQL: postgresIcon,
+  RabbitMQ: rabbitIcon,
+  Kafka: kafkaIcon,
+  Terraform: terraformIcon,
 };
 
 export const getTechIcon = (techName) => {
