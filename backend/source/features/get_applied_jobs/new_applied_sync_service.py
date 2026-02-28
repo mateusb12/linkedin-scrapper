@@ -24,6 +24,7 @@ class AppliedJobsIncrementalSync:
 
         inserted = 0
         stopped_early = False
+        updates_report = []
 
         try:
             for job_data in jobs_data:
@@ -35,7 +36,15 @@ class AppliedJobsIncrementalSync:
                 existing = db.query(Job).filter(Job.urn == job_id).first()
 
                 if existing:
-                    AppliedJobsIncrementalSync._update_job(existing, job_data)
+                    changes = AppliedJobsIncrementalSync._update_job(existing, job_data)
+
+                    if changes:
+                        updates_report.append({
+                            "job_id": job_id,
+                            "title": existing.title,
+                            "changes": changes
+                        })
+
                     continue
 
                 AppliedJobsIncrementalSync._insert_job(db, job_data)
@@ -51,11 +60,13 @@ class AppliedJobsIncrementalSync:
 
         return {
             "inserted": inserted,
+            "updated": len(updates_report),
+            "updates": updates_report,
             "stopped_early": stopped_early
         }
 
     # ============================================================
-    # BACKFILL STREAM (🔥 PROGRESSIVO)
+    # BACKFILL STREAM
     # ============================================================
 
     @staticmethod
@@ -71,14 +82,6 @@ class AppliedJobsIncrementalSync:
             result = fetcher.fetch_jobs(stage="applied")
             jobs_data = result.get("jobs", [])
 
-            if not jobs_data:
-                yield AppliedJobsIncrementalSync._event({
-                    "type": "finished",
-                    "reason": "no_jobs_found",
-                    "inserted": 0
-                })
-                return
-
             for job_data in jobs_data:
 
                 processed += 1
@@ -89,7 +92,6 @@ class AppliedJobsIncrementalSync:
 
                 applied_dt = datetime.fromisoformat(applied_str)
 
-                # 🔥 STOP CONDITION
                 if applied_dt < cutoff_date:
                     yield AppliedJobsIncrementalSync._event({
                         "type": "finished",
@@ -100,8 +102,8 @@ class AppliedJobsIncrementalSync:
                     return
 
                 job_id = job_data.get("job_id")
-
                 existing = db.query(Job).filter(Job.urn == job_id).first()
+
                 if existing:
                     AppliedJobsIncrementalSync._update_job(existing, job_data)
                     db.commit()
@@ -116,11 +118,10 @@ class AppliedJobsIncrementalSync:
                     "processed": processed,
                     "inserted": inserted,
                     "job_id": job_id,
-                    "timestamp": applied_dt.strftime("%d-%b-%Y"),
                     "title": job_data.get("title"),
                 })
 
-                time.sleep(0.2)  # anti flood
+                time.sleep(0.2)
 
             yield AppliedJobsIncrementalSync._event({
                 "type": "finished",
@@ -139,7 +140,7 @@ class AppliedJobsIncrementalSync:
             db.close()
 
     # ============================================================
-    # INTERNAL INSERT
+    # INSERT
     # ============================================================
 
     @staticmethod
@@ -175,8 +176,6 @@ class AppliedJobsIncrementalSync:
             applied_on=applied_on,
             application_status="Applied",
             company_urn=company_urn,
-
-            # 🔥 enrichment
             job_state=job_data.get("job_state"),
             experience_level=job_data.get("experience_level"),
             employment_status=job_data.get("employment_status"),
@@ -187,51 +186,48 @@ class AppliedJobsIncrementalSync:
 
         db.add(job)
 
+    # ============================================================
+    # UPDATE WITH DIFF
+    # ============================================================
+
     @staticmethod
     def _update_job(existing_job, job_data):
 
         changes = {}
 
-        def track(field_name, old, new):
+        def track(field, old, new):
             if old != new:
-                changes[field_name] = {
+                changes[field] = {
                     "from": old,
                     "to": new
                 }
 
-        # applied_at
         if job_data.get("applied_at"):
             new_applied = datetime.fromisoformat(job_data["applied_at"])
             track("applied_on", existing_job.applied_on, new_applied)
             existing_job.applied_on = new_applied
 
-        # job_state
         if job_data.get("job_state") is not None:
             track("job_state", existing_job.job_state, job_data.get("job_state"))
             existing_job.job_state = job_data.get("job_state")
 
-        # experience_level
         if job_data.get("experience_level") is not None:
             track("experience_level", existing_job.experience_level, job_data.get("experience_level"))
             existing_job.experience_level = job_data.get("experience_level")
 
-        # employment_status
         if job_data.get("employment_status") is not None:
             track("employment_status", existing_job.employment_status, job_data.get("employment_status"))
             existing_job.employment_status = job_data.get("employment_status")
 
-        # application_closed
         if job_data.get("application_closed") is not None:
             track("application_closed", existing_job.application_closed, job_data.get("application_closed"))
             existing_job.application_closed = job_data.get("application_closed")
 
-        # expire_at
         if job_data.get("expire_at"):
             new_expire = datetime.fromisoformat(job_data["expire_at"])
             track("expire_at", existing_job.expire_at, new_expire)
             existing_job.expire_at = new_expire
 
-        # applicants
         if job_data.get("applicants") is not None:
             track("applicants", existing_job.applicants, job_data.get("applicants"))
             existing_job.applicants = job_data.get("applicants")
