@@ -1,5 +1,5 @@
 # backend/source/features/get_applied_jobs/new_get_applied_jobs_controller.py
-
+from dataclasses import asdict
 from datetime import datetime
 from flask import Blueprint, jsonify, request, Response, stream_with_context
 
@@ -116,3 +116,32 @@ def sync_applied_backfill_stream():
         ),
         content_type="text/event-stream",
     )
+
+
+@job_tracker_bp.route("/saved-live", methods=["GET"])
+def get_saved_live():
+    """
+    Rota Proxy: Busca vagas SALVAS (Saved Jobs) no LinkedIn e retorna.
+    LGPD (Privacy by Design):
+    - Dados transitórios: Esta rota apenas 'espelha' o LinkedIn.
+    - Zero Persistência: Nada é salvo no banco de dados local.
+    """
+    try:
+        # Instancia o fetcher (debug=True se quiser ver logs no terminal)
+        fetcher = JobTrackerFetcher(debug=True)
+
+        # O fetch_jobs já tem default stage="saved", mas explicitamos para clareza.
+        # Isso vai usar o registro 'SavedJobs' (ID 8) da sua tabela fetch_curl.
+        result_obj = fetcher.fetch_jobs(stage="saved")
+
+        # Serialização segura com asdict, pois Dataclasses nativas não têm .to_dict()
+        return jsonify({
+            "status": "success",
+            "data": asdict(result_obj)
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500

@@ -731,7 +731,7 @@ class JobTrackerFetcher:
             }
 
             # B. If 'applied', fetch deep details
-            if stage == "applied":
+            if stage in ["applied", "saved"]:
                 # 1. Voyager Details (Description, State, Applied Date)
                 details = self.fetch_job_details(job_id_str)
 
