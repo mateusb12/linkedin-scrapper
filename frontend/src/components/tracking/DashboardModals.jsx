@@ -21,6 +21,14 @@ import {
   Play,
 } from "lucide-react";
 import { formatCustomDate } from "../../utils/dateUtils";
+import {
+  extractExperienceFromDescription,
+  extractFoundations,
+  extractSeniorityFromDescription,
+  extractSpecifics,
+  getSeniorityStyle,
+  getTechBadgeStyle,
+} from "./utils/jobUtils.js";
 
 export const BackfillModal = ({ onClose, onComplete }) => {
   const [timeRange, setTimeRange] = useState("past_month");
@@ -124,7 +132,6 @@ export const BackfillModal = ({ onClose, onComplete }) => {
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm animate-in fade-in">
       <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
-        {}
         <div className="p-6 border-b border-gray-800 bg-gray-900 flex justify-between items-center">
           <div>
             <h3 className="text-xl font-bold text-white flex items-center gap-2">
@@ -138,7 +145,6 @@ export const BackfillModal = ({ onClose, onComplete }) => {
             </p>
           </div>
 
-          {}
           <div className="relative">
             <Filter
               size={14}
@@ -160,7 +166,6 @@ export const BackfillModal = ({ onClose, onComplete }) => {
         </div>
 
         <div className="p-6 space-y-6 flex-1 overflow-y-auto custom-scrollbar">
-          {}
           {!hasStarted ? (
             <div className="flex flex-col items-center justify-center py-10 space-y-4 text-center">
               <div className="p-4 bg-blue-500/10 rounded-full">
@@ -176,7 +181,6 @@ export const BackfillModal = ({ onClose, onComplete }) => {
             </div>
           ) : (
             <>
-              {}
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-gray-300 font-mono">
@@ -192,7 +196,6 @@ export const BackfillModal = ({ onClose, onComplete }) => {
                 </div>
               </div>
 
-              {}
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-gray-800/50 p-3 rounded-lg border border-gray-700">
                   <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
@@ -212,7 +215,6 @@ export const BackfillModal = ({ onClose, onComplete }) => {
                 </div>
               </div>
 
-              {}
               <div
                 className={`border rounded-lg p-4 relative overflow-hidden transition-colors ${isFinished ? "bg-gray-800/50 border-gray-700" : "bg-blue-950/30 border-blue-900/50"}`}
               >
@@ -237,7 +239,6 @@ export const BackfillModal = ({ onClose, onComplete }) => {
                 </p>
               </div>
 
-              {}
               <div className="space-y-2 bg-black/20 p-3 rounded-lg border border-gray-800 max-h-48 overflow-y-auto">
                 {logs.length === 0 && isFinished && (
                   <div className="text-center text-gray-500 text-xs py-4">
@@ -296,7 +297,6 @@ export const BackfillModal = ({ onClose, onComplete }) => {
           )}
         </div>
 
-        {}
         <div className="p-4 bg-gray-900 border-t border-gray-800 flex justify-end gap-3">
           {!hasStarted ? (
             <>
@@ -400,8 +400,14 @@ export const ScraperSettings = ({ onClose, onSaveSuccess }) => {
 
 export const JobDetailsPanel = ({ job, onClose }) => {
   if (!job) return null;
-  const isEnriched =
-    job.description_full && job.description_full !== "No description provided";
+
+  const descriptionContent = job.description || job.description_full;
+
+  const seniority = extractSeniorityFromDescription(descriptionContent);
+  const experience = extractExperienceFromDescription(descriptionContent);
+  const foundations = extractFoundations(descriptionContent);
+  const specifics = extractSpecifics(descriptionContent);
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div
@@ -411,60 +417,126 @@ export const JobDetailsPanel = ({ job, onClose }) => {
       <div className="relative w-full max-w-2xl bg-gray-900 border-l border-gray-700 h-full shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col">
         <div className="p-6 border-b border-gray-800 bg-gray-900">
           <div className="flex justify-between items-start mb-4">
-            <div>
-              <h2 className="text-2xl font-bold text-white leading-tight mb-1">
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold text-white leading-tight mb-2">
                 {job.title}
               </h2>
-              <div className="flex items-center gap-2 text-blue-400 font-medium">
-                <Building size={16} />
+              <div className="flex items-center gap-3 text-blue-400 font-medium text-lg">
+                <Building size={20} />
                 {job.company}
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white"
+              className="p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
             >
               <X size={24} />
             </button>
           </div>
-          <div className="flex flex-wrap gap-3 text-xs text-gray-300">
-            <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700">
-              <CalendarIcon size={14} />
-              {formatCustomDate(job.appliedAt)}
-            </div>
-            {job.location && (
-              <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700">
-                <MapPin size={14} /> {job.location}
-              </div>
+
+          <div className="flex flex-wrap gap-2 mt-4">
+            {seniority && (
+              <span
+                className={`px-3 py-1 rounded text-sm font-bold border ${getSeniorityStyle(seniority)}`}
+              >
+                {seniority}
+              </span>
             )}
-            <a
-              href={job.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 bg-blue-900/20 text-blue-300 px-3 py-1.5 rounded-full border border-blue-800 hover:bg-blue-900/40"
-            >
-              <ExternalLink size={14} /> View on {job.source}
-            </a>
+            {experience && (
+              <span className="px-3 py-1 rounded text-sm font-bold border border-blue-500/30 bg-blue-500/10 text-blue-300">
+                {experience.min}+ Anos de Exp.
+              </span>
+            )}
+            <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1 rounded border border-gray-700 text-xs text-gray-300">
+              <MapPin size={14} /> {job.location}
+            </div>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-          <div className="flex items-center gap-2 mb-4 text-sm font-bold text-gray-400 uppercase tracking-wider">
-            <AlignLeft size={16} /> Job Description
-          </div>
-          <div
-            className="prose prose-invert prose-sm max-w-none text-gray-300 [&>ul]:list-disc [&>ul]:pl-5 [&>ol]:list-decimal [&>ol]:pl-5"
-            dangerouslySetInnerHTML={{
-              __html:
-                job.description_full ||
-                '<p class="text-gray-500 italic">No description.</p>',
-            }}
-          />
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+          <section>
+            <div className="flex items-center gap-2 mb-4 text-sm font-bold text-gray-400 uppercase tracking-wider">
+              <Terminal size={18} className="text-blue-500" /> Tecnologias
+              Identificadas
+            </div>
+            <div className="bg-gray-800/40 border border-gray-800 rounded-xl p-4">
+              <div className="mb-4">
+                <p className="text-[10px] text-gray-500 uppercase font-bold mb-2">
+                  Foundations
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {foundations.map((tech, i) => (
+                    <span
+                      key={i}
+                      className={`px-2 py-1 rounded text-xs border ${getTechBadgeStyle(i, tech)}`}
+                    >
+                      {tech}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-500 uppercase font-bold mb-2">
+                  Specifics & Tools
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {specifics.map((tech, i) => (
+                    <span
+                      key={i}
+                      className="px-2 py-1 rounded text-xs border border-gray-700 bg-gray-900 text-gray-400"
+                    >
+                      {tech}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="grid grid-cols-2 gap-4">
+            <div className="bg-gray-800/40 border border-gray-800 rounded-xl p-4">
+              <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">
+                Candidatos
+              </p>
+              <div className="flex items-center gap-2 text-xl font-bold text-white">
+                <Users size={18} className="text-blue-400" />{" "}
+                {job.applicants || 0}
+              </div>
+            </div>
+            <div className="bg-gray-800/40 border border-gray-800 rounded-xl p-4">
+              <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">
+                Competição
+              </p>
+              <div className="text-xl font-bold text-orange-400">
+                {job.competitionLevel || "N/A"}
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <div className="flex items-center gap-2 mb-4 text-sm font-bold text-gray-400 uppercase tracking-wider">
+              <AlignLeft size={18} className="text-blue-500" /> Descrição da
+              Vaga
+            </div>
+            <div
+              className="prose prose-invert prose-sm max-w-none text-gray-300 leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: descriptionContent }}
+            />
+          </section>
         </div>
-        <div className="p-4 border-t border-gray-800 bg-gray-900/50 text-xs text-gray-500 flex justify-between">
-          <span>URN: {job.urn}</span>
-          <span className={isEnriched ? "text-green-500" : "text-amber-500"}>
-            {isEnriched ? "● Description Backfilled" : "● Description Missing"}
-          </span>
+
+        <div className="p-6 border-t border-gray-800 bg-gray-900 flex items-center justify-between">
+          <div className="text-[10px] font-mono text-gray-500">
+            ID: {job.urn}
+          </div>
+          <a
+            href={job.jobUrl || job.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-lg font-bold transition-all shadow-lg shadow-blue-900/40"
+          >
+            <ExternalLink size={18} /> Aplicar no LinkedIn
+          </a>
         </div>
       </div>
     </div>
