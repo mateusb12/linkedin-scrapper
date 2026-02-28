@@ -471,15 +471,12 @@ class JobTrackerFetcher:
     def fetch_job_details(self, job_id: str) -> Dict[str, Any]:
         session = self.client.session
 
-        # --- FIX START: Safely extract JSESSIONID ---
+        # Fix do Cookie (evita erro de duplicata)
         csrf = None
-        # We iterate manually to avoid "Multiple cookies with name" error
         for cookie in session.cookies:
             if cookie.name == "JSESSIONID":
                 csrf = cookie.value.replace('"', "")
                 break
-
-        # Fallback: if not in cookie jar, try headers
         if not csrf:
             csrf = session.headers.get("csrf-token")
 
@@ -505,7 +502,30 @@ class JobTrackerFetcher:
             expire_at = data.get("expireAt")
             expire_dt = ms_to_datetime(expire_at) if expire_at else None
 
+            # --- EXTRAÇÃO DE TITLE E COMPANY (O PULO DO GATO) ---
+            # 1. Título é direto
+            voyager_title = data.get("title")
+
+            # 2. Company pode vir em lugares diferentes dependendo da vaga
+            voyager_company = data.get("companyName")  # As vezes vem direto
+            if not voyager_company:
+                # Tenta dentro de companyDetails -> company -> name
+                comp_details = data.get("companyDetails", {})
+                # Estrutura comum: {'company': {'name': 'Google', ...}}
+                c_obj = comp_details.get("company", {})
+                if isinstance(c_obj, dict):
+                    voyager_company = c_obj.get("name")
+
+            # Fallback final se ainda for None
+            if not voyager_company:
+                voyager_company = "Unknown Company"
+
             return {
+                # Novos campos salvadores
+                "title": voyager_title,
+                "company": voyager_company,
+
+                # Campos antigos
                 "applied_at": applied_dt.isoformat() if applied_dt else None,
                 "applicants": data.get("applies"),
                 "job_state": data.get("jobState"),
@@ -691,6 +711,13 @@ class JobTrackerFetcher:
             if stage == "applied":
                 # 1. Voyager Details (Description, State, Applied Date)
                 details = self.fetch_job_details(job_id_str)
+
+                if not current_job_dict.get("title") and details.get("title"):
+                    current_job_dict["title"] = details["title"]
+
+                if not current_job_dict.get("company") and details.get("company"):
+                    current_job_dict["company"] = details["company"]
+                    
                 current_job_dict.update(details)
 
                 # 2. Premium Insights (Applicants, Seniority)
