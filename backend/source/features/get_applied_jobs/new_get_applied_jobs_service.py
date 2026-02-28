@@ -471,7 +471,7 @@ class JobTrackerFetcher:
     def fetch_job_details(self, job_id: str) -> Dict[str, Any]:
         session = self.client.session
 
-        # Fix do Cookie (evita erro de duplicata)
+        # 1. Gestão de Cookies (Mantém o fix anterior)
         csrf = None
         for cookie in session.cookies:
             if cookie.name == "JSESSIONID":
@@ -502,41 +502,64 @@ class JobTrackerFetcher:
             expire_at = data.get("expireAt")
             expire_dt = ms_to_datetime(expire_at) if expire_at else None
 
-            # --- EXTRAÇÃO DE TITLE E COMPANY (O PULO DO GATO) ---
-            # 1. Título é direto
+            # --- EXTRAÇÃO DE DADOS (IMPEDINDO "UNKNOWN") ---
+
+            # 1. Título (Geralmente seguro na raiz)
             voyager_title = data.get("title")
 
-            # 2. Company pode vir em lugares diferentes dependendo da vaga
-            voyager_company = data.get("companyName")  # As vezes vem direto
-            if not voyager_company:
-                # Tenta dentro de companyDetails -> company -> name
-                comp_details = data.get("companyDetails", {})
-                # Estrutura comum: {'company': {'name': 'Google', ...}}
-                c_obj = comp_details.get("company", {})
-                if isinstance(c_obj, dict):
-                    voyager_company = c_obj.get("name")
+            # 2. Empresa (Lógica de 3 Níveis)
+            voyager_company = None
 
-            # Fallback final se ainda for None
+            # Nível A: Tenta pegar direto do nome da empresa (Vagas Onsite)
+            company_details = data.get("companyDetails", {})
+            c_obj = company_details.get("company", {})
+            # Às vezes 'company' é um dict com 'name', às vezes é só uma string URN.
+            if isinstance(c_obj, dict):
+                voyager_company = c_obj.get("name")
+            elif data.get("companyName"):
+                voyager_company = data.get("companyName")
+
+            # Nível B: Regex no texto de intro (Vagas Offsite/ATS)
+            # Padrão: "... role at {Company}, and ..."
+            if not voyager_company:
+                intro_text = data.get("videoIntroSetupText", "")
+                if intro_text and "role at " in intro_text:
+                    try:
+                        # Pega o que está entre "role at " e a vírgula ou " and"
+                        start = intro_text.find("role at ") + 8
+                        end = intro_text.find(",", start)
+                        if end == -1: end = intro_text.find(" and", start)
+
+                        if end > start:
+                            extracted = intro_text[start:end].strip()
+                            if len(extracted) < 50:  # Evita pegar frases inteiras por erro
+                                voyager_company = extracted
+                    except:
+                        pass
+
+            # Nível C: Domínio de Origem (Último recurso)
+            if not voyager_company:
+                voyager_company = data.get("sourceDomain")  # ex: metaltoad.bamboohr.com
+
+            # Fallback final
             if not voyager_company:
                 voyager_company = "Unknown Company"
 
             return {
-                # Novos campos salvadores
                 "title": voyager_title,
                 "company": voyager_company,
-
-                # Campos antigos
                 "applied_at": applied_dt.isoformat() if applied_dt else None,
                 "applicants": data.get("applies"),
                 "job_state": data.get("jobState"),
                 "expire_at": expire_dt.isoformat() if expire_dt else None,
                 "experience_level": data.get("formattedExperienceLevel") or "",
-                "employment_status": data.get("employmentStatus"),
+                "employment_status": data.get("formattedEmploymentStatus") or data.get("employmentStatus"),
                 "application_closed": applying_info.get("closed"),
                 "work_remote_allowed": data.get("workRemoteAllowed"),
                 "description_full": description_text,
             }
-        except Exception:
+        except Exception as e:
+            _log(f"⚠️ Erro ao parsear detalhes da vaga {job_id}: {e}")
             return {}
 
     # ----------------------------------------------------------
@@ -717,7 +740,7 @@ class JobTrackerFetcher:
 
                 if not current_job_dict.get("company") and details.get("company"):
                     current_job_dict["company"] = details["company"]
-                    
+
                 current_job_dict.update(details)
 
                 # 2. Premium Insights (Applicants, Seniority)
