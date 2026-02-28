@@ -39,6 +39,9 @@ import {
   getTechIcon,
 } from "./utils/jobUtils";
 
+const pillBase =
+  "inline-flex items-center gap-1 px-3 py-1 rounded-md border text-sm font-mono leading-none w-fit";
+
 const TechStackCell = ({ description }) => {
   const foundations = extractFoundations(description);
   const specifics = extractSpecifics(description);
@@ -125,9 +128,7 @@ const JobAgeBadge = ({ postedAt }) => {
   }
 
   return (
-    <div
-      className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs font-mono border ${colorClass}`}
-    >
+    <div className={`${pillBase} ${colorClass}`}>
       <CalendarDays size={12} />
       {days === 0 ? "Hoje" : `${days}d`}
     </div>
@@ -438,8 +439,10 @@ const RecentApplications = ({ onSelectJob }) => {
                       <div className="text-slate-200 text-sm font-bold">
                         {formatDateBR(job.appliedAt)}
                       </div>
-                      <div className="text-xs text-slate-500 font-mono flex items-center gap-1">
-                        <Clock size={10} />
+                      <div
+                        className={`${pillBase} bg-cyan-900/20 border-cyan-700 text-cyan-300`}
+                      >
+                        <Clock size={13} className="text-cyan-400" />
                         {formatTimeBR(job.appliedAt)}
                       </div>
 
