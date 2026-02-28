@@ -208,7 +208,7 @@ class JobTrackerFetcher:
     # 🔥 NOVO: busca appliedAt via jobPostings
     # ----------------------------------------------------------
 
-    def fetch_applied_at(self, job_id: str):
+    def fetch_job_details(self, job_id: str):
         session = self.client.session
 
         csrf = session.cookies.get("JSESSIONID")
@@ -223,25 +223,39 @@ class JobTrackerFetcher:
             "csrf-token": csrf,
         }
 
-        print("🔎 Fetching appliedAt for", job_id)
-        print("CSRF:", csrf)
-
         response = session.get(url, headers=headers)
 
-        print(response.text[:300])
-
         if response.status_code != 200:
-            return None
+            return {}
 
         try:
             data = response.json()
-            ts = data.get("applyingInfo", {}).get("appliedAt")
-            if ts:
-                return ms_to_datetime(ts)
-        except:
-            pass
 
-        return None
+            applying_info = data.get("applyingInfo", {})
+
+            applied_at = applying_info.get("appliedAt")
+            applied_dt = ms_to_datetime(applied_at) if applied_at else None
+
+            expire_at = data.get("expireAt")
+            expire_dt = ms_to_datetime(expire_at) if expire_at else None
+
+            activities = applying_info.get("activities", [])
+            activity_text = activities[0].get("text") if activities else None
+
+            return {
+                "applied_at": applied_dt.isoformat() if applied_dt else None,
+                "applicants": data.get("applies"),
+                "job_state": data.get("jobState"),
+                "expire_at": expire_dt.isoformat() if expire_dt else None,
+                "experience_level": data.get("formattedExperienceLevel"),
+                "employment_status": data.get("employmentStatus"),
+                "application_closed": applying_info.get("closed"),
+                "application_activity_text": activity_text,
+                "work_remote_allowed": data.get("workRemoteAllowed"),
+            }
+
+        except Exception:
+            return {}
 
     # ----------------------------------------------------------
 
@@ -277,12 +291,9 @@ class JobTrackerFetcher:
                         job["applied_at"] = None
                         continue
 
-                    applied_dt = self.fetch_applied_at(job_id)
+                    details = self.fetch_job_details(job_id)
 
-                    if applied_dt:
-                        job["applied_at"] = applied_dt.isoformat()
-                    else:
-                        job["applied_at"] = None
+                    job.update(details)
 
                     time.sleep(0.2)  # evitar flood
 

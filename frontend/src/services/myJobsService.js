@@ -32,8 +32,20 @@ class AppliedJobModel {
     this.postedAt =
       raw.posted_on || raw.originally_listed_at || raw.listed_at || null;
 
+    this.status = raw.application_status ?? "Waiting";
+
+    this.applyMethod = raw.apply_method || "UNKNOWN";
+
     this.isReposted = Boolean(raw.is_reposted);
-    this.applyMethod = raw.application_status || raw.apply_method || "UNKNOWN";
+    this.applicationClosed = raw.application_closed ?? null;
+    this.workRemoteAllowed = raw.work_remote_allowed ?? null;
+
+    this.jobState = raw.job_state || null;
+    this.experienceLevel = raw.experience_level || null;
+    this.employmentStatus = raw.employment_status || null;
+    this.expireAt = raw.expire_at || null;
+
+    this.applicants = raw.applicants ?? null;
   }
 
   static fromApiArray(rawJobs) {
@@ -65,9 +77,27 @@ export const fetchAppliedJobs = async () => {
   };
 };
 
-export const fetchSavedJobsRaw = async () => {
-  const response = await fetch(`${API_BASE}/job-tracker/saved`);
-  return handleResponse(response, "Failed to fetch saved jobs");
+export const fetchAppliedJobsLive = async () => {
+  const response = await fetch(`${API_BASE}/job-tracker/applied-live`);
+  const json = await handleResponse(
+    response,
+    "Failed to fetch applied jobs (live)",
+  );
+
+  if (!json || json.status !== "success") {
+    throw new Error("Invalid API response format (status)");
+  }
+
+  if (!json.data || !Array.isArray(json.data.jobs)) {
+    throw new Error("Invalid API response format (data.jobs missing)");
+  }
+
+  const jobs = AppliedJobModel.fromApiArray(json.data.jobs);
+
+  return {
+    count: json.data.count,
+    jobs,
+  };
 };
 
 export const syncAppliedIncremental = async () => {
@@ -90,7 +120,6 @@ export const syncAppliedBackfillStream = ({
   }
 
   const url = `${API_BASE}/job-tracker/sync-applied-backfill-stream?from=${from}`;
-
   const eventSource = new EventSource(url);
 
   eventSource.onmessage = (event) => {

@@ -36,7 +36,6 @@ class Company(Base):
 class Job(Base):
     __tablename__ = 'jobs'
 
-    # Columns based on the top-level job objects in the JSON
     urn = Column(String, primary_key=True)
     title = Column(String, nullable=False)
     location = Column(String)
@@ -63,16 +62,26 @@ class Job(Base):
     applied_on = Column(DateTime, nullable=True, default=None)
     application_status = Column(String, default="Waiting")
 
-    # Foreign Key to link to the 'companies' table
-    company_urn = Column(String, ForeignKey('companies.urn'))
+    job_state = Column(String, nullable=True)
+    experience_level = Column(String, nullable=True)
+    employment_status = Column(String, nullable=True)
+    application_closed = Column(Boolean, nullable=True)
+    expire_at = Column(DateTime, nullable=True)
 
-    # This links a Job back to its one Company
+    company_urn = Column(String, ForeignKey('companies.urn'))
     company = relationship("Company", back_populates="jobs")
 
     def __repr__(self):
         return f"<Job(title='{self.title}', company='{self.company.name if self.company else None}')>"
 
     def to_dict(self, *, include_company: bool = True):
+        from datetime import datetime
+
+        days_until_expire = None
+        if self.expire_at:
+            delta = self.expire_at - datetime.utcnow()
+            days_until_expire = delta.days
+
         data = {
             "urn": self.urn,
             "title": self.title,
@@ -98,7 +107,16 @@ class Job(Base):
             "keywords": self.keywords or [],
             "disabled": self.disabled,
             "application_status": self.application_status or "Waiting",
+
+            "job_state": self.job_state,
+            "experience_level": self.experience_level,
+            "employment_status": self.employment_status,
+            "application_closed": self.application_closed,
+            "expire_at": self.expire_at.isoformat() if self.expire_at else None,
+            "days_until_expire": days_until_expire,
         }
+
         if include_company and self.company is not None:
             data["company"] = self.company.to_dict(include_jobs=False)
+
         return data

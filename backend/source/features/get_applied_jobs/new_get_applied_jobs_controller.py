@@ -92,3 +92,21 @@ def sync_applied_backfill_stream():
         ),
         content_type="text/event-stream",
     )
+
+
+@job_tracker_bp.route("/applied-live", methods=["GET"])
+def get_applied_live():
+    try:
+        fetcher = JobTrackerFetcher(debug=False)
+        result = fetcher.fetch_jobs(stage="applied")
+
+        return jsonify({
+            "status": "success",
+            "data": result
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
