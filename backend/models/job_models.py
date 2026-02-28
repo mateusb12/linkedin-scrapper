@@ -1,4 +1,5 @@
 # database/orm_models.py
+from datetime import datetime
 
 from sqlalchemy import Column, String, Text, ForeignKey, Integer, Boolean, JSON, DateTime
 from sqlalchemy.orm import relationship
@@ -36,7 +37,7 @@ class Company(Base):
 class Job(Base):
     __tablename__ = 'jobs'
 
-    urn = Column(String, primary_key=True)
+    urn = Column(String, primary_key=True)  # Aqui salvaremos o Job ID (ex: "4321...")
     title = Column(String, nullable=False)
     location = Column(String)
     workplace_type = Column(String)
@@ -44,7 +45,20 @@ class Job(Base):
     posted_on = Column(String)
     job_url = Column(String)
     description_full = Column(Text)
+
+    # Métricas Básicas
     applicants = Column(Integer, default=0)
+
+    # --- NOVOS CAMPOS (ATUALIZAÇÃO) ---
+    competition_level = Column(String, nullable=True)  # High, Medium, Low
+    applicants_velocity = Column(Integer, nullable=True)  # Applicants last 24h
+    seniority_distribution = Column(JSON, nullable=True)  # JSON do Premium
+    education_distribution = Column(JSON, nullable=True)  # JSON do Premium
+    work_remote_allowed = Column(Boolean, default=False)
+    premium_title = Column(String, nullable=True)
+    premium_description = Column(String, nullable=True)
+    # ----------------------------------
+
     description_snippet = Column(Text, default="")
     easy_apply = Column(Boolean, default=False)
     language = Column(String, default="PTBR")
@@ -60,23 +74,23 @@ class Job(Base):
 
     has_applied = Column(Boolean, default=False)
     applied_on = Column(DateTime, nullable=True, default=None)
-    application_status = Column(String, default="Waiting")
+    application_status = Column(String, default="Waiting")  # Waiting, Applied, Rejected
 
-    job_state = Column(String, nullable=True)
+    job_state = Column(String, nullable=True)  # LISTED, CLOSED, SUSPENDED
     experience_level = Column(String, nullable=True)
     employment_status = Column(String, nullable=True)
     application_closed = Column(Boolean, nullable=True)
     expire_at = Column(DateTime, nullable=True)
 
-    company_urn = Column(String, ForeignKey('companies.urn'))
+    # Relacionamento
+    company_urn = Column(String, ForeignKey('companies.urn'), nullable=True)
     company = relationship("Company", back_populates="jobs")
 
     def __repr__(self):
-        return f"<Job(title='{self.title}', company='{self.company.name if self.company else None}')>"
+        comp_name = self.company.name if self.company else "NoCompany"
+        return f"<Job(id='{self.urn}', title='{self.title}', company='{comp_name}')>"
 
     def to_dict(self, *, include_company: bool = True):
-        from datetime import datetime
-
         days_until_expire = None
         if self.expire_at:
             delta = self.expire_at - datetime.utcnow()
@@ -95,18 +109,16 @@ class Job(Base):
             "applied_on": self.applied_on.isoformat() if self.applied_on else None,
             "applied_on_formatted": self.applied_on.strftime("%d-%b-%Y") if self.applied_on else None,
             "company_urn": self.company_urn,
-            "company": self.company.to_dict() if self.company else None,
+
+            # Dados Numéricos
             "applicants": self.applicants,
-            "description_snippet": self.description_snippet,
-            "easy_apply": self.easy_apply,
-            "language": self.language,
-            "responsibilities": self.responsibilities or [],
-            "qualifications": self.qualifications or [],
-            "job_type": self.job_type or "Full-stack",
-            "programming_languages": self.programming_languages or [],
-            "keywords": self.keywords or [],
-            "disabled": self.disabled,
-            "application_status": self.application_status or "Waiting",
+            "applicants_velocity": self.applicants_velocity,
+            "competition_level": self.competition_level,
+
+            # Distribuições e Premium
+            "seniority_distribution": self.seniority_distribution or [],
+            "education_distribution": self.education_distribution or [],
+            "premium_title": self.premium_title,
 
             "job_state": self.job_state,
             "experience_level": self.experience_level,
@@ -114,9 +126,10 @@ class Job(Base):
             "application_closed": self.application_closed,
             "expire_at": self.expire_at.isoformat() if self.expire_at else None,
             "days_until_expire": days_until_expire,
+            "application_status": self.application_status,
         }
 
-        if include_company and self.company is not None:
+        if include_company and self.company:
             data["company"] = self.company.to_dict(include_jobs=False)
 
         return data

@@ -14,7 +14,7 @@ job_tracker_bp = Blueprint("job_tracker", __name__, url_prefix="/job-tracker")
 
 
 # ============================================================
-# FETCH FROM SQL
+# FETCH FROM SQL (READ-ONLY)
 # ============================================================
 
 @job_tracker_bp.route("/applied", methods=["GET"])
@@ -24,8 +24,8 @@ def get_applied_jobs():
         from models.job_models import Job
 
         db = get_db_session()
-
         try:
+            # Traz todos os jobs aplicados, ordenados por data
             jobs = (
                 db.query(Job)
                 .filter(Job.has_applied == True)
@@ -40,7 +40,6 @@ def get_applied_jobs():
                     "jobs": [job.to_dict() for job in jobs]
                 }
             }), 200
-
         finally:
             db.close()
 
@@ -52,20 +51,24 @@ def get_applied_jobs():
 
 
 # ============================================================
-# INCREMENTAL SYNC (PAGE 1 ONLY)
+# LIVE FETCH (NO PERSISTENCE)
 # ============================================================
 
-@job_tracker_bp.route("/sync-applied", methods=["POST"])
-def sync_applied_jobs():
+@job_tracker_bp.route("/applied-live", methods=["GET"])
+def get_applied_live():
+    """
+    Rota Proxy: Vai no LinkedIn, pega os dados frescos e retorna.
+    NÃO SALVA NO BANCO.
+    """
     try:
-        result = AppliedJobsIncrementalSync.sync()
+        fetcher = JobTrackerFetcher(debug=False)
+        # fetch_jobs agora retorna um objeto JobServiceResponse
+        result_obj = fetcher.fetch_jobs(stage="applied")
 
+        # Convertemos para dict para o Flask conseguir serializar em JSON
         return jsonify({
             "status": "success",
-            "inserted": result["inserted"],
-            "updated": result["updated"],
-            "updates": result["updates"],
-            "stopped_early": result["stopped_early"]
+            "data": result_obj.to_dict()
         }), 200
 
     except Exception as e:
@@ -76,27 +79,36 @@ def sync_applied_jobs():
 
 
 # ============================================================
-# BACKFILL WITH CUTOFF (STREAM)
+# SYNC ENDPOINTS (WRITE TO SQL)
 # ============================================================
+
+@job_tracker_bp.route("/sync-applied", methods=["POST"])
+def sync_applied_jobs():
+    """Sync incremental (página 1, ~10 jobs)"""
+    try:
+        result = AppliedJobsIncrementalSync.sync()
+        return jsonify({
+            "status": "success",
+            "inserted": result["inserted"],
+            "updated": result["updated"],
+            "updates": result["updates"]
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
 
 @job_tracker_bp.route("/sync-applied-backfill-stream", methods=["POST"])
 def sync_applied_backfill_stream():
+    """Sync profundo com stream (Server-Sent Events)"""
     from_param = request.args.get("from")
 
     if not from_param:
-        return jsonify({
-            "status": "error",
-            "error": "Missing 'from' parameter (format: YYYY-MM)"
-        }), 400
+        return jsonify({"error": "Missing 'from' parameter (YYYY-MM)"}), 400
 
     try:
-        cutoff_date = datetime.strptime(from_param, "%Y-%m")
-        cutoff_date = cutoff_date.replace(day=1)
+        cutoff_date = datetime.strptime(from_param, "%Y-%m").replace(day=1)
     except ValueError:
-        return jsonify({
-            "status": "error",
-            "error": "Invalid date format. Use YYYY-MM"
-        }), 400
+        return jsonify({"error": "Invalid date format"}), 400
 
     return Response(
         stream_with_context(
@@ -104,25 +116,3 @@ def sync_applied_backfill_stream():
         ),
         content_type="text/event-stream",
     )
-
-
-# ============================================================
-# LIVE FETCH (DEBUG / NO PERSIST)
-# ============================================================
-
-@job_tracker_bp.route("/applied-live", methods=["GET"])
-def get_applied_live():
-    try:
-        fetcher = JobTrackerFetcher(debug=False)
-        result = fetcher.fetch_jobs(stage="applied")
-
-        return jsonify({
-            "status": "success",
-            "data": result
-        }), 200
-
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "error": str(e)
-        }), 500

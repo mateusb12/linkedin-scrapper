@@ -764,3 +764,94 @@ class JobTrackerFetcher:
             stage=stage,
             jobs=job_objects
         )
+
+    def save_results(self, response_data: JobServiceResponse):
+        """
+        Salva ou atualiza os jobs e companies no banco de dados.
+        """
+        from database.database_connection import get_db_session
+        from models.job_models import Job, Company
+        from datetime import datetime
+
+        db = get_db_session()
+        try:
+            saved_count = 0
+
+            for job_dto in response_data.jobs:
+                # 1. Resolver a Empresa (Company)
+                # Como nem sempre temos URN da empresa vindo do Voyager, usamos o nome como chave de busca
+                company_name = job_dto.company or "Unknown Company"
+
+                # Tenta achar pelo nome
+                company_obj = db.query(Company).filter(Company.name == company_name).first()
+
+                if not company_obj:
+                    # Cria nova empresa se não existir
+                    # Geramos um URN fictício baseado no nome se não tivermos um real
+                    pseudo_urn = f"urn:li:company:{company_name.lower().replace(' ', '-')}"
+                    company_obj = Company(
+                        urn=pseudo_urn,
+                        name=company_name
+                    )
+                    db.add(company_obj)
+                    db.flush()  # Para garantir que company_obj.urn esteja disponível
+
+                # 2. Resolver a Vaga (Job)
+                job_obj = db.query(Job).filter(Job.urn == job_dto.job_id).first()
+
+                if not job_obj:
+                    # Cria nova vaga
+                    job_obj = Job(urn=job_dto.job_id)
+                    db.add(job_obj)
+
+                # 3. Atualizar Campos (Merge do DTO para o Model)
+                job_obj.title = job_dto.title or "Sem Título"
+                job_obj.company_urn = company_obj.urn
+                job_obj.location = job_dto.location
+                job_obj.job_url = job_dto.job_url
+                job_obj.description_full = job_dto.description_full
+
+                # Campos de Data
+                if job_dto.applied_at:
+                    # Converter ISO string para datetime object
+                    try:
+                        job_obj.applied_on = datetime.fromisoformat(job_dto.applied_at)
+                        job_obj.has_applied = True
+                        job_obj.application_status = "Applied"
+                    except:
+                        pass
+
+                if job_dto.expire_at:
+                    try:
+                        job_obj.expire_at = datetime.fromisoformat(job_dto.expire_at)
+                    except:
+                        pass
+
+                # Campos Premium e Métricas
+                job_obj.applicants = job_dto.applicants or 0
+                job_obj.applicants_velocity = job_dto.applicants_velocity_24h
+                job_obj.competition_level = job_dto.competition_level
+                job_obj.seniority_distribution = job_dto.seniority_distribution
+                job_obj.education_distribution = job_dto.education_distribution
+
+                job_obj.premium_title = job_dto.premium_title
+                job_obj.premium_description = job_dto.premium_description
+                job_obj.work_remote_allowed = job_dto.work_remote_allowed
+
+                # Status
+                job_obj.job_state = job_dto.job_state
+                job_obj.experience_level = job_dto.experience_level
+                job_obj.employment_status = job_dto.employment_status
+                job_obj.application_closed = job_dto.application_closed
+
+                saved_count += 1
+
+            db.commit()
+            _log(f"💾 Sucesso: {saved_count} vagas salvas/atualizadas no banco.")
+
+        except Exception as e:
+            db.rollback()
+            _log(f"❌ Erro ao salvar no banco: {e}")
+            raise e
+        finally:
+            db.close()
