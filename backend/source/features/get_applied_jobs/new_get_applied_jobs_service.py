@@ -233,6 +233,9 @@ class JobTrackerFetcher:
 
             applying_info = data.get("applyingInfo", {})
 
+            description_raw = data.get("description", {})
+            description_text = description_raw.get("text")
+
             applied_at = applying_info.get("appliedAt")
             applied_dt = ms_to_datetime(applied_at) if applied_at else None
 
@@ -252,6 +255,7 @@ class JobTrackerFetcher:
                 "application_closed": applying_info.get("closed"),
                 "application_activity_text": activity_text,
                 "work_remote_allowed": data.get("workRemoteAllowed"),
+                "description_full": description_text,
             }
 
         except Exception:
