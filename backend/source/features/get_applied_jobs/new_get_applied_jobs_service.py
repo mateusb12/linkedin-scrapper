@@ -33,6 +33,8 @@ class JobPost:
 
     # --- 2. Voyager Details (Applied Info) ---
     applied_at: Optional[str] = None  # ISO8601 String
+    posted_at: Optional[str] = None  # ⬅️ AQUI
+    posted_date_text: Optional[str] = None  # ⬅️ SE QUISER
     job_state: Optional[str] = None  # e.g., "LISTED", "CLOSED"
     expire_at: Optional[str] = None
     experience_level: Optional[str] = None
@@ -502,6 +504,13 @@ class JobTrackerFetcher:
             expire_at = data.get("expireAt")
             expire_dt = ms_to_datetime(expire_at) if expire_at else None
 
+            posted_at = (
+                    data.get("listedAt")
+                    or data.get("postedAt")
+                    or data.get("originalListedAt")
+            )
+            posted_dt = ms_to_datetime(posted_at) if posted_at else None
+
             # --- EXTRAÇÃO DE DADOS (IMPEDINDO "UNKNOWN") ---
 
             # 1. Título (Geralmente seguro na raiz)
@@ -549,6 +558,7 @@ class JobTrackerFetcher:
                 "title": voyager_title,
                 "company": voyager_company,
                 "applied_at": applied_dt.isoformat() if applied_dt else None,
+                "posted_at": posted_dt.isoformat() if posted_dt else None,
                 "applicants": data.get("applies"),
                 "job_state": data.get("jobState"),
                 "expire_at": expire_dt.isoformat() if expire_dt else None,
@@ -721,7 +731,6 @@ class JobTrackerFetcher:
             job_id_str = str(job_data.get("jobId"))
 
             # A. Base Data
-            # We map the raw LinkedIn keys to our clean Dataclass keys
             current_job_dict = {
                 "job_id": job_id_str,
                 "title": job_data.get("title"),
@@ -730,7 +739,28 @@ class JobTrackerFetcher:
                 "job_url": f"https://www.linkedin.com/jobs/view/{job_id_str}/",
             }
 
-            # B. If 'applied', fetch deep details
+            # ============================================================
+            # 🆕 PATCH — EXTRAÇÃO DO POSTED DATE (SAVED JOBS)
+            # ============================================================
+            posted_at_raw = (
+                    job_data.get("listedAt") or
+                    job_data.get("formattedPostedDate") or
+                    job_data.get("postedAt") or
+                    job_data.get("postedDateText")
+            )
+
+            # Se vier epoch → converter para ISO8601
+            if isinstance(posted_at_raw, (int, float)):
+                dt = ms_to_datetime(posted_at_raw)
+                if dt:
+                    posted_at_raw = dt.isoformat()
+
+            # Disponibilizar com dois nomes (o frontend pega qualquer um)
+            current_job_dict["posted_at"] = posted_at_raw
+            current_job_dict["posted_date_text"] = posted_at_raw
+            # ============================================================
+
+            # B. If 'applied' or 'saved', fetch deep details
             if stage in ["applied", "saved"]:
                 # 1. Voyager Details (Description, State, Applied Date)
                 details = self.fetch_job_details(job_id_str)
@@ -742,6 +772,7 @@ class JobTrackerFetcher:
                     current_job_dict["company"] = details["company"]
 
                 current_job_dict.update(details)
+                current_job_dict["posted_at"] = details.get("posted_at")
 
                 # 2. Premium Insights (Applicants, Seniority)
                 premium = self.fetch_premium_insights(job_id_str)
@@ -754,7 +785,6 @@ class JobTrackerFetcher:
                 time.sleep(REQUEST_DELAY_SECONDS)
 
             # C. Convert Dictionary -> Dataclass
-            # This safely filters out any junk keys (like internal logs)
             job_obj = JobPost.from_dict(current_job_dict)
             job_objects.append(job_obj)
 

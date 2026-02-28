@@ -258,6 +258,7 @@ const SavedJobs = () => {
     setIsLoading(true);
     setError(null);
     setExpandedJobUrn(null);
+
     const cacheKey = getCacheKey(activeTab);
 
     try {
@@ -272,21 +273,33 @@ const SavedJobs = () => {
               setIsLoading(false);
               return;
             }
-          } catch (parseError) {
+          } catch (parseErr) {
             console.warn("Invalid cache data, fetching fresh...");
           }
         }
       }
 
-      const response = await fetchLinkedinJobsRaw({
-        cardType: activeTab,
-        start: 0,
-        debug: false,
-      });
+      let response;
+
+      if (activeTab === LINKEDIN_CARD_TYPE.SAVED) {
+        const { fetchSavedJobsLive } =
+          await import("../../services/myJobsService");
+        response = await fetchSavedJobsLive();
+      } else if (activeTab === LINKEDIN_CARD_TYPE.APPLIED) {
+        const { fetchAppliedJobsLive } =
+          await import("../../services/myJobsService");
+        response = await fetchAppliedJobsLive();
+      } else {
+        response = await fetchLinkedinJobsRaw({
+          cardType: activeTab,
+          start: 0,
+        });
+      }
 
       if (response && response.jobs) {
         setJobs(response.jobs);
         setIsCachedData(false);
+
         localStorage.setItem(cacheKey, JSON.stringify(response.jobs));
       } else {
         setJobs([]);
@@ -315,7 +328,7 @@ const SavedJobs = () => {
     return jobs
       .map((job) => {
         const urn = job.urn || job.entity_urn;
-        const companyName = job.company_name;
+        const companyName = job.company?.name || job.company_name;
 
         const experienceData = extractExperienceFromDescription(
           job.description,
@@ -331,7 +344,8 @@ const SavedJobs = () => {
           ...job,
           urn,
           company: { name: companyName },
-          postedAt: job.posted_date_text,
+
+          postedAt: job.postedAt || job.posted_date_text || null,
           experienceData,
           seniority,
           jobType,
@@ -409,7 +423,6 @@ const SavedJobs = () => {
             </div>
 
             <div className="flex items-center gap-2 w-full md:w-auto">
-              {}
               <div className="flex items-center bg-gray-900/50 rounded-lg border border-gray-700 p-1 mr-2">
                 <button
                   onClick={() => setShowFoundationIcons(!showFoundationIcons)}
@@ -502,7 +515,6 @@ const SavedJobs = () => {
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-900/50 text-gray-400 text-xs uppercase font-bold tracking-wider">
               <tr>
-                {}
                 <th className="px-6 py-4">Score</th>
                 <th className="px-6 py-4">Role & Company</th>
                 <th className="px-6 py-4">Foundations</th>
@@ -548,7 +560,6 @@ const SavedJobs = () => {
                           : "hover:bg-emerald-900/5"
                       }`}
                     >
-                      {}
                       <td className="px-6 py-4">
                         <ScoreInput
                           initialScore={job.score}
@@ -602,7 +613,7 @@ const SavedJobs = () => {
                                       alt={tech}
                                       className="w-9 h-9 object-contain hover:scale-125 transition-transform duration-200 cursor-help filter drop-shadow-sm"
                                     />
-                                    {}
+
                                     <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10 border border-gray-700">
                                       {tech}
                                     </span>
@@ -642,7 +653,7 @@ const SavedJobs = () => {
                                       alt={tech}
                                       className="w-8 h-8 object-contain hover:scale-125 transition-transform duration-200 cursor-help filter drop-shadow-sm"
                                     />
-                                    {}
+
                                     <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10 border border-gray-700">
                                       {tech}
                                     </span>
@@ -862,7 +873,6 @@ const SavedJobs = () => {
         </div>
       </div>
 
-      {}
       <CopyFirstNItems items={jobs} />
     </div>
   );
