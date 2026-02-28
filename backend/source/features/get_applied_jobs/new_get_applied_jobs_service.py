@@ -3,6 +3,7 @@
 import json
 import re
 import time
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Iterable, Tuple
 
@@ -12,6 +13,76 @@ from requests import Session
 from database.database_connection import get_db_session
 from models.fetch_models import FetchCurl
 from source.features.fetch_curl.linkedin_http_client import LinkedInClient, LinkedInRequest
+
+
+@dataclass
+class DemographicMetric:
+    """Helper for seniority and education distributions."""
+    label: str
+    value: int
+
+
+@dataclass
+class JobPost:
+    # --- 1. Basic Identification ---
+    job_id: str
+    title: Optional[str] = None
+    company: Optional[str] = None
+    location: Optional[str] = None
+    job_url: Optional[str] = None
+
+    # --- 2. Voyager Details (Applied Info) ---
+    applied_at: Optional[str] = None  # ISO8601 String
+    job_state: Optional[str] = None  # e.g., "LISTED", "CLOSED"
+    expire_at: Optional[str] = None
+    experience_level: Optional[str] = None
+    employment_status: Optional[str] = None
+    application_closed: Optional[bool] = None
+    work_remote_allowed: Optional[bool] = None
+    description_full: Optional[str] = None
+
+    # --- 3. Derived Metrics (Enrichment) ---
+    applicants: Optional[int] = 0
+    competition_level: Optional[str] = None  # "HIGH", "MEDIUM", "LOW"
+    applicants_velocity_24h: Optional[int] = None
+
+    # --- 4. Premium Insights (Raw Data) ---
+    applicants_total: Optional[int] = None
+    applicants_last_24h: Optional[int] = None
+    premium_title: Optional[str] = None
+    premium_description: Optional[str] = None
+    learn_more_url: Optional[str] = None
+
+    # Complex Types (Lists)
+    seniority_distribution: List[Dict[str, Any]] = field(default_factory=list)
+    education_distribution: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Internal / Debug flags
+    premium_component_found: bool = False
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "JobPost":
+        """
+        Safely creates a JobPost instance from a dictionary.
+        Ignores keys in 'data' that are not defined in the dataclass fields
+        (prevents crashes when the scraper adds new temp metadata).
+        """
+        # Get all valid field names for this dataclass
+        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+
+        # Filter the input dictionary to only include valid fields
+        clean_data = {k: v for k, v in data.items() if k in valid_fields}
+
+        return cls(**clean_data)
+
+
+@dataclass
+class JobServiceResponse:
+    """Final output structure for the endpoint."""
+    count: int
+    stage: str
+    jobs: List[JobPost]
+
 
 # ============================================================
 # CONFIG (clean + low-noise)
@@ -400,9 +471,17 @@ class JobTrackerFetcher:
     def fetch_job_details(self, job_id: str) -> Dict[str, Any]:
         session = self.client.session
 
-        csrf = session.cookies.get("JSESSIONID")
-        if csrf:
-            csrf = csrf.replace('"', "")
+        # --- FIX START: Safely extract JSESSIONID ---
+        csrf = None
+        # We iterate manually to avoid "Multiple cookies with name" error
+        for cookie in session.cookies:
+            if cookie.name == "JSESSIONID":
+                csrf = cookie.value.replace('"', "")
+                break
+
+        # Fallback: if not in cookie jar, try headers
+        if not csrf:
+            csrf = session.headers.get("csrf-token")
 
         url = f"https://www.linkedin.com/voyager/api/jobs/jobPostings/{job_id}"
         headers = {
@@ -553,63 +632,85 @@ class JobTrackerFetcher:
     # ----------------------------------------------------------
     # FETCH JOB LIST
     # ----------------------------------------------------------
-    def fetch_jobs(self, stage: str = "saved") -> Dict[str, Any]:
+    def fetch_jobs(self, stage: str = "saved") -> JobServiceResponse:
+        """
+        Fetches jobs, enriches them with details/premium data,
+        and returns a strictly typed JobServiceResponse.
+        """
+        # 1. Prepare Request
         target_url = self.saved_url
         target_body = self.saved_body
 
         if stage != "saved":
+            # Adjust URL/Body for 'applied', 'archived', etc.
             target_url = target_url.replace("stage=saved", f"stage={stage}")
             if target_body:
                 target_body = target_body.replace('"stage":"saved"', f'"stage":"{stage}"')
 
+        # 2. Execute Base List Request
         req = RawStringRequest(self.saved_method, target_url, target_body, clean_headers=False)
         response = self.client.execute(req)
 
         if response.status_code != 200:
             raise Exception(f"Erro LinkedIn (Listagem): {response.status_code}")
 
+        # 3. Parse Stream & Extract IDs
         stream_items = parse_linkedin_stream(response.text)
 
         all_candidates = []
         for item in stream_items:
             all_candidates.extend(find_job_objects_recursive(item))
 
-        clean_jobs = []
+        # 4. Deduplicate
+        clean_jobs_data = []
         seen_ids = set()
         for data in all_candidates:
-            job_id = data.get("jobId")
-            if not job_id or job_id in seen_ids:
+            raw_id = data.get("jobId")
+            if not raw_id or raw_id in seen_ids:
                 continue
-            seen_ids.add(job_id)
-            clean_jobs.append(data)
+            seen_ids.add(raw_id)
+            clean_jobs_data.append(data)
 
-        results = []
-        for job_data in clean_jobs:
-            job_id = job_data.get("jobId")
+        # 5. Build Typed Result List
+        job_objects: List[JobPost] = []
 
-            job = {
+        for job_data in clean_jobs_data:
+            job_id_str = str(job_data.get("jobId"))
+
+            # A. Base Data
+            # We map the raw LinkedIn keys to our clean Dataclass keys
+            current_job_dict = {
+                "job_id": job_id_str,
                 "title": job_data.get("title"),
                 "company": job_data.get("companyName"),
                 "location": job_data.get("formattedLocation"),
-                "job_id": job_id,
-                "job_url": f"https://www.linkedin.com/jobs/view/{job_id}/",
+                "job_url": f"https://www.linkedin.com/jobs/view/{job_id_str}/",
             }
 
+            # B. If 'applied', fetch deep details
             if stage == "applied":
-                details = self.fetch_job_details(job_id)
-                job.update(details)
+                # 1. Voyager Details (Description, State, Applied Date)
+                details = self.fetch_job_details(job_id_str)
+                current_job_dict.update(details)
 
-                premium = self.fetch_premium_insights(job_id)
-                job.update(premium)
+                # 2. Premium Insights (Applicants, Seniority)
+                premium = self.fetch_premium_insights(job_id_str)
+                current_job_dict.update(premium)
 
-                job = self._enrich_job(job)
+                # 3. Enrich (Calculate competition, velocity)
+                current_job_dict = self._enrich_job(current_job_dict)
 
+                # Sleep to be kind to the API
                 time.sleep(REQUEST_DELAY_SECONDS)
 
-            results.append(job)
+            # C. Convert Dictionary -> Dataclass
+            # This safely filters out any junk keys (like internal logs)
+            job_obj = JobPost.from_dict(current_job_dict)
+            job_objects.append(job_obj)
 
-        return {
-            "count": len(results),
-            "jobs": results,
-            "stage": stage,
-        }
+        # 6. Return Structured Response
+        return JobServiceResponse(
+            count=len(job_objects),
+            stage=stage,
+            jobs=job_objects
+        )
