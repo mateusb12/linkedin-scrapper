@@ -3,11 +3,14 @@ from sqlalchemy.orm import relationship
 
 from models import Base
 
+
 class Resume(Base):
     __tablename__ = 'resume'
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False, default='Unnamed Resume')
+
+    resume_language = Column(String, nullable=True, default="pt-BR")
 
     meta = Column(JSON, nullable=True)
     contact_info = Column(JSON, nullable=True)
@@ -32,7 +35,7 @@ class Resume(Base):
         # We default to the stored resume contact_info.
         # If null, we build it from the linked Profile object.
         final_contacts = self.contact_info or {}
-        profile_name = self.name # Default to resume name
+        profile_name = self.name  # Default to resume name
 
         if not final_contacts and self.profile:
             profile_name = self.profile.name
@@ -74,7 +77,7 @@ class Resume(Base):
                 "contacts": final_contacts
             },
             "experience": self.professional_experience or [],
-            "projects": self.projects or [], # Links are handled inside the JSON data here
+            "projects": self.projects or [],  # Links are handled inside the JSON data here
             "education": final_education or [],
             "skills": self.hard_skills or {},
             "languages": final_languages or []

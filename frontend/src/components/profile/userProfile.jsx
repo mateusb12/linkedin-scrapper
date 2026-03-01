@@ -188,7 +188,8 @@ const ProfileDetails = ({ profile, setProfile, onSave }) => {
         ].map((field) => (
           <div key={field.name}>
             <div className="flex items-center gap-1.5 pb-1.5 text-gray-400 text-sm font-medium">
-              <field.icon className={`h-4 w-4`} /> {field.label}
+              <field.icon className={`h-4 w-4`} />
+              {field.label}
             </div>
             <input
               type={field.type || "text"}
@@ -207,7 +208,8 @@ const ProfileDetails = ({ profile, setProfile, onSave }) => {
         ].map((field) => (
           <div key={field.name} className="md:col-span-2">
             <div className="flex items-center gap-1.5 pb-1.5 text-gray-400 text-sm font-medium">
-              <field.icon className={`h-4 w-4`} /> {field.label}
+              <field.icon className={`h-4 w-4`} />
+              {field.label}
             </div>
             <input
               type="text"
@@ -302,7 +304,23 @@ const ResumeSection = ({
       </div>
     );
 
-  const handleSelectChange = (e) => setSelectedResumeId(Number(e.target.value));
+  const handleSelectChange = (e) => {
+    const value = e.target.value;
+
+    if (value === "create_copy") {
+      if (!selectedResume) return;
+
+      const newResume = JSON.parse(JSON.stringify(selectedResume));
+
+      newResume.id = Date.now();
+      newResume.internal_name = `${selectedResume.internal_name} (Copy)`;
+
+      setResumes([...resumes, newResume]);
+      setSelectedResumeId(newResume.id);
+    } else {
+      setSelectedResumeId(Number(value));
+    }
+  };
 
   const updateResumeField = (field, value) => {
     setResumes((prev) =>
@@ -451,6 +469,12 @@ const ResumeSection = ({
                 {r.internal_name}
               </option>
             ))}
+            <option
+              value="create_copy"
+              className="font-bold text-emerald-400 bg-gray-900"
+            >
+              + Criar Cópia do Atual (Novo)
+            </option>
           </select>
         </div>
       </div>
