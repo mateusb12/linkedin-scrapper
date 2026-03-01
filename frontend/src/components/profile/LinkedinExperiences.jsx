@@ -15,6 +15,7 @@ import {
   Copy,
   Check,
   Terminal,
+  Globe,
 } from "lucide-react";
 import { fetchProfileExperiences } from "../../services/jobService";
 
@@ -129,16 +130,21 @@ const LinkedinExperiences = () => {
   const [fullData, setFullData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [currentLocale, setCurrentLocale] = useState("en-US");
 
   const [showDebug, setShowDebug] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
 
-  const loadExperiences = async () => {
+  const loadExperiences = async (localeOverride = null) => {
+    const localeToUse = localeOverride || currentLocale;
+
     try {
       setLoading(true);
-      const data = await fetchProfileExperiences();
+      if (localeOverride) setCurrentLocale(localeOverride);
 
-      console.log("🔍 DADOS RECEBIDOS DO BACKEND:", data);
+      const data = await fetchProfileExperiences({ locale: localeToUse });
+
+      console.log(`🔍 DADOS RECEBIDOS DO BACKEND (${localeToUse}):`, data);
 
       if (data) {
         const { raw, ...cleanData } = data;
@@ -178,7 +184,7 @@ const LinkedinExperiences = () => {
         className={`${palette.bg.card} p-12 rounded-lg border ${palette.border.primary} flex flex-col items-center justify-center text-gray-400`}
       >
         <Loader2 className="animate-spin mb-3 text-blue-500" size={32} />
-        <p>Syncing Profile Data...</p>
+        <p>Syncing Profile Data ({currentLocale})...</p>
       </div>
     );
   }
@@ -196,7 +202,7 @@ const LinkedinExperiences = () => {
 
   return (
     <div className={styleguide.card}>
-      <div className="mb-6">
+      <div className="mb-6 flex flex-col sm:flex-row gap-3">
         <button
           onClick={() => {
             if (!fullData || !fullData.experiences) {
@@ -210,14 +216,42 @@ const LinkedinExperiences = () => {
               alert("O Resume Editor não está pronto para receber importação.");
             }
           }}
-          className="w-full bg-emerald-600 hover:bg-emerald-500
-                     text-white font-semibold py-2.5 rounded-lg
+          className="flex-1 bg-emerald-600 hover:bg-emerald-500
+                     text-white font-semibold py-2.5 px-4 rounded-lg
                      shadow-md flex items-center justify-center gap-2
                      transition-all"
         >
           <Briefcase size={16} />
-          Importar experiências no Resume Editor
+          Importar para Resume Editor
         </button>
+
+        <div className="flex items-center bg-gray-900/50 p-1 rounded-lg border border-gray-700">
+          <button
+            onClick={() => loadExperiences("en-US")}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2
+              ${
+                currentLocale === "en-US"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800"
+              }`}
+            title="Switch to English"
+          >
+            🇺🇸 EN
+          </button>
+          <div className="w-px h-4 bg-gray-700 mx-1"></div>
+          <button
+            onClick={() => loadExperiences("pt-BR")}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2
+              ${
+                currentLocale === "pt-BR"
+                  ? "bg-green-600 text-white shadow-sm"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800"
+              }`}
+            title="Mudar para Português"
+          >
+            🇧🇷 PT
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center justify-between mb-8 border-b border-gray-700 pb-5">
@@ -226,9 +260,15 @@ const LinkedinExperiences = () => {
             <Linkedin size={24} />
           </div>
           <div>
-            <h2 className={`text-2xl font-bold ${palette.text.light}`}>
-              LinkedIn Experiences
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className={`text-2xl font-bold ${palette.text.light}`}>
+                LinkedIn Experiences
+              </h2>
+
+              <span className="text-[10px] uppercase tracking-wide bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded border border-gray-600 font-mono">
+                {currentLocale}
+              </span>
+            </div>
             <p className={`text-xs ${palette.text.secondary}`}>
               Synced from live profile data
             </p>

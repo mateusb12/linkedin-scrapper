@@ -144,10 +144,12 @@ export const fetchLinkedinJobsRaw = async ({
 export const fetchProfileExperiences = async ({
   urn = "urn:li:fsd_profile:ACoAAD016UkBWKGUUWKD7WdA2pTCzevPYoF-xnE",
   vanity = "mateus-bessa-m",
+  locale = "en-US",
 } = {}) => {
   const params = new URLSearchParams({
     urn,
     vanity,
+    locale,
   });
 
   const response = await fetch(

@@ -388,13 +388,13 @@ def extract_vanity_from_referer(referer: str) -> Optional[str]:
 def fetch_linkedin_profile_experiences(
         profile_urn: str,
         vanity_name: str | None = None,
-        locale: str = "en",
+        locale: str = "en-US",  # Default seguro
         start: int = 0,
         count: int = 10,
         debug: bool = True
 ):
     if debug:
-        print("=== Fetch LinkedIn Experiences via SDUI (Stream Parser) ===")
+        print(f"=== Fetch LinkedIn Experiences via SDUI (Stream Parser) [Locale: {locale}] ===")
 
     config_name = "Experience"
     client = LinkedInClient(config_name)
@@ -402,12 +402,32 @@ def fetch_linkedin_profile_experiences(
     if not client.config:
         return {"ok": False, "error": f"Config '{config_name}' missing", "stage": "config_load"}
 
+    # 1. Resolver Vanity Name
     if not vanity_name:
         vanity_name = extract_vanity_from_referer(client.config.get("referer"))
 
     if not vanity_name:
         return {"ok": False, "error": "No vanity_name found", "stage": "vanity_resolve"}
 
+    # 2. 🔥 IN-MEMORY PATCH: Atualizar Referer Header com o Locale
+    # O LinkedIn valida se o Referer bate com o locale do payload
+    current_referer = client.session.headers.get("Referer", "")
+    if current_referer:
+        if "locale=" in current_referer:
+            # Substitui locale existente (ex: locale=en-US -> locale=pt-BR)
+            new_referer = re.sub(r"locale=[a-zA-Z0-9-]+", f"locale={locale}", current_referer)
+        else:
+            # Adiciona se não existir
+            separator = "&" if "?" in current_referer else "?"
+            new_referer = f"{current_referer}{separator}locale={locale}"
+
+        # Aplica a alteração APENAS na sessão atual (em memória)
+        client.session.headers["Referer"] = new_referer
+
+        if debug:
+            print(f"🌍 [Patch] Referer atualizado para: {new_referer}")
+
+    # 3. Preparar Payload (Já injetando a variável locale)
     profile_id = profile_urn.replace("urn:li:fsd_profile:", "").strip()
 
     payload = {
@@ -416,7 +436,7 @@ def fetch_linkedin_profile_experiences(
             "$type": "proto.sdui.actions.requests.RequestedArguments",
             "payload": {
                 "vanityName": vanity_name,
-                "locale": locale,
+                "locale": locale,  # <--- Injeção 1
                 "start": start,
                 "count": count,
                 "profileId": profile_id
@@ -433,7 +453,7 @@ def fetch_linkedin_profile_experiences(
                 "$type": "proto.sdui.actions.requests.RequestedArguments",
                 "payload": {
                     "vanityName": vanity_name,
-                    "locale": locale,
+                    "locale": locale,  # <--- Injeção 2
                     "start": start,
                     "count": count,
                     "profileId": profile_id
@@ -454,6 +474,7 @@ def fetch_linkedin_profile_experiences(
     }
 
     try:
+        # Usa a base_url do config, mas o payload e headers (session) já estão patchados
         req = SduiPaginationRequest(
             base_url=client.config["base_url"],
             body=payload,
@@ -477,14 +498,14 @@ def fetch_linkedin_profile_experiences(
         else:
             parsed_data = response.json()
 
+        # Dump para debug (opcional, mantive a lógica existente)
         if debug:
             dump_dir = Path(__file__).resolve().parent / "debug"
             dump_dir.mkdir(exist_ok=True)
             dump_path = dump_dir / "linkedin_sdui_dump.json"
             dump_path.write_text(json.dumps(parsed_data, indent=2, ensure_ascii=False), encoding="utf-8")
-            print(f"[DEBUG] Dump saved to {dump_path}")
 
-        # === NOVO PARSER ===
+        # === Parser ===
         experiences_list = parse_experiences_from_stream(parsed_data, debug=debug)
         experiences_dicts = [exp.to_dict() for exp in experiences_list]
 

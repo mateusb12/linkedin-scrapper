@@ -665,11 +665,15 @@ def get_profile_experiences():
 
     Query Params:
       - urn: The specific profile URN (e.g., "urn:li:fsd_profile:ACoAAD...").
-             If not provided, tries to use a default or fails.
+      - vanity: The profile vanity name.
+      - locale: (Optional) 'en-US' or 'pt-BR'. Defaults to 'en-US'.
     """
     try:
         target_urn = request.args.get("urn")
         vanity = request.args.get("vanity")
+
+        # Pega a flag opcional, default para en-US se não vier nada
+        locale_param = request.args.get("locale", "en-US")
 
         if not target_urn or not vanity:
             return jsonify({
@@ -677,11 +681,12 @@ def get_profile_experiences():
             }), 400
 
         print(f"🚀 Fetching experiences for URN: {target_urn}")
-        print(f"👤 Vanity: {vanity}")
+        print(f"👤 Vanity: {vanity} | 🌍 Locale: {locale_param}")
 
         result = fetch_linkedin_profile_experiences(
             profile_urn=target_urn,
-            vanity_name=vanity
+            vanity_name=vanity,
+            locale=locale_param  # Passando a flag adiante
         )
 
         if not result.get("ok"):
