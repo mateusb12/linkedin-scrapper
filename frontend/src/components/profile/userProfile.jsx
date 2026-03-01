@@ -458,22 +458,35 @@ const ResumeSection = ({
             </p>
           </div>
         </div>
-        <div className="flex gap-2 w-full md:w-auto">
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          {selectedResume && (
+            <span className="text-2xl">
+              {(() => {
+                const lang =
+                  selectedResume.resume_language?.toUpperCase() ||
+                  (selectedResume.meta?.language === "en-US" ? "EN" : "PT");
+
+                return lang === "PT" || lang === "PTBR" ? "🇧🇷" : "🇺🇸";
+              })()}
+            </span>
+          )}
+
           <select
             onChange={handleSelectChange}
             value={selectedResume?.id || ""}
-            className={`${inputClasses} md:w-64`}
+            className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-gray-200"
           >
             {resumes.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.internal_name}
               </option>
             ))}
+
             <option
               value="create_copy"
               className="font-bold text-emerald-400 bg-gray-900"
             >
-              + Criar Cópia do Atual (Novo)
+              ➕ Create a new resume
             </option>
           </select>
         </div>

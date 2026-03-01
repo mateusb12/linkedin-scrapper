@@ -28,14 +28,10 @@ class Resume(Base):
     def to_dict(self):
         """
         Constructs the JSON payload.
-        Logic: Use Resume field -> If missing, use Profile field -> If missing, use default.
         """
 
-        # 1. Profile / Contacts Logic
-        # We default to the stored resume contact_info.
-        # If null, we build it from the linked Profile object.
         final_contacts = self.contact_info or {}
-        profile_name = self.name  # Default to resume name
+        profile_name = self.name
 
         if not final_contacts and self.profile:
             profile_name = self.profile.name
@@ -47,37 +43,41 @@ class Resume(Base):
                 "portfolio": self.profile.portfolio
             }
 
-        # 2. Education Logic
         final_education = self.education
         if not final_education and self.profile and self.profile.education:
             final_education = self.profile.education
 
-        # 3. Languages Logic
-        # Profile has ["English", "Portuguese"] (Strings)
-        # Resume needs [{"name": "English", "level": "Fluent"}] (Objects)
         final_languages = self.languages
         if not final_languages and self.profile and self.profile.languages:
-            # Quick conversion from String Array -> Object Array
             final_languages = [
                 {"name": lang, "level": "Proficient"}
                 for lang in self.profile.languages
             ]
 
+        lang = (self.resume_language or "PT").upper()
+
+        if lang in ["PT", "PTBR", "PT-BR"]:
+            final_language = "pt-BR"
+        elif lang in ["EN", "ENG", "EN-US"]:
+            final_language = "en-US"
+        else:
+            final_language = "pt-BR"
+
+        merged_meta = self.meta.copy() if self.meta else {}
+        merged_meta["language"] = final_language
+
+        merged_meta.setdefault("page", {"size": "letter", "font_size": 11})
+
         return {
             "id": self.id,
             "internal_name": self.name,
-
-            # --- JSON STRUCTURE TARGET ---
-            "meta": self.meta or {
-                "language": "pt-BR",
-                "page": {"size": "letter", "font_size": 11}
-            },
+            "meta": merged_meta,
             "profile": {
                 "name": profile_name,
                 "contacts": final_contacts
             },
             "experience": self.professional_experience or [],
-            "projects": self.projects or [],  # Links are handled inside the JSON data here
+            "projects": self.projects or [],
             "education": final_education or [],
             "skills": self.hard_skills or {},
             "languages": final_languages or []
