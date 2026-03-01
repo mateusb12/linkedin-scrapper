@@ -331,21 +331,75 @@ class JobTrackerFetcher:
         except:
             return {}
 
-    def fetch_premium_insights(self, job_id: str):
-        if not PREMIUM_ENABLED or not self.premium_url: return {}
-        body = re.sub(r'("jobId"\s*:\s*)("\d+"|\d+)', f'\\1"{job_id}"', self.premium_body)
-        h = self.premium_headers.copy()
-        h["Referer"] = f"https://www.linkedin.com/jobs/view/{job_id}/"
+    def fetch_premium_insights(self, job_id: str) -> Dict[str, Any]:
+        """
+        Busca o Premium RSC e retorna SEMPRE as chaves esperadas,
+        mesmo se der erro, timeout, vazio ou se o parser estiver desligado.
+        """
+
         try:
-            if PREMIUM_MODE == "curl_pure":
-                r = requests.request(self.premium_method, self.premium_url, headers=h, data=body, timeout=20)
-            else:
-                r = self.client.execute(
-                    RawStringRequest(self.premium_method, self.premium_url, body, h, clean_headers=True))
-            return self.premium_parser.parse(r.text) if r.status_code == 200 else {}
+            # ================ PREPARE ================
+            if not PREMIUM_ENABLED or not self.premium_url:
+                return {
+                    "premium_component_found": False,
+                    "applicants_total": None,
+                    "applicants_last_24h": None,
+                    "seniority_distribution": [],
+                    "education_distribution": [],
+                    "premium_title": None,
+                    "premium_description": None,
+                    "learn_more_url": None,
+                    "data_sdui_components": []
+                }
+
+            body = re.sub(r'("jobId"\s*:\s*)("\d+"|\d+)', f'\\1"{job_id}"', self.premium_body)
+            headers = self.premium_headers.copy()
+            headers["Referer"] = f"https://www.linkedin.com/jobs/view/{job_id}/"
+            headers.pop("Accept-Encoding", None)
+            headers["Accept-Encoding"] = "identity"
+
+            # ================ REQUEST ================
+            r = requests.request(
+                method=self.premium_method,
+                url=self.premium_url,
+                headers=headers,
+                data=body,
+                timeout=20,
+            )
+
+            if r.status_code != 200:
+                raise RuntimeError(f"HTTP {r.status_code}")
+
+            # ================ PARSER LIGADO ================
+            parsed = self.premium_parser.parse(r.text)
+
+            # garantir todas as chaves:
+            return {
+                "premium_component_found": parsed.get("premium_component_found", False),
+                "applicants_total": parsed.get("applicants_total"),
+                "applicants_last_24h": parsed.get("applicants_last_24h"),
+                "seniority_distribution": parsed.get("seniority_distribution", []),
+                "education_distribution": parsed.get("education_distribution", []),
+                "premium_title": parsed.get("premium_title"),
+                "premium_description": parsed.get("premium_description"),
+                "learn_more_url": parsed.get("learn_more_url"),
+                "data_sdui_components": parsed.get("data_sdui_components", [])
+            }
+
         except Exception as e:
-            _log(f"⚠️ Premium Error: {e}")
-            return {}
+            print("Premium error:", e)
+            # fallback seguro, NÃO QUEBRA NADA
+            return {
+                "premium_component_found": False,
+                "applicants_total": None,
+                "applicants_last_24h": None,
+                "seniority_distribution": [],
+                "education_distribution": [],
+                "premium_title": None,
+                "premium_description": None,
+                "learn_more_url": None,
+                "data_sdui_components": []
+            }
 
     def _enrich_job(self, job):
         app_tot = job.get("applicants_total")
