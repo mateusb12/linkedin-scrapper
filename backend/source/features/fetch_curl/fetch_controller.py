@@ -1,8 +1,7 @@
+
 from flask import Blueprint, request, jsonify, abort
 from source.features.fetch_curl.fetch_service import FetchService
-
 from source.features.api_fetch.potential_urls.potential_curl.analyzer import parse_curl
-
 from source.features.fetch_curl.sdui_curl_parser import parse_sdui_curl
 
 fetch_curl_bp = Blueprint("fetch_curl", __name__, url_prefix="/config")
@@ -29,8 +28,6 @@ def update_config(name: str):
         return abort(400, description=str(e))
 
 
-# --- Legacy/Specific Aliases ---
-# These are still "Config" actions, so they belong here under /config
 
 @fetch_curl_bp.route("/pagination-curl", methods=["GET", "PUT", "DELETE"])
 def handle_pagination_curl():
@@ -45,23 +42,6 @@ def handle_individual_curl():
     if request.method == "DELETE": return handle_config("SingleJob")
     return handle_config("SingleJob")
 
-
-@fetch_curl_bp.route("/experience", methods=["PUT"])
-def update_experience_config():
-    data = request.get_json()
-    curl = data.get("curl")
-
-    if not curl:
-        return {"error": "Missing curl input"}, 400
-
-    parsed = parse_sdui_curl(curl)
-
-    FetchService.update_config_from_parsed(
-        "Experience",
-        parsed
-    )
-
-    return {"message": "Experience config updated"}, 200
 
 
 @fetch_curl_bp.route("/curl/<string:name>", methods=["GET", "PUT", "DELETE"])
@@ -78,7 +58,6 @@ def handle_config(name: str):
             return abort(404, description="Configuration not found")
         return jsonify({"message": f"'{name}' deleted successfully."}), 200
 
-    # PUT
     raw_body = request.data.decode("utf-8")
     if not raw_body:
         return abort(400, description="Body required")
@@ -98,7 +77,6 @@ def handle_experience_config():
     if request.method == "DELETE":
         return handle_config("Experience")
 
-    # PUT (seu código atual)
     data = request.get_json()
     curl = data.get("curl")
 
@@ -117,15 +95,11 @@ def handle_experience_config():
 
 @fetch_curl_bp.route("/profile/<string:vanity_name>/<string:config_name>", methods=["GET"])
 def fetch_profile_section(vanity_name: str, config_name: str):
-    """
-    Exemplo de uso: GET /config/profile/joao-silva/ProfileAboveActivity
-    """
     result = FetchService.execute_dynamic_profile_fetch(config_name, vanity_name)
 
     if not result:
         return abort(500, description="Falha ao extrair os dados. A sessão pode ter expirado ou o perfil não existe.")
 
-    # Se a resposta for o stream bruto do RSC (texto puro), envia como plain text
     if isinstance(result, str):
         return result, 200, {'Content-Type': 'text/plain; charset=utf-8'}
 

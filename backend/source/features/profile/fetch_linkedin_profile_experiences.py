@@ -1,4 +1,4 @@
-# backend/source/features/profile/fetch_linkedin_profile_experiences.py
+# /home/mateus/Desktop/Javascript/linkedin-scrapper/backend/source/features/profile/fetch_linkedin_profile_experiences.py
 
 import json
 import re
@@ -12,6 +12,7 @@ from source.features.fetch_curl.linkedin_http_client import (
     LinkedInClient,
     SduiPaginationRequest
 )
+
 
 # ===================================================================
 # 1) DATACLASSES
@@ -44,8 +45,9 @@ class Experience:
             "skills": self.skills
         }
 
+
 # ===================================================================
-# 2) HELPERS (ARRUMADOS)
+# 2) HELPERS
 # ===================================================================
 
 def encode_urn_only(raw_urn: str) -> str:
@@ -90,7 +92,8 @@ def is_garbage(text: str) -> bool:
         "menu", "menuitem", "presentation",
         "hr", "li", "ul", "img", "image",
         "sans", "small", "normal", "open",
-        "start", "1x", "more"
+        "start", "1x", "more", "fillavailable",
+        "experience"  # Título da seção
     }
     if t.lower() in technical_tokens:
         return True
@@ -101,15 +104,26 @@ def is_garbage(text: str) -> bool:
         "Show more", "Show less",
         "Expanded", "Add experience",
         "Add career break", "Skills:", "Skills",
-        "Voltar", "Back", "Open menu", "Close menu"
+        "Voltar", "Back", "Open menu", "Close menu",
+        "Add position", "Portfolio",
+        "LinkedIn helped me get this job", "helped me get this job"
     }
     if t in ui_texts:
+        return True
+
+    if "helped me get this job" in t:
         return True
 
     return False
 
 
 def clean_text_list(raw_texts: List[str]) -> List[str]:
+    """
+    Cleans the raw stream.
+    Note: We do NOT use a global 'seen' set here because the same text (e.g. "Remote")
+    might validly appear in multiple different experiences.
+    We only dedupe consecutive duplicates here.
+    """
     clean = []
     for t in raw_texts:
         if not isinstance(t, str):
@@ -120,6 +134,7 @@ def clean_text_list(raw_texts: List[str]) -> List[str]:
             continue
 
         if not is_garbage(t):
+            # De-dupe consecutive identical lines
             if clean and clean[-1] == t:
                 continue
             clean.append(t)
@@ -128,7 +143,7 @@ def clean_text_list(raw_texts: List[str]) -> List[str]:
 
 
 def flatten_values(data: Any, text_list: List[str]):
-    """Extrai recursivamente apenas VALORES strings de qualquer JSON."""
+    """Extrai recursivamente apenas VALORES strings de qualquer JSON, preservando ordem."""
     if isinstance(data, str):
         text_list.append(data)
     elif isinstance(data, list):
@@ -141,12 +156,18 @@ def flatten_values(data: Any, text_list: List[str]):
 
 def parse_date_row(text: str) -> Optional[Dict[str, str]]:
     """
-    Detecta linha de data: 'Aug 2025 - Present · 7 mos'
+    Detecta linha de data: 'Aug 2025 - Present · 7 mos' ou 'Jun 2024 - Jun 2025 · 1 yr'
     """
+    # Deve ter 4 dígitos (ano)
     if not re.search(r'\d{4}', text):
         return None
 
+    # Deve ter separador de range ou duração
     if " - " not in text and " – " not in text and "·" not in text and "Present" not in text:
+        return None
+
+    # Se for muito longo, provavelmente é descrição contendo um ano
+    if len(text) > 60:
         return None
 
     parts = text.split("·")
@@ -170,42 +191,6 @@ def parse_date_row(text: str) -> Optional[Dict[str, str]]:
     return {"start": start.strip(), "end": end.strip(), "duration": duration.strip()}
 
 
-def looks_like_description(text: str) -> bool:
-    t = text.strip()
-
-    # se for curtinho, quase nunca é descrição
-    if len(t) < 60:
-        return False
-
-    # descrição normalmente é multiline ou começa com bullet
-    if "\n" in t:
-        return True
-
-    if t.startswith(("-", "•")):
-        return True
-
-    return False
-
-
-def extract_description_blocks(included: List[Any]) -> List[Tuple[int, str]]:
-    """
-    Retorna [(included_idx, description_text), ...]
-    """
-    blocks: List[Tuple[int, str]] = []
-
-    for idx, item in enumerate(included):
-        raw: List[str] = []
-        flatten_values(item, raw)
-
-        # pega o primeiro texto que pareça descrição
-        for s in raw:
-            if isinstance(s, str) and looks_like_description(s):
-                blocks.append((idx, s.strip()))
-                break
-
-    return blocks
-
-
 def split_location_work_type(location_line: str) -> Tuple[str, str]:
     """
     Ex: "Fortaleza, Ceará, Brazil · Hybrid" -> ("Fortaleza, Ceará, Brazil", "Hybrid")
@@ -219,128 +204,154 @@ def split_location_work_type(location_line: str) -> Tuple[str, str]:
 
 
 def is_location_like(t: str) -> bool:
-    # mantém heurística simples (boa o suficiente)
     needles = [
         "Brazil", "Brasil",
         "United States",
         "Remote", "Hybrid", "On-site", "Onsite",
-        "Ceará", "São Paulo", "Fortaleza"
+        "Ceará", "São Paulo", "Fortaleza", "·"
     ]
     return any(x in t for x in needles)
 
+
+def looks_like_description(text: str) -> bool:
+    t = text.strip()
+    if len(t) < 20:  # Descrições costumam ser maiores
+        return False
+    if "\n" in t:
+        return True
+    if t.startswith(("-", "•", "Concluí", "Atuei", "Desenvolvi", "Liderei", "Implementei")):
+        return True
+    return False
+
+
 # ===================================================================
-# 3) PARSER (VERSÃO NOVA: ITEM-BASED + PROXIMIDADE)
+# 3) PARSER (VERSÃO GLOBAL STREAM - ROBUST)
 # ===================================================================
 
-def parse_experiences(json_data: dict, debug: bool = False) -> List[Experience]:
+def parse_experiences_from_stream(json_data: dict, debug: bool = False) -> List[Experience]:
     """
-    - Para cada item em included, tenta achar o padrão:
-      [Título, Empresa · Tipo, Data · Duração, (Local...)]
-    - Descrição não é confiável no mesmo item, então:
-      extrai blocos de descrição separados (expandable_text_block)
-      e associa por proximidade: entre experiência atual e a próxima.
+    1. Flatten TODO o JSON em uma lista linear de textos.
+    2. Identificar 'Ancoras de Data' (ex: "Aug 2025 - Present").
+    3. Para cada âncora em índice I:
+       - Title = I-2
+       - Company = I-1
+       - Location = I+1 (opcional)
+       - Description = scan from I+1/I+2 until next Anchor-2
     """
-    included: List[Any] = json_data.get("included", [])
 
-    desc_blocks = extract_description_blocks(included)
+    # 1. Flatten
+    raw_texts: List[str] = []
+    flatten_values(json_data, raw_texts)
 
-    found: List[Tuple[int, Experience]] = []
+    # 2. Clean
+    stream = clean_text_list(raw_texts)
 
-    for idx, item in enumerate(included):
-        raw: List[str] = []
-        flatten_values(item, raw)
+    if debug:
+        print(f"[DEBUG] Stream size: {len(stream)}")
+        dump_path = Path(__file__).resolve().parent / "debug" / "stream_dump.txt"
+        with open(dump_path, "w", encoding="utf-8") as f:
+            for idx, s in enumerate(stream):
+                f.write(f"{idx}: {s}\n")
 
-        clean = clean_text_list(raw)
-        if not clean:
+    # 3. Find Anchors (Dates)
+    anchors = []
+    for idx, text in enumerate(stream):
+        parsed_date = parse_date_row(text)
+        if parsed_date:
+            anchors.append((idx, parsed_date))
+
+    results: List[Experience] = []
+
+    for i, (date_idx, date_info) in enumerate(anchors):
+        # Safety checks
+        if date_idx < 2:
             continue
 
-        # acha a primeira linha de data no item
-        date_idx = -1
-        date_info = None
-        for i, text in enumerate(clean):
-            parsed = parse_date_row(text)
-            if parsed:
-                date_info = parsed
-                date_idx = i
-                break
+        # Extract Core Info
+        title = stream[date_idx - 2]
 
-        if date_idx == -1 or date_idx < 2:
-            continue
+        company_line = stream[date_idx - 1]
+        company_name = company_line
+        employment_type = ""
 
-        title = clean[date_idx - 2]
-
-        company_line = clean[date_idx - 1]
-        company = company_line.strip()
-        emp_type = ""
         if "·" in company_line:
             parts = [p.strip() for p in company_line.split("·") if p.strip()]
-            if parts:
-                company = parts[0]
-            if len(parts) >= 2:
-                emp_type = parts[1]
+            if len(parts) >= 1: company_name = parts[0]
+            if len(parts) >= 2: employment_type = parts[1]
 
-        # tenta pegar localização no próprio item (às vezes vem aqui)
+        # Extract Location (Look ahead)
         location = ""
         work_type = ""
+        desc_start_idx = date_idx + 1
 
-        after = clean[date_idx + 1:]
-        for t in after:
-            if is_location_like(t):
-                loc, wt = split_location_work_type(t)
-                location = loc
-                work_type = wt
-                break
+        if date_idx + 1 < len(stream):
+            possible_loc = stream[date_idx + 1]
+            if is_location_like(possible_loc):
+                location, work_type = split_location_work_type(possible_loc)
+                desc_start_idx = date_idx + 2
+
+        # Extract Description
+        # Desc vai de [desc_start_idx] até [proximo_anchor_idx - 2]
+        next_anchor_idx = anchors[i + 1][0] if i + 1 < len(anchors) else len(stream)
+        # O limite é o título da próxima experiência (index da data - 2)
+        desc_end_idx = next_anchor_idx - 2
+
+        description_parts = []
+        for j in range(desc_start_idx, desc_end_idx):
+            if j >= len(stream): break
+            text_segment = stream[j]
+
+            if looks_like_description(text_segment):
+                # --- SMART DEDUPLICATION ---
+
+                # 1. Exact Match Check
+                if text_segment in description_parts:
+                    continue
+
+                # 2. Substring/Containment Check (Handles "See more" truncation)
+                is_contained = False
+                for existing_part in description_parts:
+                    # If new text is already inside an existing block (or vice versa)
+                    if text_segment in existing_part:
+                        is_contained = True
+                        break
+                    if existing_part in text_segment:
+                        # The new text is a longer version of an existing block.
+                        # Replace the short one with the long one.
+                        idx_to_replace = description_parts.index(existing_part)
+                        description_parts[idx_to_replace] = text_segment
+                        is_contained = True
+                        break
+
+                if is_contained:
+                    continue
+
+                description_parts.append(text_segment)
+
+        full_description = "\n".join(description_parts)
 
         exp = Experience(
             title=title,
-            company_name=company,
-            employment_type=emp_type,
+            company_name=company_name,
+            employment_type=employment_type,
             location=location,
             work_type=work_type,
             start_date=date_info["start"],
             end_date=date_info["end"],
             duration=date_info["duration"],
-            description="",
+            description=full_description,
             skills=[]
         )
+        results.append(exp)
 
-        found.append((idx, exp))
+    return results
 
-    # dedupe por chave (título+empresa+start)
-    unique: List[Tuple[int, Experience]] = []
-    seen = set()
-    for idx, exp in found:
-        key = f"{exp.title}|{exp.company_name}|{exp.start_date}"
-        if key not in seen:
-            unique.append((idx, exp))
-            seen.add(key)
-
-    # associa descrição por proximidade
-    exp_idxs = [i for i, _ in unique]
-    for k, (exp_idx, exp) in enumerate(unique):
-        next_exp_idx = exp_idxs[k + 1] if k + 1 < len(exp_idxs) else float("inf")
-
-        desc = ""
-        for d_idx, d_text in desc_blocks:
-            if exp_idx < d_idx < next_exp_idx:
-                desc = d_text
-                break
-
-        exp.description = desc
-
-    if debug:
-        # preview de debug (bem leve)
-        for idx, exp in unique:
-            print(f"[DEBUG] exp@{idx}: {exp.title} | {exp.company_name} | desc={'yes' if exp.description else 'no'}")
-
-    return [exp for _, exp in unique]
 
 # ===================================================================
-# 4) SDUI STREAM PARSER (MANTIDO)
+# 4) SDUI STREAM PARSER
 # ===================================================================
 
 def parse_sdui_stream_to_dict(raw_text: str) -> dict:
-    """Converte o stream SDUI em um dicionário único."""
     included_items = []
     lines = raw_text.split('\n')
     for line in lines:
@@ -352,6 +363,7 @@ def parse_sdui_stream_to_dict(raw_text: str) -> dict:
                 parsed = json.loads(json_part)
                 if isinstance(parsed, list):
                     included_items.append(parsed)
+                    # Also append children if list of dicts
                     for item in parsed:
                         if isinstance(item, dict):
                             included_items.append(item)
@@ -368,8 +380,9 @@ def extract_vanity_from_referer(referer: str) -> Optional[str]:
     match = re.search(r"/in/([^/]+)/", referer)
     return match.group(1) if match else None
 
+
 # ===================================================================
-# 5) MAIN FUNCTION (ENDPOINT LOGIC)
+# 5) MAIN FUNCTION
 # ===================================================================
 
 def fetch_linkedin_profile_experiences(
@@ -381,7 +394,7 @@ def fetch_linkedin_profile_experiences(
         debug: bool = True
 ):
     if debug:
-        print("=== Fetch LinkedIn Experiences via SDUI (Item-Based Parser) ===")
+        print("=== Fetch LinkedIn Experiences via SDUI (Stream Parser) ===")
 
     config_name = "Experience"
     client = LinkedInClient(config_name)
@@ -467,18 +480,16 @@ def fetch_linkedin_profile_experiences(
         if debug:
             dump_dir = Path(__file__).resolve().parent / "debug"
             dump_dir.mkdir(exist_ok=True)
-
             dump_path = dump_dir / "linkedin_sdui_dump.json"
             dump_path.write_text(json.dumps(parsed_data, indent=2, ensure_ascii=False), encoding="utf-8")
-
             print(f"[DEBUG] Dump saved to {dump_path}")
 
-        # Extração (nova)
-        experiences_list = parse_experiences(parsed_data, debug=debug)
+        # === NOVO PARSER ===
+        experiences_list = parse_experiences_from_stream(parsed_data, debug=debug)
         experiences_dicts = [exp.to_dict() for exp in experiences_list]
 
         if debug:
-            print(f"✅ Parser encontrou {len(experiences_dicts)} experiências.")
+            print(f"✅ Stream Parser encontrou {len(experiences_dicts)} experiências.")
 
         return {
             "ok": True,
