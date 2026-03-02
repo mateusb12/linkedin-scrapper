@@ -1,10 +1,9 @@
 const makeId = (prefix) =>
   `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
-// Função auxiliar para escapar caracteres reservados do LaTeX
 const escapeLatex = (str) => {
   if (!str) return "";
-  // Converte para string caso seja número, depois substitui caracteres especiais
+
   return String(str)
     .replace(/\\/g, "\\textbackslash{}")
     .replace(/([&%$#_{}])/g, "\\$1")
@@ -15,8 +14,28 @@ const escapeLatex = (str) => {
 export const normalizeResume = (apiData) => {
   const safe = apiData || {};
 
+  const normalizeLanguage = () => {
+    const explicit = safe.resume_language;
+    const meta = safe.meta?.language;
+
+    if (explicit) return explicit.toLowerCase();
+
+    if (meta) {
+      const lang = meta.toLowerCase();
+
+      if (lang.includes("pt")) return "ptbr";
+      if (lang.includes("en")) return "en";
+    }
+
+    return null;
+  };
+
+  const normalizedLanguage = normalizeLanguage();
+
   return {
     id: safe.id,
+
+    resume_language: normalizedLanguage,
 
     internal_name: safe.internal_name || safe.name || "Untitled Resume",
     summary: safe.summary || "",
@@ -81,6 +100,7 @@ export const denormalizeResume = (uiState) => {
 
   return {
     id: safe.id,
+    resume_language: safe.resume_language,
     internal_name: safe.internal_name,
     summary: safe.summary,
 
@@ -125,97 +145,140 @@ export const denormalizeResume = (uiState) => {
 };
 
 export const generateLatex = (resume) => {
-  // Trabalhamos com a versão desnormalizada para garantir a estrutura limpa
   const r = denormalizeResume(resume);
 
-  // --- HELPERS INTERNOS PARA FORMATAÇÃO ---
+  const langCode = (
+    r.resume_language ||
+    r.meta?.language ||
+    "pt-BR"
+  ).toLowerCase();
+  const isEnglish = langCode.includes("en") || langCode.includes("us");
+
+  const t = {
+    babel: isEnglish ? "english" : "brazilian",
+    sections: {
+      experience: isEnglish ? "Experience" : "Experiência Profissional",
+      projects: isEnglish ? "Projects" : "Projetos",
+      skills: isEnglish ? "Technical Skills" : "Competências Técnicas",
+      education: isEnglish ? "Education" : "Formação Acadêmica",
+      languages: isEnglish ? "Languages" : "Idiomas",
+    },
+    skills: {
+      languages: isEnglish ? "Languages" : "Linguagens",
+      databases: isEnglish ? "Databases" : "Banco de Dados",
+      frameworks: isEnglish ? "Frameworks" : "Frameworks",
+      cloud_and_infra: isEnglish ? "Cloud & Infra" : "Cloud & Infra",
+      concepts: isEnglish ? "Concepts" : "Conceitos",
+    },
+    dates: {
+      present: isEnglish ? "Present" : "Presente",
+    },
+    labels: {
+      stack: "Stack",
+    },
+  };
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "";
     const lower = dateStr.toLowerCase();
-    if (lower === "present" || lower === "presente" || lower === "atual") return "Presente";
+    if (lower === "present" || lower === "presente" || lower === "atual")
+      return t.dates.present;
     return escapeLatex(dateStr);
   };
 
   const renderSkills = () => {
-    // Mapeamento das chaves do JSON para os Títulos em Português no LaTeX
-    const skillMap = {
-      languages: "Linguagens",
-      databases: "Banco de Dados",
-      frameworks: "Frameworks",
-      cloud_and_infra: "Cloud & Infra",
-      concepts: "Conceitos"
+    const lines = [];
+
+    const keyMap = {
+      languages: t.skills.languages,
+      databases: t.skills.databases,
+      frameworks: t.skills.frameworks,
+      cloud_and_infra: t.skills.cloud_and_infra,
+      concepts: t.skills.concepts,
     };
 
-    const lines = [];
     Object.entries(r.skills || {}).forEach(([key, values]) => {
-      // Verifica se existe a chave no mapa e se há valores para mostrar
-      if (skillMap[key] && values && values.length > 0) {
+      if (keyMap[key] && values && values.length > 0) {
         const valueStr = Array.isArray(values) ? values.join(", ") : values;
-        lines.push(`      \\textbf{${skillMap[key]}}{: ${escapeLatex(valueStr)}} \\\\`);
+        lines.push(
+          `      \\textbf{${keyMap[key]}}{: ${escapeLatex(valueStr)}} \\\\`,
+        );
       }
     });
     return lines.join("\n");
   };
 
   const renderExperience = () => {
-    return (r.experience || []).map(exp => {
-      const highlights = (exp.highlights || []).map(h => `        \\resumeItem{${escapeLatex(h)}}`).join("\n");
+    return (r.experience || [])
+      .map((exp) => {
+        const highlights = (exp.highlights || [])
+          .map((h) => `        \\resumeItem{${escapeLatex(h)}}`)
+          .join("\n");
 
-      const stackStr = Array.isArray(exp.stack) ? exp.stack.join(", ") : exp.stack;
-      const stackLine = stackStr
-        ? `        \\resumeItem{\\textbf{Stack:} ${escapeLatex(stackStr)}}`
-        : "";
+        const stackStr = Array.isArray(exp.stack)
+          ? exp.stack.join(", ")
+          : exp.stack;
+        const stackLine = stackStr
+          ? `        \\resumeItem{\\textbf{${t.labels.stack}:} ${escapeLatex(stackStr)}}`
+          : "";
 
-      return `    \\resumeSubheading
+        return `    \\resumeSubheading
       {${escapeLatex(exp.company)}}{${formatDate(exp.start_date)} -- ${formatDate(exp.end_date)}}
       {${escapeLatex(exp.role)}}{${escapeLatex(exp.location)}}
       \\resumeItemListStart
 ${highlights}
 ${stackLine}
       \\resumeItemListEnd`;
-    }).join("\n\n");
+      })
+      .join("\n\n");
   };
 
   const renderProjects = () => {
-    return (r.projects || []).map(proj => {
-      let linkText = "";
-      if (proj.links?.website) {
-        linkText = `\\href{${proj.links.website}}{\\underline{Website}}`;
-      } else if (proj.links?.github) {
-        linkText = `\\href{${proj.links.github}}{\\underline{GitHub}}`;
-      }
+    return (r.projects || [])
+      .map((proj) => {
+        let linkText = "";
+        if (proj.links?.website) {
+          linkText = `\\href{${proj.links.website}}{\\underline{Website}}`;
+        } else if (proj.links?.github) {
+          linkText = `\\href{${proj.links.github}}{\\underline{GitHub}}`;
+        }
 
-      const stackList = Array.isArray(proj.stack) ? proj.stack.join(", ") : proj.stack;
+        const stackList = Array.isArray(proj.stack)
+          ? proj.stack.join(", ")
+          : proj.stack;
 
-      return `      \\resumeProjectHeading
+        return `      \\resumeProjectHeading
           {\\textbf{${escapeLatex(proj.name)}} $|$ \\emph{${escapeLatex(stackList)}}}
           {${linkText}}
           \\resumeItemListStart
             \\resumeItem{${escapeLatex(proj.description)}}
           \\resumeItemListEnd`;
-    }).join("\n\n");
+      })
+      .join("\n\n");
   };
 
   const renderEducation = () => {
-    return (r.education || []).map(edu => {
-      // Prioriza o campo 'year' se existir, senão usa start -- end
-      let dates = edu.year ? edu.year : `${edu.start_year} -- ${edu.end_year}`;
-      return `    \\resumeSubheading
+    return (r.education || [])
+      .map((edu) => {
+        let dates = edu.year
+          ? edu.year
+          : `${edu.start_year} -- ${edu.end_year}`;
+        return `    \\resumeSubheading
       {${escapeLatex(edu.institution)}}{${escapeLatex(dates)}}
       {${escapeLatex(edu.degree)}}{${escapeLatex(edu.location)}}`;
-    }).join("\n");
+      })
+      .join("\n");
   };
 
   const renderLanguages = () => {
     if (!r.languages || r.languages.length === 0) return "";
 
     const langs = r.languages
-      .map(l => `\\textbf{${escapeLatex(l.name)}}{: ${escapeLatex(l.level)}}`)
+      .map((l) => `\\textbf{${escapeLatex(l.name)}}{: ${escapeLatex(l.level)}}`)
       .join(" \\hspace{1cm}\n      ");
 
     return `%-----------LANGUAGES-----------
-\\section{Idiomas}
+\\section{${t.sections.languages}}
  \\begin{itemize}[leftmargin=0.15in, label={}]
     \\small{\\item{
       ${langs}
@@ -223,14 +286,12 @@ ${stackLine}
  \\end{itemize}`;
   };
 
-  // --- MONTAGEM DO TEMPLATE COMPLETO ---
-
   return `\\documentclass[11pt, a4paper]{article}
 
 % --- PACKAGES ---
 \\usepackage[utf8]{inputenc}
 \\usepackage[T1]{fontenc}
-\\usepackage[brazilian]{babel}
+\\usepackage[${t.babel}]{babel}
 \\usepackage[a4paper, top=1.5cm, bottom=1.5cm, left=1.5cm, right=1.5cm]{geometry}
 \\usepackage{enumitem}
 \\usepackage{latexsym}
@@ -312,19 +373,19 @@ ${stackLine}
 \\end{center}
 
 %-----------EXPERIENCE-----------
-\\section{Experiência Profissional}
+\\section{${t.sections.experience}}
   \\resumeSubHeadingListStart
 ${renderExperience()}
   \\resumeSubHeadingListEnd
 
 %-----------PROJECTS-----------
-\\section{Projetos}
+\\section{${t.sections.projects}}
     \\resumeSubHeadingListStart
 ${renderProjects()}
     \\resumeSubHeadingListEnd
 
 %-----------TECHNICAL SKILLS-----------
-\\section{Competências Técnicas}
+\\section{${t.sections.skills}}
  \\begin{itemize}[leftmargin=0.15in, label={}]
     \\small{\\item{
 ${renderSkills()}
@@ -332,7 +393,7 @@ ${renderSkills()}
  \\end{itemize}
 
 %-----------EDUCATION-----------
-\\section{Formação Acadêmica}
+\\section{${t.sections.education}}
   \\resumeSubHeadingListStart
 ${renderEducation()}
   \\resumeSubHeadingListEnd

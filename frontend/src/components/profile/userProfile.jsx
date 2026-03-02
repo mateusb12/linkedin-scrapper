@@ -462,11 +462,28 @@ const ResumeSection = ({
           {selectedResume && (
             <span className="text-2xl">
               {(() => {
-                const lang =
-                  selectedResume.resume_language?.toUpperCase() ||
-                  (selectedResume.meta?.language === "en-US" ? "EN" : "PT");
+                const explicit = selectedResume.resume_language;
+                const metaLang = selectedResume.meta?.language;
 
-                return lang === "PT" || lang === "PTBR" ? "🇧🇷" : "🇺🇸";
+                if (explicit) {
+                  const lang = explicit.toLowerCase();
+
+                  if (["pt", "ptbr", "pt-br"].includes(lang)) return "🇧🇷";
+                  if (["en", "eng", "en-us"].includes(lang)) return "🇺🇸";
+
+                  return "⚠️";
+                }
+
+                if (metaLang) {
+                  const lang = metaLang.toLowerCase();
+
+                  if (["pt", "ptbr", "pt-br"].includes(lang)) return "🇧🇷";
+                  if (["en", "eng", "en-us"].includes(lang)) return "🇺🇸";
+
+                  return "⚠️";
+                }
+
+                return "❓";
               })()}
             </span>
           )}
