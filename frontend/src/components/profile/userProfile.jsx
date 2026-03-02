@@ -914,29 +914,35 @@ const ResumeSection = ({
           </div>
 
           <div
-            className={`flex flex-col sm:flex-row justify-end items-center mt-8 pt-6 border-t ${palette.border.primary} gap-3`}
+            className={`flex flex-col sm:flex-row justify-between items-center mt-8 pt-6 border-t ${palette.border.primary} gap-3`}
           >
-            <button
-              onClick={onToggleFullPreview}
-              className={`${styleguide.button.markdown} w-full sm:w-auto flex items-center justify-center gap-2`}
-            >
-              <FileJson size={16} /> Preview JSON Payload
-            </button>
-            <button
-              onClick={() =>
-                window.confirm(`Delete "${selectedResume.internal_name}"?`) &&
-                onDelete()
-              }
-              className="border border-red-900/50 text-red-500 hover:bg-red-900/20 font-bold py-2 px-4 rounded-md transition w-full sm:w-auto"
-            >
-              Delete
-            </button>
-            <button
-              onClick={onSave}
-              className={`${styleguide.button.primary} w-full sm:w-auto`}
-            >
-              Save Resume
-            </button>
+            <div className="w-full sm:w-auto flex justify-start">
+              <button
+                onClick={() =>
+                  window.confirm(`Delete "${selectedResume.internal_name}"?`) &&
+                  onDelete()
+                }
+                className="border border-red-700/60 bg-red-900/30 text-red-400 hover:bg-red-900/50 font-bold py-2 px-4 rounded-md transition"
+              >
+                Delete
+              </button>
+            </div>
+
+            <div className="w-full sm:w-auto flex justify-end gap-3">
+              <button
+                onClick={onToggleFullPreview}
+                className={`${styleguide.button.markdown} flex items-center justify-center gap-2`}
+              >
+                <FileJson size={16} /> Preview JSON Payload
+              </button>
+
+              <button
+                onClick={onSave}
+                className={`${styleguide.button.primary}`}
+              >
+                Save Resume
+              </button>
+            </div>
           </div>
         </div>
       )}
