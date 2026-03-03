@@ -24,8 +24,7 @@ import {
   Users,
   Trophy,
   Check,
-  Eye,
-  EyeOff,
+  Sparkles,
 } from "lucide-react";
 import {
   fetchLinkedinJobsRaw,
@@ -47,6 +46,10 @@ import {
   getTechIcon,
 } from "./utils/jobUtils.js";
 import { formatCustomDate } from "../../utils/dateUtils.js";
+
+import { fetchAllResumes } from "../match-find/MatchLogic.jsx";
+import { normalizeResume } from "../profile/resumeJsonMapper.js";
+import JobContextBuilder from "./JobContextBuilder";
 
 const SCORES_STORAGE_KEY = "linkedin_job_scores";
 
@@ -129,6 +132,7 @@ const CopyFirstNItems = ({
   items,
   label = "Copy First N Items",
   stringify = (data) => JSON.stringify(data, null, 2),
+  onOpenBuilder,
 }) => {
   const max = Array.isArray(items) ? items.length : 0;
   const [count, setCount] = useState(max);
@@ -196,7 +200,17 @@ const CopyFirstNItems = ({
           </div>
         </div>
       </div>
-      <div className="flex items-center justify-end w-full lg:w-auto h-full pt-2 lg:pt-0">
+      <div className="flex items-center justify-end w-full lg:w-auto h-full pt-2 lg:pt-0 gap-3">
+        {onOpenBuilder && (
+          <button
+            onClick={onOpenBuilder}
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-bold transition-all duration-200 bg-purple-600 hover:bg-purple-500 text-white shadow-lg hover:shadow-purple-500/20 active:scale-95"
+            title="Open LLM Context Builder"
+          >
+            <Sparkles size={20} /> Build Context
+          </button>
+        )}
+
         <button
           onClick={handleCopy}
           disabled={itemsToExport.length === 0}
@@ -214,7 +228,7 @@ const CopyFirstNItems = ({
             </>
           ) : (
             <>
-              <Copy size={20} /> Copy JSON ({itemsToExport.length})
+              <Copy size={20} /> Copy JSON
             </>
           )}
         </button>
@@ -231,6 +245,10 @@ const SavedJobs = () => {
   const [expandedJobUrn, setExpandedJobUrn] = useState(null);
   const [activeTab, setActiveTab] = useState(LINKEDIN_CARD_TYPE.SAVED);
   const [isCachedData, setIsCachedData] = useState(false);
+
+  const [resumes, setResumes] = useState([]);
+  const [selectedResumeId, setSelectedResumeId] = useState(null);
+  const [showContextBuilder, setShowContextBuilder] = useState(false);
 
   const [showFoundationIcons, setShowFoundationIcons] = useState(true);
   const [showSpecificsIcons, setShowSpecificsIcons] = useState(true);
@@ -299,7 +317,6 @@ const SavedJobs = () => {
       if (response && response.jobs) {
         setJobs(response.jobs);
         setIsCachedData(false);
-
         localStorage.setItem(cacheKey, JSON.stringify(response.jobs));
       } else {
         setJobs([]);
@@ -315,6 +332,26 @@ const SavedJobs = () => {
   useEffect(() => {
     loadJobs(false);
   }, [activeTab]);
+
+  useEffect(() => {
+    const loadResumes = async () => {
+      try {
+        const resumesData = await fetchAllResumes();
+        const normalized = (resumesData || []).map(normalizeResume);
+        setResumes(normalized);
+        if (normalized.length > 0) {
+          setSelectedResumeId(normalized[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to fetch resumes for Context Builder", err);
+      }
+    };
+    loadResumes();
+  }, []);
+
+  const handleResumeChange = (e) => {
+    setSelectedResumeId(Number(e.target.value));
+  };
 
   const handleScoreSave = (urn, newValue) => {
     const newScores = { ...scores, [urn]: newValue };
@@ -426,32 +463,14 @@ const SavedJobs = () => {
               <div className="flex items-center bg-gray-900/50 rounded-lg border border-gray-700 p-1 mr-2">
                 <button
                   onClick={() => setShowFoundationIcons(!showFoundationIcons)}
-                  className={`p-1.5 rounded-md transition-all duration-200 ${
-                    showFoundationIcons
-                      ? "bg-emerald-500/20 text-emerald-400 shadow-sm"
-                      : "text-gray-500 hover:text-gray-300 hover:bg-gray-800"
-                  }`}
-                  title={
-                    showFoundationIcons
-                      ? "Hide Foundation Icons"
-                      : "Show Foundation Icons"
-                  }
+                  className={`p-1.5 rounded-md transition-all duration-200 ${showFoundationIcons ? "bg-emerald-500/20 text-emerald-400 shadow-sm" : "text-gray-500 hover:text-gray-300 hover:bg-gray-800"}`}
                 >
                   <Layers size={16} />
                 </button>
                 <div className="w-px h-4 bg-gray-700 mx-1"></div>
                 <button
                   onClick={() => setShowSpecificsIcons(!showSpecificsIcons)}
-                  className={`p-1.5 rounded-md transition-all duration-200 ${
-                    showSpecificsIcons
-                      ? "bg-emerald-500/20 text-emerald-400 shadow-sm"
-                      : "text-gray-500 hover:text-gray-300 hover:bg-gray-800"
-                  }`}
-                  title={
-                    showSpecificsIcons
-                      ? "Hide Specifics Icons"
-                      : "Show Specifics Icons"
-                  }
+                  className={`p-1.5 rounded-md transition-all duration-200 ${showSpecificsIcons ? "bg-emerald-500/20 text-emerald-400 shadow-sm" : "text-gray-500 hover:text-gray-300 hover:bg-gray-800"}`}
                 >
                   <Code2 size={16} />
                 </button>
@@ -498,11 +517,7 @@ const SavedJobs = () => {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                      : "text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 border border-transparent"
-                  }`}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === tab.id ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 border border-transparent"}`}
                 >
                   <Icon size={14} /> {tab.label}
                 </button>
@@ -554,11 +569,7 @@ const SavedJobs = () => {
                 filteredJobs.map((job) => (
                   <React.Fragment key={job.urn}>
                     <tr
-                      className={`group transition-colors ${
-                        expandedJobUrn === job.urn
-                          ? "bg-gray-800"
-                          : "hover:bg-emerald-900/5"
-                      }`}
+                      className={`group transition-colors ${expandedJobUrn === job.urn ? "bg-gray-800" : "hover:bg-emerald-900/5"}`}
                     >
                       <td className="px-6 py-4">
                         <ScoreInput
@@ -566,7 +577,6 @@ const SavedJobs = () => {
                           onSave={(val) => handleScoreSave(job.urn, val)}
                         />
                       </td>
-
                       <td className="px-6 py-4 min-w-[200px]">
                         <div className="flex items-start gap-3">
                           <button
@@ -601,7 +611,6 @@ const SavedJobs = () => {
                           {job.foundations && job.foundations.length > 0 ? (
                             job.foundations.map((tech, index) => {
                               const iconSrc = getTechIcon(tech);
-
                               if (showFoundationIcons && iconSrc) {
                                 return (
                                   <div
@@ -613,14 +622,12 @@ const SavedJobs = () => {
                                       alt={tech}
                                       className="w-9 h-9 object-contain hover:scale-125 transition-transform duration-200 cursor-help filter drop-shadow-sm"
                                     />
-
                                     <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10 border border-gray-700">
                                       {tech}
                                     </span>
                                   </div>
                                 );
                               }
-
                               return (
                                 <span
                                   key={tech}
@@ -637,13 +644,11 @@ const SavedJobs = () => {
                           )}
                         </div>
                       </td>
-
                       <td className="px-6 py-4 min-w-[150px] max-w-[250px]">
                         <div className="grid grid-cols-3 gap-2 justify-items-center">
                           {job.specifics && job.specifics.length > 0 ? (
                             job.specifics.map((tech, index) => {
                               const iconSrc = getTechIcon(tech);
-
                               if (showSpecificsIcons && iconSrc) {
                                 return (
                                   <div
@@ -655,14 +660,12 @@ const SavedJobs = () => {
                                       alt={tech}
                                       className="w-8 h-8 object-contain hover:scale-125 transition-transform duration-200 cursor-help filter drop-shadow-sm"
                                     />
-
                                     <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover/icon:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10 border border-gray-700">
                                       {tech}
                                     </span>
                                   </div>
                                 );
                               }
-
                               return (
                                 <span
                                   key={tech}
@@ -679,7 +682,6 @@ const SavedJobs = () => {
                           )}
                         </div>
                       </td>
-
                       <td className="px-6 py-4">
                         {job.seniority ? (
                           <span
@@ -693,7 +695,6 @@ const SavedJobs = () => {
                           </span>
                         )}
                       </td>
-
                       <td className="px-6 py-4">
                         {job.jobType ? (
                           <span
@@ -707,7 +708,6 @@ const SavedJobs = () => {
                           </span>
                         )}
                       </td>
-
                       <td className="px-6 py-4">
                         {job.experienceData ? (
                           <span
@@ -721,7 +721,6 @@ const SavedJobs = () => {
                           </span>
                         )}
                       </td>
-
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-gray-300 text-sm whitespace-nowrap">
                           <Calendar size={14} className="text-gray-500" />
@@ -734,7 +733,6 @@ const SavedJobs = () => {
                           )}
                         </div>
                       </td>
-
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-gray-300 text-sm">
                           <Users size={14} className="text-gray-500" />
@@ -750,25 +748,19 @@ const SavedJobs = () => {
                           )}
                         </div>
                       </td>
-
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-gray-400 text-sm">
                           <MapPin size={14} className="text-gray-500" />{" "}
                           {job.location || "Remote / Unspecified"}
                         </div>
                       </td>
-
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-1 items-start">
                           {job.insights && job.insights.length > 0 ? (
                             job.insights.map((insight, idx) => (
                               <span
                                 key={idx}
-                                className={`px-3 py-1 rounded-full text-xs border whitespace-nowrap ${
-                                  insight.toLowerCase().includes("posted")
-                                    ? getPostedStyle(insight)
-                                    : getInsightStyle(insight)
-                                }`}
+                                className={`px-3 py-1 rounded-full text-xs border whitespace-nowrap ${insight.toLowerCase().includes("posted") ? getPostedStyle(insight) : getInsightStyle(insight)}`}
                               >
                                 {insight.trim()}
                               </span>
@@ -780,7 +772,6 @@ const SavedJobs = () => {
                           )}
                         </div>
                       </td>
-
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <a
@@ -877,7 +868,19 @@ const SavedJobs = () => {
         </div>
       </div>
 
-      <CopyFirstNItems items={jobs} />
+      <CopyFirstNItems
+        items={jobs}
+        onOpenBuilder={() => setShowContextBuilder(true)}
+      />
+
+      <JobContextBuilder
+        isOpen={showContextBuilder}
+        onClose={() => setShowContextBuilder(false)}
+        jobs={filteredJobs}
+        resumes={resumes}
+        selectedResumeId={selectedResumeId}
+        handleResumeChange={handleResumeChange}
+      />
     </div>
   );
 };
