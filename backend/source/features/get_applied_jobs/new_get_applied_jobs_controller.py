@@ -81,7 +81,7 @@ def sync_applied_jobs():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
-@job_tracker_bp.route("/sync-applied-backfill-stream", methods=["POST"])
+@job_tracker_bp.route("/sync-applied-backfill-stream", methods=["GET"])
 def sync_applied_backfill_stream():
     """Sync profundo com stream (Server-Sent Events)"""
     from_param = request.args.get("from")
