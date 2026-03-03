@@ -4,33 +4,58 @@ import { X, Copy, Check, Sparkles, Settings } from "lucide-react";
 import { denormalizeResume, generateLatex } from "./resumeJsonMapper.js";
 
 const PROMPT_TEMPLATES = {
-  en: `I am applying for a job and I need you to adapt my resume to fit the Job Description provided below.
+  en: `
+I am applying for a job and I need you to adapt my resume (in LaTeX format) to fit the Job Description provided below.
 
-=== INSTRUCTIONS ===
-1. Analyze the keywords in the Job Description.
-2. Rewrite the summary and experience bullet points of my resume to highlight matching skills.
-3. Keep the exact same format (JSON or LaTeX) so I can paste it back into my system.
-4. Do NOT output conversational text, just the code/json.
+=== STRICT INSTRUCTIONS ===
+1. ALWAYS output only LaTeX. No explanations, no markdown, no conversational text.
+2. Analyze the Job Description and extract the most important technical keywords.
+3. Rewrite ONLY:
+   - The summary (if present)
+   - The experience bullet points
+   using *first-person past tense* ("implemented", "designed", "orchestrated", etc.)
+4. Give HIGH EMPHASIS to keywords from the Job Description by naturally including them in the bullet points.
+5. Preserve:
+   - the identical LaTeX structure
+   - sections
+   - commands
+   - environments
+   - formatting
+6. Do NOT invent skills or technologies I do not have in my resume.
+7. Output only the final LaTeX resume, ready to compile.
 
 === JOB DESCRIPTION ===
 {{JOB_DESCRIPTION}}
 
-=== MY CURRENT RESUME ===
-{{RESUME_CONTENT}}`,
+=== CURRENT RESUME (LATEX) ===
+{{RESUME_CONTENT}}
+`,
 
-  pt: `Estou me candidatando a uma vaga e preciso que você adapte meu currículo para se adequar à Descrição da Vaga fornecida abaixo.
+  pt: `
+Estou me candidatando a uma vaga e preciso que você adapte meu currículo (em LaTeX) para se adequar à Descrição da Vaga fornecida abaixo.
 
-=== INSTRUÇÕES ===
-1. Analise as palavras-chave na Descrição da Vaga.
-2. Reescreva o resumo e os bullet points de experiência do meu currículo para destacar habilidades compatíveis.
-3. Mantenha exatamente o mesmo formato (JSON ou LaTeX) para que eu possa colar de volta no meu sistema.
-4. NÃO escreva texto conversacional, apenas o código/json de saída.
+=== INSTRUÇÕES RÍGIDAS ===
+1. A saída deve ser SEMPRE em LaTeX. Nada de explicações, comentários ou texto conversacional.
+2. Analise a Descrição da Vaga e extraia as palavras-chave técnicas mais relevantes.
+3. Reescreva APENAS:
+   - o resumo (se existir)
+   - os bullet points de experiência
+   usando *primeira pessoa do passado* ("implementei", "orquestrei", "desenvolvi", etc.)
+4. Dê MUITA ÊNFASE às keywords da vaga, incorporando-as naturalmente nos bullet points.
+5. Preserve:
+   - a estrutura LaTeX original
+   - comandos
+   - seções
+   - listas e ambientes
+6. NÃO invente tecnologias ou habilidades que não existam no meu currículo atual.
+7. A saída deve ser APENAS o currículo final em LaTeX, pronto para compilar.
 
 === DESCRIÇÃO DA VAGA ===
 {{JOB_DESCRIPTION}}
 
-=== MEU CURRÍCULO ATUAL ===
-{{RESUME_CONTENT}}`,
+=== MEU CURRÍCULO ATUAL (LATEX) ===
+{{RESUME_CONTENT}}
+`,
 };
 
 export const getResumeFlag = (resume) => {
