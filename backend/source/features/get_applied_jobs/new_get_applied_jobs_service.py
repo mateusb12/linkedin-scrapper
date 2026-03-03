@@ -467,7 +467,7 @@ class JobTrackerFetcher:
             _log(f"⚠️ Erro no body: {e}")
             return base_body_str
 
-    def _build_base_job(self, job_data):
+    def _build_base_job(self, job_data: dict):
         job_id_str = str(job_data.get("jobId"))
 
         posted_at = (
@@ -481,11 +481,20 @@ class JobTrackerFetcher:
             if dt:
                 posted_at = dt.isoformat()
 
+        company = (
+                job_data.get("companyName")
+                or job_data.get("company")
+                or job_data.get("companyDetails", {}).get("company", {}).get("name")
+                or job_data.get("companyDescription", {}).get("companyName")
+                or job_data.get("jobPosting", {}).get("companyName")
+                or "Unknown"
+        )
+
         return {
             "job_id": job_id_str,
-            "title": job_data.get("title"),
-            "company": job_data.get("companyName"),
-            "location": job_data.get("formattedLocation"),
+            "title": job_data.get("title") or job_data.get("jobTitle"),
+            "company": company,
+            "location": job_data.get("formattedLocation") or job_data.get("locationPrimary"),
             "job_url": f"https://www.linkedin.com/jobs/view/{job_id_str}/",
             "posted_at": posted_at,
         }
@@ -534,6 +543,12 @@ class JobTrackerFetcher:
             for job in page_candidates:
                 jid = job.get("jobId")
                 if not jid:
+                    continue
+
+                has_title = job.get("title") or job.get("jobTitle")
+                has_company = job.get("companyName") or job.get("company") or job.get("companyDetails")
+
+                if not has_title and not has_company:
                     continue
 
                 items_in_this_page += 1
