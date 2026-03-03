@@ -27,6 +27,8 @@ import fastapiIcon from "../../../assets/skills_icons/fastapi.svg";
 import redisIcon from "../../../assets/skills_icons/redis.svg";
 import vueIcon from "../../../assets/skills_icons/vue.svg";
 import oracleIcon from "../../../assets/skills_icons/oracle.svg";
+import langchainIcon from "../../../assets/skills_icons/langchain.svg";
+import geminiIcon from "../../../assets/skills_icons/gemini.svg";
 
 const NEGATIVE_KEYWORDS = [
   "rpa",
@@ -610,6 +612,8 @@ const techIconsMap = {
   RabbitMQ: rabbitIcon,
   Kafka: kafkaIcon,
   Terraform: terraformIcon,
+  LangChain: langchainIcon,
+  Gemini: geminiIcon,
 };
 
 export const getTechIcon = (techName) => {
