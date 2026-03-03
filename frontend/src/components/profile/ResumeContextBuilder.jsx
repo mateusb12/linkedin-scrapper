@@ -8,21 +8,13 @@ const PROMPT_TEMPLATES = {
 I am applying for a job and I need you to adapt my resume (in LaTeX format) to fit the Job Description provided below.
 
 === STRICT INSTRUCTIONS ===
-1. ALWAYS output only LaTeX. No explanations, no markdown, no conversational text.
-2. Analyze the Job Description and extract the most important technical keywords.
-3. Rewrite ONLY:
-   - The summary (if present)
-   - The experience bullet points
-   using *first-person past tense* ("implemented", "designed", "orchestrated", etc.)
-4. Give HIGH EMPHASIS to keywords from the Job Description by naturally including them in the bullet points.
-5. Preserve:
-   - the identical LaTeX structure
-   - sections
-   - commands
-   - environments
-   - formatting
-6. Do NOT invent skills or technologies I do not have in my resume.
-7. Output only the final LaTeX resume, ready to compile.
+1. Analyze the Job Description and extract the most relevant technical keywords.
+2. Rewrite ONLY:
+   - the summary (if present)
+   - the experience bullet points
+   using first-person past tense ("implemented", "designed", "orchestrated", etc.)
+3. Give STRONG emphasis to the job's keywords by naturally incorporating them into the bullet points.
+4. Do NOT invent skills or technologies that are not already present in my current resume.
 
 === JOB DESCRIPTION ===
 {{JOB_DESCRIPTION}}
@@ -35,20 +27,13 @@ I am applying for a job and I need you to adapt my resume (in LaTeX format) to f
 Estou me candidatando a uma vaga e preciso que você adapte meu currículo (em LaTeX) para se adequar à Descrição da Vaga fornecida abaixo.
 
 === INSTRUÇÕES RÍGIDAS ===
-1. A saída deve ser SEMPRE em LaTeX. Nada de explicações, comentários ou texto conversacional.
-2. Analise a Descrição da Vaga e extraia as palavras-chave técnicas mais relevantes.
-3. Reescreva APENAS:
+1. Analise a Descrição da Vaga e extraia as palavras-chave técnicas mais relevantes.
+2. Reescreva APENAS:
    - o resumo (se existir)
    - os bullet points de experiência
-   usando *primeira pessoa do passado* ("implementei", "orquestrei", "desenvolvi", etc.)
-4. Dê MUITA ÊNFASE às keywords da vaga, incorporando-as naturalmente nos bullet points.
-5. Preserve:
-   - a estrutura LaTeX original
-   - comandos
-   - seções
-   - listas e ambientes
-6. NÃO invente tecnologias ou habilidades que não existam no meu currículo atual.
-7. A saída deve ser APENAS o currículo final em LaTeX, pronto para compilar.
+   usando primeira pessoa do passado ("implementei", "orquestrei", "desenvolvi", etc.)
+3. Dê MUITA ÊNFASE às keywords da vaga, incorporando-as naturalmente nos bullet points.
+4. NÃO invente tecnologias ou habilidades que não existam no meu currículo atual.
 
 === DESCRIÇÃO DA VAGA ===
 {{JOB_DESCRIPTION}}
@@ -144,7 +129,7 @@ const ResumeContextBuilder = ({
   selectedResumeId,
   handleResumeChange,
 }) => {
-  const [format, setFormat] = useState("json");
+  const [format, setFormat] = useState("latex");
   const [resumeContent, setResumeContent] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [promptTemplate, setPromptTemplate] = useState("");
@@ -202,16 +187,6 @@ const ResumeContextBuilder = ({
 
             <div className="flex bg-gray-900 rounded-lg p-1 border border-gray-700 ml-4">
               <button
-                onClick={() => setFormat("json")}
-                className={`px-3 py-1 text-xs font-bold rounded-md transition ${
-                  format === "json"
-                    ? "bg-emerald-600 text-white shadow-lg"
-                    : "text-gray-400 hover:text-white"
-                }`}
-              >
-                JSON
-              </button>
-              <button
                 onClick={() => setFormat("latex")}
                 className={`px-3 py-1 text-xs font-bold rounded-md transition ${
                   format === "latex"
@@ -220,6 +195,16 @@ const ResumeContextBuilder = ({
                 }`}
               >
                 LaTeX
+              </button>
+              <button
+                onClick={() => setFormat("json")}
+                className={`px-3 py-1 text-xs font-bold rounded-md transition ${
+                  format === "json"
+                    ? "bg-emerald-600 text-white shadow-lg"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                JSON
               </button>
             </div>
 
