@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Briefcase, FileJson } from "lucide-react";
+import { Briefcase, FileJson, X, Copy, Check } from "lucide-react";
 
 import { fetchProfiles, saveProfile } from "../../services/profileService.js";
 import { fetchAllResumes } from "../match-find/MatchLogic.jsx";
@@ -31,6 +31,49 @@ const getResumeFlag = (resume) => {
   return "⚠️";
 };
 
+const palette = {
+  bg: {
+    page: "bg-gray-900",
+    previewTextarea: "bg-gray-950",
+  },
+  text: {
+    primary: "text-gray-200",
+    light: "text-white",
+  },
+  border: {
+    previewTextarea: "border-gray-700",
+  },
+};
+
+const styleguide = {
+  previewTextarea: `${palette.bg.previewTextarea} ${palette.border.previewTextarea} border ${palette.text.primary} font-mono text-xs leading-relaxed w-full rounded-md p-4 transition outline-none focus:ring-1 focus:ring-blue-500`,
+};
+
+function convertDate(str) {
+  if (!str) return "";
+  try {
+    const [monthStr, year] = str.split(" ");
+    const month = {
+      Jan: "01",
+      Feb: "02",
+      Mar: "03",
+      Apr: "04",
+      May: "05",
+      Jun: "06",
+      Jul: "07",
+      Aug: "08",
+      Sep: "09",
+      Oct: "10",
+      Nov: "11",
+      Dec: "12",
+    }[monthStr];
+    return `${year}-${month}`;
+  } catch (err) {
+    console.error("Invalid date:", str);
+    return "";
+  }
+}
+
 const ResumeSelector = ({
   resumes,
   selectedResumeId,
@@ -40,9 +83,9 @@ const ResumeSelector = ({
   const selectedResume = resumes.find((r) => r.id === selectedResumeId);
 
   return (
-    <div className={`flex items-center gap-3 ${className}`}>
+    <div className={`flex items-center gap-2 ${className}`}>
       {selectedResume && (
-        <span className="text-2xl select-none" title="Language detected">
+        <span className="text-xl select-none" title="Language detected">
           {getResumeFlag(selectedResume)}
         </span>
       )}
@@ -50,7 +93,7 @@ const ResumeSelector = ({
       <select
         onChange={handleResumeChange}
         value={selectedResumeId || ""}
-        className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none transition shadow-sm min-w-[200px] max-w-[300px]"
+        className="rounded-lg border border-gray-700 bg-gray-900 px-3 py-1.5 text-sm text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none transition shadow-sm min-w-[150px] max-w-[250px]"
       >
         {resumes.map((r) => (
           <option key={r.id} value={r.id}>
@@ -70,22 +113,127 @@ const ResumeSelector = ({
   );
 };
 
-const palette = {
-  bg: {
-    page: "bg-gray-900",
-    previewTextarea: "bg-gray-950",
-  },
-  text: {
-    primary: "text-gray-200",
-    light: "text-white",
-  },
-  border: {
-    previewTextarea: "border-gray-700",
-  },
-};
+const ResumePreviewModal = ({
+  isOpen,
+  onClose,
+  resume,
+  resumes,
+  selectedResumeId,
+  handleResumeChange,
+}) => {
+  const [format, setFormat] = useState("json");
+  const [content, setContent] = useState("");
+  const [copied, setCopied] = useState(false);
 
-const styleguide = {
-  previewTextarea: `${palette.bg.previewTextarea} ${palette.border.previewTextarea} border ${palette.text.primary} font-mono text-xs leading-relaxed w-full rounded-md p-4 transition text-green-400`,
+  useEffect(() => {
+    if (!resume) return;
+
+    if (format === "json") {
+      const jsonPayload = denormalizeResume(resume);
+      setContent(JSON.stringify(jsonPayload, null, 2));
+    } else {
+      const latexContent = generateLatex(resume);
+      setContent(latexContent);
+    }
+  }, [resume, format]);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 animate-in fade-in backdrop-blur-sm">
+      <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl relative">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4 border-b border-gray-700 pb-4">
+          <div className="flex items-center gap-4 flex-wrap">
+            <h3 className="text-white font-bold font-mono text-lg flex items-center gap-2">
+              <FileJson
+                className={
+                  format === "json" ? "text-emerald-400" : "text-blue-400"
+                }
+              />
+              Payload Preview
+            </h3>
+
+            <div className="flex bg-gray-900 rounded-lg p-1 border border-gray-700">
+              <button
+                onClick={() => setFormat("json")}
+                className={`px-4 py-1.5 text-xs font-bold rounded-md transition ${
+                  format === "json"
+                    ? "bg-emerald-600 text-white shadow-lg"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                JSON
+              </button>
+              <button
+                onClick={() => setFormat("latex")}
+                className={`px-4 py-1.5 text-xs font-bold rounded-md transition ${
+                  format === "latex"
+                    ? "bg-blue-600 text-white shadow-lg"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                LaTeX
+              </button>
+            </div>
+
+            <div className="hidden md:block w-px h-8 bg-gray-600 mx-2"></div>
+            <div className="flex flex-col">
+              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">
+                Quick Switch
+              </span>
+              <ResumeSelector
+                resumes={resumes}
+                selectedResumeId={selectedResumeId}
+                handleResumeChange={handleResumeChange}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end md:self-auto">
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-2 px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs font-bold transition border border-gray-600"
+            >
+              {copied ? (
+                <Check size={14} className="text-emerald-400" />
+              ) : (
+                <Copy size={14} />
+              )}
+              {copied ? "Copied!" : "Copy content"}
+            </button>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-white hover:bg-red-500/20 hover:text-red-400 p-2 rounded-lg transition"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="relative flex-1 flex flex-col min-h-0">
+          <textarea
+            readOnly
+            value={content}
+            className={`${styleguide.previewTextarea} flex-1 resize-none ${
+              format === "latex" ? "text-blue-300" : "text-emerald-400"
+            }`}
+          />
+
+          {format === "latex" && (
+            <div className="absolute bottom-4 right-6 bg-gray-900/80 px-2 py-1 rounded text-[10px] text-gray-400 border border-gray-700 pointer-events-none">
+              Ready for Overleaf / .tex editors
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const UserProfile = () => {
@@ -94,8 +242,6 @@ const UserProfile = () => {
   const [selectedResumeId, setSelectedResumeId] = useState(null);
 
   const [showFullPreview, setShowFullPreview] = useState(false);
-  const [previewContent, setPreviewContent] = useState("");
-  const [previewFormat, setPreviewFormat] = useState("json");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -106,12 +252,12 @@ const UserProfile = () => {
     const value = e.target.value;
 
     if (value === "create_copy") {
-      const selectedResume = resumes.find((r) => r.id === selectedResumeId);
-      if (!selectedResume) return;
+      const current = resumes.find((r) => r.id === selectedResumeId);
+      if (!current) return;
 
-      const newResume = JSON.parse(JSON.stringify(selectedResume));
+      const newResume = JSON.parse(JSON.stringify(current));
       newResume.id = Date.now();
-      newResume.internal_name = `${selectedResume.internal_name} (Copy)`;
+      newResume.internal_name = `${current.internal_name} (Copy)`;
 
       setResumes([...resumes, newResume]);
       setSelectedResumeId(newResume.id);
@@ -238,7 +384,6 @@ const UserProfile = () => {
       });
 
       setSelectedResumeId(savedResumeNormalized.id);
-
       alert(
         `Resume "${savedResumeNormalized.internal_name}" saved successfully! ✅`,
       );
@@ -269,53 +414,9 @@ const UserProfile = () => {
     }
   };
 
-  const updatePreviewContent = (format) => {
-    if (format === "json") {
-      const jsonPayload = denormalizeResume(selectedResume);
-      setPreviewContent(JSON.stringify(jsonPayload, null, 2));
-    } else {
-      const latexContent = generateLatex(selectedResume);
-      setPreviewContent(latexContent);
-    }
-  };
-
-  const handleFormatChange = (format) => {
-    setPreviewFormat(format);
-    updatePreviewContent(format);
-  };
-
   const handleToggleFullPreview = () => {
-    if (!showFullPreview) {
-      updatePreviewContent(previewFormat);
-    }
-    setShowFullPreview(!showFullPreview);
+    setShowFullPreview(true);
   };
-
-  function convertDate(str) {
-    if (!str) return "";
-    try {
-      const [monthStr, year] = str.split(" ");
-      const month = {
-        Jan: "01",
-        Feb: "02",
-        Mar: "03",
-        Apr: "04",
-        May: "05",
-        Jun: "06",
-        Jul: "07",
-        Aug: "08",
-        Sep: "09",
-        Oct: "10",
-        Nov: "11",
-        Dec: "12",
-      }[monthStr];
-
-      return `${year}-${month}`;
-    } catch (err) {
-      console.error("Invalid date:", str);
-      return "";
-    }
-  }
 
   if (loading)
     return (
@@ -375,79 +476,27 @@ const UserProfile = () => {
           handleResumeChange={handleResumeChange}
         />
 
-        {showFullPreview && (
-          <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 animate-in fade-in">
-            <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 w-full max-w-4xl h-3/4 flex flex-col shadow-2xl">
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-4">
-                  <h3 className="text-white font-bold font-mono text-sm flex items-center gap-2">
-                    {previewFormat === "json" ? (
-                      <FileJson size={16} />
-                    ) : (
-                      <FileJson size={16} className="text-blue-400" />
-                    )}
-                    Resume Payload Preview
-                  </h3>
+        <ResumePreviewModal
+          isOpen={showFullPreview}
+          onClose={() => setShowFullPreview(false)}
+          resume={selectedResume}
+          resumes={resumes}
+          selectedResumeId={selectedResumeId}
+          handleResumeChange={handleResumeChange}
+        />
 
-                  <div className="flex bg-gray-900 rounded-lg p-1 border border-gray-700">
-                    <button
-                      onClick={() => handleFormatChange("json")}
-                      className={`px-3 py-1 text-xs font-bold rounded transition ${
-                        previewFormat === "json"
-                          ? "bg-emerald-600 text-white shadow"
-                          : "text-gray-400 hover:text-white"
-                      }`}
-                    >
-                      JSON
-                    </button>
-                    <button
-                      onClick={() => handleFormatChange("latex")}
-                      className={`px-3 py-1 text-xs font-bold rounded transition ${
-                        previewFormat === "latex"
-                          ? "bg-blue-600 text-white shadow"
-                          : "text-gray-400 hover:text-white"
-                      }`}
-                    >
-                      LaTeX
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setShowFullPreview(false)}
-                  className="text-gray-400 hover:text-white hover:bg-gray-700 p-1 rounded"
-                >
-                  Close
-                </button>
-              </div>
-
-              <textarea
-                readOnly
-                value={previewContent}
-                className={`${styleguide.previewTextarea} font-mono flex-1 ${
-                  previewFormat === "latex" ? "text-blue-300" : "text-green-400"
-                }`}
-              />
-
-              {previewFormat === "latex" && (
-                <div className="mt-2 text-xs text-gray-500 text-right">
-                  Copie e cole no Overleaf ou no seu editor .tex local
-                </div>
-              )}
-            </div>
+        {!showFullPreview && (
+          <div className="fixed bottom-6 right-6 z-40 bg-gray-800 border border-gray-600 p-2 rounded-lg shadow-2xl flex flex-col gap-1 opacity-50 hover:opacity-100 transition-opacity">
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider text-center">
+              Quick Switch
+            </span>
+            <ResumeSelector
+              resumes={resumes}
+              selectedResumeId={selectedResumeId}
+              handleResumeChange={handleResumeChange}
+            />
           </div>
         )}
-
-        <div className="fixed bottom-6 right-6 z-40 bg-gray-800 border border-gray-600 p-2 rounded-lg shadow-2xl flex flex-col gap-1">
-          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider text-center">
-            Quick Switch
-          </span>
-          <ResumeSelector
-            resumes={resumes}
-            selectedResumeId={selectedResumeId}
-            handleResumeChange={handleResumeChange}
-          />
-        </div>
       </div>
     </div>
   );
