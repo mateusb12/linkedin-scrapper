@@ -181,6 +181,8 @@ const ResumePreviewModal = ({
   const [promptTemplate, setPromptTemplate] = useState("");
   const [copied, setCopied] = useState(false);
 
+  const [resumeCopied, setResumeCopied] = useState(false);
+
   useEffect(() => {
     if (!resume) return;
 
@@ -210,6 +212,12 @@ const ResumePreviewModal = ({
     navigator.clipboard.writeText(finalOutput);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyResume = () => {
+    navigator.clipboard.writeText(resumeContent);
+    setResumeCopied(true);
+    setTimeout(() => setResumeCopied(false), 2000);
   };
 
   if (!isOpen) return null;
@@ -303,14 +311,24 @@ const ResumePreviewModal = ({
                 <label className={`${styleguide.label} text-emerald-500`}>
                   3. Variable: Resume Content
                 </label>
-                <span className="text-[10px] text-gray-600 font-mono">
-                  {format.toUpperCase()}
-                </span>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-gray-600 font-mono">
+                    {format.toUpperCase()}
+                  </span>
+                  <button
+                    onClick={handleCopyResume}
+                    className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold transition shadow-lg"
+                  >
+                    {resumeCopied ? <Check size={12} /> : <Copy size={12} />}
+                    {resumeCopied ? "COPIED" : "COPY"}
+                  </button>
+                </div>
               </div>
               <textarea
                 readOnly
                 value={resumeContent}
-                className={`${styleguide.previewTextarea} flex-1 opacity-60 cursor-not-allowed`}
+                className={`${styleguide.previewTextarea} flex-1 opacity-60 cursor-text`}
               />
             </div>
 
