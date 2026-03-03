@@ -40,6 +40,15 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 
+
+class IgnoreStartingConnectionLogs(logging.Filter):
+    def filter(self, record):
+        msg = record.getMessage()
+        # remove só ESSA linha lixo — sem perder nada mais
+        return "Starting new HTTPS connection" not in msg
+
+
+logging.getLogger("urllib3.connectionpool").addFilter(IgnoreStartingConnectionLogs())
 logging.getLogger("chardet").setLevel(logging.ERROR)
 logging.getLogger("charset_normalizer").setLevel(logging.ERROR)
 
