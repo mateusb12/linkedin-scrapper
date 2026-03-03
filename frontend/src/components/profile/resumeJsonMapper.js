@@ -4,11 +4,93 @@ const makeId = (prefix) =>
 const escapeLatex = (str) => {
   if (!str) return "";
 
-  return String(str)
-    .replace(/\\/g, "\\textbackslash{}")
-    .replace(/([&%$#_{}])/g, "\\$1")
-    .replace(/~/g, "\\textasciitilde{}")
-    .replace(/\^/g, "\\textasciicircum{}");
+  const text = String(str).normalize("NFC");
+  let result = "";
+
+  const specialChars = {
+    "\\": "\\textbackslash{}",
+    "&": "\\&",
+    "%": "\\%",
+    $: "\\$",
+    "#": "\\#",
+    _: "\\_",
+    "{": "\\{",
+    "}": "\\}",
+    "~": "\\textasciitilde{}",
+    "^": "\\textasciicircum{}",
+  };
+
+  const accents = {
+    á: "\\'a",
+    à: "\\`a",
+    â: "\\^a",
+    ã: "\\~a",
+    ä: '\\"a',
+    Á: "\\'A",
+    À: "\\`A",
+    Â: "\\^A",
+    Ã: "\\~A",
+    Ä: '\\"A',
+
+    é: "\\'e",
+    è: "\\`e",
+    ê: "\\^e",
+    ë: '\\"e',
+    ẽ: "\\~e",
+    É: "\\'E",
+    È: "\\`E",
+    Ê: "\\^E",
+    Ë: '\\"E',
+    Ẽ: "\\~E",
+
+    í: "\\'i",
+    ì: "\\`i",
+    î: "\\^i",
+    ï: '\\"i',
+    Í: "\\'I",
+    Ì: "\\`I",
+    Î: "\\^I",
+    Ï: '\\"I',
+
+    ó: "\\'o",
+    ò: "\\`o",
+    ô: "\\^o",
+    õ: "\\~o",
+    ö: '\\"o',
+    Ó: "\\'O",
+    Ò: "\\`O",
+    Ô: "\\^O",
+    Õ: "\\~O",
+    Ö: '\\"O',
+
+    ú: "\\'u",
+    ù: "\\`u",
+    û: "\\^u",
+    ü: '\\"u',
+    Ú: "\\'U",
+    Ù: "\\`U",
+    Û: "\\^U",
+    Ü: '\\"U',
+
+    ç: "\\c{c}",
+    Ç: "\\c{C}",
+    ñ: "\\~n",
+    Ñ: "\\~N",
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+
+    if (accents[char]) {
+      result += accents[char];
+    } else if (specialChars[char]) {
+      result += specialChars[char];
+    } else {
+      result += char;
+    }
+  }
+
+  return result;
 };
 
 export const normalizeResume = (apiData) => {
@@ -167,7 +249,7 @@ export const generateLatex = (resume) => {
       languages: isEnglish ? "Languages" : "Linguagens",
       databases: isEnglish ? "Databases" : "Banco de Dados",
       frameworks: isEnglish ? "Frameworks" : "Frameworks",
-      cloud_and_infra: isEnglish ? "Cloud & Infra" : "Cloud & Infra",
+      cloud_and_infra: isEnglish ? "Cloud and Infra" : "Cloud e Infra",
       concepts: isEnglish ? "Concepts" : "Conceitos",
     },
     dates: {
@@ -188,7 +270,6 @@ export const generateLatex = (resume) => {
 
   const renderSkills = () => {
     const lines = [];
-
     const keyMap = {
       languages: t.skills.languages,
       databases: t.skills.databases,
@@ -286,6 +367,14 @@ ${stackLine}
  \\end{itemize}`;
   };
 
+  const hasExperience = r.experience && r.experience.length > 0;
+  const hasProjects = r.projects && r.projects.length > 0;
+  const hasEducation = r.education && r.education.length > 0;
+
+  const hasSkills =
+    r.skills &&
+    Object.values(r.skills).some((arr) => Array.isArray(arr) && arr.length > 0);
+
   return `\\documentclass[11pt, a4paper]{article}
 
 % --- PACKAGES ---
@@ -372,18 +461,33 @@ ${stackLine}
     \\href{${r.contacts?.portfolio}}{\\faGlobe\\ Portfolio}
 \\end{center}
 
+${
+  hasExperience
+    ? `
 %-----------EXPERIENCE-----------
 \\section{${t.sections.experience}}
   \\resumeSubHeadingListStart
 ${renderExperience()}
   \\resumeSubHeadingListEnd
+`
+    : ""
+}
 
+${
+  hasProjects
+    ? `
 %-----------PROJECTS-----------
 \\section{${t.sections.projects}}
     \\resumeSubHeadingListStart
 ${renderProjects()}
     \\resumeSubHeadingListEnd
+`
+    : ""
+}
 
+${
+  hasSkills
+    ? `
 %-----------TECHNICAL SKILLS-----------
 \\section{${t.sections.skills}}
  \\begin{itemize}[leftmargin=0.15in, label={}]
@@ -391,12 +495,21 @@ ${renderProjects()}
 ${renderSkills()}
     }}
  \\end{itemize}
+`
+    : ""
+}
 
+${
+  hasEducation
+    ? `
 %-----------EDUCATION-----------
 \\section{${t.sections.education}}
   \\resumeSubHeadingListStart
 ${renderEducation()}
   \\resumeSubHeadingListEnd
+`
+    : ""
+}
 
 ${renderLanguages()}
 
