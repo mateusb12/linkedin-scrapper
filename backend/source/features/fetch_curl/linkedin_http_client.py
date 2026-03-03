@@ -6,6 +6,10 @@ import re
 from abc import ABC
 from typing import Dict, Any, Optional, Tuple
 
+from dotenv import load_dotenv
+
+from source.core.debug_mode import is_debug
+
 # --- Add project root to path ---
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 if project_root not in sys.path:
@@ -33,7 +37,7 @@ class LinkedInRequest(ABC):
         self.url = url
         self._headers = {}
         self._body = None
-        self.debug = debug
+        self.debug = is_debug()
 
     def set_headers(self, headers: dict):
         self._headers = headers

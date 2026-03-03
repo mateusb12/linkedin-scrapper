@@ -8,6 +8,7 @@ from flask import Flask
 from flask_cors import CORS
 
 from debugger import start_debugger_monitor
+from source.core.http_colorizer import HttpColorFilter
 from source.features.friends_connections.connections_controller import connections_bp
 from source.features.get_applied_jobs.new_get_applied_jobs_controller import job_tracker_bp
 
@@ -38,6 +39,15 @@ logging.basicConfig(
     stream=sys.stdout,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
+
+logging.getLogger("chardet").setLevel(logging.ERROR)
+logging.getLogger("charset_normalizer").setLevel(logging.ERROR)
+
+http_filter = HttpColorFilter()
+
+logging.getLogger("urllib3.connectionpool").addFilter(http_filter)
+logging.getLogger("urllib3").addFilter(http_filter)
+logging.getLogger("requests").addFilter(http_filter)
 
 with app.app_context():
     create_db_and_tables()

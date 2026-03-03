@@ -11,6 +11,7 @@ from requests import Session
 
 from database.database_connection import get_db_session
 from models.fetch_models import FetchCurl
+from source.core.debug_mode import is_debug
 from source.features.fetch_curl.linkedin_http_client import LinkedInClient, LinkedInRequest
 
 
@@ -73,6 +74,8 @@ def print_curl_command(method, url, headers, body):
     """
     Imprime o CURL formatado no terminal para debug.
     """
+    if not is_debug():
+        return
     cmd = f"curl '{url}' \\"
     for k, v in headers.items():
         val = str(v).replace("'", "'\\''")
@@ -431,7 +434,7 @@ class JobTrackerFetcher:
             "job_url": f"https://www.linkedin.com/jobs/view/{job_id_str}/",
             "posted_at": posted_at,
         }
-    
+
     def fetch_jobs(self, stage: str = "saved") -> JobServiceResponse:
         is_pagination_enabled = (stage == "saved")
 
@@ -482,12 +485,11 @@ class JobTrackerFetcher:
 
                 if jid not in global_seen_ids:
                     global_seen_ids.add(jid)
-
                     base_job = self._build_base_job(job)
-
                     all_base_jobs.append(base_job)
-
                     new_unique_items += 1
+                    _log(
+                        f"   -> Novo Job Encontrado: {base_job['title']} at {base_job['company']} (ID: {base_job['job_id']})")
 
             _log(f"   -> Itens na página: {items_in_this_page} | Novos: {new_unique_items}")
 
