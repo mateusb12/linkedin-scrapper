@@ -1,4 +1,3 @@
-# backend/source/features/get_applied_jobs/new_get_applied_jobs_controller.py
 from dataclasses import asdict
 from datetime import datetime
 from flask import Blueprint, jsonify, request, Response, stream_with_context
@@ -7,15 +6,11 @@ from source.features.get_applied_jobs.new_applied_sync_service import (
     AppliedJobsIncrementalSync,
 )
 from source.features.get_applied_jobs.new_get_applied_jobs_service import (
-    JobTrackerFetcher,
+    JobTrackerFetcher, JobServiceResponse,
 )
 
 job_tracker_bp = Blueprint("job_tracker", __name__, url_prefix="/job-tracker")
 
-
-# ============================================================
-# FETCH FROM SQL (READ-ONLY)
-# ============================================================
 
 @job_tracker_bp.route("/applied", methods=["GET"])
 def get_applied_jobs():
@@ -25,7 +20,6 @@ def get_applied_jobs():
 
         db = get_db_session()
         try:
-            # Traz todos os jobs aplicados, ordenados por data
             jobs = (
                 db.query(Job)
                 .filter(Job.has_applied == True)
@@ -50,10 +44,6 @@ def get_applied_jobs():
         }), 500
 
 
-# ============================================================
-# LIVE FETCH (NO PERSISTENCE)
-# ============================================================
-
 @job_tracker_bp.route("/applied-live", methods=["GET"])
 def get_applied_live():
     """
@@ -62,10 +52,8 @@ def get_applied_live():
     """
     try:
         fetcher = JobTrackerFetcher(debug=False)
-        # fetch_jobs agora retorna um objeto JobServiceResponse
         result_obj = fetcher.fetch_jobs(stage="applied")
 
-        # Convertemos para dict para o Flask conseguir serializar em JSON
         return jsonify({
             "status": "success",
             "data": result_obj.to_dict()
@@ -77,10 +65,6 @@ def get_applied_live():
             "error": str(e)
         }), 500
 
-
-# ============================================================
-# SYNC ENDPOINTS (WRITE TO SQL)
-# ============================================================
 
 @job_tracker_bp.route("/sync-applied", methods=["POST"])
 def sync_applied_jobs():
@@ -127,14 +111,10 @@ def get_saved_live():
     - Zero Persistência: Nada é salvo no banco de dados local.
     """
     try:
-        # Instancia o fetcher (debug=True se quiser ver logs no terminal)
         fetcher = JobTrackerFetcher(debug=True)
 
-        # O fetch_jobs já tem default stage="saved", mas explicitamos para clareza.
-        # Isso vai usar o registro 'SavedJobs' (ID 8) da sua tabela fetch_curl.
         result_obj = fetcher.fetch_jobs(stage="saved")
 
-        # Serialização segura com asdict, pois Dataclasses nativas não têm .to_dict()
         return jsonify({
             "status": "success",
             "data": asdict(result_obj)
@@ -145,3 +125,65 @@ def get_saved_live():
             "status": "error",
             "error": str(e)
         }), 500
+
+
+@job_tracker_bp.route("/sync-applied-smart", methods=["POST"])
+def sync_applied_smart():
+    try:
+        from database.database_connection import get_db_session
+        from models.job_models import Job
+
+        # 1. Busca IDs existentes
+        db = get_db_session()
+        existing_jobs = (
+            db.query(Job.urn)
+            .filter(Job.has_applied == True)
+            .order_by(Job.applied_on.desc())
+            .limit(50)
+            .all()
+        )
+        existing_ids = {str(j.urn).replace("urn:li:jobPosting:", "") for j in existing_jobs}
+        db.close()
+
+        # 2. Busca lista leve do LinkedIn
+        fetcher = JobTrackerFetcher(debug=True)
+        latest_candidates = fetcher.fetch_latest_applied_candidates(limit=15)
+
+        # 3. Filtra novos
+        new_jobs_to_process = []
+        for cand in latest_candidates:
+            if str(cand["job_id"]) not in existing_ids:
+                new_jobs_to_process.append(cand)
+
+        print(f"🔎 Smart Sync: {len(latest_candidates)} recebidos, {len(new_jobs_to_process)} são novos.")
+
+        if not new_jobs_to_process:
+            return jsonify({
+                "status": "success",
+                "message": "Already up to date",
+                "synced_count": 0,
+                "details": []
+            }), 200
+
+        # 4. Enriquece
+        enriched_jobs = []
+        for base_job in new_jobs_to_process:
+            full_job = fetcher.enrich_single_job(base_job)
+            enriched_jobs.append(full_job)
+
+        # 5. Salva e pega detalhes
+        saved_info = []
+        if enriched_jobs:
+            wrapper = JobServiceResponse(count=len(enriched_jobs), stage="applied", jobs=enriched_jobs)
+            # Agora o save_results retorna uma lista de dicionários
+            saved_info = fetcher.save_results(wrapper)
+
+        return jsonify({
+            "status": "success",
+            "synced_count": len(saved_info),
+            "details": saved_info  # <--- AQUI VAI APARECER ID, EMPRESA E TITULO
+        }), 200
+
+    except Exception as e:
+        # Agora se der erro no save, vai aparecer aqui
+        return jsonify({"status": "error", "error": str(e)}), 500

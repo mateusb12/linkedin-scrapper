@@ -512,6 +512,80 @@ class JobTrackerFetcher:
             "posted_at": posted_at,
         }
 
+    def enrich_single_job(self, base_job_dict: Dict[str, Any]) -> JobPost:
+        """
+        Recebe um dicionário básico (id, title, company, job_url)
+        e faz o fetch pesado dos detalhes e premium.
+        Retorna o objeto JobPost pronto.
+        """
+        jid = str(base_job_dict["job_id"])
+
+        # 1. Fetch Detalhes (Descrição, Local, etc)
+        details = self.fetch_job_details(jid)
+
+        # Lógica para preservar o nome da empresa se o detalhe vier "Unknown"
+        if details.get("company") == "Unknown" and base_job_dict.get("company") not in [None, "Unknown"]:
+            del details["company"]
+
+        base_job_dict.update(details)
+
+        # 2. Fetch Premium Insights
+        prem = self.fetch_premium_insights(jid)
+        base_job_dict.update(prem)
+
+        # 3. Enrich Interno (calcula total applicants se disponível)
+        base_job_dict = self._enrich_job(base_job_dict)
+
+        # 4. Rate Limiting (Sleep)
+        time.sleep(REQUEST_DELAY_SECONDS)
+
+        return JobPost.from_dict(base_job_dict)
+
+    def fetch_latest_applied_candidates(self, limit: int = 15) -> List[Dict[str, Any]]:
+        """
+        Pega apenas a lista "crua" da página 1.
+        NÃO chama detalhes, NÃO chama premium.
+        Retorna lista de dicts leves.
+        """
+        _log(f"\n🕵️ Smart Sync: Buscando candidatos recentes (Página 1)...")
+
+        target_url = self.saved_url.replace("stage=saved", "stage=applied")
+        target_body = self.saved_body
+        if target_body:
+            target_body = target_body.replace('"stage":"saved"', '"stage":"applied"')
+
+        target_body = self._prepare_body(target_body, page_index=0)
+
+        req = RawStringRequest(self.saved_method, target_url, target_body, clean_headers=False)
+        req._headers["x-li-initial-url"] = "/jobs-tracker/?stage=applied"
+
+        response = self.client.execute(req)
+
+        if response.status_code != 200:
+            _log(f"⚠️ Erro no fetch de lista: {response.status_code}")
+            return []
+
+        stream_items = parse_linkedin_stream(response.text)
+        candidates = []
+        for item in stream_items:
+            candidates.extend(find_job_objects_recursive(item))
+
+        results = []
+        seen_ids = set()
+
+        for job in candidates:
+            jid = str(job.get("jobId"))
+            if not jid or jid in seen_ids: continue
+
+            if not (job.get("title") or job.get("jobTitle")): continue
+
+            seen_ids.add(jid)
+            results.append(self._build_base_job(job))
+
+            if len(results) >= limit: break
+
+        return results
+
     def fetch_jobs(self, stage: str = "saved") -> JobServiceResponse:
         is_pagination_enabled = (stage == "saved")
 
@@ -595,55 +669,71 @@ class JobTrackerFetcher:
         _log(f"✅ Total Capturado (base jobs): {len(all_base_jobs)}")
 
         job_objects = []
+        should_enrich = (stage in ["applied", "saved"])
 
         for c_job in all_base_jobs:
-            jid = c_job["job_id"]
-
-            if stage in ["applied", "saved"]:
-                details = self.fetch_job_details(jid)
-
-                if details.get("company") == "Unknown" and c_job.get("company") not in [None, "Unknown"]:
-                    del details["company"]
-
-                c_job.update(details)
-
-                prem = self.fetch_premium_insights(jid)
-                c_job.update(prem)
-
-                c_job = self._enrich_job(c_job)
-
-                time.sleep(REQUEST_DELAY_SECONDS)
-
-            job_objects.append(JobPost.from_dict(c_job))
+            if should_enrich:
+                final_job = self.enrich_single_job(c_job)
+                job_objects.append(final_job)
+            else:
+                job_objects.append(JobPost.from_dict(c_job))
 
         return JobServiceResponse(count=len(job_objects), stage=stage, jobs=job_objects)
 
     def save_results(self, response_data):
         from database.database_connection import get_db_session
         from models.job_models import Job, Company
+
+        saved_details = []  # Lista para guardar info de debug
         db = get_db_session()
+
         try:
             for j in response_data.jobs:
+                # 1. Garante que a Company existe
                 c_name = j.company or "Unknown"
                 comp = db.query(Company).filter(Company.name == c_name).first()
                 if not comp:
                     comp = Company(urn=f"urn:li:company:{uuid.uuid4()}", name=c_name)
-                    db.add(comp);
-                    db.flush()
+                    db.add(comp)
+                    db.flush()  # Flush para gerar o ID/URN se necessário
 
+                # 2. Garante que o Job existe ou cria
                 job = db.query(Job).filter(Job.urn == j.job_id).first()
-                if not job: job = Job(urn=j.job_id)
+                if not job:
+                    job = Job(urn=j.job_id)
+
                 db.add(job)
 
+                # 3. Atualiza dados (Enrichment)
                 job.title = j.title
                 job.company_urn = comp.urn
                 job.location = j.location
                 job.description_full = j.description_full
                 job.applicants = j.applicants
                 job.premium_description = j.premium_description
+                job.job_url = j.job_url
+
+                # 4. ESSENCIAL: Marcar como aplicado se a origem for 'applied'
+                if response_data.stage == "applied":
+                    job.has_applied = True
+                    # Se não tiver data de aplicação, define agora
+                    if not job.applied_on:
+                        job.applied_on = datetime.now()
+
+                saved_details.append({
+                    "id": j.job_id,
+                    "company": c_name,
+                    "title": j.title,
+                    "status": "saved"
+                })
+
             db.commit()
+            return saved_details  # Retorna a lista para o controller usar
+
         except Exception as e:
-            db.rollback();
+            db.rollback()
             _log(f"Save error: {e}")
+            # Retorna o erro explicitamente para ver no JSON
+            raise e
         finally:
             db.close()
