@@ -183,6 +183,15 @@ export const syncAppliedIncremental = async () => {
   return handleResponse(response, "Failed to sync applied jobs");
 };
 
+export const syncAppliedSmart = async () => {
+  const response = await fetch(`${API_BASE}/job-tracker/sync-applied-smart`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  return handleResponse(response, "Failed to smart sync jobs");
+};
+
 export const syncAppliedBackfillStream = ({
   from,
   onProgress,

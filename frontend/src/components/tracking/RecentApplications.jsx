@@ -17,11 +17,13 @@ import {
   CheckCircle2,
   Cpu,
   Code2,
+  Layers,
 } from "lucide-react";
 
 import {
   fetchAppliedJobs,
   syncAppliedIncremental,
+  syncAppliedSmart,
   syncAppliedBackfillStream,
   formatDateBR,
   formatTimeBR,
@@ -38,6 +40,7 @@ import {
   getSeniorityStyle,
   getTechIcon,
 } from "./utils/jobUtils";
+import MonthPicker from "./smallComponents/MonthPicker.jsx";
 
 const pillBase =
   "inline-flex items-center gap-1 px-3 py-1 rounded-md border text-sm font-mono leading-none w-fit";
@@ -204,17 +207,24 @@ const StatusRichBadge = ({ state, closed }) => {
 const RecentApplications = ({ onSelectJob }) => {
   const [jobs, setJobs] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [isSyncing, setIsSyncing] = useState(false);
+
+  const [isLoadingSQL, setIsLoadingSQL] = useState(false);
+  const [isSmartSyncing, setIsSmartSyncing] = useState(false);
+  const [isBackfilling, setIsBackfilling] = useState(false);
+
   const [streamStatus, setStreamStatus] = useState(null);
   const [cutoffMonth, setCutoffMonth] = useState("2025-12");
 
   const loadJobs = async () => {
+    setIsLoadingSQL(true);
     try {
       const { jobs } = await fetchAppliedJobs();
       setJobs(jobs);
     } catch (err) {
       console.error("Failed to load jobs:", err);
       setJobs([]);
+    } finally {
+      setIsLoadingSQL(false);
     }
   };
 
@@ -226,20 +236,31 @@ const RecentApplications = ({ onSelectJob }) => {
     await loadJobs();
   };
 
-  const handleIncrementalSync = async () => {
-    setIsSyncing(true);
+  const handleSmartSync = async () => {
+    setIsSmartSyncing(true);
     try {
-      await syncAppliedIncremental();
+      const result = await syncAppliedSmart();
+      console.log("Smart Sync Result:", result);
+
+      if (result.synced_count > 0) {
+        setStreamStatus(`Smart Sync: ${result.synced_count} novas vagas!`);
+        setTimeout(() => setStreamStatus(null), 4000);
+      } else {
+        setStreamStatus(`Smart Sync: Tudo atualizado.`);
+        setTimeout(() => setStreamStatus(null), 2000);
+      }
+
       await loadJobs();
     } catch (error) {
-      console.error("Sync failed", error);
+      console.error("Smart Sync failed", error);
+      setStreamStatus("Erro no Smart Sync");
     }
-    setIsSyncing(false);
+    setIsSmartSyncing(false);
   };
 
   const handleBackfill = () => {
-    setIsSyncing(true);
-    setStreamStatus("Starting backfill...");
+    setIsBackfilling(true);
+    setStreamStatus("Iniciando varredura profunda...");
 
     syncAppliedBackfillStream({
       from: cutoffMonth,
@@ -249,14 +270,14 @@ const RecentApplications = ({ onSelectJob }) => {
         );
       },
       onFinish: async (data) => {
-        setStreamStatus(`Done: +${data.inserted} jobs`);
+        setStreamStatus(`Finalizado: +${data.inserted} vagas inseridas`);
         await loadJobs();
-        setIsSyncing(false);
+        setIsBackfilling(false);
         setTimeout(() => setStreamStatus(null), 4000);
       },
       onError: () => {
-        setStreamStatus("Error during backfill.");
-        setIsSyncing(false);
+        setStreamStatus("Erro durante o Backfill.");
+        setIsBackfilling(false);
       },
     });
   };
@@ -285,52 +306,72 @@ const RecentApplications = ({ onSelectJob }) => {
             </span>
           </h2>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 bg-slate-900/50 p-2 rounded-xl border border-slate-700/50">
             <button
               onClick={handleReloadFromSQL}
-              className="p-2.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-slate-300 transition border border-slate-600"
-              title="Refresh from SQL"
-            >
-              <DownloadCloud size={20} />
-            </button>
-
-            <button
-              onClick={handleIncrementalSync}
-              disabled={isSyncing}
-              className={`flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-lg transition shadow-md shadow-blue-900/20 ${
-                isSyncing ? "opacity-70 cursor-wait" : ""
-              }`}
+              disabled={isLoadingSQL}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold uppercase rounded-lg transition border border-slate-600 disabled:opacity-50"
+              title="Apenas recarrega do banco de dados local"
             >
               <RefreshCw
-                size={18}
-                className={isSyncing ? "animate-spin" : ""}
+                size={16}
+                className={isLoadingSQL ? "animate-spin" : ""}
               />
-              {isSyncing ? "SYNCING..." : "SYNC LATEST"}
+              {isLoadingSQL ? "Lendo..." : "SQL Local"}
             </button>
 
-            <div className="h-10 w-px bg-slate-600 mx-1 hidden md:block"></div>
+            <div className="w-px h-8 bg-slate-700 mx-1"></div>
 
-            <div className="flex items-center bg-slate-900 border border-slate-600 rounded-lg p-1.5">
-              <input
-                type="month"
-                value={cutoffMonth}
-                onChange={(e) => setCutoffMonth(e.target.value)}
-                className="bg-transparent text-slate-300 text-sm outline-none w-32 px-2 font-mono"
+            <button
+              onClick={handleSmartSync}
+              disabled={isSmartSyncing || isBackfilling}
+              className={`flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase rounded-lg transition shadow-lg shadow-emerald-900/20 border border-emerald-500/30 ${
+                isSmartSyncing ? "opacity-70 cursor-wait" : ""
+              }`}
+              title="Busca rápida por novas vagas (Página 1)"
+            >
+              <Zap
+                size={16}
+                className={
+                  isSmartSyncing
+                    ? "animate-pulse text-yellow-300"
+                    : "text-yellow-300"
+                }
+                fill="currentColor"
               />
+              {isSmartSyncing ? "Smart Sync..." : "Sync Rápido"}
+            </button>
+
+            <div className="w-px h-8 bg-slate-700 mx-1"></div>
+
+            <div className="flex items-center gap-2">
+              <MonthPicker
+                value={cutoffMonth}
+                onChange={(newValue) => setCutoffMonth(newValue)}
+              />
+
               <button
                 onClick={handleBackfill}
-                disabled={isSyncing}
-                className="px-4 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold uppercase rounded transition ml-2"
+                disabled={isBackfilling || isSmartSyncing}
+                className={`flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold uppercase rounded-lg transition shadow-lg shadow-purple-900/20 border border-purple-500/30 ${
+                  isBackfilling ? "opacity-70 cursor-wait" : ""
+                }`}
+                title="Varredura profunda desde a data selecionada"
               >
-                Backfill
+                {isBackfilling ? (
+                  <RefreshCw size={16} className="animate-spin" />
+                ) : (
+                  <Layers size={16} />
+                )}
+                {isBackfilling ? "Backfilling..." : "Sync Profundo"}
               </button>
             </div>
           </div>
         </div>
 
         {streamStatus && (
-          <div className="mb-4 text-sm font-mono text-cyan-300 bg-cyan-950/50 border border-cyan-800 p-3 rounded-lg flex items-center gap-3">
-            <div className="w-2.5 h-2.5 bg-cyan-400 rounded-full animate-pulse"></div>
+          <div className="mb-4 text-sm font-mono text-cyan-300 bg-cyan-950/50 border border-cyan-800 p-3 rounded-lg flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+            <div className="w-2.5 h-2.5 bg-cyan-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,211,238,0.6)]"></div>
             {streamStatus}
           </div>
         )}
