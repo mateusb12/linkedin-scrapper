@@ -449,16 +449,16 @@ ${stackLine}
 
 %----------HEADING----------
 \\begin{center}
-    {\\Huge \\scshape ${escapeLatex(r.profile?.name || r.internal_name)}} \\\\[3mm]
+    {\\Huge \\scshape Mateus Bessa} \\\\[3mm]
     \\small
     % Line 1: Phone | Email | LinkedIn
     \\faPhone\\ ${escapeLatex(r.contacts?.phone)} \\hspace{10pt}
     \\href{mailto:${r.contacts?.email}}{\\faEnvelope\\ ${escapeLatex(r.contacts?.email)}} \\hspace{10pt}
-    \\href{${r.contacts?.linkedin}}{\\faLinkedin\\ LinkedIn} \\\\[2mm]
+    \\href{${r.contacts?.linkedin}}{\\faLinkedin\\ ${escapeLatex(r.contacts?.linkedin || "")}}
 
     % Line 2: GitHub | Portfolio
-    \\href{${r.contacts?.github}}{\\faGithub\\ GitHub} \\hspace{10pt}
-    \\href{${r.contacts?.portfolio}}{\\faGlobe\\ Portfolio}
+    \\href{${r.contacts?.github}}{\\faGithub\\ ${escapeLatex(r.contacts?.github || "")}}
+    \\href{${r.contacts?.portfolio}}{\\faGlobe\\ ${escapeLatex(r.contacts?.portfolio || "")}}
 \\end{center}
 
 ${
