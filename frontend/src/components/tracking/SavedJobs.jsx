@@ -365,7 +365,10 @@ const SavedJobs = () => {
     return jobs
       .map((job) => {
         const urn = job.urn || job.entity_urn;
-        const companyName = job.company?.name || job.company_name;
+        const companyName =
+          typeof job.company === "string"
+            ? job.company
+            : job.company?.name || job.company_name;
 
         const experienceData = extractExperienceFromDescription(
           job.description,
@@ -596,7 +599,7 @@ const SavedJobs = () => {
                             >
                               {job.title ? job.title.trim() : "Unknown Title"}
                             </div>
-                            <div className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                            <div className="text-sm text-sky-300 flex items-center gap-2 mt-1 font-medium">
                               <Building size={12} />{" "}
                               {job.company
                                 ? job.company.name

@@ -354,17 +354,29 @@ class JobTrackerFetcher:
         session = self.client.session
         csrf = session.headers.get("csrf-token")
         for c in session.cookies:
-            if c.name == "JSESSIONID": csrf = c.value.replace('"', ""); break
+            if c.name == "JSESSIONID":
+                csrf = c.value.replace('"', "")
+                break
 
         url = f"https://www.linkedin.com/voyager/api/jobs/jobPostings/{job_id}"
         resp = session.get(url, headers={"csrf-token": csrf, "accept": "application/json"}, timeout=20)
-        if resp.status_code != 200: return {}
+        if resp.status_code != 200:
+            return {}
+
         try:
             d = resp.json()
+
+            company = (
+                    d.get("companyDetails", {}).get("company", {}).get("name")
+                    or d.get("company", {}).get("name")
+                    or d.get("companyName")
+                    or d.get("formattedCompanyName")
+                    or "Unknown"
+            )
+
             return {
                 "title": d.get("title"),
-                "company": d.get("companyDetails", {}).get("company", {}).get("name") or d.get(
-                    "companyName") or "Unknown",
+                "company": company,
                 "posted_at": (ms_to_datetime(d.get("listedAt") or d.get("postedAt")) or datetime.now()).isoformat(),
                 "applicants": d.get("applies"),
                 "job_state": d.get("jobState"),
@@ -372,7 +384,8 @@ class JobTrackerFetcher:
                 "work_remote_allowed": d.get("workRemoteAllowed"),
                 "expire_at": ms_to_datetime(d.get("expireAt")).isoformat() if d.get("expireAt") else None
             }
-        except:
+
+        except Exception:
             return {}
 
     def fetch_premium_insights(self, job_id: str) -> Dict[str, Any]:
@@ -588,6 +601,10 @@ class JobTrackerFetcher:
 
             if stage in ["applied", "saved"]:
                 details = self.fetch_job_details(jid)
+
+                if details.get("company") == "Unknown" and c_job.get("company") not in [None, "Unknown"]:
+                    del details["company"]
+
                 c_job.update(details)
 
                 prem = self.fetch_premium_insights(jid)
