@@ -405,9 +405,13 @@ const SavedJobs = () => {
   }, [jobs, searchTerm, scores]);
 
   const handleRemove = (urn) => {
-    const updatedJobs = jobs.filter((job) => job.urn !== urn);
-    setJobs(updatedJobs);
-    localStorage.setItem(getCacheKey(activeTab), JSON.stringify(updatedJobs));
+    if (
+      window.confirm("Tem certeza que deseja remover esta vaga do cache local?")
+    ) {
+      const updatedJobs = jobs.filter((job) => job.urn !== urn);
+      setJobs(updatedJobs);
+      localStorage.setItem(getCacheKey(activeTab), JSON.stringify(updatedJobs));
+    }
   };
 
   const toggleDescription = (urn) => {
