@@ -4,7 +4,6 @@ import {
   Search,
   RefreshCw,
   Database,
-  DownloadCloud,
   Users,
   Globe,
   Clock,
@@ -39,6 +38,7 @@ import {
   getExperienceStyle,
   getSeniorityStyle,
   getTechIcon,
+  getCompetitionStyle,
 } from "./utils/jobUtils";
 import MonthPicker from "./smallComponents/MonthPicker.jsx";
 
@@ -138,40 +138,30 @@ const JobAgeBadge = ({ postedAt }) => {
   );
 };
 
-const CompetitionRichBadge = ({ level, applicants, velocity }) => {
-  let levelColor = "bg-gray-800 text-gray-500 border-gray-700";
-
-  if (level === "HIGH")
-    levelColor = "bg-red-900/30 text-red-300 border-red-500/30";
-  if (level === "MEDIUM")
-    levelColor = "bg-yellow-900/30 text-yellow-300 border-yellow-500/30";
-  if (level === "LOW")
-    levelColor = "bg-green-900/30 text-green-300 border-green-500/30";
+const CompetitionRichBadge = ({ applicants, velocity }) => {
+  const count =
+    applicants !== undefined && applicants !== null ? applicants : 0;
+  const style = getCompetitionStyle(count);
 
   return (
     <div className="flex flex-col gap-1.5 w-full">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-gray-200 font-bold text-sm">
-          <Users size={14} className="text-gray-500" />
-          {applicants > 0 ? applicants : "0"}
-        </div>
-        {velocity > 0 && (
-          <div
-            className="flex items-center gap-1 text-[10px] font-bold text-green-400 bg-green-900/30 px-2 py-0.5 rounded-full"
-            title="Applicants in last 24h"
-          >
-            <Zap size={10} fill="currentColor" />
-            {velocity}/d
-          </div>
-        )}
+      <div className="flex items-center gap-2">
+        <Users size={14} className="text-slate-500" />
+        <span
+          className={`px-2 py-1 rounded-full text-xs font-bold border ${style}`}
+        >
+          {count}
+        </span>
       </div>
 
-      {level && (
-        <span
-          className={`text-[10px] uppercase tracking-wider font-bold text-center px-2 py-1 rounded border ${levelColor}`}
+      {velocity > 0 && (
+        <div
+          className="flex items-center gap-1 text-[10px] font-bold text-green-400 bg-green-900/30 px-2 py-0.5 rounded-full w-fit"
+          title="Applicants in last 24h"
         >
-          {level}
-        </span>
+          <Zap size={10} fill="currentColor" />
+          {velocity}/d
+        </div>
       )}
     </div>
   );
@@ -497,7 +487,6 @@ const RecentApplications = ({ onSelectJob }) => {
 
                   <td className="px-6 py-5 align-top">
                     <CompetitionRichBadge
-                      level={job.competitionLevel}
                       applicants={job.applicants}
                       velocity={job.applicantsVelocity}
                     />
