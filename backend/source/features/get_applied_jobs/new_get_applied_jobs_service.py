@@ -57,9 +57,6 @@ class JobServiceResponse:
     jobs: List[JobPost]
 
 
-# ============================================================
-# CONFIG
-# ============================================================
 PREMIUM_ENABLED = True
 REQUEST_DELAY_SECONDS = 0.7
 PREMIUM_FAILURE_IS_FATAL = False
@@ -92,9 +89,6 @@ def print_curl_command(method, url, headers, body):
     print("=" * 60 + "\n")
 
 
-# ============================================================
-# PARSERS
-# ============================================================
 def parse_linkedin_stream(raw_text: str) -> list:
     parsed_items = []
     for line in raw_text.split("\n"):
@@ -246,9 +240,6 @@ def find_job_objects_recursive(data):
     return found
 
 
-# ============================================================
-# RAW REQUEST WRAPPER
-# ============================================================
 class RawStringRequest(LinkedInRequest):
     def __init__(self, method: str, url: str, body_str: str, headers: dict = None, debug: bool = False,
                  clean_headers: bool = False):
@@ -267,7 +258,6 @@ class RawStringRequest(LinkedInRequest):
                 if k.lower() in ["accept-encoding", "content-length"]: continue
                 final_headers[k] = v
 
-        # 🔥 AQUI ESTÁ O PRINT PARA VOCÊ CONFERIR 🔥
         if self.debug or LOG:
             print_curl_command(self.method, self.url, final_headers, self.body_str)
 
@@ -277,9 +267,6 @@ class RawStringRequest(LinkedInRequest):
         )
 
 
-# ============================================================
-# FETCHER
-# ============================================================
 class JobTrackerFetcher:
     def __init__(self, debug: bool = False):
         self.debug = debug
@@ -294,7 +281,6 @@ class JobTrackerFetcher:
             self.saved_method = record_saved.method or "POST"
             self.saved_body = record_saved.body or ""
 
-            # Premium
             self.premium_url = ""
             self.premium_headers = {}
             rec_prem = db.query(FetchCurl).filter(FetchCurl.name == "PremiumInsights").first()
@@ -338,7 +324,6 @@ class JobTrackerFetcher:
         """
 
         try:
-            # ================ PREPARE ================
             if not PREMIUM_ENABLED or not self.premium_url:
                 return {
                     "premium_component_found": False,
@@ -358,7 +343,6 @@ class JobTrackerFetcher:
             headers.pop("Accept-Encoding", None)
             headers["Accept-Encoding"] = "identity"
 
-            # ================ REQUEST ================
             r = requests.request(
                 method=self.premium_method,
                 url=self.premium_url,
@@ -370,10 +354,8 @@ class JobTrackerFetcher:
             if r.status_code != 200:
                 raise RuntimeError(f"HTTP {r.status_code}")
 
-            # ================ PARSER LIGADO ================
             parsed = self.premium_parser.parse(r.text)
 
-            # garantir todas as chaves:
             return {
                 "premium_component_found": parsed.get("premium_component_found", False),
                 "applicants_total": parsed.get("applicants_total"),
@@ -388,7 +370,6 @@ class JobTrackerFetcher:
 
         except Exception as e:
             print("Premium error:", e)
-            # fallback seguro, NÃO QUEBRA NADA
             return {
                 "premium_component_found": False,
                 "applicants_total": None,
@@ -406,9 +387,6 @@ class JobTrackerFetcher:
         if isinstance(app_tot, int) and app_tot > 0: job["applicants"] = app_tot
         return job
 
-    # ----------------------------------------------------------
-    # PREPARE BODY: REPLICA O COMPORTAMENTO DO BROWSER + BOOST
-    # ----------------------------------------------------------
     def _prepare_body(self, base_body_str: str, page_index: int) -> str:
         try:
             data = json.loads(base_body_str)
@@ -418,8 +396,6 @@ class JobTrackerFetcher:
                 payload = ra.get("payload")
                 if isinstance(payload, dict):
                     payload["cacheId"] = str(uuid.uuid4())
-                    # NÃO force 100 agora. Primeiro faça paginação funcionar.
-                    # payload["count"] = payload.get("count", "10")
 
                 states = ra.get("states")
                 if isinstance(states, list):
@@ -433,16 +409,36 @@ class JobTrackerFetcher:
             _log(f"⚠️ Erro no body: {e}")
             return base_body_str
 
-    # ----------------------------------------------------------
-    # FETCH JOBS
-    # ----------------------------------------------------------
+    def _build_base_job(self, job_data):
+        job_id_str = str(job_data.get("jobId"))
+
+        posted_at = (
+                job_data.get("listedAt")
+                or job_data.get("formattedPostedDate")
+                or job_data.get("postedAt")
+        )
+
+        if isinstance(posted_at, (int, float)):
+            dt = ms_to_datetime(posted_at)
+            if dt:
+                posted_at = dt.isoformat()
+
+        return {
+            "job_id": job_id_str,
+            "title": job_data.get("title"),
+            "company": job_data.get("companyName"),
+            "location": job_data.get("formattedLocation"),
+            "job_url": f"https://www.linkedin.com/jobs/view/{job_id_str}/",
+            "posted_at": posted_at,
+        }
+    
     def fetch_jobs(self, stage: str = "saved") -> JobServiceResponse:
         is_pagination_enabled = (stage == "saved")
 
-        # Paginação baseada em INDEX (0, 1, 2)
         page_index = 0
         max_pages = 20
-        all_raw_job_data = []
+
+        all_base_jobs = []
         global_seen_ids = set()
 
         while True:
@@ -453,16 +449,15 @@ class JobTrackerFetcher:
 
             if stage != "saved":
                 target_url = target_url.replace("stage=saved", f"stage={stage}")
-                if target_body: target_body = target_body.replace('"stage":"saved"', f'"stage":"{stage}"')
+                if target_body:
+                    target_body = target_body.replace('"stage":"saved"', f'"stage":"{stage}"')
 
-            # Prepara body com UUID fresco, Page Index E count=100
             if is_pagination_enabled:
                 target_body = self._prepare_body(target_body, page_index)
 
             req = RawStringRequest(self.saved_method, target_url, target_body, clean_headers=False)
             req._headers["x-li-initial-url"] = f"/jobs-tracker/?stage={stage}"
 
-            # Executa
             response = self.client.execute(req)
 
             if response.status_code != 200:
@@ -470,6 +465,7 @@ class JobTrackerFetcher:
                 break
 
             stream_items = parse_linkedin_stream(response.text)
+
             page_candidates = []
             for item in stream_items:
                 page_candidates.extend(find_job_objects_recursive(item))
@@ -479,62 +475,54 @@ class JobTrackerFetcher:
 
             for job in page_candidates:
                 jid = job.get("jobId")
-                if not jid: continue
+                if not jid:
+                    continue
+
                 items_in_this_page += 1
+
                 if jid not in global_seen_ids:
                     global_seen_ids.add(jid)
-                    all_raw_job_data.append(job)
+
+                    base_job = self._build_base_job(job)
+
+                    all_base_jobs.append(base_job)
+
                     new_unique_items += 1
 
             _log(f"   -> Itens na página: {items_in_this_page} | Novos: {new_unique_items}")
 
-            if not is_pagination_enabled: break
+            if not is_pagination_enabled:
+                break
 
-            # Se vieram 0 novos, acabou.
             if new_unique_items == 0:
                 _log("   -> Fim (0 novos).")
                 break
 
-            # Se pedimos 100 e vieram menos que 100, é a última.
-            # Como você tem 13, virão 13 novos e vai parar na próxima volta.
             if new_unique_items < 100 and page_index > 0:
                 break
 
-            if page_index >= max_pages: break
+            if page_index >= max_pages:
+                break
 
             page_index += 1
             time.sleep(1.0)
 
-        _log(f"✅ Total Capturado: {len(all_raw_job_data)}")
+        _log(f"✅ Total Capturado (base jobs): {len(all_base_jobs)}")
 
         job_objects = []
-        for job_data in all_raw_job_data:
-            job_id_str = str(job_data.get("jobId"))
 
-            # Base data
-            c_job = {
-                "job_id": job_id_str,
-                "title": job_data.get("title"),
-                "company": job_data.get("companyName"),
-                "location": job_data.get("formattedLocation"),
-                "job_url": f"https://www.linkedin.com/jobs/view/{job_id_str}/",
-            }
+        for c_job in all_base_jobs:
+            jid = c_job["job_id"]
 
-            # Dates
-            posted_at = (job_data.get("listedAt") or job_data.get("formattedPostedDate") or job_data.get("postedAt"))
-            if isinstance(posted_at, (int, float)):
-                dt = ms_to_datetime(posted_at)
-                if dt: posted_at = dt.isoformat()
-            c_job["posted_at"] = posted_at
-
-            # Details & Premium
             if stage in ["applied", "saved"]:
-                details = self.fetch_job_details(job_id_str)
+                details = self.fetch_job_details(jid)
                 c_job.update(details)
 
-                prem = self.fetch_premium_insights(job_id_str)
+                prem = self.fetch_premium_insights(jid)
                 c_job.update(prem)
+
                 c_job = self._enrich_job(c_job)
+
                 time.sleep(REQUEST_DELAY_SECONDS)
 
             job_objects.append(JobPost.from_dict(c_job))
