@@ -130,6 +130,45 @@ class PremiumParser:
     def _normalize_space(s: str) -> str:
         return re.sub(r"\s+", " ", s or "").strip()
 
+    def _match_applicant_patterns(self, tokens):
+        applicants_total = None
+        applicants_last_24h = None
+
+        for i, tok in enumerate(tokens):
+            tok_lower = tok.lower()
+
+            if tok_lower == "total" and i - 1 >= 0:
+                v = self._to_int(tokens[i - 1])
+                if v is not None and applicants_total is None:
+                    applicants_total = v
+                    continue
+
+            if tok == "Applicants" and i - 1 >= 0:
+                v = self._to_int(tokens[i - 1])
+                if v is not None and applicants_total is None:
+                    applicants_total = v
+                    continue
+
+            if tok_lower == "in the past day" and i - 1 >= 0:
+                v = self._to_int(tokens[i - 1])
+                if v is not None and applicants_last_24h is None:
+                    applicants_last_24h = v
+                    continue
+
+            if tok == "Applicants in the past day" and i - 1 >= 0:
+                v = self._to_int(tokens[i - 1])
+                if v is not None and applicants_last_24h is None:
+                    applicants_last_24h = v
+                    continue
+
+            if "day" in tok_lower and i - 1 >= 0:
+                v = self._to_int(tokens[i - 1])
+                if v is not None and applicants_last_24h is None:
+                    applicants_last_24h = v
+                    continue
+
+        return applicants_total, applicants_last_24h
+
     def _collect_text_tokens(self, items: List[Any]) -> List[str]:
         tokens: List[str] = []
         for it in items:
@@ -150,6 +189,7 @@ class PremiumParser:
                         if isinstance(x, str):
                             s = self._normalize_space(x)
                             if s: tokens.append(s)
+
         seen = set()
         uniq = []
         for t in tokens:
@@ -159,30 +199,29 @@ class PremiumParser:
         return uniq
 
     def _extract_metrics(self, text_tokens: List[str]) -> Dict[str, Any]:
-        applicants_total = None
-        applicants_last_24h = None
+        applicants_total, applicants_last_24h = self._match_applicant_patterns(text_tokens)
+
         seniority_distribution = []
         education_distribution = []
-
-        for i, tok in enumerate(text_tokens):
-            if tok == "Applicants" and i - 1 >= 0:
-                v = self._to_int(text_tokens[i - 1])
-                if v is not None: applicants_total = v
-            if tok == "Applicants in the past day" and i - 1 >= 0:
-                v = self._to_int(text_tokens[i - 1])
-                if v is not None: applicants_last_24h = v
 
         for tok in text_tokens:
             m = self.SENIORITY_RE.match(tok)
             if m:
-                seniority_distribution.append({"label": self._normalize_space(m.group(2)), "value": int(m.group(1))})
+                seniority_distribution.append({
+                    "label": self._normalize_space(m.group(2)),
+                    "value": int(m.group(1))
+                })
 
         for i, tok in enumerate(text_tokens):
             m = self.PCT_ONLY_RE.match(tok)
-            if not m: continue
+            if not m:
+                continue
             nxt = text_tokens[i + 1] if i + 1 < len(text_tokens) else ""
             if nxt.lower().startswith("have "):
-                education_distribution.append({"label": nxt, "value": int(m.group(1))})
+                education_distribution.append({
+                    "label": nxt,
+                    "value": int(m.group(1))
+                })
 
         return {
             "applicants_total": applicants_total,
@@ -194,35 +233,51 @@ class PremiumParser:
     def _extract_copy_blocks(self, text_tokens: List[str]) -> Dict[str, Any]:
         title_c, desc_c = [], []
         for t in text_tokens:
-            if "Insights about" in t and "applicants" in t: title_c.append(t)
-            if "Here’s where you can see" in t or "Here's where you can see" in t: desc_c.append(t)
-        return {"premium_title": title_c[0] if title_c else None, "premium_description": desc_c[0] if desc_c else None}
+            if "Insights about" in t and "applicants" in t:
+                title_c.append(t)
+            if "Here’s where you can see" in t or "Here's where you can see" in t:
+                desc_c.append(t)
+        return {
+            "premium_title": title_c[0] if title_c else None,
+            "premium_description": desc_c[0] if desc_c else None,
+        }
 
     def _extract_urls_and_ids(self, items: List[Any]) -> Dict[str, Any]:
         out = {"learn_more_url": None, "data_sdui_components": []}
         comp_seen = set()
+
         for it in items:
             for node in _walk(it):
-                if not isinstance(node, dict): continue
+                if not isinstance(node, dict):
+                    continue
+
                 comp = node.get("data-sdui-component")
                 if isinstance(comp, str) and comp and comp not in comp_seen:
                     comp_seen.add(comp)
                     out["data_sdui_components"].append(comp)
+
                 url = node.get("url")
                 if isinstance(url, str) and "help" in url and "linkedin.com" in url and not out["learn_more_url"]:
                     out["learn_more_url"] = url
+
         return out
 
     def parse(self, raw_text: str) -> Dict[str, Any]:
         items = parse_linkedin_stream(raw_text)
         tokens = self._collect_text_tokens(items)
+
         meta = self._extract_urls_and_ids(items)
         metrics = self._extract_metrics(tokens)
         copy = self._extract_copy_blocks(tokens)
+
         return {
-            **metrics, **copy, **meta,
+            **metrics,
+            **copy,
+            **meta,
             "premium_component_found": any(
-                "premiumApplicantInsights" in c for c in meta.get("data_sdui_components", []))
+                "premiumApplicantInsights" in c
+                for c in meta.get("data_sdui_components", [])
+            ),
         }
 
 
