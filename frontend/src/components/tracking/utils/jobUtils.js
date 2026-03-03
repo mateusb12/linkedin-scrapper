@@ -23,6 +23,10 @@ import postgresIcon from "../../../assets/skills_icons/postgres.png";
 import rabbitIcon from "../../../assets/skills_icons/rabbit.svg";
 import kafkaIcon from "../../../assets/skills_icons/kafka.svg";
 import terraformIcon from "../../../assets/skills_icons/terraform.svg";
+import fastapiIcon from "../../../assets/skills_icons/fastapi.svg";
+import redisIcon from "../../../assets/skills_icons/redis.svg";
+import vueIcon from "../../../assets/skills_icons/vue.svg";
+import oracleIcon from "../../../assets/skills_icons/oracle.svg";
 
 const NEGATIVE_KEYWORDS = [
   "rpa",
@@ -584,6 +588,10 @@ const techIconsMap = {
   PHP: phpIcon,
 
   Django: djangoIcon,
+  FastAPI: fastapiIcon,
+  Redis: redisIcon,
+  Vue: vueIcon,
+  Oracle: oracleIcon,
   Azure: azureIcon,
   Kubernetes: kubernetesIcon,
   Linux: linuxIcon,
