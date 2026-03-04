@@ -25,6 +25,7 @@ import {
   Trophy,
   Check,
   Sparkles,
+  FileText,
 } from "lucide-react";
 import {
   fetchLinkedinJobsRaw,
@@ -50,6 +51,8 @@ import { formatCustomDate } from "../../utils/dateUtils.js";
 import { fetchAllResumes } from "../match-find/MatchLogic.jsx";
 import { normalizeResume } from "../profile/resumeJsonMapper.js";
 import JobContextBuilder from "./JobContextBuilder";
+
+import ResumeContextBuilder from "../profile/ResumeContextBuilder";
 
 const SCORES_STORAGE_KEY = "linkedin_job_scores";
 
@@ -250,6 +253,8 @@ const SavedJobs = () => {
   const [selectedResumeId, setSelectedResumeId] = useState(null);
   const [showContextBuilder, setShowContextBuilder] = useState(false);
 
+  const [showResumeBuilder, setShowResumeBuilder] = useState(false);
+
   const [showFoundationIcons, setShowFoundationIcons] = useState(true);
   const [showSpecificsIcons, setShowSpecificsIcons] = useState(true);
 
@@ -350,7 +355,9 @@ const SavedJobs = () => {
   }, []);
 
   const handleResumeChange = (e) => {
-    setSelectedResumeId(Number(e.target.value));
+    const val = e.target.value;
+    if (val === "create_copy") return;
+    setSelectedResumeId(Number(val));
   };
 
   const handleScoreSave = (urn, newValue) => {
@@ -495,6 +502,14 @@ const SavedJobs = () => {
                   <Search size={14} />
                 </div>
               </div>
+
+              <button
+                onClick={() => setShowResumeBuilder(true)}
+                title="Open Resume Builder (LaTeX)"
+                className="p-2 rounded-lg bg-purple-600/20 text-purple-400 hover:bg-purple-600/40 border border-purple-500/30 transition-all"
+              >
+                <FileText size={18} />
+              </button>
 
               <button
                 onClick={() => loadJobs(true)}
@@ -884,6 +899,15 @@ const SavedJobs = () => {
         isOpen={showContextBuilder}
         onClose={() => setShowContextBuilder(false)}
         jobs={filteredJobs}
+        resumes={resumes}
+        selectedResumeId={selectedResumeId}
+        handleResumeChange={handleResumeChange}
+      />
+
+      <ResumeContextBuilder
+        isOpen={showResumeBuilder}
+        onClose={() => setShowResumeBuilder(false)}
+        resume={resumes.find((r) => r.id === selectedResumeId)}
         resumes={resumes}
         selectedResumeId={selectedResumeId}
         handleResumeChange={handleResumeChange}
