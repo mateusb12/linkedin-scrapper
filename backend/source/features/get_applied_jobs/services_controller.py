@@ -324,115 +324,139 @@ def get_dashboard_insights():
     Includes 'competition_raw' for frontend-side dynamic histogram generation.
     """
     session = get_db_session()
-    try:
-        time_range = request.args.get('time_range', 'all_time')
 
-        # 1. Base Query
+    try:
+        time_range = request.args.get("time_range", "all_time")
+
         query = session.query(Job).filter(
             Job.has_applied.is_(True),
             Job.disabled.is_(False)
         )
 
-        # 2. Apply Time Filter (Same as before)
         now = datetime.now(timezone.utc)
         start_date = None
 
-        if time_range == 'current_week':
+        if time_range == "current_week":
             start_date = now - timedelta(days=now.weekday())
-            start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
-        elif time_range == 'last_2_weeks':
-            start_date = now - timedelta(weeks=2)
-        elif time_range == 'last_month':
+
+        elif time_range == "last_month":
             start_date = now - timedelta(days=30)
-        elif time_range == 'last_6_months':
+
+        elif time_range == "last_6_months":
             start_date = now - timedelta(days=180)
-        elif time_range == 'last_year':
+
+        elif time_range == "last_year":
             start_date = now - timedelta(days=365)
 
         if start_date:
             query = query.filter(Job.applied_on >= start_date)
 
         jobs = query.all()
+
         total_applications = len(jobs)
 
-        if total_applications == 0:
-            return jsonify({
-                "overview": {"total": 0, "refused": 0, "waiting": 0, "reviewing": 0, "closed": 0},
-                "competition": {"low": 0, "medium": 0, "high": 0, "avg_applicants": 0, "high_comp_refusal_rate": 0},
-                "competition_raw": []
-            }), 200
+        # ---------------------------
+        # STATUS COUNTS
+        # ---------------------------
 
-        # --- Metric 1: Granular Status Counts ---
         status_counts = {
-            "waiting": 0,
-            "reviewing": 0,  # Actively Reviewing
-            "closed": 0,  # No Longer Accepting
-            "refused": 0  # Explicit Rejection
+            "active": 0,
+            "paused": 0,
+            "closed": 0,
+            "unknown": 0
         }
 
-        # --- Metric 2: Raw Competition Data (For Dynamic Histogram) ---
+        # ---------------------------
+        # COMPETITION
+        # ---------------------------
+
         competition_raw = []
 
-        for j in jobs:
-            # 1. Populate Overview stats
-            status = (j.application_status or "waiting").lower()
-
-            if "refused" in status:
-                status_counts["refused"] += 1
-            elif "actively" in status or "reviewing" in status:
-                status_counts["reviewing"] += 1
-            elif "no longer" in status or "closed" in status:
-                status_counts["closed"] += 1
-            else:
-                status_counts["waiting"] += 1
-
-            # 2. Populate Raw Data
-            # We include only valid applicant numbers, but keep 0 to show low competition jobs
-            if j.applicants is not None:
-                competition_raw.append({
-                    "title": j.title,
-                    "applicants": j.applicants,
-                    "status": j.application_status or "Waiting"
-                })
-
-        # --- Metric 3: Aggregated Competition Analysis (Legacy Support) ---
         low_comp = 0
         med_comp = 0
         high_comp = 0
+
         total_applicants_sum = 0
-        jobs_with_applicants_data = 0
+        jobs_with_data = 0
+
+        # ---------------------------
+        # LOOP
+        # ---------------------------
 
         for j in jobs:
-            count = j.applicants or 0
-            if count > 0:
-                total_applicants_sum += count
-                jobs_with_applicants_data += 1
 
-            if count <= 50:
+            # STATUS LOGIC (same as frontend)
+            if j.application_closed or j.job_state == "CLOSED":
+                status_counts["closed"] += 1
+
+            elif j.job_state == "SUSPENDED":
+                status_counts["paused"] += 1
+
+            elif j.job_state == "LISTED":
+                status_counts["active"] += 1
+
+            else:
+                status_counts["unknown"] += 1
+
+            # COMPETITION
+            applicants = j.applicants or 0
+
+            if applicants > 0:
+                total_applicants_sum += applicants
+                jobs_with_data += 1
+
+            if applicants <= 50:
                 low_comp += 1
-            elif count <= 200:
+            elif applicants <= 200:
                 med_comp += 1
             else:
                 high_comp += 1
 
-        avg_applicants = 0
-        if jobs_with_applicants_data > 0:
-            avg_applicants = round(total_applicants_sum / jobs_with_applicants_data)
+            competition_raw.append({
+                "title": j.title,
+                "applicants": applicants,
+                "status": j.job_state or "UNKNOWN"
+            })
 
-        # High competition refusal calculation
+        # ---------------------------
+        # AVERAGE APPLICANTS
+        # ---------------------------
+
+        avg_applicants = 0
+
+        if jobs_with_data > 0:
+            avg_applicants = round(total_applicants_sum / jobs_with_data)
+
+        # ---------------------------
+        # HIGH COMP REFUSAL RATE
+        # ---------------------------
+
         high_comp_jobs = [j for j in jobs if (j.applicants or 0) > 200]
-        high_comp_refusals = sum(1 for j in high_comp_jobs if "refused" in (j.application_status or "").lower())
+
+        high_comp_refusals = sum(
+            1 for j in high_comp_jobs
+            if j.application_status and j.application_status.lower() == "refused"
+        )
+
         high_comp_refusal_rate = 0
+
         if len(high_comp_jobs) > 0:
-            high_comp_refusal_rate = round((high_comp_refusals / len(high_comp_jobs)) * 100, 1)
+            high_comp_refusal_rate = round(
+                (high_comp_refusals / len(high_comp_jobs)) * 100,
+                1
+            )
+
+        # ---------------------------
+        # RESPONSE
+        # ---------------------------
 
         return jsonify({
             "overview": {
                 "total": total_applications,
-                "refused": status_counts["refused"],
-                "waiting": status_counts["waiting"],
-                "reviewing": status_counts["reviewing"],
+                "active": status_counts["active"],
+                "paused": status_counts["paused"],
                 "closed": status_counts["closed"],
+                "unknown": status_counts["unknown"]
             },
             "competition": {
                 "low": low_comp,
@@ -447,6 +471,7 @@ def get_dashboard_insights():
     except Exception as e:
         print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
+
     finally:
         session.close()
 

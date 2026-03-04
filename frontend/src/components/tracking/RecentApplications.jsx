@@ -254,18 +254,32 @@ const RecentApplications = ({ onSelectJob }) => {
 
     syncAppliedBackfillStream({
       from: cutoffMonth,
+
       onProgress: (data) => {
+        const title = (data.title || "").slice(0, 28);
+        const company = (data.company || "").slice(0, 18);
+        const state = data.job_state || "UNKNOWN";
+        const applicants = data.applicants ?? "-";
+        const action = data.action ? data.action.toUpperCase() : "";
+
         setStreamStatus(
-          `#${data.processed} | ${data.title?.substring(0, 20)}...`,
+          `#${data.processed} ${action} | ${company} | ${title} | ${state} | ${applicants}`,
         );
       },
+
       onFinish: async (data) => {
-        setStreamStatus(`Finalizado: +${data.inserted} vagas inseridas`);
+        const reason = data?.reason ? ` (${data.reason})` : "";
+        setStreamStatus(
+          `Finalizado${reason}: +${data.inserted} vagas inseridas`,
+        );
+
         await loadJobs();
         setIsBackfilling(false);
         setTimeout(() => setStreamStatus(null), 4000);
       },
-      onError: () => {
+
+      onError: (err) => {
+        console.error("Backfill SSE error:", err);
         setStreamStatus("Erro durante o Backfill.");
         setIsBackfilling(false);
       },

@@ -89,6 +89,7 @@ class AppliedJobsIncrementalSync:
                 if not applied_str:
                     continue
 
+                # 1) Cutoff check (antes de qualquer coisa)
                 try:
                     applied_dt = datetime.fromisoformat(applied_str)
                     if applied_dt < cutoff_date:
@@ -102,28 +103,38 @@ class AppliedJobsIncrementalSync:
                 except ValueError:
                     continue
 
+                # 2) job_id sempre definido antes de usar
                 job_id = job_dto.job_id
                 if not job_id:
                     continue
 
+                # 3) existing sempre definido antes de usar
                 existing = db.query(Job).filter(Job.urn == job_id).first()
+                action = "updated" if existing else "inserted"
 
+                # 4) grava no DB
                 if existing:
-                    # Passamos 'db' aqui também
                     AppliedJobsIncrementalSync._update_job(db, existing, job_dto)
-                    # Commit a cada update no stream para feedback real-time
                     db.commit()
                 else:
                     AppliedJobsIncrementalSync._insert_job(db, job_dto)
                     db.commit()
                     inserted += 1
 
+                # 5) emite evento rico para o frontend/console
                 yield AppliedJobsIncrementalSync._event({
                     "type": "progress",
+                    "action": action,
                     "processed": processed,
                     "inserted": inserted,
+
                     "job_id": job_id,
                     "title": job_dto.title,
+                    "company": job_dto.company,
+                    "job_state": job_dto.job_state,
+                    "application_closed": job_dto.application_closed,
+                    "applicants": job_dto.applicants,
+                    "remote": job_dto.work_remote_allowed,
                 })
 
                 time.sleep(0.2)

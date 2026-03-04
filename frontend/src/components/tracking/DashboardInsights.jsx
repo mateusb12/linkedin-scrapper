@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import { Chart } from "react-google-charts";
 import { Doughnut, Bar } from "react-chartjs-2";
 import {
@@ -27,6 +27,8 @@ import {
   Minus,
   Plus,
   Calendar as CalendarIcon,
+  PauseCircle,
+  HelpCircle,
 } from "lucide-react";
 
 ChartJS.register(
@@ -57,6 +59,7 @@ const StatCard = ({
     yellow: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
     purple: "bg-purple-500/10 text-purple-400 border-purple-500/20",
     gray: "bg-gray-700/50 text-gray-400 border-gray-600/50",
+    teal: "bg-teal-500/10 text-teal-400 border-teal-500/20",
   };
 
   return (
@@ -134,23 +137,27 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
     timeRange === "custom" || timeRange.startsWith("custom_");
 
   const overview = safeInsights.overview || {
-    total: 0,
-    refused: 0,
-    waiting: 0,
-    reviewing: 0,
+    active: 0,
     closed: 0,
+    paused: 0,
+    total: 0,
+    unknown: 0,
   };
   const rawComp = safeInsights.competition || {};
   const rawCompData = safeInsights.competition_raw || [];
 
   const [bucketCount, setBucketCount] = useState(6);
 
-  const activePipeline = overview.waiting + overview.reviewing;
-  const deadEnds = overview.refused + overview.closed;
-  const reviewRate =
-    overview.total > 0
-      ? Math.round((overview.reviewing / overview.total) * 100)
-      : 0;
+  const activeCount = overview.active || 0;
+  const pausedCount = overview.paused || 0;
+  const unknownCount = overview.unknown || 0;
+  const closedCount = overview.closed || 0;
+  const totalCount = overview.total || 0;
+
+  const activePipeline = activeCount + pausedCount + unknownCount;
+  const deadEnds = closedCount;
+  const activeRate =
+    totalCount > 0 ? Math.round((activeCount / totalCount) * 100) : 0;
 
   const handleCustomDateChange = (type, value) => {
     let newStart = startDate;
@@ -216,6 +223,7 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
     validJobs.forEach((job) => {
       const val = parseInt(job.applicants);
       const status = (job.status || "").toLowerCase();
+
       const isRefused = ["refused", "rejected", "closed"].includes(status);
 
       let idx = Math.floor((val - minVal) / step);
@@ -257,7 +265,7 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
         {
           type: "line",
           showLine: false,
-          label: "Refusal Rate %",
+          label: "Closed Rate %",
           data: buckets.map((b) =>
             b.count > 0 ? ((b.refused / b.count) * 100).toFixed(1) : 0,
           ),
@@ -274,43 +282,39 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
   }, [rawCompData, bucketCount]);
 
   const statusData = {
-    labels: ["Reviewing", "Waiting", "Closed", "Refused"],
+    labels: ["Active", "Paused", "Unknown", "Closed"],
     datasets: [
       {
-        data: [
-          overview.reviewing,
-          overview.waiting,
-          overview.closed,
-          overview.refused,
-        ],
-        backgroundColor: ["#a855f7", "#fbbf24", "#4b5563", "#f87171"],
+        data: [activeCount, pausedCount, unknownCount, closedCount],
+        backgroundColor: ["#a855f7", "#fbbf24", "#60a5fa", "#4b5563"],
         borderWidth: 0,
         hoverOffset: 4,
       },
     ],
   };
 
-  const lblTotal = `Total Applications (${overview.total})`;
-  const lblActive = `Active Pipeline (${activePipeline})`;
+  const lblTotal = `Total Applications (${totalCount})`;
+  const lblActivePipeline = `Active Pipeline (${activePipeline})`;
   const lblDead = `Dead Ends (${deadEnds})`;
-  const lblWaiting = `Waiting (${overview.waiting})`;
-  const lblReviewing = `Reviewing (${overview.reviewing})`;
-  const lblClosed = `Closed (${overview.closed})`;
-  const lblRefused = `Refused (${overview.refused})`;
+
+  const lblActive = `Active (${activeCount})`;
+  const lblPaused = `Paused (${pausedCount})`;
+  const lblUnknown = `Unknown (${unknownCount})`;
+  const lblClosed = `Closed (${closedCount})`;
 
   const sankeyData = [
     ["From", "To", "Weight"],
-    [lblTotal, lblActive, activePipeline > 0 ? activePipeline : 0.001],
+
+    [lblTotal, lblActivePipeline, activePipeline > 0 ? activePipeline : 0.001],
     [lblTotal, lblDead, deadEnds > 0 ? deadEnds : 0.001],
-    [lblActive, lblWaiting, overview.waiting > 0 ? overview.waiting : 0.001],
-    [
-      lblActive,
-      lblReviewing,
-      overview.reviewing > 0 ? overview.reviewing : 0.001,
-    ],
-    [lblDead, lblClosed, overview.closed > 0 ? overview.closed : 0.001],
-    [lblDead, lblRefused, overview.refused > 0 ? overview.refused : 0.001],
+
+    [lblActivePipeline, lblActive, activeCount > 0 ? activeCount : 0.001],
+    [lblActivePipeline, lblPaused, pausedCount > 0 ? pausedCount : 0.001],
+    [lblActivePipeline, lblUnknown, unknownCount > 0 ? unknownCount : 0.001],
+
+    [lblDead, lblClosed, closedCount > 0 ? closedCount : 0.001],
   ];
+
   const filteredSankeyData = [
     sankeyData[0],
     ...sankeyData.slice(1).filter((row) => row[2] > 0.002),
@@ -364,10 +368,10 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
           "#3b82f6",
           "#10b981",
           "#6b7280",
-          "#fbbf24",
           "#a855f7",
-          "#374151",
-          "#ef4444",
+          "#fbbf24",
+          "#60a5fa",
+          "#4b5563",
         ],
         label: {
           fontName: "Inter",
@@ -383,10 +387,10 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
         colors: [
           "#3b82f6",
           "#6b7280",
-          "#fbbf24",
           "#a855f7",
-          "#374151",
-          "#ef4444",
+          "#fbbf24",
+          "#60a5fa",
+          "#4b5563",
         ],
       },
     },
@@ -405,9 +409,7 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
 
   return (
     <div className="space-y-6 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      {}
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center bg-gray-800/40 p-4 rounded-2xl border border-gray-700/50 backdrop-blur-md gap-4">
-        {}
         <div className="flex items-center gap-3">
           <div className="p-2 bg-purple-500/10 rounded-lg text-purple-400">
             <Activity size={20} />
@@ -425,9 +427,7 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
           </div>
         </div>
 
-        {}
         <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
-          {}
           {isCustomMode && (
             <div className="flex items-center gap-2 bg-gray-900 p-1 rounded-xl border border-gray-700/50 animate-in fade-in slide-in-from-right-4 duration-300">
               <div className="flex items-center px-2 gap-2">
@@ -457,7 +457,6 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
             </div>
           )}
 
-          {}
           <div className="flex items-center gap-3 bg-gray-900 p-1 rounded-xl border border-gray-700/50 shadow-inner ml-auto xl:ml-0">
             <div className="pl-3 text-gray-500">
               <Filter size={14} />
@@ -482,23 +481,22 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
         </div>
       </div>
 
-      {}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         <StatCard
-          title="Active Eyes"
-          value={overview.reviewing}
+          title="Active (Listed)"
+          value={activeCount}
           icon={Eye}
           color="purple"
           iconColor="text-purple-400"
-          subtext={`${reviewRate}% of total apps`}
+          subtext={`${activeRate}% of total apps`}
         />
         <StatCard
-          title="Total Active"
+          title="Pipeline Active"
           value={activePipeline}
           icon={CheckCircle}
-          color="yellow"
-          iconColor="text-yellow-400"
-          subtext="Waiting + Reviewing"
+          color="teal"
+          iconColor="text-teal-400"
+          subtext="Listed + Paused + Unknown"
         />
         <StatCard
           title="Dead Ends"
@@ -506,11 +504,11 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
           icon={Ban}
           color="gray"
           iconColor="text-gray-400"
-          subtext="Closed or Refused"
+          subtext="Closed jobs"
         />
         <StatCard
           title="Avg Applicants"
-          value={rawComp.avg_applicants}
+          value={rawComp.avg_applicants || 0}
           icon={Users}
           color="blue"
           iconColor="text-blue-400"
@@ -530,7 +528,7 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
               </h4>
             </div>
             <div className="text-xs text-gray-500 font-mono bg-gray-900/50 px-2 py-1 rounded border border-gray-700/30">
-              Total: {overview.total}
+              Total: {totalCount}
             </div>
           </div>
           <div className="flex-1 flex items-center justify-between gap-2 min-h-0">
@@ -541,10 +539,10 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
               />
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 <span className="text-2xl font-black text-purple-400">
-                  {overview.reviewing}
+                  {activeCount}
                 </span>
                 <span className="text-[10px] text-gray-500 uppercase font-bold">
-                  Reviewing
+                  Active
                 </span>
               </div>
             </div>
@@ -552,18 +550,23 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
-                  <span className="text-gray-300">Reviewing</span>
+                  <span className="text-gray-300">Active</span>
                 </div>
-                <span className="font-bold text-white">
-                  {overview.reviewing}
-                </span>
+                <span className="font-bold text-white">{activeCount}</span>
               </div>
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-yellow-400"></span>
-                  <span className="text-gray-300">Waiting</span>
+                  <span className="text-gray-300">Paused</span>
                 </div>
-                <span className="font-bold text-white">{overview.waiting}</span>
+                <span className="font-bold text-white">{pausedCount}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
+                  <span className="text-gray-300">Unknown</span>
+                </div>
+                <span className="font-bold text-white">{unknownCount}</span>
               </div>
               <div className="w-full h-px bg-gray-700/50 my-1"></div>
               <div className="flex justify-between items-center">
@@ -571,18 +574,7 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
                   <span className="w-2.5 h-2.5 rounded-full bg-gray-600"></span>
                   <span className="text-gray-400">Closed</span>
                 </div>
-                <span className="font-bold text-gray-400">
-                  {overview.closed}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-400"></span>
-                  <span className="text-gray-400">Refused</span>
-                </div>
-                <span className="font-bold text-gray-400">
-                  {overview.refused}
-                </span>
+                <span className="font-bold text-gray-400">{closedCount}</span>
               </div>
             </div>
           </div>
@@ -613,7 +605,7 @@ const DashboardInsights = ({ insights, timeRange, onTimeRangeChange }) => {
         </div>
       </div>
 
-      {overview.total > 0 && (
+      {totalCount > 0 && (
         <div className="bg-gray-800/60 backdrop-blur-sm p-6 rounded-2xl border border-gray-700/50 shadow-lg min-h-[400px] flex flex-col">
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center gap-2">

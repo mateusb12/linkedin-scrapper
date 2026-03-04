@@ -712,6 +712,10 @@ class JobTrackerFetcher:
                 job.applicants = j.applicants
                 job.premium_description = j.premium_description
                 job.job_url = j.job_url
+                job.job_state = j.job_state
+                job.expire_at = j.expire_at
+                job.application_closed = j.application_closed
+                job.work_remote_allowed = j.work_remote_allowed
 
                 # 4. ESSENCIAL: Marcar como aplicado se a origem for 'applied'
                 if response_data.stage == "applied":
