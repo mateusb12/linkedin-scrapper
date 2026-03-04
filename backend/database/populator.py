@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def load_populate_data(json_filepath: str) -> dict:
-    from path.path_reference import get_output_curls_folder_path
+    from source.core.path_reference import get_output_curls_folder_path
     path = Path(get_output_curls_folder_path(), json_filepath)
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)

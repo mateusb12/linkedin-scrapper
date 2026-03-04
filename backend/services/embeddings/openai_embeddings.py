@@ -5,7 +5,7 @@ import openai
 import numpy as np
 import re
 from dotenv import load_dotenv
-from path.path_reference import get_embeddings_folder_path
+from source.core.path_reference import get_embeddings_folder_path
 
 
 def _hash_text(text: str) -> str:

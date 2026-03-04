@@ -2,11 +2,11 @@ import json
 
 from flask import Blueprint, jsonify, request, stream_with_context, Response
 
-from factory.core_instances import embedding_calculator
+from source.features.job_population.core_instances import embedding_calculator
 from models import Job
 from services.model_orchestrator import LLMOrchestrator, AllLLMsFailed
 from source.services.experience_extractor import extract_years_experience
-from utils.metric_utils import JobConsoleProgress
+from source.utils.metric_utils import JobConsoleProgress
 from source.features.job_population.job_repository import JobRepository
 
 job_data_bp = Blueprint("jobs", __name__, url_prefix="/jobs")
@@ -65,6 +65,7 @@ def insert_extra_fields_stream():
     that processed jobs are correctly marked as complete, progress counting is
     accurate, and server-side console progress is displayed.
     """
+
     def generate():
         print("Starting resilient job expansion stream...")
         repo = JobRepository()
@@ -146,7 +147,7 @@ def insert_extra_fields_stream():
                         "processed": processed_this_run,
                         "total": total_to_process,
                         "urn": job.urn,
-                        "llm": current_llm,     # <-- 🔥 NEW FIELD
+                        "llm": current_llm,  # <-- 🔥 NEW FIELD
                         "message": f"Processed URN: {job.urn}"
                     }
                     yield f"data: {json.dumps(progress_data)}\n\n"

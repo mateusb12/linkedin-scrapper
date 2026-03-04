@@ -3,8 +3,9 @@ from unittest.mock import patch
 
 # --- Module Imports for Robust Patching ---
 # We import the specific instances or classes used in the controllers
-from factory import core_instances
+from source.features.job_population import core_instances
 from services.model_orchestrator import LLMOrchestrator
+
 
 @pytest.fixture
 def client():
@@ -12,6 +13,7 @@ def client():
     app.config['TESTING'] = True
     with app.test_client() as client:
         yield client
+
 
 def test_calculate_match_score(client):
     """
@@ -26,7 +28,6 @@ def test_calculate_match_score(client):
 
     # Patch the instance method on the global object imported by the controller
     with patch.object(core_instances.embedding_calculator, 'compute_similarity', return_value=0.98) as mock_calc:
-
         # Action
         response = client.post('/jobs/match-score', json=payload)
 
@@ -39,6 +40,7 @@ def test_calculate_match_score(client):
             resume_text=payload['resume_text'],
             job_text=payload['job_description']
         )
+
 
 def test_tailor_resume_with_ai(client):
     """
@@ -60,7 +62,6 @@ def test_tailor_resume_with_ai(client):
 
     # Patch the LLM Orchestrator class
     with patch.object(LLMOrchestrator, 'run_prompt', return_value=mock_llm_response) as mock_orchestrator:
-
         # Action
         response = client.post('/resumes/tailor', json=payload)
 

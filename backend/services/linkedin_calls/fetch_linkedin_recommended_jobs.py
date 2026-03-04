@@ -1,7 +1,5 @@
 # linkedin_fetcher.py
-import re
 import requests
-import json
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -9,7 +7,7 @@ from typing import List, Dict, Any, Optional
 from linkedin.api_fetch.pagination.pagination_recommended_jobs import parse_jobs_page
 from linkedin.api_fetch.single_job.fetch_single_job_details import make_session, fetch_job_detail
 from models import FetchCurl
-from path.path_reference import get_orchestration_curls_folder_path
+from source.core.path_reference import get_orchestration_curls_folder_path
 
 env_path = get_orchestration_curls_folder_path()
 INDIVIDUAL_JOB_CURL_COMMAND_PATH = Path(env_path, "individual_job_curl.txt")

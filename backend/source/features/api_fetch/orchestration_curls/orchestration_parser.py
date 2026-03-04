@@ -1,10 +1,10 @@
 import json
 import re
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Dict
 
-from path.path_reference import get_output_curls_folder_path
+from source.core.path_reference import get_output_curls_folder_path
 
 
 # --- Dataclass Definitions ---
