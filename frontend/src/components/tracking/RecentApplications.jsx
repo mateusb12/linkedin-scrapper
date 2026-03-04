@@ -290,7 +290,7 @@ const RecentApplications = ({ onSelectJob }) => {
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 mb-6">
           <h2 className="text-2xl font-bold text-white flex items-center gap-3">
             <Database className="text-blue-500" size={28} />
-            Application Arsenal
+            Application History
             <span className="text-sm font-mono bg-blue-900/40 text-blue-300 px-3 py-1 rounded-full border border-blue-500/30">
               {jobs.length} VAGAS
             </span>
@@ -402,10 +402,10 @@ const RecentApplications = ({ onSelectJob }) => {
                 </th>
 
                 <th className="px-6 py-4 border-b border-slate-700 w-48">
-                  Applied Info
+                  Applied Date
                 </th>
                 <th className="px-6 py-4 border-b border-slate-700 w-36">
-                  Market
+                  competitors
                 </th>
                 <th className="px-6 py-4 border-b border-slate-700 w-32 text-center">
                   Status

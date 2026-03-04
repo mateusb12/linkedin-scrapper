@@ -3,8 +3,6 @@ from datetime import datetime
 
 import requests
 
-from path.file_content_loader import load_cookie_value
-
 
 def fetch_job_timestamp(job_id: str = "4275393151"):
     """
