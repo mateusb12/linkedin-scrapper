@@ -86,6 +86,9 @@ class Job(Base):
     company_urn = Column(String, ForeignKey('companies.urn'), nullable=True)
     company = relationship("Company", back_populates="jobs")
 
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
     def __repr__(self):
         comp_name = self.company.name if self.company else "NoCompany"
         return f"<Job(id='{self.urn}', title='{self.title}', company='{comp_name}')>"
