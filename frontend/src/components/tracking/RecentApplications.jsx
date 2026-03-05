@@ -256,14 +256,33 @@ const RecentApplications = ({ onSelectJob }) => {
       from: cutoffMonth,
 
       onProgress: (data) => {
-        const title = (data.title || "").slice(0, 28);
-        const company = (data.company || "").slice(0, 18);
-        const state = data.job_state || "UNKNOWN";
-        const applicants = data.applicants ?? "-";
-        const action = data.action ? data.action.toUpperCase() : "";
+        const company = (data.company || "").slice(0, 20);
+        const title = (data.title || "").slice(0, 30);
+
+        const diff = data.diff || {};
+        const diffParts = [];
+
+        if (diff.applicants) {
+          const delta = diff.applicants.delta;
+          const sign = delta > 0 ? "+" : "";
+          diffParts.push(
+            `${sign}${delta} applicants (${diff.applicants.from}→${diff.applicants.to})`,
+          );
+        }
+        if (diff.job_state) {
+          diffParts.push(`state: ${diff.job_state.from}→${diff.job_state.to}`);
+        }
+        if (diff.application_closed) {
+          diffParts.push(
+            `closed: ${diff.application_closed.from}→${diff.application_closed.to}`,
+          );
+        }
+
+        const diffText =
+          diffParts.length > 0 ? diffParts.join(" | ") : "no updates";
 
         setStreamStatus(
-          `#${data.processed} ${action} | ${company} | ${title} | ${state} | ${applicants}`,
+          `#${data.processed} ${company} · ${title} → ${diffText}`,
         );
       },
 
