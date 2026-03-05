@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import time
 import uuid
@@ -377,12 +378,30 @@ class JobTrackerFetcher:
             return {
                 "title": d.get("title"),
                 "company": company,
-                "posted_at": (ms_to_datetime(d.get("listedAt") or d.get("postedAt")) or datetime.now()).isoformat(),
+                "applied_at": (
+                    ms_to_datetime(
+                        d.get("applyingInfo", {}).get("appliedAt")
+                    )
+                ),
+
+                # datetime com timezone UTC
+                "posted_at": ms_to_datetime(
+                    d.get("listedAt") or d.get("postedAt")
+                ),
+
                 "applicants": d.get("applies"),
                 "job_state": d.get("jobState"),
+
                 "description_full": d.get("description", {}).get("text"),
+
                 "work_remote_allowed": d.get("workRemoteAllowed"),
-                "expire_at": ms_to_datetime(d.get("expireAt")).isoformat() if d.get("expireAt") else None
+
+                # datetime com timezone UTC ou None
+                "expire_at": (
+                    ms_to_datetime(d.get("expireAt"))
+                    if d.get("expireAt")
+                    else None
+                )
             }
 
         except Exception:
@@ -542,12 +561,8 @@ class JobTrackerFetcher:
         return JobPost.from_dict(base_job_dict)
 
     def fetch_latest_applied_candidates(self, limit: int = 15) -> List[Dict[str, Any]]:
-        """
-        Pega apenas a lista "crua" da página 1.
-        NÃO chama detalhes, NÃO chama premium.
-        Retorna lista de dicts leves.
-        """
-        _log(f"\n🕵️ Smart Sync: Buscando candidatos recentes (Página 1)...")
+        print("\n" + "=" * 60)
+        print("🕵️ [DEBUG] Iniciando fetch_latest_applied_candidates (Versão Lógica Corrigida)...")
 
         target_url = self.saved_url.replace("stage=saved", "stage=applied")
         target_body = self.saved_body
@@ -562,27 +577,82 @@ class JobTrackerFetcher:
         response = self.client.execute(req)
 
         if response.status_code != 200:
-            _log(f"⚠️ Erro no fetch de lista: {response.status_code}")
+            print(f"⚠️ [DEBUG] Erro HTTP: {response.status_code}")
             return []
 
+        # --- TENTATIVA 1: Parseamento JSON Padrão ---
+        # Útil se o LinkedIn mandar o formato antigo/completo
         stream_items = parse_linkedin_stream(response.text)
         candidates = []
         for item in stream_items:
             candidates.extend(find_job_objects_recursive(item))
 
         results = []
-        seen_ids = set()
+        global_seen_ids = set()
 
         for job in candidates:
-            jid = str(job.get("jobId"))
-            if not jid or jid in seen_ids: continue
+            jid = str(job.get("jobId", ""))
+            if not jid: continue
 
-            if not (job.get("title") or job.get("jobTitle")): continue
+            # --- CORREÇÃO AQUI ---
+            # Antes a gente adicionava no global_seen_ids aqui.
+            # AGORA só adicionamos se tiver título e for aceito.
 
-            seen_ids.add(jid)
+            if jid in global_seen_ids: continue
+
+            # Só aceita via JSON se tiver título (formato rico)
+            if not (job.get("title") or job.get("jobTitle")):
+                continue
+
+            # Se passou, marca como visto e adiciona
+            global_seen_ids.add(jid)
             results.append(self._build_base_job(job))
 
-            if len(results) >= limit: break
+            if len(results) >= limit:
+                break
+
+        print(f"✅ [DEBUG] Jobs via JSON completo: {len(results)}")
+
+        # --- TENTATIVA 2: Fallback via Regex ---
+        # Agora vai funcionar porque o JSON acima não "queimou" os IDs sem título
+        if len(results) < limit:
+            print("⚠️ [DEBUG] Completando com Regex...")
+
+            patterns = [
+                r"web_opp_contacts_(\d+)",
+                r"opportunity_tracker_confirm_hear_back_is_visible_(\d+)",
+                r"job_notes_show_api_(\d+)",
+                r"opportunity_tracker_check_back_(\d+)",
+                r"urn:li:fs_jobPosting:(\d+)"
+            ]
+
+            found_ids_regex = set()
+            for p in patterns:
+                matches = re.findall(p, response.text)
+                for m in matches:
+                    if len(m) > 5 and m not in global_seen_ids:
+                        found_ids_regex.add(m)
+
+            print(f"🔍 [DEBUG] IDs candidatos via Regex: {len(found_ids_regex)}")
+
+            for jid in found_ids_regex:
+                if len(results) >= limit: break
+
+                if jid in global_seen_ids: continue
+                global_seen_ids.add(jid)  # Agora sim marca como visto
+
+                # Cria Job Esqueleto (o enricher vai buscar o Título depois)
+                results.append({
+                    "job_id": jid,
+                    "title": "Carregando...",
+                    "company": "LinkedIn",
+                    "location": "Unknown",
+                    "job_url": f"https://www.linkedin.com/jobs/view/{jid}/",
+                    "posted_at": datetime.now(timezone.utc).isoformat()
+                })
+
+        print(f"🏁 [DEBUG] Total final retornando: {len(results)}")
+        print("=" * 60 + "\n")
 
         return results
 
@@ -706,6 +776,7 @@ class JobTrackerFetcher:
 
                 # 3. Atualiza dados (Enrichment)
                 job.title = j.title
+                job.posted_on = j.posted_at
                 job.company_urn = comp.urn
                 job.location = j.location
                 job.description_full = j.description_full
@@ -720,9 +791,11 @@ class JobTrackerFetcher:
                 # 4. ESSENCIAL: Marcar como aplicado se a origem for 'applied'
                 if response_data.stage == "applied":
                     job.has_applied = True
-                    # Se não tiver data de aplicação, define agora
-                    if not job.applied_on:
-                        job.applied_on = datetime.now()
+
+                    if j.applied_at:
+                        job.applied_on = j.applied_at
+                    else:
+                        job.applied_on = None
 
                 saved_details.append({
                     "id": j.job_id,

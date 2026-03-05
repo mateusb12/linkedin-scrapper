@@ -234,7 +234,7 @@ def parse_response(raw_text):
 if __name__ == "__main__":
 
     # Passo 1: Obter dados (Web ou Cache)
-    raw = get_raw_response(force_update=False)
+    raw = get_raw_response(force_update=True)
 
     # Passo 2: Parsear usando a lógica do seu Service
     if raw:
