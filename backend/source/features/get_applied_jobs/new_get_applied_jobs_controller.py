@@ -1,81 +1,156 @@
+"""
+job_tracker_controller.py — Thin Flask routes.
+
+Each endpoint is a thin wire to the correct layer:
+    - DB-only   → JobRepository
+    - HTTP-only → LinkedInProxy
+    - Both      → JobSyncService
+
+No business logic lives here.
+"""
+
+import traceback
 from dataclasses import asdict
 from datetime import datetime
+
 from flask import Blueprint, jsonify, request, Response, stream_with_context
 
+from source.features.get_applied_jobs.applied_job_sync_service import JobSyncService
+from source.features.get_applied_jobs.linkedin_proxy import LinkedInProxy
+
+# Keep old import alive for backfill streaming (not yet refactored)
 from source.features.get_applied_jobs.new_applied_sync_service import (
     AppliedJobsIncrementalSync,
 )
-from source.features.get_applied_jobs.new_get_applied_jobs_service import (
-    JobTrackerFetcher, JobServiceResponse,
-)
+from source.features.jobs.job_repository import JobRepository
 
 job_tracker_bp = Blueprint("job_tracker", __name__, url_prefix="/job-tracker")
 
 
+# ══════════════════════════════════════════════════════════════
+# DB-ONLY endpoints (JobRepository)
+# ══════════════════════════════════════════════════════════════
+
 @job_tracker_bp.route("/applied", methods=["GET"])
 def get_applied_jobs():
+    """List applied jobs from the local database."""
     try:
-        from database.database_connection import get_db_session
-        from models.job_models import Job
-
-        db = get_db_session()
-        try:
-            jobs = (
-                db.query(Job)
-                .filter(Job.has_applied == True)
-                .order_by(Job.applied_on.desc())
-                .all()
-            )
-
-            return jsonify({
-                "status": "success",
-                "data": {
-                    "count": len(jobs),
-                    "jobs": [job.to_dict() for job in jobs]
-                }
-            }), 200
-        finally:
-            db.close()
-
-    except Exception as e:
+        jobs = JobRepository.get_applied_jobs()
         return jsonify({
-            "status": "error",
-            "error": str(e)
-        }), 500
+            "status": "success",
+            "data": {"count": len(jobs), "jobs": jobs},
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
 
+
+# ══════════════════════════════════════════════════════════════
+# LINKEDIN-ONLY endpoints (LinkedInProxy) — zero DB writes
+# ══════════════════════════════════════════════════════════════
 
 @job_tracker_bp.route("/applied-live", methods=["GET"])
 def get_applied_live():
+    """Proxy: fetch applied jobs from LinkedIn, return directly. No DB."""
+    try:
+        proxy = LinkedInProxy(debug=False, slim_mode=True)
+        result = proxy.fetch_jobs_listing(stage="applied")
+        return jsonify({
+            "status": "success",
+            "data": result.to_dict(),
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+
+@job_tracker_bp.route("/saved-live", methods=["GET"])
+def get_saved_live():
+    """Proxy: fetch saved jobs from LinkedIn, return directly. No DB."""
+    try:
+        proxy = LinkedInProxy(debug=True, slim_mode=True)
+        result = proxy.fetch_jobs_listing(stage="saved")
+        return jsonify({
+            "status": "success",
+            "data": result.to_dict(),
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+
+@job_tracker_bp.route("/debug-job", methods=["GET"])
+def debug_job():
     """
-    Rota Proxy: Vai no LinkedIn, pega os dados frescos e retorna.
-    NÃO SALVA NO BANCO.
+    Debug proxy: hit LinkedIn for a SINGLE job, return raw parsed data.
+    Zero DB writes. Accepts multiple identifier types.
+
+    Usage:
+        /job-tracker/debug-job?id=4012345678
+        /job-tracker/debug-job?urn=urn:li:jobPosting:4012345678
+        /job-tracker/debug-job?search=nubank+software+engineer
     """
     try:
-        fetcher = JobTrackerFetcher(debug=False, slim_mode=True)
-        result_obj = fetcher.fetch_jobs(stage="applied")
+        job_id = request.args.get("id")
+        urn = request.args.get("urn")
+        search_query = request.args.get("search")
+
+        # Resolve URN → numeric ID
+        if not job_id and urn:
+            job_id = urn.replace("urn:li:jobPosting:", "").replace("urn:li:fs_jobPosting:", "")
+
+        if not job_id and not search_query:
+            return jsonify({
+                "status": "error",
+                "error": "Pass ?id=<job_id>, ?urn=<full_urn>, or ?search=<company+title>",
+            }), 400
+
+        proxy = LinkedInProxy(debug=True, slim_mode=True)
+
+        # If no direct ID, resolve from listing
+        if not job_id and search_query:
+            job_id = proxy.resolve_job_id(search_query)
+            if not job_id:
+                return jsonify({
+                    "status": "error",
+                    "error": f"Could not resolve '{search_query}' to a job ID.",
+                    "hint": "Use /job-tracker/applied-live to browse IDs, then use ?id=",
+                }), 404
+
+        # Fetch both layers independently
+        details = proxy.fetch_job_details(job_id)
+        premium = proxy.fetch_premium_insights(job_id)
 
         return jsonify({
             "status": "success",
-            "data": result_obj.to_dict()
+            "resolved_job_id": job_id,
+            "search_used": search_query,
+            "data": {
+                "details": details,
+                "premium": premium,
+                "merged_preview": {**details, **premium},
+            },
         }), 200
 
     except Exception as e:
         return jsonify({
             "status": "error",
-            "error": str(e)
+            "error": str(e),
+            "traceback": traceback.format_exc(),
         }), 500
 
 
+# ══════════════════════════════════════════════════════════════
+# SYNC endpoints (JobSyncService — LinkedIn + DB)
+# ══════════════════════════════════════════════════════════════
+
 @job_tracker_bp.route("/sync-applied", methods=["POST"])
 def sync_applied_jobs():
-    """Sync incremental (página 1, ~10 jobs)"""
+    """Incremental sync (page 1, ~10 jobs)."""
     try:
         result = AppliedJobsIncrementalSync.sync()
         return jsonify({
             "status": "success",
             "inserted": result["inserted"],
             "updated": result["updated"],
-            "updates": result["updates"]
+            "updates": result["updates"],
         }), 200
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
@@ -83,7 +158,7 @@ def sync_applied_jobs():
 
 @job_tracker_bp.route("/sync-applied-backfill-stream", methods=["GET"])
 def sync_applied_backfill_stream():
-    """Sync profundo com stream (Server-Sent Events)"""
+    """Deep sync with SSE streaming."""
     from_param = request.args.get("from")
 
     if not from_param:
@@ -102,88 +177,12 @@ def sync_applied_backfill_stream():
     )
 
 
-@job_tracker_bp.route("/saved-live", methods=["GET"])
-def get_saved_live():
-    """
-    Rota Proxy: Busca vagas SALVAS (Saved Jobs) no LinkedIn e retorna.
-    LGPD (Privacy by Design):
-    - Dados transitórios: Esta rota apenas 'espelha' o LinkedIn.
-    - Zero Persistência: Nada é salvo no banco de dados local.
-    """
-    try:
-        fetcher = JobTrackerFetcher(debug=True, slim_mode=True)
-
-        result_obj = fetcher.fetch_jobs(stage="saved")
-
-        return jsonify({
-            "status": "success",
-            "data": asdict(result_obj)
-        }), 200
-
-    except Exception as e:
-        return jsonify({
-            "status": "error",
-            "error": str(e)
-        }), 500
-
-
 @job_tracker_bp.route("/sync-applied-smart", methods=["POST"])
 def sync_applied_smart():
+    """Smart sync: diff LinkedIn vs DB, enrich + save only new jobs."""
     try:
-        from database.database_connection import get_db_session
-        from models.job_models import Job
-
-        # 1. Busca IDs existentes
-        db = get_db_session()
-        existing_jobs = (
-            db.query(Job.urn)
-            .filter(Job.has_applied == True)
-            .order_by(Job.applied_on.desc())
-            .limit(50)
-            .all()
-        )
-        existing_ids = {str(j.urn).replace("urn:li:jobPosting:", "") for j in existing_jobs}
-        db.close()
-
-        # 2. Busca lista leve do LinkedIn
-        fetcher = JobTrackerFetcher(debug=True, slim_mode=True)
-        latest_candidates = fetcher.fetch_latest_applied_candidates(limit=15)
-
-        # 3. Filtra novos
-        new_jobs_to_process = []
-        for cand in latest_candidates:
-            if str(cand["job_id"]) not in existing_ids:
-                new_jobs_to_process.append(cand)
-
-        print(f"🔎 Smart Sync: {len(latest_candidates)} recebidos, {len(new_jobs_to_process)} são novos.")
-
-        if not new_jobs_to_process:
-            return jsonify({
-                "status": "success",
-                "message": "Already up to date",
-                "synced_count": 0,
-                "details": []
-            }), 200
-
-        # 4. Enriquece
-        enriched_jobs = []
-        for base_job in new_jobs_to_process:
-            full_job = fetcher.enrich_single_job(base_job)
-            enriched_jobs.append(full_job)
-
-        # 5. Salva e pega detalhes
-        saved_info = []
-        if enriched_jobs:
-            wrapper = JobServiceResponse(count=len(enriched_jobs), stage="applied", jobs=enriched_jobs)
-            # Agora o save_results retorna uma lista de dicionários
-            saved_info = fetcher.save_results(wrapper)
-
-        return jsonify({
-            "status": "success",
-            "synced_count": len(saved_info),
-            "details": saved_info  # <--- AQUI VAI APARECER ID, EMPRESA E TITULO
-        }), 200
-
+        service = JobSyncService(debug=True, slim_mode=True)
+        result = service.sync_smart()
+        return jsonify(result), 200
     except Exception as e:
-        # Agora se der erro no save, vai aparecer aqui
         return jsonify({"status": "error", "error": str(e)}), 500
