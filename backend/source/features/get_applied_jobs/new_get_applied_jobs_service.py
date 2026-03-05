@@ -4,7 +4,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Iterable
 
 import requests
@@ -354,18 +354,32 @@ class JobTrackerFetcher:
     def fetch_job_details(self, job_id: str) -> Dict[str, Any]:
         session = self.client.session
         csrf = session.headers.get("csrf-token")
-        for c in session.cookies:
-            if c.name == "JSESSIONID":
-                csrf = c.value.replace('"', "")
-                break
+
+        # Tenta recuperar o CSRF de cookies se não estiver no header
+        if not csrf:
+            for c in session.cookies:
+                if c.name == "JSESSIONID":
+                    csrf = c.value.replace('"', "")
+                    break
 
         url = f"https://www.linkedin.com/voyager/api/jobs/jobPostings/{job_id}"
         resp = session.get(url, headers={"csrf-token": csrf, "accept": "application/json"}, timeout=20)
+
         if resp.status_code != 200:
+            print(f"⚠️ [DEBUG] Falha ao pegar detalhes do Job {job_id}: {resp.status_code}")
             return {}
 
         try:
             d = resp.json()
+
+            # --- DEBUG DE DATA (PARA MATAR A DÚVIDA) ---
+            applied_ts = d.get("applyingInfo", {}).get("appliedAt")
+            if applied_ts:
+                dt_utc = ms_to_datetime(applied_ts)
+                # Simula horario BRT apenas para o print
+                dt_brt = dt_utc.astimezone(timezone(timedelta(hours=-3)))
+                print(f"⏱️ [DEBUG] Job {job_id} :: Applied At Raw: {dt_utc} UTC  <==>  {dt_brt} BRT (Correto!)")
+            # -------------------------------------------
 
             company = (
                     d.get("companyDetails", {}).get("company", {}).get("name")
@@ -378,33 +392,20 @@ class JobTrackerFetcher:
             return {
                 "title": d.get("title"),
                 "company": company,
-                "applied_at": (
-                    ms_to_datetime(
-                        d.get("applyingInfo", {}).get("appliedAt")
-                    )
-                ),
-
-                # datetime com timezone UTC
-                "posted_at": ms_to_datetime(
-                    d.get("listedAt") or d.get("postedAt")
-                ),
+                "applied_at": ms_to_datetime(d.get("applyingInfo", {}).get("appliedAt")),
+                "posted_at": ms_to_datetime(d.get("listedAt") or d.get("postedAt")),
 
                 "applicants": d.get("applies"),
                 "job_state": d.get("jobState"),
-
                 "description_full": d.get("description", {}).get("text"),
-
                 "work_remote_allowed": d.get("workRemoteAllowed"),
-
-                # datetime com timezone UTC ou None
                 "expire_at": (
-                    ms_to_datetime(d.get("expireAt"))
-                    if d.get("expireAt")
-                    else None
+                    ms_to_datetime(d.get("expireAt")) if d.get("expireAt") else None
                 )
             }
 
-        except Exception:
+        except Exception as e:
+            print(f"❌ [DEBUG] Erro ao processar detalhes do Job {job_id}: {e}")
             return {}
 
     def fetch_premium_insights(self, job_id: str) -> Dict[str, Any]:

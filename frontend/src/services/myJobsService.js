@@ -20,7 +20,6 @@ export const formatDateBR = (isoString) => {
     "nov",
     "dez",
   ];
-
   const month = months[date.getMonth()];
   const year = date.getFullYear();
 
@@ -67,7 +66,9 @@ class AppliedJobModel {
     this.jobUrl = raw.job_url || "";
     this.workRemoteAllowed = Boolean(raw.work_remote_allowed);
 
-    this.appliedAt = raw.applied_on || raw.applied_at || null;
+    this.appliedAt =
+      raw.applied_at_brt || raw.applied_on || raw.applied_at || null;
+
     this.postedAt =
       raw.posted_at ||
       raw.posted_on ||

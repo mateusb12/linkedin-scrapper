@@ -1,5 +1,5 @@
 # database/orm_models.py
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import Column, String, Text, ForeignKey, Integer, Boolean, JSON, DateTime
 from sqlalchemy.orm import relationship
@@ -37,7 +37,7 @@ class Company(Base):
 class Job(Base):
     __tablename__ = 'jobs'
 
-    urn = Column(String, primary_key=True)  # Aqui salvaremos o Job ID (ex: "4321...")
+    urn = Column(String, primary_key=True)
     title = Column(String, nullable=False)
     location = Column(String)
     workplace_type = Column(String)
@@ -50,10 +50,10 @@ class Job(Base):
     applicants = Column(Integer, default=0)
 
     # --- NOVOS CAMPOS (ATUALIZAÇÃO) ---
-    competition_level = Column(String, nullable=True)  # High, Medium, Low
-    applicants_velocity = Column(Integer, nullable=True)  # Applicants last 24h
-    seniority_distribution = Column(JSON, nullable=True)  # JSON do Premium
-    education_distribution = Column(JSON, nullable=True)  # JSON do Premium
+    competition_level = Column(String, nullable=True)
+    applicants_velocity = Column(Integer, nullable=True)
+    seniority_distribution = Column(JSON, nullable=True)
+    education_distribution = Column(JSON, nullable=True)
     work_remote_allowed = Column(Boolean, default=False)
     premium_title = Column(String, nullable=True)
     premium_description = Column(String, nullable=True)
@@ -74,9 +74,9 @@ class Job(Base):
 
     has_applied = Column(Boolean, default=False)
     applied_on = Column(DateTime, nullable=True, default=None)
-    application_status = Column(String, default="Waiting")  # Waiting, Applied, Rejected
+    application_status = Column(String, default="Waiting")
 
-    job_state = Column(String, nullable=True)  # LISTED, CLOSED, SUSPENDED
+    job_state = Column(String, nullable=True)
     experience_level = Column(String, nullable=True)
     employment_status = Column(String, nullable=True)
     application_closed = Column(Boolean, nullable=True)
@@ -99,6 +99,22 @@ class Job(Base):
             delta = self.expire_at - datetime.utcnow()
             days_until_expire = delta.days
 
+        # --- LÓGICA DE CONVERSÃO BRT NO BACKEND ---
+        applied_at_brt = None
+        if self.applied_on:
+            # 1. Garante que temos um timezone UTC no objeto (se vier naive do banco)
+            dt_utc = self.applied_on
+            if dt_utc.tzinfo is None:
+                dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+
+            # 2. Converte para BRT (UTC-3)
+            brt_zone = timezone(timedelta(hours=-3))
+            dt_brt = dt_utc.astimezone(brt_zone)
+
+            # 3. Formata como ISO String com o offset correto (-03:00)
+            applied_at_brt = dt_brt.isoformat()
+        # ------------------------------------------
+
         data = {
             "urn": self.urn,
             "title": self.title,
@@ -109,16 +125,19 @@ class Job(Base):
             "job_url": self.job_url,
             "description_full": self.description_full,
             "has_applied": self.has_applied,
+
+            # Campo original UTC
             "applied_on": self.applied_on.isoformat() if self.applied_on else None,
-            "applied_on_formatted": self.applied_on.strftime("%d-%b-%Y") if self.applied_on else None,
+
+            # NOVO CAMPO BRL 🇧🇷
+            "applied_at_brt": applied_at_brt,
+
             "company_urn": self.company_urn,
 
-            # Dados Numéricos
             "applicants": self.applicants,
             "applicants_velocity": self.applicants_velocity,
             "competition_level": self.competition_level,
 
-            # Distribuições e Premium
             "seniority_distribution": self.seniority_distribution or [],
             "education_distribution": self.education_distribution or [],
             "premium_title": self.premium_title,
