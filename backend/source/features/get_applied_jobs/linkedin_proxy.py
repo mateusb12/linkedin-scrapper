@@ -36,10 +36,13 @@ class JobPost:
     job_id: str
     title: Optional[str] = None
     company: Optional[str] = None
+    company_urn: Optional[str] = None
     location: Optional[str] = None
     job_url: Optional[str] = None
+    applied: Optional[bool] = None
     applied_at: Optional[str] = None
     posted_at: Optional[str] = None
+    created_at: Optional[str] = None
     posted_date_text: Optional[str] = None
     job_state: Optional[str] = None
     expire_at: Optional[str] = None
@@ -447,7 +450,7 @@ class LinkedInProxy:
 
         if resp.status_code != 200:
             _log(f"⚠️ fetch_job_details({job_id}): HTTP {resp.status_code}")
-            return {}
+            return {"_raw": None, "_status": resp.status_code}
 
         try:
             d = resp.json()
@@ -458,28 +461,62 @@ class LinkedInProxy:
                 dt_brt = dt_utc.astimezone(timezone(timedelta(hours=-3)))
                 _log(f"⏱️ Job {job_id} :: Applied At: {dt_utc} UTC / {dt_brt} BRT")
 
-            company = (
-                    d.get("companyDetails", {}).get("company", {}).get("name")
-                    or d.get("company", {}).get("name")
-                    or d.get("companyName")
-                    or d.get("formattedCompanyName")
-                    or "Unknown"
+            # ── Company resolution ──
+            # Voyager nests it as:
+            #   companyDetails["com.linkedin.voyager.jobs.JobPostingCompany"]["company"]
+            # which is a URN like "urn:li:fs_normalized_company:9318713"
+            # There's also companyDetails.*.companyName in some responses.
+            company_urn = None
+            company_name = None
+
+            company_details = d.get("companyDetails", {})
+
+            # Path 1: Voyager typed wrapper (most common)
+            voyager_wrapper = company_details.get(
+                "com.linkedin.voyager.jobs.JobPostingCompany", {}
             )
+            if voyager_wrapper:
+                company_urn = voyager_wrapper.get("company")  # URN string
+                company_name = voyager_wrapper.get("companyName")
+
+            # Path 2: flat companyDetails with .company.name (older format)
+            if not company_name:
+                nested_company = company_details.get("company")
+                if isinstance(nested_company, dict):
+                    company_name = nested_company.get("name")
+                    if not company_urn:
+                        company_urn = nested_company.get("entityUrn")
+
+            # Path 3: top-level fallbacks
+            if not company_name:
+                company_name = (
+                        d.get("companyName")
+                        or d.get("formattedCompanyName")
+                )
+
+            # ── Location ──
+            location = d.get("formattedLocation")
 
             return {
                 "title": d.get("title"),
-                "company": company,
+                "company": company_name or "Unknown",
+                "company_urn": company_urn,
+                "location": location,
+                "applied": d.get("applyingInfo", {}).get("applied", False),
                 "applied_at": ms_to_iso(d.get("applyingInfo", {}).get("appliedAt")),
                 "posted_at": ms_to_iso(d.get("listedAt") or d.get("postedAt")),
+                "created_at": ms_to_iso(d.get("createdAt")),
                 "applicants": d.get("applies"),
                 "job_state": d.get("jobState"),
                 "description_full": d.get("description", {}).get("text"),
                 "work_remote_allowed": d.get("workRemoteAllowed"),
                 "expire_at": ms_to_iso(d.get("expireAt")),
+                # Raw keys present in response (for debugging what LinkedIn actually sent)
+                "_raw_keys": sorted(d.keys()) if self.debug else None,
             }
         except Exception as e:
             _log(f"❌ fetch_job_details({job_id}) parse error: {e}")
-            return {}
+            return {"_error": str(e)}
 
     def fetch_premium_insights(self, job_id: str) -> Dict[str, Any]:
         """Fetch Premium RSC insights. Always returns all expected keys."""
@@ -538,9 +575,19 @@ class LinkedInProxy:
 
         details = self.fetch_job_details(jid)
 
+        # Strip debug-only keys before merging
+        details.pop("_raw_keys", None)
+        details.pop("_raw", None)
+        details.pop("_status", None)
+        details.pop("_error", None)
+
         # Preserve company from base if details returned "Unknown"
         if details.get("company") == "Unknown" and base_job_dict.get("company") not in [None, "Unknown"]:
             del details["company"]
+
+        # Preserve location from base if details didn't return one
+        if not details.get("location") and base_job_dict.get("location"):
+            details.pop("location", None)
 
         base_job_dict.update(details)
 
