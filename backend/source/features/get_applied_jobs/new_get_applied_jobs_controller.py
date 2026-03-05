@@ -51,7 +51,7 @@ def get_applied_live():
     NÃO SALVA NO BANCO.
     """
     try:
-        fetcher = JobTrackerFetcher(debug=False)
+        fetcher = JobTrackerFetcher(debug=False, slim_mode=True)
         result_obj = fetcher.fetch_jobs(stage="applied")
 
         return jsonify({
@@ -111,7 +111,7 @@ def get_saved_live():
     - Zero Persistência: Nada é salvo no banco de dados local.
     """
     try:
-        fetcher = JobTrackerFetcher(debug=True)
+        fetcher = JobTrackerFetcher(debug=True, slim_mode=True)
 
         result_obj = fetcher.fetch_jobs(stage="saved")
 
@@ -146,7 +146,7 @@ def sync_applied_smart():
         db.close()
 
         # 2. Busca lista leve do LinkedIn
-        fetcher = JobTrackerFetcher(debug=True)
+        fetcher = JobTrackerFetcher(debug=True, slim_mode=True)
         latest_candidates = fetcher.fetch_latest_applied_candidates(limit=15)
 
         # 3. Filtra novos
