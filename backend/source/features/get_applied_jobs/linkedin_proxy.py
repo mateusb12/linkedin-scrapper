@@ -27,9 +27,6 @@ from source.core.debug_mode import is_debug
 from source.features.fetch_curl.linkedin_http_client import LinkedInClient, LinkedInRequest
 
 
-# ──────────────────────────────────────────────────────────────
-# Dataclasses (pure data, no ORM)
-# ──────────────────────────────────────────────────────────────
 
 @dataclass
 class JobPost:
@@ -82,9 +79,24 @@ class JobServiceResponse:
         return asdict(self)
 
 
-# ──────────────────────────────────────────────────────────────
-# Config
-# ──────────────────────────────────────────────────────────────
+@dataclass
+class NotificationEvent:
+    """Represents a notification event from LinkedIn."""
+    job_id: str
+    event_type: str  
+    event_name: str  
+    timestamp: Optional[str]  
+    timestamp_ms: Optional[int]  
+    status: str  
+    company: str
+    headline: str
+    job_application_id: Optional[str] = None
+    published_at_ms: Optional[int] = None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
 
 PREMIUM_ENABLED = True
 REQUEST_DELAY_SECONDS = 0.7
@@ -96,9 +108,6 @@ def _log(msg: str):
         print(msg)
 
 
-# ──────────────────────────────────────────────────────────────
-# Helpers
-# ──────────────────────────────────────────────────────────────
 
 def print_curl_command(method, url, headers, body):
     if not is_debug():
@@ -181,9 +190,6 @@ def find_job_objects_recursive(data) -> list:
     return found
 
 
-# ──────────────────────────────────────────────────────────────
-# RawStringRequest (for SDUI/RSC bodies)
-# ──────────────────────────────────────────────────────────────
 
 class RawStringRequest(LinkedInRequest):
     def __init__(self, method: str, url: str, body_str: str,
@@ -215,9 +221,6 @@ class RawStringRequest(LinkedInRequest):
         )
 
 
-# ──────────────────────────────────────────────────────────────
-# PremiumParser
-# ──────────────────────────────────────────────────────────────
 
 class PremiumParser:
     SENIORITY_RE = re.compile(
@@ -388,9 +391,6 @@ class PremiumParser:
         }
 
 
-# ──────────────────────────────────────────────────────────────
-# LinkedInProxy — the public API
-# ──────────────────────────────────────────────────────────────
 
 class LinkedInProxy:
     """
@@ -403,7 +403,6 @@ class LinkedInProxy:
         self.client = LinkedInClient("SavedJobs", slim_mode=slim_mode)
         self.premium_parser = PremiumParser()
 
-        # Load curl configs (read-only DB access via LinkedInClient)
         from database.database_connection import get_db_session
         from models.fetch_models import FetchCurl
 
@@ -426,12 +425,21 @@ class LinkedInProxy:
                 self.premium_method = rec_prem.method
                 self.premium_body = rec_prem.body
                 self.premium_headers = json.loads(rec_prem.headers) if rec_prem.headers else {}
+
+            self.notifications_url = ""
+            self.notifications_headers = {}
+            self.notifications_method = "GET"
+            rec_notif = db.query(FetchCurl).filter(FetchCurl.name == "Notifications").first()
+            if rec_notif:
+                self.notifications_url = rec_notif.base_url
+                self.notifications_method = rec_notif.method or "GET"
+                self.notifications_headers = json.loads(rec_notif.headers) if rec_notif.headers else {}
+                _log(f"✓ Loaded Notifications config from DB")
+            else:
+                _log(f"⚠️ Notifications config not found in FetchCurl table")
         finally:
             db.close()
 
-    # ──────────────────────────────────────────
-    # Single-job fetches (your debug building blocks)
-    # ──────────────────────────────────────────
 
     def fetch_job_details(self, job_id: str) -> Dict[str, Any]:
         """Fetch Voyager job details. Returns a plain dict, datetimes as ISO strings."""
@@ -463,25 +471,18 @@ class LinkedInProxy:
                 dt_brt = dt_utc.astimezone(timezone(timedelta(hours=-3)))
                 _log(f"⏱️ Job {job_id} :: Applied At: {dt_utc} UTC / {dt_brt} BRT")
 
-            # ── Company resolution ──
-            # Voyager nests it as:
-            #   companyDetails["com.linkedin.voyager.jobs.JobPostingCompany"]["company"]
-            # which is a URN like "urn:li:fs_normalized_company:9318713"
-            # There's also companyDetails.*.companyName in some responses.
             company_urn = None
             company_name = None
 
             company_details = d.get("companyDetails", {})
 
-            # Path 1: Voyager typed wrapper (most common)
             voyager_wrapper = company_details.get(
                 "com.linkedin.voyager.jobs.JobPostingCompany", {}
             )
             if voyager_wrapper:
-                company_urn = voyager_wrapper.get("company")  # URN string
+                company_urn = voyager_wrapper.get("company")  
                 company_name = voyager_wrapper.get("companyName")
 
-            # Path 2: flat companyDetails with .company.name (older format)
             if not company_name:
                 nested_company = company_details.get("company")
                 if isinstance(nested_company, dict):
@@ -489,38 +490,31 @@ class LinkedInProxy:
                     if not company_urn:
                         company_urn = nested_company.get("entityUrn")
 
-            # Path 3: companyDescription block (often has companyName)
             company_desc = d.get("companyDescription", {})
             if not company_name and isinstance(company_desc, dict):
                 company_name = company_desc.get("companyName")
 
-            # Path 4: top-level fallbacks
             if not company_name:
                 company_name = (
                         d.get("companyName")
                         or d.get("formattedCompanyName")
                 )
 
-            # ── Company logo & URL from companyDescription ──
             company_logo = None
             company_url = None
             if isinstance(company_desc, dict):
                 company_url = company_desc.get("companyPageUrl")
-                # Logo can be in several places
                 logo_obj = company_desc.get("logo") or company_desc.get("companyLogo")
                 if isinstance(logo_obj, dict):
-                    # Voyager often nests as logo.image.rootUrl + artifacts
                     image = logo_obj.get("image") or logo_obj
                     root_url = image.get("rootUrl", "")
                     artifacts = image.get("artifacts", [])
                     if root_url and artifacts:
-                        # Pick the largest artifact
                         best = max(artifacts, key=lambda a: a.get("width", 0))
                         company_logo = root_url + best.get("fileIdentifyingUrlPathSegment", "")
                     elif isinstance(logo_obj, str):
                         company_logo = logo_obj
 
-            # ── Location ──
             location = d.get("formattedLocation")
 
             return {
@@ -539,9 +533,7 @@ class LinkedInProxy:
                 "description_full": d.get("description", {}).get("text"),
                 "work_remote_allowed": d.get("workRemoteAllowed"),
                 "expire_at": ms_to_iso(d.get("expireAt")),
-                # Raw keys present in response (for debugging what LinkedIn actually sent)
                 "_raw_keys": sorted(d.keys()) if self.debug else None,
-                # Raw companyDetails + companyDescription for debugging
                 "_raw_company_details": company_details if self.debug else None,
                 "_raw_company_description": company_desc if self.debug else None,
             }
@@ -556,7 +548,6 @@ class LinkedInProxy:
             - "urn:li:fs_normalized_company:9318713"
             - "9318713"
         """
-        # Extract numeric ID from URN
         company_id = company_urn.split(":")[-1] if ":" in company_urn else company_urn
 
         session = self.client.session
@@ -582,7 +573,6 @@ class LinkedInProxy:
         try:
             d = resp.json()
 
-            # Logo extraction
             logo_url = None
             logo_obj = d.get("logo") or {}
             if isinstance(logo_obj, dict):
@@ -658,9 +648,193 @@ class LinkedInProxy:
             _log(f"⚠️ fetch_premium_insights({job_id}) error: {e}")
             return empty
 
-    # ──────────────────────────────────────────
-    # Enrichment (combine details + premium)
-    # ──────────────────────────────────────────
+
+    def fetch_notifications_for_job(self, job_id: str) -> Optional[NotificationEvent]:
+        """
+        Fetch notifications and extract "Application viewed" event for a specific job ID.
+        Uses Notifications config from database (FetchCurl table).
+
+        Args:
+            job_id: The LinkedIn job ID to search for (e.g., "4375526458")
+
+        Returns:
+            NotificationEvent with:
+                - job_id: The job ID searched for
+                - event_type: "JOB_APPLICATION_VIEWED_V2"
+                - timestamp: ISO datetime when application was viewed
+                - status: "viewed"
+                - company: Company name extracted from notification
+                - headline: Full notification headline text
+            or None if not found
+        """
+
+        if not self.notifications_url:
+            _log(f"❌ Notifications config not loaded from database")
+            _log(f"❌ Make sure 'Notifications' record exists in FetchCurl table")
+            return None
+
+        session = self.client.session
+        csrf = session.headers.get("csrf-token")
+        if not csrf:
+            for c in session.cookies:
+                if c.name == "JSESSIONID":
+                    csrf = c.value.replace('"', "")
+                    break
+
+        try:
+
+            headers = session.headers.copy()
+            headers.update(self.notifications_headers)
+            headers["csrf-token"] = csrf
+
+            resp = session.request(
+                method=self.notifications_method,
+                url=self.notifications_url,
+                headers=headers,
+                timeout=20,
+            )
+
+            if resp.status_code != 200:
+                _log(f"⚠️ HTTP {resp.status_code}")
+                return None
+
+            try:
+                data = resp.json()
+                if "data" in data:
+                    if "*elements" in data["data"]:
+                        _log(f"elements count: {len(data['data']['*elements'])}")
+            except Exception as e:
+                _log(f"⚠️ Failed to parse JSON response: {e}")
+                _log(f"⚠️ Response text: {resp.text[:500]}")
+                return None
+
+            notification_event = self._parse_notification_for_job(data, job_id)
+
+            if notification_event:
+                _log(f"✅ Found: {notification_event.event_type} at {notification_event.timestamp}")
+            else:
+                elements = data.get("data", {}).get("elements", [])
+                _log(f"⚠️ No 'Application viewed' notification found for job {job_id}")
+                _log(f"⚠️ Response had {len(elements)} notification elements")
+                if elements:
+                    _log(f"⚠️ Sample elements: {elements[:2]}")
+
+            return notification_event
+
+        except Exception as e:
+            _log(f"❌ fetch_notifications_for_job({job_id}) error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def _parse_notification_for_job(self, data: Dict[str, Any], target_job_id: str) -> Optional[NotificationEvent]:
+        """
+        Parse notification response and extract "Application viewed" event for target job ID.
+
+        LinkedIn structure:
+            - data["data"]["elements"]: list of notification card URNs
+            - Each URN like: "urn:li:fsd_notificationCard:(JOB_APPLICATION_VIEWED_V2,urn:li:jobApplication:38178920458)"
+            - Card data is in data["included"] with entityUrn matching
+            - headline.text contains "Your application was viewed for TITLE at COMPANY"
+            - publishedAt contains millisecond timestamp
+        """
+        try:
+            elements = data.get("data", {}).get("*elements", [])
+            if not elements:
+                _log("⚠️ No notification elements found")
+                return None
+
+            _log(f"   Found {len(elements)} notification elements")
+
+            for element_urn in elements:
+                if not isinstance(element_urn, str):
+                    continue
+
+                if "JOB_APPLICATION_VIEWED_V2" not in element_urn:
+                    continue
+
+                _log(f"   ✓ Found JOB_APPLICATION_VIEWED_V2 event in URN")
+                _log(f"   URN: {element_urn}")
+
+                included = data.get("included", [])
+                card_data = None
+
+                for inc_item in included:
+                    if isinstance(inc_item, dict):
+                        entity_urn = inc_item.get("entityUrn", "")
+                        if entity_urn == element_urn:
+                            card_data = inc_item
+                            _log(f"   ✓ Found card data in included")
+                            break
+
+                if not card_data:
+                    _log(f"   ⚠️ Card data not found in included, searching by type...")
+                    for inc_item in included:
+                        if isinstance(inc_item, dict):
+                            card_type = inc_item.get("$type", "")
+                            if "JOB_APPLICATION_VIEWED_V2" in card_type:
+                                card_data = inc_item
+                                _log(f"   ✓ Found card by $type match")
+                                break
+
+                if not card_data:
+                    _log(f"   ⚠️ Card data still not found")
+                    continue
+
+                _log(f"   Card data keys: {list(card_data.keys())}")
+
+                headline = card_data.get("headline", {})
+                headline_text = ""
+                if isinstance(headline, dict):
+                    headline_text = headline.get("text", "")
+                elif isinstance(headline, str):
+                    headline_text = headline
+
+                _log(f"   Headline: {headline_text}")
+
+                company = "Unknown"
+                company_match = re.search(r"at\s+([^\"]+)$", headline_text)
+                if company_match:
+                    company = company_match.group(1).strip()
+
+                published_at_ms = card_data.get("publishedAt")
+                timestamp = ms_to_iso(published_at_ms) if published_at_ms else None
+
+                object_urn = card_data.get("objectUrn", "")
+                job_app_id = None
+
+                job_app_match = re.search(r"urn:li:jobApplication:(\d+)", element_urn)
+                if job_app_match:
+                    job_app_id = job_app_match.group(1)
+                    _log(f"   Job Application ID: {job_app_id}")
+                elif object_urn:
+                    job_app_match = re.search(r"urn:li:jobApplication:(\d+)", object_urn)
+                    if job_app_match:
+                        job_app_id = job_app_match.group(1)
+                        _log(f"   Job Application ID (from objectUrn): {job_app_id}")
+
+                return NotificationEvent(
+                    job_id=target_job_id,
+                    job_application_id=job_app_id,
+                    event_type="JOB_APPLICATION_VIEWED_V2",
+                    event_name="Application Viewed",
+                    timestamp=timestamp,
+                    timestamp_ms=published_at_ms,
+                    status="viewed",
+                    company=company,
+                    headline=headline_text,
+                    published_at_ms=published_at_ms,
+                )
+
+            _log(f"⚠️ No JOB_APPLICATION_VIEWED_V2 notification found for job {target_job_id}")
+            return None
+
+        except Exception as e:
+            _log(f"❌ _parse_notification_for_job error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
 
     def enrich_single_job(self, base_job_dict: Dict[str, Any]) -> JobPost:
         """
@@ -671,22 +845,18 @@ class LinkedInProxy:
 
         details = self.fetch_job_details(jid)
 
-        # Strip debug-only keys before merging
         for k in list(details.keys()):
             if k.startswith("_"):
                 details.pop(k)
 
-        # Preserve company from base if details returned "Unknown"
         if details.get("company") == "Unknown" and base_job_dict.get("company") not in [None, "Unknown"]:
             del details["company"]
 
-        # Preserve location from base if details didn't return one
         if not details.get("location") and base_job_dict.get("location"):
             details.pop("location", None)
 
         base_job_dict.update(details)
 
-        # If company is still Unknown but we have a URN, resolve it
         if base_job_dict.get("company") in [None, "Unknown"] and base_job_dict.get("company_urn"):
             company_info = self.fetch_company_details(base_job_dict["company_urn"])
             if company_info.get("company_name"):
@@ -699,7 +869,6 @@ class LinkedInProxy:
         prem = self.fetch_premium_insights(jid)
         base_job_dict.update(prem)
 
-        # Use premium total if available
         app_tot = base_job_dict.get("applicants_total")
         if isinstance(app_tot, int) and app_tot > 0:
             base_job_dict["applicants"] = app_tot
@@ -707,9 +876,6 @@ class LinkedInProxy:
         time.sleep(REQUEST_DELAY_SECONDS)
         return JobPost.from_dict(base_job_dict)
 
-    # ──────────────────────────────────────────
-    # Listing fetches (page-level)
-    # ──────────────────────────────────────────
 
     def fetch_latest_applied_candidates(self, limit: int = 15) -> List[Dict[str, Any]]:
         """Fetch the latest applied jobs from LinkedIn (light, no enrichment)."""
@@ -732,7 +898,6 @@ class LinkedInProxy:
             _log(f"⚠️ HTTP {response.status_code}")
             return []
 
-        # --- Attempt 1: structured JSON parsing ---
         stream_items = parse_linkedin_stream(response.text)
         candidates = []
         for item in stream_items:
@@ -754,7 +919,6 @@ class LinkedInProxy:
 
         _log(f"✅ Jobs via JSON: {len(results)}")
 
-        # --- Attempt 2: regex fallback ---
         if len(results) == 0:
             _log("⚠️ JSON returned 0. Regex fallback...")
             patterns = [
@@ -861,7 +1025,6 @@ class LinkedInProxy:
 
         _log(f"✅ Total base jobs: {len(all_base_jobs)}")
 
-        # Enrich each job
         job_objects = []
         should_enrich = stage in ["applied", "saved"]
         for base in all_base_jobs:
@@ -872,9 +1035,6 @@ class LinkedInProxy:
 
         return JobServiceResponse(count=len(job_objects), stage=stage, jobs=job_objects)
 
-    # ──────────────────────────────────────────
-    # Search/resolve helpers (for debug endpoint)
-    # ──────────────────────────────────────────
 
     def resolve_job_id(self, query: str, limit: int = 30) -> Optional[str]:
         """
@@ -892,9 +1052,6 @@ class LinkedInProxy:
                 return str(c["job_id"])
         return None
 
-    # ──────────────────────────────────────────
-    # Internal helpers
-    # ──────────────────────────────────────────
 
     def _prepare_body(self, base_body_str: str, page_index: int) -> str:
         try:
@@ -943,3 +1100,44 @@ class LinkedInProxy:
             "job_url": f"https://www.linkedin.com/jobs/view/{job_id_str}/",
             "posted_at": posted_at,
         }
+
+
+
+if __name__ == "__main__":
+    import sys
+
+    print("\n" + "=" * 70)
+    print("🧪 LinkedInProxy Notification Fetcher Test")
+    print("=" * 70)
+
+    test_job_id = "4375526458"
+
+    try:
+        proxy = LinkedInProxy(debug=False, slim_mode=True)
+        print(f"\n📌 Testing notification fetch for job ID: {test_job_id}")
+
+        notification = proxy.fetch_notifications_for_job(test_job_id)
+
+        if notification:
+            print(f"\n✅ SUCCESS - Notification Event Found:")
+            print(f"   Job ID: {notification.job_id}")
+            print(f"   Event Type: {notification.event_type}")
+            print(f"   Timestamp: {notification.timestamp}")
+            print(f"   Status: {notification.status}")
+            print(f"   Company: {notification.company}")
+            print(f"   Headline: {notification.headline}")
+            print(f"\n📋 Full Data:")
+            print(notification.to_dict())
+        else:
+            print(f"\n⚠️  No notification found for job {test_job_id}")
+
+    except Exception as e:
+        print(f"\n❌ ERROR: {e}")
+        import traceback
+
+        traceback.print_exc()
+        sys.exit(1)
+
+    print("\n" + "=" * 70)
+    print("✨ Test completed")
+    print("=" * 70 + "\n")

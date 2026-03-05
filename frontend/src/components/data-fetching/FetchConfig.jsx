@@ -42,8 +42,15 @@ export default function FetchConfig() {
   const [profMainConfig, setProfMainConfig] = useState(null);
   const [profAboveConfig, setProfAboveConfig] = useState(null);
   const [profBelowConfig, setProfBelowConfig] = useState(null);
+  const [notificationsConfig, setNotificationsConfig] = useState(null);
 
   const clearStatusMessage = () => setTimeout(() => setStatusMessage({}), 4000);
+
+  const handleError = (error) => {
+    console.error(error);
+    const msg = error.response?.data?.description || error.message;
+    setStatusMessage({ general: `❌ Error: ${msg}` });
+  };
 
   const loadAllData = async () => {
     setProfileLoading(true);
@@ -57,18 +64,29 @@ export default function FetchConfig() {
     };
 
     try {
-      const [pag, ind, exp, main, above, below, conn, savedJobs, insights] =
-        await Promise.all([
-          loadConfigSafe(getPaginationCurl),
-          loadConfigSafe(getIndividualJobCurl),
-          loadConfigSafe(getExperienceCurl),
-          loadConfigSafe(() => getGenericCurl("ProfileMain")),
-          loadConfigSafe(() => getGenericCurl("ProfileAboveActivity")),
-          loadConfigSafe(() => getGenericCurl("ProfileBelowActivity")),
-          loadConfigSafe(() => getGenericCurl("Connections")),
-          loadConfigSafe(() => getGenericCurl("SavedJobs")),
-          loadConfigSafe(() => getGenericCurl("PremiumInsights")),
-        ]);
+      const [
+        pag,
+        ind,
+        exp,
+        main,
+        above,
+        below,
+        conn,
+        savedJobs,
+        insights,
+        notif,
+      ] = await Promise.all([
+        loadConfigSafe(getPaginationCurl),
+        loadConfigSafe(getIndividualJobCurl),
+        loadConfigSafe(getExperienceCurl),
+        loadConfigSafe(() => getGenericCurl("ProfileMain")),
+        loadConfigSafe(() => getGenericCurl("ProfileAboveActivity")),
+        loadConfigSafe(() => getGenericCurl("ProfileBelowActivity")),
+        loadConfigSafe(() => getGenericCurl("Connections")),
+        loadConfigSafe(() => getGenericCurl("SavedJobs")),
+        loadConfigSafe(() => getGenericCurl("PremiumInsights")),
+        loadConfigSafe(() => getGenericCurl("Notifications")),
+      ]);
 
       setPagConfig(pag);
       setIndConfig(ind);
@@ -79,6 +97,7 @@ export default function FetchConfig() {
       setConnectionsConfig(conn);
       setSavedJobsConfig(savedJobs);
       setPremiumInsightsConfig(insights);
+      setNotificationsConfig(notif);
 
       const profiles = await getProfiles();
       if (profiles && profiles.length > 0) {
@@ -268,11 +287,11 @@ export default function FetchConfig() {
     "Premium Insights",
   );
 
-  const handleError = (error) => {
-    console.error(error);
-    const msg = error.response?.data?.description || error.message;
-    setStatusMessage({ general: `❌ Error: ${msg}` });
-  };
+  const notificationsHandlers = createGenericHandler(
+    "Notifications",
+    setNotificationsConfig,
+    "Notifications",
+  );
 
   const handleSaveGmail = async () => {
     if (!gmailToken.trim()) return;
@@ -369,6 +388,7 @@ export default function FetchConfig() {
           connectionsConfig={connectionsConfig}
           savedJobsConfig={savedJobsConfig}
           premiumInsightsConfig={premiumInsightsConfig}
+          notificationsConfig={notificationsConfig}
           onSavePag={onSavePag}
           onDeletePag={onDeletePag}
           onSaveInd={onSaveInd}
@@ -382,6 +402,7 @@ export default function FetchConfig() {
           profBelowHandlers={profBelowHandlers}
           savedJobsHandlers={savedJobsHandlers}
           premiumInsightsHandlers={premiumInsightsHandlers}
+          notificationsHandlers={notificationsHandlers}
         />
       </div>
 

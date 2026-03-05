@@ -12,6 +12,7 @@ const NETWORK_FILTER_CONNECTIONS = "sdui.pagers.mynetwork.connectionsList";
 const NETWORK_FILTER_SAVED_JOBS = "/jobs-tracker/?stage=saved";
 const NETWORK_FILTER_PREMIUM_INSIGHTS =
   "com.linkedin.sdui.generated.premium.dsl.impl.premiumApplicantInsights";
+const NETWORK_FILTER_NOTIFICATIONS = "voyagerIdentityDashNotificationCards";
 
 export const ConfigCard = ({
   title,
@@ -175,6 +176,7 @@ export const ScraperConfigCards = ({
   connectionsConfig,
   savedJobsConfig,
   premiumInsightsConfig,
+  notificationsConfig,
   onSavePag,
   onDeletePag,
   onSaveInd,
@@ -188,6 +190,7 @@ export const ScraperConfigCards = ({
   profBelowHandlers,
   savedJobsHandlers,
   premiumInsightsHandlers,
+  notificationsHandlers,
 }) => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -288,6 +291,17 @@ export const ScraperConfigCards = ({
         onDelete={premiumInsightsHandlers.onDelete}
         placeholder="Cole o POST cURL contendo 'premiumApplicantInsights'..."
         colorClass="orange"
+      />
+
+      <ConfigCard
+        title="🔔 Notifications Request"
+        description="Carrega cards de notificações (job applications, networking, etc)."
+        networkFilter={NETWORK_FILTER_NOTIFICATIONS}
+        savedData={notificationsConfig}
+        onSave={notificationsHandlers.onSave}
+        onDelete={notificationsHandlers.onDelete}
+        placeholder="Cole o GET cURL contendo 'voyagerIdentityDashNotificationCards'..."
+        colorClass="red"
       />
     </div>
   );
