@@ -133,8 +133,8 @@ if __name__ == "__main__":
 
 
     # Parâmetros da sua busca
-    ALVO_URL = "https://www.linkedin.com/jobs/view/4353920791/"
-    ISCA = "Toad"
+    ALVO_URL = "https://www.linkedin.com/jobs/search/?currentJobId=4378839371&f_TPR=r604800&origin=JOB_SEARCH_PAGE_JOB_FILTER"
+    ISCA = "Neogrid"
 
     # Inicia a caçada
     bot = StringHunterSniffer(target_url=ALVO_URL, desired_string=ISCA)
