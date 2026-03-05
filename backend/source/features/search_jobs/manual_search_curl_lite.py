@@ -31,6 +31,11 @@ URL = (
     "&start=0"
 )
 
+COOKIE = (
+    'JSESSIONID="ajax:8938687136565013868"; '
+    # paste your full cookie string here
+),
+
 HEADERS = {
     "sec-ch-ua-platform": '"Linux"',
     "x-li-track": (
@@ -63,10 +68,7 @@ HEADERS = {
         "Voyager - Careers - Jobs Search=jobs-search-results-prefetch"
     ),
     # ⚠️  Replace with a fresh session cookie when this expires
-    "cookie": (
-        'JSESSIONID="ajax:8938687136565013868"; '
-        # paste your full cookie string here
-    ),
+    "cookie": COOKIE
 }
 
 
