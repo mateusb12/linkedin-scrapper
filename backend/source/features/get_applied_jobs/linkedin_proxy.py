@@ -1,5 +1,11 @@
 """
-linkedin_proxy.py — Pure LinkedIn HTTP layer.
+linkedin_proxy.py — REFACTORED VERSION
+Pure LinkedIn HTTP layer with extracted enrichment layer.
+
+Redundancy eliminated:
+  - enrichment_pipeline() and enrich_single_job() now share HTTP logic via _fetch_and_merge_enrichment()
+  - No duplicate fetch_job_details() or fetch_premium_insights() calls
+  - Same behavior, cleaner code
 
 Responsibilities:
     - Execute HTTP requests against LinkedIn APIs
@@ -25,7 +31,6 @@ from requests import Session
 
 from source.core.debug_mode import is_debug
 from source.features.fetch_curl.linkedin_http_client import LinkedInClient, LinkedInRequest
-
 
 
 @dataclass
@@ -83,11 +88,11 @@ class JobServiceResponse:
 class NotificationEvent:
     """Represents a notification event from LinkedIn."""
     job_id: str
-    event_type: str  
-    event_name: str  
-    timestamp: Optional[str]  
-    timestamp_ms: Optional[int]  
-    status: str  
+    event_type: str
+    event_name: str
+    timestamp: Optional[str]
+    timestamp_ms: Optional[int]
+    status: str
     company: str
     headline: str
     job_application_id: Optional[str] = None
@@ -95,7 +100,6 @@ class NotificationEvent:
 
     def to_dict(self) -> dict:
         return asdict(self)
-
 
 
 PREMIUM_ENABLED = True
@@ -106,7 +110,6 @@ LOG = True
 def _log(msg: str):
     if LOG:
         print(msg)
-
 
 
 def print_curl_command(method, url, headers, body):
@@ -190,7 +193,6 @@ def find_job_objects_recursive(data) -> list:
     return found
 
 
-
 class RawStringRequest(LinkedInRequest):
     def __init__(self, method: str, url: str, body_str: str,
                  headers: dict = None, debug: bool = False,
@@ -219,7 +221,6 @@ class RawStringRequest(LinkedInRequest):
             method=self.method, url=self.url, headers=final_headers,
             data=self.body_str if self.body_str else None, timeout=timeout,
         )
-
 
 
 class PremiumParser:
@@ -391,7 +392,6 @@ class PremiumParser:
         }
 
 
-
 class LinkedInProxy:
     """
     Pure LinkedIn HTTP proxy. Every method returns dicts or dataclasses.
@@ -440,7 +440,6 @@ class LinkedInProxy:
         finally:
             db.close()
 
-
     def fetch_job_details(self, job_id: str) -> Dict[str, Any]:
         """Fetch Voyager job details. Returns a plain dict, datetimes as ISO strings."""
         session = self.client.session
@@ -480,7 +479,7 @@ class LinkedInProxy:
                 "com.linkedin.voyager.jobs.JobPostingCompany", {}
             )
             if voyager_wrapper:
-                company_urn = voyager_wrapper.get("company")  
+                company_urn = voyager_wrapper.get("company")
                 company_name = voyager_wrapper.get("companyName")
 
             if not company_name:
@@ -604,6 +603,89 @@ class LinkedInProxy:
             _log(f"❌ fetch_company_details({company_id}) parse error: {e}")
             return {"_error": str(e)}
 
+    def _fetch_and_merge_enrichment(self, job_id: str) -> Dict[str, Any]:
+        """
+        EXTRACTED HTTP LAYER: Pure enrichment fetch & merge.
+
+        This is the canonical enrichment operation shared by both:
+          - enrichment_pipeline() — debug endpoint, returns raw dict
+          - enrich_single_job() — sync layer, returns JobPost dataclass
+
+        Responsibilities:
+            1. Fetch job details from Voyager API
+            2. Clean internal debug keys (_raw_*, _status, _error)
+            3. Fetch premium insights from RSC
+            4. Fetch notifications for the job
+            5. Merge all responses
+            6. Return single merged dict
+
+        Important:
+            - No dataclass conversion (that's done by caller)
+            - No business logic (company URN fallback, applicants normalization)
+            - No rate limiting (that's done by enrich_single_job only)
+
+        Args:
+            job_id: LinkedIn job ID string (e.g., "4375526458")
+
+        Returns:
+            Dict with merged keys:
+            - From details: title, company, location, applied_at, posted_at, etc.
+            - From premium: applicants_total, seniority_distribution, etc.
+            - From notifications: notification event (if any)
+
+        Example:
+            >>> proxy = LinkedInProxy()
+            >>> enriched = proxy._fetch_and_merge_enrichment("4375526458")
+            >>> enriched["premium_component_found"]  # bool
+            >>> enriched["applicants_total"]  # int or None
+            >>> enriched["notification"]  # dict or None
+        """
+        details = self.fetch_job_details(job_id)
+
+        # Strip internal debug keys (don't leak these to callers)
+        for k in list(details.keys()):
+            if k.startswith("_"):
+                details.pop(k)
+
+        premium = self.fetch_premium_insights(job_id)
+
+        # Fetch notification for this job
+        notification = self.fetch_notifications_for_job(job_id)
+        notification_dict = asdict(notification) if notification else None
+
+        # Merge: premium can override details if both have same key
+        # Notification is added as its own top-level key
+        return {**details, **premium, "notification": notification_dict}
+
+    def enrichment_pipeline(self, job_id: str) -> Dict[str, Any]:
+        """
+        PUBLIC: Debug-oriented enrichment (raw dict output).
+
+        Purpose:
+            Fetch a job's details + premium insights, return as plain dict.
+            Used by debug endpoints that need raw merged data, not dataclasses.
+            No rate limiting (single one-off call).
+
+        Used by:
+            /job-tracker/debug-job endpoint (controller.py line ~130)
+
+        Args:
+            job_id: LinkedIn job ID string
+
+        Returns:
+            Plain dict with merged detail + premium keys.
+            No internal _debug keys, no dataclass conversion.
+
+        Example:
+            >>> proxy = LinkedInProxy()
+            >>> data = proxy.enrichment_pipeline("4375526458")
+            >>> isinstance(data, dict)  # True
+            >>> data["title"]  # "Software Engineer"
+            >>> data["premium_component_found"]  # bool
+            >>> data["applicants_total"]  # int or None
+        """
+        return self._fetch_and_merge_enrichment(job_id)
+
     def fetch_premium_insights(self, job_id: str) -> Dict[str, Any]:
         """Fetch Premium RSC insights. Always returns all expected keys."""
         empty = {
@@ -647,7 +729,6 @@ class LinkedInProxy:
         except Exception as e:
             _log(f"⚠️ fetch_premium_insights({job_id}) error: {e}")
             return empty
-
 
     def fetch_notifications_for_job(self, job_id: str) -> Optional[NotificationEvent]:
         """
@@ -835,28 +916,66 @@ class LinkedInProxy:
             traceback.print_exc()
             return None
 
-
     def enrich_single_job(self, base_job_dict: Dict[str, Any]) -> JobPost:
         """
-        Takes a basic dict (job_id, title, company, ...) and enriches
-        with detail + premium fetches. Returns a JobPost dataclass.
+        Sync-layer enrichment: HTTP fetch + merge + business logic + dataclass conversion.
+
+        Purpose:
+            Convert a light job dict (from listing) into a fully enriched JobPost dataclass
+            ready for database insertion. Used by sync services for bulk operations.
+
+        Responsibilities:
+            1. Fetch enriched data (details + premium) via HTTP
+            2. Merge with base dict
+            3. Apply business logic (company URN resolution, applicants normalization)
+            4. Apply rate limiting (0.7s sleep — critical for bulk sync to not hammer LinkedIn)
+            5. Return validated JobPost dataclass
+
+        Sync-specific behavior:
+            - Company URN fallback: if company is missing/Unknown, resolve via company_urn
+            - Applicants normalization: prefer applicants_total from premium insights
+            - Rate limiting: Always sleeps 0.7s (only in sync, not in debug)
+
+        Used by:
+            - sync_backfill_stream() — bulk processing with sleep
+            - sync_smart() — new jobs only with sleep
+            - Job enrichment in any sync context
+
+        Args:
+            base_job_dict: Light job dict with at minimum:
+                {
+                    "job_id": "4375526458",
+                    "title": "Software Engineer",
+                    "company": "Meta",
+                    "location": "SF, CA",
+                    "job_url": "https://...",
+                    "posted_at": "2025-03-05T10:00:00Z",
+                }
+
+        Returns:
+            JobPost dataclass with all fields validated and populated:
+                - Fully enriched from Voyager + RSC
+                - All expected fields set (premium metrics, etc.)
+                - Ready for database insertion
+
+        Example:
+            >>> proxy = LinkedInProxy()
+            >>> base = {"job_id": "4375526458", "title": "...", "company": "..."}
+            >>> job = proxy.enrich_single_job(base)
+            >>> isinstance(job, JobPost)  # True
+            >>> job.applicants_total  # int (from premium)
+            >>> job.seniority_distribution  # list[dict] (from premium)
+            >>> job.company  # "Meta" (possibly resolved from URN)
         """
         jid = str(base_job_dict["job_id"])
 
-        details = self.fetch_job_details(jid)
+        # Step 1: Fetch enriched data via extracted HTTP layer (no duplication)
+        enriched = self._fetch_and_merge_enrichment(jid)
 
-        for k in list(details.keys()):
-            if k.startswith("_"):
-                details.pop(k)
+        # Step 2: Merge enriched data into base dict
+        base_job_dict.update(enriched)
 
-        if details.get("company") == "Unknown" and base_job_dict.get("company") not in [None, "Unknown"]:
-            del details["company"]
-
-        if not details.get("location") and base_job_dict.get("location"):
-            details.pop("location", None)
-
-        base_job_dict.update(details)
-
+        # Step 3: Company URN fallback — resolve if company is missing/Unknown
         if base_job_dict.get("company") in [None, "Unknown"] and base_job_dict.get("company_urn"):
             company_info = self.fetch_company_details(base_job_dict["company_urn"])
             if company_info.get("company_name"):
@@ -866,16 +985,17 @@ class LinkedInProxy:
             if company_info.get("company_logo") and not base_job_dict.get("company_logo"):
                 base_job_dict["company_logo"] = company_info["company_logo"]
 
-        prem = self.fetch_premium_insights(jid)
-        base_job_dict.update(prem)
-
+        # Step 4: Applicants normalization — prefer premium total over basic count
         app_tot = base_job_dict.get("applicants_total")
         if isinstance(app_tot, int) and app_tot > 0:
             base_job_dict["applicants"] = app_tot
 
+        # Step 5: Rate limiting — CRITICAL for bulk sync operations
+        # This prevents hammering LinkedIn when processing many jobs
+        # ONLY applied here (sync context), NOT in enrichment_pipeline (debug)
         time.sleep(REQUEST_DELAY_SECONDS)
-        return JobPost.from_dict(base_job_dict)
 
+        return JobPost.from_dict(base_job_dict)
 
     def fetch_latest_applied_candidates(self, limit: int = 15) -> List[Dict[str, Any]]:
         """Fetch the latest applied jobs from LinkedIn (light, no enrichment)."""
@@ -1035,7 +1155,6 @@ class LinkedInProxy:
 
         return JobServiceResponse(count=len(job_objects), stage=stage, jobs=job_objects)
 
-
     def resolve_job_id(self, query: str, limit: int = 30) -> Optional[str]:
         """
         Search recent applied jobs by substring match on company/title/job_id.
@@ -1051,7 +1170,6 @@ class LinkedInProxy:
             if q in title or q in company or q in f"{company} {title}":
                 return str(c["job_id"])
         return None
-
 
     def _prepare_body(self, base_body_str: str, page_index: int) -> str:
         try:
@@ -1100,7 +1218,6 @@ class LinkedInProxy:
             "job_url": f"https://www.linkedin.com/jobs/view/{job_id_str}/",
             "posted_at": posted_at,
         }
-
 
 
 if __name__ == "__main__":

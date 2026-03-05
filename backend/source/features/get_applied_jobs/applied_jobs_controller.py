@@ -115,17 +115,15 @@ def debug_job():
                 }), 404
 
         # Fetch all three layers independently
-        details = proxy.fetch_job_details(job_id)
-        premium = proxy.fetch_premium_insights(job_id)
-
+        merged = proxy.enrichment_pipeline(job_id)
         # Resolve company if we got a URN
         company = None
-        company_urn = details.get("company_urn")
+        company_urn = merged.get("company_urn")
         if company_urn:
             company = proxy.fetch_company_details(company_urn)
 
         # Build merged preview (details + premium + resolved company)
-        merged = {**details, **premium}
+
         if company and company.get("company_name"):
             merged["company"] = company["company_name"]
             merged["company_url"] = company.get("company_url")
@@ -138,8 +136,7 @@ def debug_job():
             "resolved_job_id": job_id,
             "search_used": search_query,
             "data": {
-                "details": details,
-                "premium": premium,
+                "enrichment": merged,
                 "company": company,
                 "merged_preview": merged,
             },
