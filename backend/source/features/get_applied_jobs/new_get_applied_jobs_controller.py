@@ -114,9 +114,24 @@ def debug_job():
                     "hint": "Use /job-tracker/applied-live to browse IDs, then use ?id=",
                 }), 404
 
-        # Fetch both layers independently
+        # Fetch all three layers independently
         details = proxy.fetch_job_details(job_id)
         premium = proxy.fetch_premium_insights(job_id)
+
+        # Resolve company if we got a URN
+        company = None
+        company_urn = details.get("company_urn")
+        if company_urn:
+            company = proxy.fetch_company_details(company_urn)
+
+        # Build merged preview (details + premium + resolved company)
+        merged = {**details, **premium}
+        if company and company.get("company_name"):
+            merged["company"] = company["company_name"]
+            merged["company_url"] = company.get("company_url")
+            merged["company_logo"] = company.get("company_logo")
+            print(f"[debug_job] company_urn={company_urn!r}")  # ADD
+            print(f"[debug_job] company result={company!r}")  # ADD
 
         return jsonify({
             "status": "success",
@@ -125,7 +140,8 @@ def debug_job():
             "data": {
                 "details": details,
                 "premium": premium,
-                "merged_preview": {**details, **premium},
+                "company": company,
+                "merged_preview": merged,
             },
         }), 200
 

@@ -37,6 +37,8 @@ class JobPost:
     title: Optional[str] = None
     company: Optional[str] = None
     company_urn: Optional[str] = None
+    company_logo: Optional[str] = None
+    company_url: Optional[str] = None
     location: Optional[str] = None
     job_url: Optional[str] = None
     applied: Optional[bool] = None
@@ -487,12 +489,36 @@ class LinkedInProxy:
                     if not company_urn:
                         company_urn = nested_company.get("entityUrn")
 
-            # Path 3: top-level fallbacks
+            # Path 3: companyDescription block (often has companyName)
+            company_desc = d.get("companyDescription", {})
+            if not company_name and isinstance(company_desc, dict):
+                company_name = company_desc.get("companyName")
+
+            # Path 4: top-level fallbacks
             if not company_name:
                 company_name = (
                         d.get("companyName")
                         or d.get("formattedCompanyName")
                 )
+
+            # ── Company logo & URL from companyDescription ──
+            company_logo = None
+            company_url = None
+            if isinstance(company_desc, dict):
+                company_url = company_desc.get("companyPageUrl")
+                # Logo can be in several places
+                logo_obj = company_desc.get("logo") or company_desc.get("companyLogo")
+                if isinstance(logo_obj, dict):
+                    # Voyager often nests as logo.image.rootUrl + artifacts
+                    image = logo_obj.get("image") or logo_obj
+                    root_url = image.get("rootUrl", "")
+                    artifacts = image.get("artifacts", [])
+                    if root_url and artifacts:
+                        # Pick the largest artifact
+                        best = max(artifacts, key=lambda a: a.get("width", 0))
+                        company_logo = root_url + best.get("fileIdentifyingUrlPathSegment", "")
+                    elif isinstance(logo_obj, str):
+                        company_logo = logo_obj
 
             # ── Location ──
             location = d.get("formattedLocation")
@@ -501,6 +527,8 @@ class LinkedInProxy:
                 "title": d.get("title"),
                 "company": company_name or "Unknown",
                 "company_urn": company_urn,
+                "company_logo": company_logo,
+                "company_url": company_url,
                 "location": location,
                 "applied": d.get("applyingInfo", {}).get("applied", False),
                 "applied_at": ms_to_iso(d.get("applyingInfo", {}).get("appliedAt")),
@@ -513,9 +541,77 @@ class LinkedInProxy:
                 "expire_at": ms_to_iso(d.get("expireAt")),
                 # Raw keys present in response (for debugging what LinkedIn actually sent)
                 "_raw_keys": sorted(d.keys()) if self.debug else None,
+                # Raw companyDetails + companyDescription for debugging
+                "_raw_company_details": company_details if self.debug else None,
+                "_raw_company_description": company_desc if self.debug else None,
             }
         except Exception as e:
             _log(f"❌ fetch_job_details({job_id}) parse error: {e}")
+            return {"_error": str(e)}
+
+    def fetch_company_details(self, company_urn: str) -> Dict[str, Any]:
+        """
+        Resolve a company URN to name, logo, and URL via Voyager.
+        Accepts formats like:
+            - "urn:li:fs_normalized_company:9318713"
+            - "9318713"
+        """
+        # Extract numeric ID from URN
+        company_id = company_urn.split(":")[-1] if ":" in company_urn else company_urn
+
+        session = self.client.session
+        csrf = session.headers.get("csrf-token")
+        if not csrf:
+            for c in session.cookies:
+                if c.name == "JSESSIONID":
+                    csrf = c.value.replace('"', "")
+                    break
+
+        url = f"https://www.linkedin.com/voyager/api/organization/companies/{company_id}"
+        resp = session.get(
+            url,
+            headers={"csrf-token": csrf, "accept": "application/json"},
+            timeout=20,
+        )
+
+        if resp.status_code != 200:
+            _log(f"⚠️ fetch_company_details({company_id}): HTTP {resp.status_code}")
+            _log(f"⚠️ Body snippet: {resp.text[:500]}")
+            return {"_status": resp.status_code}
+
+        try:
+            d = resp.json()
+
+            # Logo extraction
+            logo_url = None
+            logo_obj = d.get("logo") or {}
+            if isinstance(logo_obj, dict):
+                vector = (
+                        logo_obj.get("image", {}).get("com.linkedin.common.VectorImage")
+                        or logo_obj.get("com.linkedin.common.VectorImage")
+                        or {}
+                )
+                root_url = vector.get("rootUrl", "https://media.licdn.com/dms/image/")
+                artifacts = vector.get("artifacts", [])
+                if artifacts:
+                    best = max(artifacts, key=lambda a: a.get("width", 0))
+                    logo_url = root_url + best.get("fileIdentifyingUrlPathSegment", "")
+
+            return {
+                "company_id": company_id,
+                "company_name": d.get("name") or d.get("universalName"),
+                "company_url": d.get("companyPageUrl") or d.get("url")
+                               or f"https://www.linkedin.com/company/{d.get('universalName', company_id)}/",
+                "company_logo": logo_url,
+                "description": d.get("description"),
+                "industry": d.get("companyIndustries", [{}])[0].get("localizedName") if d.get(
+                    "companyIndustries") else None,
+                "staff_count": d.get("staffCount"),
+                "headquarters": d.get("headquarter", {}).get("city") if d.get("headquarter") else None,
+                "_raw_keys": sorted(d.keys()) if self.debug else None,
+            }
+        except Exception as e:
+            _log(f"❌ fetch_company_details({company_id}) parse error: {e}")
             return {"_error": str(e)}
 
     def fetch_premium_insights(self, job_id: str) -> Dict[str, Any]:
@@ -576,10 +672,9 @@ class LinkedInProxy:
         details = self.fetch_job_details(jid)
 
         # Strip debug-only keys before merging
-        details.pop("_raw_keys", None)
-        details.pop("_raw", None)
-        details.pop("_status", None)
-        details.pop("_error", None)
+        for k in list(details.keys()):
+            if k.startswith("_"):
+                details.pop(k)
 
         # Preserve company from base if details returned "Unknown"
         if details.get("company") == "Unknown" and base_job_dict.get("company") not in [None, "Unknown"]:
@@ -590,6 +685,16 @@ class LinkedInProxy:
             details.pop("location", None)
 
         base_job_dict.update(details)
+
+        # If company is still Unknown but we have a URN, resolve it
+        if base_job_dict.get("company") in [None, "Unknown"] and base_job_dict.get("company_urn"):
+            company_info = self.fetch_company_details(base_job_dict["company_urn"])
+            if company_info.get("company_name"):
+                base_job_dict["company"] = company_info["company_name"]
+            if company_info.get("company_url") and not base_job_dict.get("company_url"):
+                base_job_dict["company_url"] = company_info["company_url"]
+            if company_info.get("company_logo") and not base_job_dict.get("company_logo"):
+                base_job_dict["company_logo"] = company_info["company_logo"]
 
         prem = self.fetch_premium_insights(jid)
         base_job_dict.update(prem)
