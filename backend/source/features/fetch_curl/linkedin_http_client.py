@@ -4,14 +4,13 @@ import sys
 import requests
 import re
 from abc import ABC
-from typing import Dict, Any, Optional, Tuple
-
-from dotenv import load_dotenv
+from typing import Any, Optional, Tuple
+from urllib.parse import quote
 
 from source.core.debug_mode import is_debug
 
 # --- Add project root to path ---
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
@@ -31,13 +30,12 @@ class ParsedResponse:
 # ============================================================
 
 class LinkedInRequest(ABC):
-
     def __init__(self, method: str, url: str, debug: bool = False):
         self.method = method
         self.url = url
         self._headers = {}
         self._body = None
-        self.debug = is_debug()
+        self.debug = debug if debug is not None else is_debug()
 
     def set_headers(self, headers: dict):
         self._headers = headers
@@ -67,7 +65,7 @@ class LinkedInRequest(ABC):
             url=self.url,
             headers=merged_headers,
             json=self._body,
-            timeout=timeout
+            timeout=timeout,
         )
 
         if self.debug:
@@ -80,10 +78,11 @@ class LinkedInRequest(ABC):
 
 
 class VoyagerGraphQLRequest(LinkedInRequest):
-    def __init__(self, base_url: str, query_id: str, variables: str):
+    def __init__(self, base_url: str, query_id: str, variables: str, debug: bool = False):
         separator = "&" if "?" in base_url else "?"
-        final_url = f"{base_url}{separator}variables={variables}&queryId={query_id}"
-        super().__init__("GET", final_url)
+        # variables often contains JSON-like text, so URL-encode it
+        final_url = f"{base_url}{separator}variables={quote(variables, safe='')}&queryId={quote(query_id, safe='')}"
+        super().__init__("GET", final_url, debug=debug)
 
 
 class SduiPaginationRequest(LinkedInRequest):
@@ -93,41 +92,108 @@ class SduiPaginationRequest(LinkedInRequest):
 
 
 # ============================================================
-# LINKEDIN CLIENT (CORRIGIDO)
+# LINKEDIN CLIENT
 # ============================================================
 
 class LinkedInClient:
-
-    def __init__(self, config_name: str):
+    def __init__(self, config_name: str, slim_mode: bool = False):
+        """
+        :param config_name: Nome da configuração no banco de dados (FetchCurl).
+        :param slim_mode: Se True, remove headers e cookies não essenciais para evitar detecção.
+        """
         self.config_name = config_name
+        self.slim_mode = slim_mode
         self.session = requests.Session()
         self.config = self._load_config()
         self.csrf_token = None
 
         if self.config:
-            self.session.headers.update(self.config.get("headers", {}))
+            headers = self.config.get("headers", {})
+
+            # --- LÓGICA SLIM ---
+            if self.slim_mode:
+                headers = self._apply_slim_filtering(headers)
+                if self.debug_mode_active():
+                    print(f"🧹 [LinkedInClient] SLIM MODE ATIVADO. Headers limpos: {list(headers.keys())}")
+
+            # update session headers first
+            self.session.headers.update(headers)
+
+            # then hydrate cookies from Cookie header (if present)
             self._hydrate_cookies_from_header()
+
+            # derive csrf token from JSESSIONID and force it (prevents mismatches)
             self.csrf_token = self._extract_csrf()
+            if self.csrf_token:
+                self.session.headers["csrf-token"] = self.csrf_token
+
+    def debug_mode_active(self):
+        return is_debug()
 
     # ============================================================
-    # 🔥 FIX PRINCIPAL AQUI
+    # 🧹 SLIM MODE FILTER
+    # ============================================================
+
+    def _apply_slim_filtering(self, headers: dict) -> dict:
+        """
+        Implementa uma Allowlist estrita. Remove tudo que não for essencial.
+        """
+        ALLOWED_HEADERS = {
+            "content-type",
+            "csrf-token",
+            "cookie",
+            "referer",
+            "user-agent",
+            "x-li-rsc-stream",
+        }
+
+        ALLOWED_COOKIES = {"li_at", "jsessionid"}
+        allowed_cookies_lower = {c.lower() for c in ALLOWED_COOKIES}
+
+        clean_headers = {}
+
+        for key, value in headers.items():
+            if key.lower() not in ALLOWED_HEADERS:
+                continue
+
+            if key.lower() == "cookie":
+                cookies_list = value.split(";")
+                kept_cookies = []
+
+                for cookie in cookies_list:
+                    if "=" not in cookie:
+                        continue
+                    cookie_name = cookie.split("=")[0].strip()
+                    if cookie_name.lower() in allowed_cookies_lower:
+                        kept_cookies.append(cookie.strip())
+
+                if kept_cookies:
+                    clean_headers[key] = "; ".join(kept_cookies)
+            else:
+                clean_headers[key] = value
+
+        return clean_headers
+
+    # ============================================================
+    # HELPERS
     # ============================================================
 
     def _hydrate_cookies_from_header(self):
         """
-        Se existir header 'Cookie', popula também session.cookies
-        Isso faz session.cookies.get("JSESSIONID") funcionar.
+        Se existir header 'Cookie', popula também session.cookies.
+        Normaliza valores (ex: remove aspas do JSESSIONID) pra evitar mismatch.
         """
         cookie_header = self.session.headers.get("Cookie")
         if not cookie_header:
             return
 
         for part in cookie_header.split(";"):
-            if "=" in part:
-                name, value = part.strip().split("=", 1)
-                self.session.cookies.set(name.strip(), value.strip())
-
-    # ============================================================
+            if "=" not in part:
+                continue
+            name, value = part.strip().split("=", 1)
+            name = name.strip()
+            value = value.strip().strip('"')  # normalize: remove quotes if present
+            self.session.cookies.set(name, value)
 
     def _load_config(self) -> Optional[dict]:
         from database.database_connection import get_db_session
@@ -149,9 +215,6 @@ class LinkedInClient:
             print("❌ Failed to parse headers JSON:", e)
             headers_dict = {}
 
-        # 🔥 NÃO dependemos mais de record.cookies
-        # Se o header já contém Cookie, isso basta
-
         if "Cookie" not in headers_dict:
             print(f"⚠️ Warning: No 'Cookie' header found in config '{self.config_name}'")
 
@@ -159,13 +222,11 @@ class LinkedInClient:
             "base_url": record.base_url,
             "query_id": record.query_id,
             "headers": headers_dict,
-            "referer": record.referer
+            "referer": record.referer,
         }
 
         db.close()
         return config
-
-    # ============================================================
 
     def _extract_csrf(self) -> Optional[str]:
         """
@@ -180,33 +241,35 @@ class LinkedInClient:
         return match.group(1) if match else None
 
     # ============================================================
-
-    def execute(self, request: LinkedInRequest) -> requests.Response:
-        return request.execute(self.session)
-
+    # EXECUTION
     # ============================================================
-    # Opcional: modo parsed (mantido)
-    # ============================================================
+
+    def execute(self, request: LinkedInRequest, timeout=15) -> requests.Response:
+        return request.execute(self.session, timeout=timeout)
 
     def execute_parsed(self, request: LinkedInRequest, timeout=15) -> ParsedResponse:
         raw = request.execute(self.session, timeout=timeout)
         content_type = raw.headers.get("Content-Type", "")
 
         if "application/octet-stream" in content_type:
-            return ParsedResponse("rsc", raw.text)
+            return ParsedResponse("rsc", raw.content.decode("utf-8", errors="replace"))
 
         try:
             return ParsedResponse("voyager", raw.json())
-        except:
+        except Exception:
             return ParsedResponse("voyager", {})
 
 
 # ============================================================
-# LEGACY HELPERS (INALTERADOS)
+# LEGACY HELPERS
 # ============================================================
 
-def get_linkedin_fetch_artefacts() -> Optional[Tuple[requests.Session, Dict[str, Any]]]:
-    client = LinkedInClient('LinkedIn_Saved_Jobs_Scraper')
+def get_linkedin_fetch_artefacts() -> Optional[Tuple[requests.Session, dict]]:
+    """
+    Mantido para retrocompatibilidade.
+    Se quiser ativar o modo slim globalmente aqui, mude para slim_mode=True.
+    """
+    client = LinkedInClient("LinkedIn_Saved_Jobs_Scraper", slim_mode=False)
     if not client.config:
         return None
     return client.session, client.config
