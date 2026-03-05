@@ -126,7 +126,7 @@ def fetch_job(job_id: str, csrf_token: str, cookie: str) -> JobPosting:
 # ============================================
 
 if __name__ == "__main__":
-    JOB_ID = "4378603610"
+    JOB_ID = "4380123063"
 
     CSRF_TOKEN = "ajax:2777072973261931503"
 
