@@ -199,21 +199,21 @@ export const syncAppliedBackfillStream = ({
   onFinish,
   onError,
 }) => {
-  if (!from) throw new Error("Parameter 'from' is required (YYYY-MM)");
-
   const url = `${API_BASE}/job-tracker/sync-applied-backfill-stream?from=${from}`;
   const eventSource = new EventSource(url);
+  let finished = false;
 
   eventSource.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
-
       if (data.type === "progress") onProgress?.(data);
       if (data.type === "finished") {
+        finished = true;
         onFinish?.(data);
         eventSource.close();
       }
       if (data.type === "error") {
+        finished = true;
         onError?.(data);
         eventSource.close();
       }
@@ -223,6 +223,7 @@ export const syncAppliedBackfillStream = ({
   };
 
   eventSource.onerror = (err) => {
+    if (finished) return;
     console.error("SSE error:", err);
     onError?.(err);
     eventSource.close();

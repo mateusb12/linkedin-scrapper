@@ -73,78 +73,96 @@ class AppliedJobsIncrementalSync:
     @staticmethod
     def sync_backfill_stream(cutoff_date):
         db = get_db_session()
-        fetcher = JobTrackerFetcher(debug=False)
+
+        from source.features.get_applied_jobs.linkedin_proxy import LinkedInProxy
+        proxy = LinkedInProxy(debug=False, slim_mode=True)
 
         processed = 0
         inserted = 0
 
         try:
-            result_obj = fetcher.fetch_jobs(stage="applied")
-            jobs_list = result_obj.jobs
+            # Step 1: fast fetch — no enrichment, just IDs + basic info
+            base_jobs = proxy.fetch_latest_applied_candidates(limit=100)
 
-            for job_dto in jobs_list:
+            for base in base_jobs:
                 processed += 1
 
-                applied_str = job_dto.applied_at
-                if not applied_str:
-                    continue
+                # Step 2: cutoff check on base applied_at (if available)
+                applied_str = base.get("applied_at") or base.get("applied_on")
+                if applied_str:
+                    try:
+                        if isinstance(applied_str, str):
+                            applied_dt = datetime.fromisoformat(applied_str)
+                            if applied_dt.tzinfo is None:
+                                from datetime import timezone
+                                applied_dt = applied_dt.replace(tzinfo=timezone.utc)
+                            if cutoff_date.tzinfo is None:
+                                cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
+                            if applied_dt < cutoff_date:
+                                yield AppliedJobsIncrementalSync._event({
+                                    "type": "finished",
+                                    "reason": "cutoff_reached",
+                                    "processed": processed,
+                                    "inserted": inserted
+                                })
+                                return
+                    except (ValueError, TypeError):
+                        pass
 
-                # 1) Cutoff check (antes de qualquer coisa)
-                try:
-                    applied_dt = datetime.fromisoformat(applied_str)
-                    if applied_dt < cutoff_date:
-                        yield AppliedJobsIncrementalSync._event({
-                            "type": "finished",
-                            "reason": "cutoff_reached",
-                            "processed": processed,
-                            "inserted": inserted
-                        })
-                        return
-                except ValueError:
-                    continue
+                # Step 3: enrich THIS job NOW (yields progress immediately after)
+                job_post = proxy.enrich_single_job(base)
 
-                # 2) job_id sempre definido antes de usar
-                job_id = job_dto.job_id
+                job_id = job_post.job_id
                 if not job_id:
                     continue
 
-                # 3) existing sempre definido antes de usar
                 existing = db.query(Job).filter(Job.urn == job_id).first()
                 action = "updated" if existing else "inserted"
 
-                # 4) grava no DB
+                # Capture old values BEFORE updating
+                diff = {}
                 if existing:
-                    AppliedJobsIncrementalSync._update_job(db, existing, job_dto)
-                    db.commit()
+                    old_applicants = existing.applicants or 0
+                    new_applicants = job_post.applicants or 0
+                    if new_applicants != old_applicants:
+                        diff["applicants"] = {
+                            "from": old_applicants,
+                            "to": new_applicants,
+                            "delta": new_applicants - old_applicants
+                        }
+
+                    old_state = existing.job_state
+                    new_state = job_post.job_state
+                    if new_state and new_state != old_state:
+                        diff["job_state"] = {"from": old_state, "to": new_state}
+
+                    old_closed = existing.application_closed
+                    new_closed = job_post.application_closed
+                    if new_closed is not None and new_closed != old_closed:
+                        diff["application_closed"] = {"from": old_closed, "to": new_closed}
+
+                if existing:
+                    AppliedJobsIncrementalSync._update_job(db, existing, job_post)
                 else:
-                    AppliedJobsIncrementalSync._insert_job(db, job_dto)
-                    db.commit()
+                    AppliedJobsIncrementalSync._insert_job(db, job_post)
                     inserted += 1
 
-                # 5) emite evento rico para o frontend/console
+                db.commit()
+
                 yield AppliedJobsIncrementalSync._event({
                     "type": "progress",
                     "action": action,
                     "processed": processed,
                     "inserted": inserted,
-
                     "job_id": job_id,
-                    "title": job_dto.title,
-                    "company": job_dto.company,
-                    "job_state": job_dto.job_state,
-                    "application_closed": job_dto.application_closed,
-                    "applicants": job_dto.applicants,
-                    "remote": job_dto.work_remote_allowed,
+                    "title": job_post.title,
+                    "company": job_post.company,
+                    "job_state": job_post.job_state,
+                    "application_closed": job_post.application_closed,
+                    "applicants": job_post.applicants,
+                    "remote": job_post.work_remote_allowed,
+                    "diff": diff,  # {} if no changes, populated if something changed
                 })
-
-                time.sleep(0.2)
-
-            yield AppliedJobsIncrementalSync._event({
-                "type": "finished",
-                "reason": "completed",
-                "processed": processed,
-                "inserted": inserted
-            })
 
         except Exception as e:
             db.rollback()
@@ -152,7 +170,6 @@ class AppliedJobsIncrementalSync:
                 "type": "error",
                 "message": str(e)
             })
-
         finally:
             db.close()
 

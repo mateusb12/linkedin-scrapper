@@ -19,7 +19,7 @@ from source.features.get_applied_jobs.applied_job_sync_service import JobSyncSer
 from source.features.get_applied_jobs.linkedin_proxy import LinkedInProxy
 
 # Keep old import alive for backfill streaming (not yet refactored)
-from source.features.get_applied_jobs.new_applied_sync_service import (
+from source.features.get_applied_jobs.applied_jobs_livestream_sync_service import (
     AppliedJobsIncrementalSync,
 )
 from source.features.jobs.job_repository import JobRepository
@@ -174,7 +174,6 @@ def sync_applied_jobs():
 
 @job_tracker_bp.route("/sync-applied-backfill-stream", methods=["GET"])
 def sync_applied_backfill_stream():
-    """Deep sync with SSE streaming."""
     from_param = request.args.get("from")
 
     if not from_param:
@@ -185,12 +184,17 @@ def sync_applied_backfill_stream():
     except ValueError:
         return jsonify({"error": "Invalid date format"}), 400
 
-    return Response(
-        stream_with_context(
-            AppliedJobsIncrementalSync.sync_backfill_stream(cutoff_date)
-        ),
+    def generate():
+        yield from AppliedJobsIncrementalSync.sync_backfill_stream(cutoff_date)
+
+    response = Response(
+        stream_with_context(generate()),
         content_type="text/event-stream",
     )
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no"  # kills nginx buffering
+    response.headers["Transfer-Encoding"] = "chunked"  # forces chunk-by-chunk
+    return response
 
 
 @job_tracker_bp.route("/sync-applied-smart", methods=["POST"])
