@@ -616,8 +616,8 @@ class JobTrackerFetcher:
 
         # --- TENTATIVA 2: Fallback via Regex ---
         # Agora vai funcionar porque o JSON acima não "queimou" os IDs sem título
-        if len(results) < limit:
-            print("⚠️ [DEBUG] Completando com Regex...")
+        if len(results) == 0:
+            print("⚠️ [DEBUG] JSON retornou 0. Iniciando VARREDURA DE EMERGÊNCIA (Regex)...")
 
             patterns = [
                 r"web_opp_contacts_(\d+)",
@@ -640,9 +640,8 @@ class JobTrackerFetcher:
                 if len(results) >= limit: break
 
                 if jid in global_seen_ids: continue
-                global_seen_ids.add(jid)  # Agora sim marca como visto
+                global_seen_ids.add(jid)
 
-                # Cria Job Esqueleto (o enricher vai buscar o Título depois)
                 results.append({
                     "job_id": jid,
                     "title": "Carregando...",
@@ -651,6 +650,8 @@ class JobTrackerFetcher:
                     "job_url": f"https://www.linkedin.com/jobs/view/{jid}/",
                     "posted_at": datetime.now(timezone.utc).isoformat()
                 })
+        else:
+            print(f"⏩ [DEBUG] JSON encontrou {len(results)} vagas. Pulando Regex (Performance).")
 
         print(f"🏁 [DEBUG] Total final retornando: {len(results)}")
         print("=" * 60 + "\n")
