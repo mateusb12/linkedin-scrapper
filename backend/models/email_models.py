@@ -1,7 +1,10 @@
 # backend/models/email_models.py
 
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, JSON
+from sqlalchemy.orm import relationship
+
 from models.base_model import Base
+
 
 class Email(Base):
     __tablename__ = 'emails'
@@ -10,6 +13,7 @@ class Email(Base):
 
     # FIX: Changed 'profiles.id' to 'profile.id' (singular)
     profile_id = Column(Integer, ForeignKey('profile.id'))
+    job_urn = Column(String, nullable=True, index=True)
 
     # --- Gmail Identifiers ---
     message_id = Column(String, unique=True, index=True)
