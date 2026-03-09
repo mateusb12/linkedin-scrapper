@@ -514,6 +514,35 @@ export const JobDetailsPanel = ({ job, onClose }) => {
           </section>
 
           <section>
+            {job.lastEmail && (
+              <section>
+                <div className="flex items-center gap-2 mb-4 text-sm font-bold text-purple-400 uppercase tracking-wider">
+                  📩 Recruiter Response
+                </div>
+
+                <div className="bg-purple-950/30 border border-purple-900/50 rounded-xl p-4 space-y-3">
+                  <div className="flex flex-wrap gap-4 text-xs text-gray-400">
+                    <span className="flex items-center gap-1">
+                      <Building size={14} />
+                      {job.lastEmail.sender}
+                    </span>
+
+                    <span className="flex items-center gap-1">
+                      <CalendarIcon size={14} />
+                      {formatCustomDate(job.lastEmail.receivedAt)}
+                    </span>
+                  </div>
+
+                  <div className="text-sm text-purple-300 font-medium">
+                    {job.lastEmail.subject}
+                  </div>
+
+                  <div className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap bg-black/30 border border-gray-800 rounded-lg p-3">
+                    {job.lastEmail.body || job.lastEmail.snippet}
+                  </div>
+                </div>
+              </section>
+            )}
             <div className="flex items-center gap-2 mb-4 text-sm font-bold text-gray-400 uppercase tracking-wider">
               <AlignLeft size={18} className="text-blue-500" /> Descrição da
               Vaga

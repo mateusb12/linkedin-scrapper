@@ -99,6 +99,7 @@ class AppliedJobModel {
           subject: raw.last_email.subject,
           sender: raw.last_email.sender,
           snippet: raw.last_email.snippet,
+          body: raw.last_email.body_text,
           receivedAt: raw.last_email.receivedAt,
         }
       : null;
@@ -218,12 +219,15 @@ export const syncAppliedBackfillStream = ({
   eventSource.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
+
       if (data.type === "progress") onProgress?.(data);
+
       if (data.type === "finished") {
         finished = true;
         onFinish?.(data);
         eventSource.close();
       }
+
       if (data.type === "error") {
         finished = true;
         onError?.(data);

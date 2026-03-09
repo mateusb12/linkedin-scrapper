@@ -43,11 +43,16 @@ class Email(Base):
         return {
             "id": self.id,
             "thread_id": self.thread_id,
+            "job_urn": self.job_urn,
             "folder": self.folder,
+            "category": self.category,
             "sender": self.sender,
             "sender_email": self.sender_email,
+            "recipient": self.recipient,
             "subject": self.subject,
             "snippet": self.snippet,
+            "body_text": self.body_text,
             "receivedAt": self.received_at.isoformat() if self.received_at else None,
-            "isRead": self.is_read
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "isRead": self.is_read,
         }
