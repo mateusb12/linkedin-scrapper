@@ -1,4 +1,3 @@
-# /home/mateus/Desktop/Javascript/linkedin-scrapper/backend/source/features/profile/fetch_linkedin_profile_experiences.py
 
 import json
 import re
@@ -7,16 +6,364 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Any, Dict, Tuple
 
-# IMPORTS
 from source.features.fetch_curl.linkedin_http_client import (
     LinkedInClient,
     SduiPaginationRequest
 )
 
 
-# ===================================================================
-# 1) DATACLASSES
-# ===================================================================
+EMPLOYMENT_TYPE_TOKENS = {
+    "full-time",
+    "part-time",
+    "contract",
+    "temporary",
+    "internship",
+    "freelance",
+    "self-employed",
+    "apprenticeship",
+    "seasonal",
+}
+
+WORK_TYPE_TOKENS = {
+    "remote",
+    "hybrid",
+    "on-site",
+    "onsite",
+}
+
+UI_TEXTS = {
+    "Edit experience",
+    "Reorder experience",
+    "Show more",
+    "Show less",
+    "Expanded",
+    "Add experience",
+    "Add career break",
+    "Skills:",
+    "Skills",
+    "Voltar",
+    "Back",
+    "Open menu",
+    "Close menu",
+    "Add position",
+    "Portfolio",
+    "LinkedIn helped me get this job",
+    "helped me get this job",
+}
+
+TECHNICAL_TOKENS = {
+    "div", "span", "click", "block", "horizontal",
+    "default", "icon", "center", "modal", "screen",
+    "button", "figure", "low", "high", "xmidymid",
+    "slice", "true", "false", "null",
+    "menu", "menuitem", "presentation",
+    "hr", "li", "ul", "img", "image",
+    "sans", "small", "normal", "open",
+    "start", "1x", "more", "fillavailable",
+    "experience",
+}
+
+
+
+def normalize_text(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip())
+
+
+def encode_urn_only(raw_urn: str) -> str:
+    return urllib.parse.quote(raw_urn, safe="")
+
+
+def is_css_blob_token(token: str) -> bool:
+    token = token.strip()
+    return bool(re.fullmatch(r"_?[0-9a-f]{6,}", token, re.IGNORECASE))
+
+
+def is_css_blob_text(text: str) -> bool:
+    """
+    Detects blobs like:
+    'f30498a9 _37677861 _04bda81b _9dfef8a0 _837488b5'
+    """
+    t = normalize_text(text)
+    if not t:
+        return False
+
+    parts = t.split()
+    if len(parts) < 2:
+        return False
+
+    css_like_count = sum(1 for p in parts if is_css_blob_token(p))
+    return css_like_count == len(parts)
+
+
+def is_employment_type(text: str) -> bool:
+    return normalize_text(text).lower() in EMPLOYMENT_TYPE_TOKENS
+
+
+def parse_company_employment_line(text: str) -> Tuple[str, str]:
+    """
+    Example:
+    'Rovester AI · Full-time' -> ('Rovester AI', 'Full-time')
+    """
+    t = normalize_text(text)
+    if "·" not in t:
+        return t, ""
+
+    parts = [p.strip() for p in t.split("·") if p.strip()]
+    if len(parts) < 2:
+        return t, ""
+
+    tail = parts[-1]
+    if is_employment_type(tail):
+        return " · ".join(parts[:-1]), tail
+
+    return t, ""
+
+
+def is_garbage(text: str) -> bool:
+    t = normalize_text(text)
+    if not t:
+        return True
+
+    lowered = t.lower()
+
+    if is_css_blob_text(t):
+        return True
+
+    if t.startswith("_") and is_css_blob_token(t):
+        return True
+
+    if t.startswith("$"):
+        return True
+
+    if re.fullmatch(r"[0-9a-f-]{36}", t, re.IGNORECASE):
+        return True
+
+    if re.fullmatch(r"[0-9a-f]{8,}", t, re.IGNORECASE):
+        return True
+
+    if "proto.sdui" in lowered or "com.linkedin" in lowered:
+        return True
+
+    if "urn:li" in lowered:
+        return True
+
+    if lowered in TECHNICAL_TOKENS:
+        return True
+
+    if t in UI_TEXTS:
+        return True
+
+    if "helped me get this job" in lowered:
+        return True
+
+    if re.match(r"https?://", lowered):
+        return True
+
+    if "licdn.com" in lowered:
+        return True
+
+    if re.search(r"\d+_\d+\/", t):
+        return True
+
+    if "company-logo_" in lowered:
+        return True
+
+    if "profile-treasury-image" in lowered:
+        return True
+
+    if "dms/image" in lowered:
+        return True
+
+    if "?e=" in lowered and "&v=" in lowered and "beta" in lowered:
+        return True
+
+    if len(t) > 300 and " " not in t:
+        return True
+
+    return False
+
+
+def flatten_values(data: Any, text_list: List[str]):
+    """Recursively extracts string values from any JSON structure, preserving order."""
+    if isinstance(data, str):
+        text_list.append(data)
+    elif isinstance(data, list):
+        for item in data:
+            flatten_values(item, text_list)
+    elif isinstance(data, dict):
+        for v in data.values():
+            flatten_values(v, text_list)
+
+
+def clean_text_list(raw_texts: List[str]) -> List[str]:
+    """
+    Cleans the raw stream.
+    We do NOT use a global 'seen' set because the same text may appear in multiple experiences.
+    Only consecutive duplicates are removed.
+    """
+    clean: List[str] = []
+
+    for t in raw_texts:
+        if not isinstance(t, str):
+            continue
+
+        t = normalize_text(t)
+        if len(t) < 2:
+            continue
+
+        if is_garbage(t):
+            continue
+
+        if clean and clean[-1] == t:
+            continue
+
+        clean.append(t)
+
+    return clean
+
+
+def parse_date_row(text: str) -> Optional[Dict[str, str]]:
+    """
+    Detects lines like:
+    'Aug 2025 - Present · 8 mos'
+    'Jun 2024 - Jun 2025 · 1 yr 1 mo'
+    """
+    t = normalize_text(text)
+
+    if not re.search(r"\d{4}", t):
+        return None
+
+    if " - " not in t and " – " not in t and "·" not in t and "Present" not in t:
+        return None
+
+    if len(t) > 60:
+        return None
+
+    parts = [p.strip() for p in t.split("·")]
+    main_date = parts[0] if parts else t
+    duration = parts[1] if len(parts) > 1 else ""
+
+    start = ""
+    end = ""
+
+    if " - " in main_date:
+        d = [x.strip() for x in main_date.split(" - ", 1)]
+        if len(d) == 2:
+            start, end = d
+    elif " – " in main_date:
+        d = [x.strip() for x in main_date.split(" – ", 1)]
+        if len(d) == 2:
+            start, end = d
+    elif "Present" in main_date:
+        start = main_date.replace("Present", "").strip() or "?"
+        end = "Present"
+    else:
+        start = main_date
+
+    return {
+        "start": start.strip(),
+        "end": end.strip(),
+        "duration": duration.strip()
+    }
+
+
+def split_location_work_type(location_line: str) -> Tuple[str, str]:
+    """
+    Example:
+    'Fortaleza, Ceará, Brazil · Hybrid' -> ('Fortaleza, Ceará, Brazil', 'Hybrid')
+    """
+    t = normalize_text(location_line)
+
+    if "·" in t:
+        parts = [p.strip() for p in t.split("·") if p.strip()]
+        if len(parts) >= 2 and parts[-1].lower() in WORK_TYPE_TOKENS:
+            return " · ".join(parts[:-1]), parts[-1]
+
+    return t, ""
+
+
+def is_location_like(text: str) -> bool:
+    t = normalize_text(text)
+    lowered = t.lower()
+
+    if not t:
+        return False
+
+    if len(t) > 80:
+        return False
+
+    if t.startswith(("-", "•")):
+        return False
+
+    if lowered in {"remote", "hybrid", "on-site", "onsite"}:
+        return True
+
+    location_needles = [
+        "brazil", "brasil",
+        "united states",
+        "ceará", "são paulo", "fortaleza",
+    ]
+
+    has_location_word = any(x in lowered for x in location_needles)
+    has_location_shape = ("," in t) or (" · " in t)
+
+    return has_location_word and has_location_shape
+
+
+def looks_like_description(text: str) -> bool:
+    t = normalize_text(text)
+
+    if len(t) < 20:
+        return False
+
+    if "\n" in text:
+        return True
+
+    if t.startswith(("-", "•", "Concluí", "Atuei", "Desenvolvi", "Liderei", "Implementei")):
+        return True
+
+    if len(t) >= 80:
+        return True
+
+    return False
+
+
+def is_valid_title(text: str) -> bool:
+    t = normalize_text(text)
+
+    if not t:
+        return False
+    if is_garbage(t):
+        return False
+    if parse_date_row(t):
+        return False
+    if is_location_like(t):
+        return False
+    if is_employment_type(t):
+        return False
+    if len(t) > 140:
+        return False
+
+    return True
+
+
+def is_valid_company_name(text: str) -> bool:
+    t = normalize_text(text)
+
+    if not t:
+        return False
+    if is_garbage(t):
+        return False
+    if parse_date_row(t):
+        return False
+    if is_location_like(t):
+        return False
+    if len(t) > 140:
+        return False
+
+    return True
+
+
 
 @dataclass
 class Experience:
@@ -30,6 +377,27 @@ class Experience:
     duration: str
     description: str
     skills: List[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        self.title = normalize_text(self.title)
+        self.company_name = normalize_text(self.company_name)
+        self.employment_type = normalize_text(self.employment_type)
+        self.location = normalize_text(self.location)
+        self.work_type = normalize_text(self.work_type)
+        self.start_date = normalize_text(self.start_date)
+        self.end_date = normalize_text(self.end_date)
+        self.duration = normalize_text(self.duration)
+        self.description = self.description.strip()
+        self.skills = [normalize_text(s) for s in self.skills if normalize_text(s)]
+
+        if not is_valid_title(self.title):
+            raise ValueError(f"Invalid experience title: {self.title!r}")
+
+        if self.company_name and not is_valid_company_name(self.company_name):
+            raise ValueError(f"Invalid company name: {self.company_name!r}")
+
+        if not self.start_date:
+            raise ValueError("Missing start_date")
 
     def to_dict(self):
         return {
@@ -46,215 +414,319 @@ class Experience:
         }
 
 
-# ===================================================================
-# 2) HELPERS
-# ===================================================================
 
-def encode_urn_only(raw_urn: str) -> str:
-    return urllib.parse.quote(raw_urn, safe='')
+def write_debug_stream_dump(stream: List[str]):
+    dump_path = Path(__file__).resolve().parent / "debug" / "stream_dump.txt"
+    dump_path.parent.mkdir(parents=True, exist_ok=True)
 
-
-def is_garbage(text: str) -> bool:
-    t = text.strip()
-    if not t:
-        return True
-
-    # CSS classes (_abc123)
-    if t.startswith("_"):
-        return True
-
-    # Template vars ($L1, $undefined)
-    if t.startswith("$"):
-        return True
-
-    # UUID
-    if re.match(r'^[0-9a-f-]{36}$', t):
-        return True
-
-    # Hashes longos
-    if re.match(r'^[0-9a-f]{8,}$', t):
-        return True
-
-    # Namespaces
-    if "proto.sdui" in t or "com.linkedin" in t:
-        return True
-
-    # URNs
-    if "urn:li" in t:
-        return True
-
-    # Tokens técnicos comuns no dump
-    technical_tokens = {
-        "div", "span", "click", "block", "horizontal",
-        "default", "icon", "center", "modal", "screen",
-        "button", "figure", "low", "high", "xMidYMid",
-        "slice", "true", "false", "null",
-        "menu", "menuitem", "presentation",
-        "hr", "li", "ul", "img", "image",
-        "sans", "small", "normal", "open",
-        "start", "1x", "more", "fillavailable",
-        "experience"  # Título da seção
-    }
-    if t.lower() in technical_tokens:
-        return True
-
-    # UI inútil
-    ui_texts = {
-        "Edit experience", "Reorder experience",
-        "Show more", "Show less",
-        "Expanded", "Add experience",
-        "Add career break", "Skills:", "Skills",
-        "Voltar", "Back", "Open menu", "Close menu",
-        "Add position", "Portfolio",
-        "LinkedIn helped me get this job", "helped me get this job"
-    }
-    if t in ui_texts:
-        return True
-
-    if "helped me get this job" in t:
-        return True
-
-    return False
+    with open(dump_path, "w", encoding="utf-8") as f:
+        for idx, s in enumerate(stream):
+            f.write(f"{idx}: {s}\n")
 
 
-def clean_text_list(raw_texts: List[str]) -> List[str]:
-    """
-    Cleans the raw stream.
-    Note: We do NOT use a global 'seen' set here because the same text (e.g. "Remote")
-    might validly appear in multiple different experiences.
-    We only dedupe consecutive duplicates here.
-    """
-    clean = []
-    for t in raw_texts:
-        if not isinstance(t, str):
+def collect_header_candidates(stream: List[str], date_idx: int, window: int = 5) -> List[Tuple[int, str]]:
+    candidates: List[Tuple[int, str]] = []
+    start = max(0, date_idx - window)
+
+    for idx in range(start, date_idx):
+        t = normalize_text(stream[idx])
+
+        if not t:
+            continue
+        if is_garbage(t):
+            continue
+        if parse_date_row(t):
+            continue
+        if is_location_like(t):
+            continue
+        if looks_like_description(t):
             continue
 
-        t = t.strip()
-        if len(t) < 2:
+        if candidates and candidates[-1][1] == t:
             continue
 
-        if not is_garbage(t):
-            # De-dupe consecutive identical lines
-            if clean and clean[-1] == t:
+        candidates.append((idx, t))
+
+    return candidates
+
+
+def resolve_title_company_from_candidates(candidates: List[Tuple[int, str]]) -> Optional[Dict[str, str]]:
+    if not candidates:
+        return None
+
+    company_idx: Optional[int] = None
+    company_name = ""
+    employment_type = ""
+    company_source_line = ""
+
+    for idx, text in reversed(candidates):
+        parsed_company, parsed_employment = parse_company_employment_line(text)
+
+        if parsed_employment and is_valid_company_name(parsed_company):
+            company_idx = idx
+            company_name = parsed_company
+            employment_type = parsed_employment
+            company_source_line = text
+            break
+
+    if company_idx is None:
+        idx, text = candidates[-1]
+        if is_valid_company_name(text):
+            company_idx = idx
+            company_name = text
+            company_source_line = text
+
+    title = ""
+
+    if company_idx is not None:
+        for idx, text in reversed(candidates):
+            if idx >= company_idx:
                 continue
-            clean.append(t)
+            if not is_valid_title(text):
+                continue
+            if text == company_source_line or text == company_name:
+                continue
+            title = text
+            break
 
-    return clean
+    if not title and company_name:
+        title = company_name
 
-
-def flatten_values(data: Any, text_list: List[str]):
-    """Extrai recursivamente apenas VALORES strings de qualquer JSON, preservando ordem."""
-    if isinstance(data, str):
-        text_list.append(data)
-    elif isinstance(data, list):
-        for item in data:
-            flatten_values(item, text_list)
-    elif isinstance(data, dict):
-        for v in data.values():
-            flatten_values(v, text_list)
-
-
-def parse_date_row(text: str) -> Optional[Dict[str, str]]:
-    """
-    Detecta linha de data: 'Aug 2025 - Present · 7 mos' ou 'Jun 2024 - Jun 2025 · 1 yr'
-    """
-    # Deve ter 4 dígitos (ano)
-    if not re.search(r'\d{4}', text):
+    if not title:
         return None
 
-    # Deve ter separador de range ou duração
-    if " - " not in text and " – " not in text and "·" not in text and "Present" not in text:
-        return None
-
-    # Se for muito longo, provavelmente é descrição contendo um ano
-    if len(text) > 60:
-        return None
-
-    parts = text.split("·")
-    main_date = parts[0].strip()
-    duration = parts[1].strip() if len(parts) > 1 else ""
-
-    start, end = "", ""
-
-    if " - " in main_date:
-        d = main_date.split(" - ")
-        start, end = d[0], d[1]
-    elif " – " in main_date:
-        d = main_date.split(" – ")
-        start, end = d[0], d[1]
-    elif "Present" in main_date:
-        start = main_date.replace("Present", "").strip() or "?"
-        end = "Present"
-    else:
-        start = main_date
-
-    return {"start": start.strip(), "end": end.strip(), "duration": duration.strip()}
+    return {
+        "title": title,
+        "company_name": company_name,
+        "employment_type": employment_type,
+    }
 
 
-def split_location_work_type(location_line: str) -> Tuple[str, str]:
+def extract_location_after_date(stream: List[str], date_idx: int) -> Tuple[str, str, int]:
     """
-    Ex: "Fortaleza, Ceará, Brazil · Hybrid" -> ("Fortaleza, Ceará, Brazil", "Hybrid")
+    Returns:
+    (location, work_type, description_start_idx)
     """
-    if "·" in location_line:
-        parts = [p.strip() for p in location_line.split("·") if p.strip()]
-        if len(parts) >= 2:
-            return parts[0], parts[-1]
+    location = ""
+    work_type = ""
+    desc_start_idx = date_idx + 1
 
-    return location_line.strip(), ""
+    max_forward = min(len(stream), date_idx + 4)
+    for idx in range(date_idx + 1, max_forward):
+        text = normalize_text(stream[idx])
+
+        if not text:
+            continue
+        if parse_date_row(text):
+            break
+        if is_location_like(text):
+            location, work_type = split_location_work_type(text)
+            desc_start_idx = idx + 1
+            break
+
+    return location, work_type, desc_start_idx
 
 
-def is_location_like(t: str) -> bool:
-    needles = [
-        "Brazil", "Brasil",
-        "United States",
-        "Remote", "Hybrid", "On-site", "Onsite",
-        "Ceará", "São Paulo", "Fortaleza", "·"
-    ]
-    return any(x in t for x in needles)
+def append_description_part(parts: List[str], text_segment: str):
+    if not text_segment:
+        return
+
+    if text_segment in parts:
+        return
+
+    for existing_part in parts:
+        if text_segment in existing_part:
+            return
+        if existing_part in text_segment:
+            idx_to_replace = parts.index(existing_part)
+            parts[idx_to_replace] = text_segment
+            return
+
+    parts.append(text_segment)
 
 
-def looks_like_description(text: str) -> bool:
-    t = text.strip()
-    if len(t) < 20:  # Descrições costumam ser maiores
+def dedupe_repeated_tail(text: str) -> str:
+    """
+    Fix cases like:
+    'A A'
+    where the second half is an exact repetition of the first.
+    """
+    t = normalize_text(text)
+    words = t.split()
+
+    if len(words) < 8:
+        return t
+
+    half = len(words) // 2
+    left = " ".join(words[:half]).strip()
+    right = " ".join(words[half:]).strip()
+
+    if left == right:
+        return left
+
+    for size in range(min(20, len(words) // 2), 4, -1):
+        suffix1 = " ".join(words[-2 * size:-size]).strip()
+        suffix2 = " ".join(words[-size:]).strip()
+        if suffix1 and suffix1 == suffix2:
+            return " ".join(words[:-size]).strip()
+
+    return t
+
+
+def extract_description(
+        stream: List[str],
+        start_idx: int,
+        end_idx: int,
+        title: str,
+        company_name: str
+) -> str:
+    description_parts: List[str] = []
+
+    skip_values = {
+        normalize_text(title),
+        normalize_text(company_name),
+    }
+
+    for j in range(start_idx, min(end_idx, len(stream))):
+        text_segment = normalize_text(stream[j])
+
+        if not text_segment:
+            continue
+        if text_segment in skip_values:
+            continue
+        if is_garbage(text_segment):
+            continue
+        if parse_date_row(text_segment):
+            continue
+        if is_location_like(text_segment):
+            continue
+        if not looks_like_description(text_segment):
+            continue
+
+        text_segment = dedupe_repeated_tail(text_segment)
+        append_description_part(description_parts, text_segment)
+
+    deduped_parts: List[str] = []
+    seen: set[str] = set()
+
+    for part in description_parts:
+        normalized = normalize_text(part)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped_parts.append(part)
+
+    return "\n\n".join(deduped_parts).strip()
+
+
+def same_experience(a: Experience, b: Experience) -> bool:
+    if a.start_date != b.start_date:
         return False
-    if "\n" in t:
+    if a.end_date != b.end_date:
+        return False
+    if a.duration != b.duration:
+        return False
+
+    a_title = normalize_text(a.title).lower()
+    b_title = normalize_text(b.title).lower()
+    a_company = normalize_text(a.company_name).lower()
+    b_company = normalize_text(b.company_name).lower()
+
+    if a_company and b_company and a_company == b_company:
         return True
-    if t.startswith(("-", "•", "Concluí", "Atuei", "Desenvolvi", "Liderei", "Implementei")):
+    if a_title and b_title and a_title == b_title:
         return True
+    if a_title and b_company and a_title == b_company:
+        return True
+    if b_title and a_company and b_title == a_company:
+        return True
+
     return False
 
 
-# ===================================================================
-# 3) PARSER (VERSÃO GLOBAL STREAM - ROBUST)
-# ===================================================================
+def choose_better_title(current: str, incoming: str) -> str:
+    current = normalize_text(current)
+    incoming = normalize_text(incoming)
+
+    if not current:
+        return incoming
+    if not incoming:
+        return current
+
+    current_company_like = bool(parse_company_employment_line(current)[1])
+    incoming_company_like = bool(parse_company_employment_line(incoming)[1])
+
+    if current_company_like and not incoming_company_like:
+        return incoming
+    if incoming_company_like and not current_company_like:
+        return current
+
+    return incoming if len(incoming) > len(current) else current
+
+
+def choose_better_company(current: str, incoming: str) -> str:
+    current = normalize_text(current)
+    incoming = normalize_text(incoming)
+
+    if not current:
+        return incoming
+    if not incoming:
+        return current
+
+    return incoming if len(incoming) > len(current) else current
+
+
+def merge_experience_lists(experiences: List[Experience]) -> List[Experience]:
+    merged: List[Experience] = []
+
+    for exp in experiences:
+        existing = next((m for m in merged if same_experience(m, exp)), None)
+
+        if not existing:
+            merged.append(exp)
+            continue
+
+        existing.title = choose_better_title(existing.title, exp.title)
+        existing.company_name = choose_better_company(existing.company_name, exp.company_name)
+
+        if not existing.employment_type and exp.employment_type:
+            existing.employment_type = exp.employment_type
+        if not existing.location and exp.location:
+            existing.location = exp.location
+        if not existing.work_type and exp.work_type:
+            existing.work_type = exp.work_type
+
+        if exp.description:
+            if not existing.description:
+                existing.description = exp.description
+            elif exp.description not in existing.description:
+                existing.description = f"{existing.description}\n\n{exp.description}"
+
+    return merged
+
+
 
 def parse_experiences_from_stream(json_data: dict, debug: bool = False) -> List[Experience]:
     """
-    1. Flatten TODO o JSON em uma lista linear de textos.
-    2. Identificar 'Ancoras de Data' (ex: "Aug 2025 - Present").
-    3. Para cada âncora em índice I:
-       - Title = I-2
-       - Company = I-1
-       - Location = I+1 (opcional)
-       - Description = scan from I+1/I+2 until next Anchor-2
+    Strategy:
+    1. Flatten all JSON text into a linear stream
+    2. Find date anchors
+    3. For each date anchor, inspect a small backward window to infer title/company
+    4. Extract optional location and description
+    5. Validate with dataclass
+    6. Merge duplicates
     """
 
-    # 1. Flatten
     raw_texts: List[str] = []
     flatten_values(json_data, raw_texts)
 
-    # 2. Clean
     stream = clean_text_list(raw_texts)
 
     if debug:
         print(f"[DEBUG] Stream size: {len(stream)}")
-        dump_path = Path(__file__).resolve().parent / "debug" / "stream_dump.txt"
-        with open(dump_path, "w", encoding="utf-8") as f:
-            for idx, s in enumerate(stream):
-                f.write(f"{idx}: {s}\n")
+        write_debug_stream_dump(stream)
 
-    # 3. Find Anchors (Dates)
-    anchors = []
+    anchors: List[Tuple[int, Dict[str, str]]] = []
     for idx, text in enumerate(stream):
         parsed_date = parse_date_row(text)
         if parsed_date:
@@ -263,132 +735,98 @@ def parse_experiences_from_stream(json_data: dict, debug: bool = False) -> List[
     results: List[Experience] = []
 
     for i, (date_idx, date_info) in enumerate(anchors):
-        # Safety checks
-        if date_idx < 2:
+        header_candidates = collect_header_candidates(stream, date_idx, window=5)
+        resolved = resolve_title_company_from_candidates(header_candidates)
+
+        if not resolved:
+            if debug:
+                print(f"[DEBUG] Skipping anchor at {date_idx}: could not resolve title/company")
             continue
 
-        # Extract Core Info
-        title = stream[date_idx - 2]
+        title = resolved["title"]
+        company_name = resolved["company_name"]
+        employment_type = resolved["employment_type"]
 
-        company_line = stream[date_idx - 1]
-        company_name = company_line
-        employment_type = ""
-
-        if "·" in company_line:
-            parts = [p.strip() for p in company_line.split("·") if p.strip()]
-            if len(parts) >= 1: company_name = parts[0]
-            if len(parts) >= 2: employment_type = parts[1]
-
-        # Extract Location (Look ahead)
-        location = ""
-        work_type = ""
-        desc_start_idx = date_idx + 1
-
-        if date_idx + 1 < len(stream):
-            possible_loc = stream[date_idx + 1]
-            if is_location_like(possible_loc):
-                location, work_type = split_location_work_type(possible_loc)
-                desc_start_idx = date_idx + 2
-
-        # Extract Description
-        # Desc vai de [desc_start_idx] até [proximo_anchor_idx - 2]
+        location, work_type, desc_start_idx = extract_location_after_date(stream, date_idx)
         next_anchor_idx = anchors[i + 1][0] if i + 1 < len(anchors) else len(stream)
-        # O limite é o título da próxima experiência (index da data - 2)
-        desc_end_idx = next_anchor_idx - 2
 
-        description_parts = []
-        for j in range(desc_start_idx, desc_end_idx):
-            if j >= len(stream): break
-            text_segment = stream[j]
-
-            if looks_like_description(text_segment):
-                # --- SMART DEDUPLICATION ---
-
-                # 1. Exact Match Check
-                if text_segment in description_parts:
-                    continue
-
-                # 2. Substring/Containment Check (Handles "See more" truncation)
-                is_contained = False
-                for existing_part in description_parts:
-                    # If new text is already inside an existing block (or vice versa)
-                    if text_segment in existing_part:
-                        is_contained = True
-                        break
-                    if existing_part in text_segment:
-                        # The new text is a longer version of an existing block.
-                        # Replace the short one with the long one.
-                        idx_to_replace = description_parts.index(existing_part)
-                        description_parts[idx_to_replace] = text_segment
-                        is_contained = True
-                        break
-
-                if is_contained:
-                    continue
-
-                description_parts.append(text_segment)
-
-        full_description = "\n".join(description_parts)
-
-        exp = Experience(
+        full_description = extract_description(
+            stream=stream,
+            start_idx=desc_start_idx,
+            end_idx=next_anchor_idx,
             title=title,
-            company_name=company_name,
-            employment_type=employment_type,
-            location=location,
-            work_type=work_type,
-            start_date=date_info["start"],
-            end_date=date_info["end"],
-            duration=date_info["duration"],
-            description=full_description,
-            skills=[]
+            company_name=company_name
         )
-        results.append(exp)
 
-    return results
+        try:
+            exp = Experience(
+                title=title,
+                company_name=company_name,
+                employment_type=employment_type,
+                location=location,
+                work_type=work_type,
+                start_date=date_info["start"],
+                end_date=date_info["end"],
+                duration=date_info["duration"],
+                description=full_description,
+                skills=[]
+            )
+            results.append(exp)
+
+        except ValueError as e:
+            if debug:
+                print(f"[DEBUG] Invalid experience skipped at anchor {date_idx}: {e}")
+            continue
+
+    return merge_experience_lists(results)
 
 
-# ===================================================================
-# 4) SDUI STREAM PARSER
-# ===================================================================
 
 def parse_sdui_stream_to_dict(raw_text: str) -> dict:
     included_items = []
-    lines = raw_text.split('\n')
+    lines = raw_text.split("\n")
+
     for line in lines:
         if not line.strip():
             continue
-        if ':' in line:
-            _, json_part = line.split(':', 1)
-            try:
-                parsed = json.loads(json_part)
-                if isinstance(parsed, list):
-                    included_items.append(parsed)
-                    # Also append children if list of dicts
-                    for item in parsed:
-                        if isinstance(item, dict):
-                            included_items.append(item)
-                elif isinstance(parsed, dict):
-                    included_items.append(parsed)
-            except json.JSONDecodeError:
-                continue
+
+        if ":" not in line:
+            continue
+
+        _, json_part = line.split(":", 1)
+
+        try:
+            parsed = json.loads(json_part)
+
+            if isinstance(parsed, list):
+                included_items.append(parsed)
+
+                for item in parsed:
+                    if isinstance(item, dict):
+                        included_items.append(item)
+
+            elif isinstance(parsed, dict):
+                included_items.append(parsed)
+
+        except json.JSONDecodeError:
+            continue
+
     return {"data": {}, "included": included_items}
 
 
 def extract_vanity_from_referer(referer: str) -> Optional[str]:
     if not referer:
         return None
+
     match = re.search(r"/in/([^/]+)/", referer)
     return match.group(1) if match else None
 
 
-# ===================================================================
-# 5) MAIN FUNCTION
-# ===================================================================
 
 def fetch_linkedin_profile_experiences(
         profile_urn: str,
         vanity_name: str | None = None,
-        locale: str = "en-US",  # Default seguro
+        locale: str = "en-US",
         start: int = 0,
         count: int = 10,
         debug: bool = True
@@ -402,32 +840,25 @@ def fetch_linkedin_profile_experiences(
     if not client.config:
         return {"ok": False, "error": f"Config '{config_name}' missing", "stage": "config_load"}
 
-    # 1. Resolver Vanity Name
     if not vanity_name:
         vanity_name = extract_vanity_from_referer(client.config.get("referer"))
 
     if not vanity_name:
         return {"ok": False, "error": "No vanity_name found", "stage": "vanity_resolve"}
 
-    # 2. 🔥 IN-MEMORY PATCH: Atualizar Referer Header com o Locale
-    # O LinkedIn valida se o Referer bate com o locale do payload
     current_referer = client.session.headers.get("Referer", "")
     if current_referer:
         if "locale=" in current_referer:
-            # Substitui locale existente (ex: locale=en-US -> locale=pt-BR)
             new_referer = re.sub(r"locale=[a-zA-Z0-9-]+", f"locale={locale}", current_referer)
         else:
-            # Adiciona se não existir
             separator = "&" if "?" in current_referer else "?"
             new_referer = f"{current_referer}{separator}locale={locale}"
 
-        # Aplica a alteração APENAS na sessão atual (em memória)
         client.session.headers["Referer"] = new_referer
 
         if debug:
             print(f"🌍 [Patch] Referer atualizado para: {new_referer}")
 
-    # 3. Preparar Payload (Já injetando a variável locale)
     profile_id = profile_urn.replace("urn:li:fsd_profile:", "").strip()
 
     payload = {
@@ -436,7 +867,7 @@ def fetch_linkedin_profile_experiences(
             "$type": "proto.sdui.actions.requests.RequestedArguments",
             "payload": {
                 "vanityName": vanity_name,
-                "locale": locale,  # <--- Injeção 1
+                "locale": locale,
                 "start": start,
                 "count": count,
                 "profileId": profile_id
@@ -453,7 +884,7 @@ def fetch_linkedin_profile_experiences(
                 "$type": "proto.sdui.actions.requests.RequestedArguments",
                 "payload": {
                     "vanityName": vanity_name,
-                    "locale": locale,  # <--- Injeção 2
+                    "locale": locale,
                     "start": start,
                     "count": count,
                     "profileId": profile_id
@@ -474,7 +905,6 @@ def fetch_linkedin_profile_experiences(
     }
 
     try:
-        # Usa a base_url do config, mas o payload e headers (session) já estão patchados
         req = SduiPaginationRequest(
             base_url=client.config["base_url"],
             body=payload,
@@ -486,7 +916,11 @@ def fetch_linkedin_profile_experiences(
             return {"ok": False, "error": "403 Forbidden", "stage": "linkedin_forbidden"}
 
         if response.status_code != 200:
-            return {"ok": False, "error": f"Status {response.status_code}", "body": response.text[:500]}
+            return {
+                "ok": False,
+                "error": f"Status {response.status_code}",
+                "body": response.text[:500]
+            }
 
         content_type = response.headers.get("Content-Type", "")
         parsed_data: Dict[str, Any] = {}
@@ -498,14 +932,15 @@ def fetch_linkedin_profile_experiences(
         else:
             parsed_data = response.json()
 
-        # Dump para debug (opcional, mantive a lógica existente)
         if debug:
             dump_dir = Path(__file__).resolve().parent / "debug"
-            dump_dir.mkdir(exist_ok=True)
+            dump_dir.mkdir(parents=True, exist_ok=True)
             dump_path = dump_dir / "linkedin_sdui_dump.json"
-            dump_path.write_text(json.dumps(parsed_data, indent=2, ensure_ascii=False), encoding="utf-8")
+            dump_path.write_text(
+                json.dumps(parsed_data, indent=2, ensure_ascii=False),
+                encoding="utf-8"
+            )
 
-        # === Parser ===
         experiences_list = parse_experiences_from_stream(parsed_data, debug=debug)
         experiences_dicts = [exp.to_dict() for exp in experiences_list]
 
@@ -523,8 +958,21 @@ def fetch_linkedin_profile_experiences(
 
 
 if __name__ == "__main__":
-    res = fetch_linkedin_profile_experiences(
-        "urn:li:fsd_profile:ACoAAD016UkBWKGUUWKD7WdA2pTCzevPYoF-xnE",
+    import json
+
+    profile_urn = "urn:li:fsd_profile:ACoAAD016UkBWKGUUWKD7WdA2pTCzevPYoF-xnE"
+    vanity = "mateus-bessa-m"
+    locale = "en-US"
+
+    result = fetch_linkedin_profile_experiences(
+        profile_urn=profile_urn,
+        vanity_name=vanity,
+        locale=locale,
+        start=0,
+        count=10,
         debug=True
     )
-    print(json.dumps(res, indent=2, ensure_ascii=False))
+
+    print("\n===== RESULT =====\n")
+    result_to_print = {k: v for k, v in result.items() if k != "raw"}
+    print(json.dumps(result_to_print, indent=2, ensure_ascii=False))
