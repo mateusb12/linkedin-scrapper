@@ -35,6 +35,7 @@ import {
   JobDetailsPanel,
 } from "./DashboardModals";
 import { useJobDashboard } from "./hooks/useJobDashboard.js";
+import { useToast } from "../toast/Toast.jsx";
 
 ChartJS.register(
   ArcElement,
@@ -52,7 +53,6 @@ export const JobDashboard = () => {
   const [isBackfillOpen, setIsBackfillOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState(null);
   const [selectedFailure, setSelectedFailure] = useState(null);
-
   const { stats, tables, loading, controls, actions } = useJobDashboard();
 
   if (loading.stats && !stats.allRaw.length) {

@@ -12,6 +12,7 @@ import {
   processCurrentFormData,
   processHistoryData,
 } from "../utils/dashboardUtils.js";
+import { useToast } from "../../toast/Toast.jsx";
 
 export const useJobDashboard = () => {
   const [page, setPage] = useState(1);
@@ -19,6 +20,7 @@ export const useJobDashboard = () => {
   const [historyPeriod, setHistoryPeriod] = useState("daily");
   const [insightsTimeRange, setInsightsTimeRange] = useState("all_time");
   const [isSyncing, setIsSyncing] = useState(false);
+  const toast = useToast();
 
   const {
     data: allJobsData,
@@ -91,6 +93,7 @@ export const useJobDashboard = () => {
       await Promise.all([refetchStats(), refetchTable(), refetchFailures()]);
     } catch (error) {
       console.error("Cross-check failed", error);
+      toast.error(error?.response?.data?.error || "Cross-check failed");
     } finally {
       setIsSyncing(false);
     }
@@ -109,6 +112,11 @@ export const useJobDashboard = () => {
       }
     } catch (error) {
       console.error("Sync failed", error);
+
+      const message =
+        error?.response?.data?.error || error?.message || "Failed to sync data";
+
+      toast.error(message);
     } finally {
       setIsSyncing(false);
     }

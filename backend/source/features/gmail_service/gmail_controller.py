@@ -14,6 +14,7 @@ from models.job_models import Job, Company
 
 gmail_bp = Blueprint("gmail", __name__, url_prefix="/emails")
 
+
 # --- Helpers ---
 
 def decode_mime_words(s):
@@ -30,6 +31,7 @@ def decode_mime_words(s):
             text_parts.append(str(content))
     return "".join(text_parts)
 
+
 def get_body_text(msg):
     body = ""
     if msg.is_multipart():
@@ -38,13 +40,16 @@ def get_body_text(msg):
                 try:
                     payload = part.get_payload(decode=True)
                     if payload: body = payload.decode(errors='ignore')
-                except: pass
+                except:
+                    pass
     else:
         try:
             payload = msg.get_payload(decode=True)
             if payload: body = payload.decode(errors='ignore')
-        except: pass
+        except:
+            pass
     return body if body else "No readable content."
+
 
 def parse_email_address(raw_header):
     if not raw_header: return "", ""
@@ -53,6 +58,7 @@ def parse_email_address(raw_header):
     if "<" in clean_header and ">" in clean_header:
         email_only = clean_header.split("<")[-1].strip(">")
     return clean_header, email_only
+
 
 # --- Reconciliation Logic ---
 
@@ -87,8 +93,10 @@ def _auto_reconcile_job(session, email_obj):
         # Heuristic: The shorter part is likely the company, or the 2nd part.
         # Check if group 2 looks like a company (no "Senior", "Developer" keywords)
         p1, p2 = match_pipe.group(1).strip(), match_pipe.group(2).strip()
-        if len(p2) < len(p1): extracted_company = p2
-        else: extracted_company = p1 # Fallback
+        if len(p2) < len(p1):
+            extracted_company = p2
+        else:
+            extracted_company = p1  # Fallback
     elif match_update:
         extracted_company = match_update.group(1).strip()
 
@@ -97,7 +105,7 @@ def _auto_reconcile_job(session, email_obj):
         # "PDtec | Uma..." -> "PDtec"
         # "BeyondRisk AI-6" -> "BeyondRisk AI"
         extracted_company = extracted_company.split('|')[0].split('(')[0].split('\n')[0].strip()
-        extracted_company = re.sub(r'[-\d]+$', '', extracted_company).strip() # Remove trailing " -6"
+        extracted_company = re.sub(r'[-\d]+$', '', extracted_company).strip()  # Remove trailing " -6"
         if extracted_company.endswith('.'): extracted_company = extracted_company[:-1]
 
         print(f"   -> Extracted Company: '{extracted_company}'")
@@ -153,6 +161,7 @@ def _auto_reconcile_job(session, email_obj):
 
     return False
 
+
 # --- Core Logic & Endpoints (Same as before) ---
 
 def _perform_gmail_sync(session, profile, target_label):
@@ -181,8 +190,10 @@ def _perform_gmail_sync(session, profile, target_label):
 
         subject = decode_mime_words(msg["Subject"])
         sender_full, sender_email = parse_email_address(msg["From"])
-        try: received_dt = parsedate_to_datetime(msg["Date"])
-        except: received_dt = datetime.now()
+        try:
+            received_dt = parsedate_to_datetime(msg["Date"])
+        except:
+            received_dt = datetime.now()
 
         full_body = get_body_text(msg)
 
@@ -212,21 +223,69 @@ def _perform_gmail_sync(session, profile, target_label):
     mail.logout()
     return synced_count, 0
 
+
 @gmail_bp.route("/sync", methods=["POST"])
 def sync_emails_endpoint():
     session = get_db_session()
-    try:
-        data = request.get_json() or {}
-        target_label = data.get("label", "Job fails")
-        profile = session.query(Profile).first()
-        if not profile: return jsonify({"error": "No profile"}), 400
 
+    try:
+        data = request.get_json(silent=True) or {}
+        target_label = (data.get("label") or "Job fails").strip()
+
+        # --- Validate profile ---
+        profile = session.query(Profile).first()
+        if not profile:
+            return jsonify({
+                "error": "Profile not configured"
+            }), 400
+
+        if not profile.email:
+            return jsonify({
+                "error": "Profile email is missing"
+            }), 400
+
+        if not profile.email_app_password:
+            return jsonify({
+                "error": "Gmail app password not configured"
+            }), 400
+
+        # --- Execute sync ---
         synced, _ = _perform_gmail_sync(session, profile, target_label)
-        return jsonify({"message": f"Synced {synced} emails"}), 200
+
+        return jsonify({
+            "message": f"Synced {synced} emails",
+            "label": target_label
+        }), 200
+
+    except imaplib.IMAP4.error as e:
+        # Authentication or mailbox errors
+        print("\n🔥 IMAP ERROR")
+        import traceback
+        traceback.print_exc()
+
+        return jsonify({
+            "error": "Gmail authentication failed"
+        }), 500
+
+    except ValueError as e:
+        # Controlled application errors
+        return jsonify({
+            "error": str(e)
+        }), 400
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        # Unexpected errors
+        print("\n🔥 UNEXPECTED ERROR DURING EMAIL SYNC")
+        import traceback
+        traceback.print_exc()
+
+        return jsonify({
+            "error": "Internal server error during email sync"
+        }), 500
+
     finally:
         session.close()
+
 
 @gmail_bp.route("/reconcile-backlog", methods=["GET"])
 def reconcile_backlog():
@@ -241,6 +300,7 @@ def reconcile_backlog():
         return jsonify({"processed": len(emails), "updated": updated}), 200
     finally:
         session.close()
+
 
 @gmail_bp.route("/", methods=["GET"])
 def get_stored_emails():
