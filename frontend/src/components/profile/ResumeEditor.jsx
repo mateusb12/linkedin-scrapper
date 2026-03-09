@@ -9,6 +9,36 @@ import {
   FileJson,
 } from "lucide-react";
 
+const parseTimelineValue = (value) => {
+  if (!value) return -Infinity;
+
+  const normalized = String(value).trim().toLowerCase();
+
+  if (["present", "current", "now"].includes(normalized)) {
+    return Infinity;
+  }
+
+  const match = normalized.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return -Infinity;
+
+  const [, year, month] = match;
+  return Number(year) * 100 + Number(month);
+};
+
+const sortExperiencesByTimeline = (experiences = []) => {
+  return [...experiences].sort((a, b) => {
+    const endDiff =
+      parseTimelineValue(b.end_date) - parseTimelineValue(a.end_date);
+    if (endDiff !== 0) return endDiff;
+
+    const startDiff =
+      parseTimelineValue(b.start_date) - parseTimelineValue(a.start_date);
+    if (startDiff !== 0) return startDiff;
+
+    return String(b.id || "").localeCompare(String(a.id || ""));
+  });
+};
+
 const palette = {
   bg: {
     card: "bg-gray-800",
@@ -296,20 +326,23 @@ const ResumeEditor = ({
       highlights: [],
       stack: [],
     };
-    updateResumeField("experience", [
-      ...(selectedResume.experience || []),
-      newExp,
-    ]);
+
+    updateResumeField(
+      "experience",
+      sortExperiencesByTimeline([...(selectedResume.experience || []), newExp]),
+    );
   };
   const updateExperience = (index, field, value) => {
     const exps = [...(selectedResume.experience || [])];
     exps[index] = { ...exps[index], [field]: value };
-    updateResumeField("experience", exps);
+
+    updateResumeField("experience", sortExperiencesByTimeline(exps));
   };
   const removeExperience = (index) => {
     const exps = [...(selectedResume.experience || [])];
     exps.splice(index, 1);
-    updateResumeField("experience", exps);
+
+    updateResumeField("experience", sortExperiencesByTimeline(exps));
   };
 
   const addProject = () => {
@@ -573,7 +606,7 @@ const ResumeEditor = ({
             <div className="space-y-4">
               {(selectedResume.experience || []).map((exp, index) => (
                 <div
-                  key={index}
+                  key={exp.id || index}
                   className={`${palette.bg.nestedCard} p-5 rounded-lg border ${palette.border.secondary} relative group`}
                 >
                   <button
