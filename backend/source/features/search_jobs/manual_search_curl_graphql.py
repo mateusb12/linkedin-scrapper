@@ -13,7 +13,35 @@ import json
 import gzip
 import urllib.request
 import urllib.error
-from typing import Any
+from collections import Counter
+from dataclasses import dataclass
+from typing import Any, Optional
+
+
+@dataclass
+class LinkedInJob:
+    # --- Core Job Information ---
+    job_id: str  # Extracted from jobPostingUrn
+    title: Optional[str] = None
+    description_snippet: Optional[str] = None
+
+    # --- Company & Location ---
+    company_name: Optional[str] = None
+    location: Optional[str] = None
+    company_logo_url: Optional[str] = None
+
+    # --- Insights / Metadata ---
+    workplace_type: Optional[str] = None  # Remote / Hybrid / On-site
+    employment_type: Optional[str] = None  # Full-time / Contract etc
+    promoted_status: Optional[str] = None  # Promoted / Skill match etc
+
+    # --- Apply / Interaction ---
+    apply_method: Optional[str] = None  # "easy_apply" or "external"
+    company_apply_url: Optional[str] = None  # External apply link if exists
+
+    # --- Timing ---
+    posted_time: Optional[str] = None  # "1 week ago"
+
 
 # ---------------------------------------------------------------------------
 # SESSION CONSTANTS (⚠️ THESE EXPIRE FREQUENTLY)
@@ -180,6 +208,17 @@ def fetch_raw() -> dict:
 # Diagnostic helpers
 # ---------------------------------------------------------------------------
 
+def _json_preview(obj: Any, max_chars: int = 1200) -> str:
+    try:
+        text = json.dumps(obj, indent=2, ensure_ascii=False)
+    except Exception:
+        text = repr(obj)
+
+    if len(text) > max_chars:
+        return text[:max_chars] + "\n... [truncated]"
+    return text
+
+
 def _type_summary(obj: Any, depth: int = 0, max_depth: int = 3) -> str:
     indent = "  " * depth
 
@@ -188,7 +227,6 @@ def _type_summary(obj: Any, depth: int = 0, max_depth: int = 3) -> str:
             return f"{{dict, {len(obj)} keys: {list(obj.keys())[:8]}}}"
 
         lines = [f"dict ({len(obj)} keys):"]
-
         for k, v in list(obj.items())[:15]:
             lines.append(
                 f"{indent}  {k!r}: {_type_summary(v, depth + 1, max_depth)}"
@@ -199,7 +237,7 @@ def _type_summary(obj: Any, depth: int = 0, max_depth: int = 3) -> str:
 
         return "\n".join(lines)
 
-    elif isinstance(obj, list):
+    if isinstance(obj, list):
         if not obj:
             return "[] (empty list)"
 
@@ -210,18 +248,385 @@ def _type_summary(obj: Any, depth: int = 0, max_depth: int = 3) -> str:
             )
 
         sample = _type_summary(obj[0], depth + 1, max_depth)
-
         return (
             f"list ({len(obj)} items), first item:\n"
             f"{indent}  {sample}"
         )
 
-    elif isinstance(obj, str):
-        preview = obj[:80].replace("\n", "\\n")
+    if isinstance(obj, str):
+        preview = obj[:120].replace("\n", "\\n")
         return f"str({len(obj)}): {preview!r}"
 
+    return f"{type(obj).__name__}: {str(obj)[:80]}"
+
+
+def _walk(obj: Any, path: str = "$"):
+    yield path, obj
+
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from _walk(v, f"{path}.{k}")
+    elif isinstance(obj, list):
+        # cap list traversal a bit so console debug doesn't explode
+        for i, v in enumerate(obj[:100]):
+            yield from _walk(v, f"{path}[{i}]")
+
+
+def _extract_text(value: Any, max_parts: int = 8) -> str | None:
+    parts: list[str] = []
+
+    def rec(v: Any):
+        if len(parts) >= max_parts:
+            return
+
+        if isinstance(v, str):
+            text = " ".join(v.split())
+            if text and text not in parts:
+                parts.append(text)
+            return
+
+        if isinstance(v, dict):
+            # preferred text-like keys first
+            for key in (
+                    "text",
+                    "rawText",
+                    "formattedText",
+                    "accessibilityText",
+                    "title",
+                    "name",
+                    "companyName",
+                    "subtitle",
+                    "description",
+            ):
+                if key in v:
+                    rec(v[key])
+                    if len(parts) >= max_parts:
+                        return
+
+            for _, sub in list(v.items())[:10]:
+                rec(sub)
+                if len(parts) >= max_parts:
+                    return
+            return
+
+        if isinstance(v, list):
+            for sub in v[:8]:
+                rec(sub)
+                if len(parts) >= max_parts:
+                    return
+
+    rec(value)
+
+    if not parts:
+        return None
+
+    joined = " | ".join(parts)
+    if len(joined) > 1000:
+        joined = joined[:1000] + "..."
+    return joined
+
+
+def _find_first_text_for_keys(obj: Any, target_keys: list[str]) -> str | None:
+    wanted = {k.lower() for k in target_keys}
+
+    for _, node in _walk(obj):
+        if not isinstance(node, dict):
+            continue
+
+        for k, v in node.items():
+            if str(k).lower() in wanted:
+                text = _extract_text(v)
+                if text:
+                    return text
+
+    return None
+
+
+def _find_key_matches(obj: Any, keywords: list[str], max_results: int = 20):
+    keywords = [k.lower() for k in keywords]
+    matches = []
+
+    for path, node in _walk(obj):
+        if not isinstance(node, dict):
+            continue
+
+        hit_keys = [
+            str(k) for k in node.keys()
+            if any(word in str(k).lower() for word in keywords)
+        ]
+
+        if hit_keys:
+            matches.append((path, hit_keys, node))
+            if len(matches) >= max_results:
+                break
+
+    return matches
+
+
+def _entity_type(node: dict) -> str:
+    return (
+            node.get("$type")
+            or node.get("entityType")
+            or node.get("type")
+            or "__unknown__"
+    )
+
+
+def _collect_entities(resp: dict) -> list[tuple[str, dict]]:
+    entities: list[tuple[str, dict]] = []
+
+    included = resp.get("included")
+    if isinstance(included, list):
+        for i, item in enumerate(included):
+            if isinstance(item, dict):
+                entities.append((f"$.included[{i}]", item))
+
+    data_root = resp.get("data")
+    if isinstance(data_root, dict):
+        for k, v in data_root.items():
+            if isinstance(v, dict):
+                entities.append((f"$.data.{k}", v))
+            elif isinstance(v, list):
+                for i, item in enumerate(v):
+                    if isinstance(item, dict):
+                        entities.append((f"$.data.{k}[{i}]", item))
+
+    return entities
+
+
+def _extract_job_candidates(entities: list[tuple[str, dict]], max_results: int = 10):
+    results = []
+    seen = set()
+
+    for path, node in entities:
+        blob = _json_preview(node, max_chars=4000).lower()
+
+        if not any(
+                term in blob
+                for term in (
+                        "description",
+                        "jobposting",
+                        "jobtitle",
+                        "companyname",
+                        "formatteddescription",
+                        "jobpostingcard",
+                )
+        ):
+            continue
+
+        urn = (
+                _extract_text(node.get("entityUrn"))
+                or _extract_text(node.get("trackingUrn"))
+                or _find_first_text_for_keys(node, ["entityUrn", "trackingUrn"])
+        )
+
+        title = (
+                _extract_text(node.get("title"))
+                or _extract_text(node.get("jobTitle"))
+                or _find_first_text_for_keys(node, ["title", "jobTitle", "listedAt"])
+        )
+
+        company = (
+                _extract_text(node.get("companyName"))
+                or _extract_text(node.get("company"))
+                or _extract_text(node.get("subtitle"))
+                or _find_first_text_for_keys(node, ["companyName", "company", "subtitle"])
+        )
+
+        description = (
+                _extract_text(node.get("description"))
+                or _extract_text(node.get("formattedDescription"))
+                or _extract_text(node.get("jobPostingDescription"))
+                or _find_first_text_for_keys(
+            node,
+            [
+                "description",
+                "formattedDescription",
+                "jobPostingDescription",
+                "descriptionText",
+            ],
+        )
+        )
+
+        entity_type = _entity_type(node)
+
+        signature = (urn, title, company, description[:120] if description else None)
+        if signature in seen:
+            continue
+        seen.add(signature)
+
+        if title or company or description:
+            results.append(
+                {
+                    "path": path,
+                    "type": entity_type,
+                    "urn": urn,
+                    "title": title,
+                    "company": company,
+                    "description": description,
+                }
+            )
+
+        if len(results) >= max_results:
+            break
+
+    return results
+
+
+def inspect_response(resp: dict):
+    print("\n" + "=" * 80)
+    print("RESPONSE SHAPE")
+    print("=" * 80)
+
+    print("Top-level keys:", list(resp.keys()))
+
+    if "meta" in resp:
+        print("\nmeta summary:")
+        print(_type_summary(resp["meta"], max_depth=2))
+
+    if "data" in resp:
+        print("\ndata summary:")
+        print(_type_summary(resp["data"], max_depth=2))
+        if isinstance(resp["data"], dict):
+            print("data keys:", list(resp["data"].keys())[:30])
+
+    if "included" in resp:
+        included = resp["included"]
+        print("\nincluded summary:")
+        print(_type_summary(included, max_depth=2))
+        if isinstance(included, list):
+            print(f"included count: {len(included)}")
+
+    entities = _collect_entities(resp)
+
+    print("\n" + "=" * 80)
+    print("ENTITY TYPE COUNTS")
+    print("=" * 80)
+
+    type_counts = Counter(
+        _entity_type(node)
+        for _, node in entities
+    )
+
+    if type_counts:
+        for entity_type, count in type_counts.most_common(20):
+            print(f"{count:>4}  {entity_type}")
     else:
-        return f"{type(obj).__name__}: {str(obj)[:60]}"
+        print("No dict-like entities found.")
+
+    print("\n" + "=" * 80)
+    print("LIKELY INTERESTING NODES (keys containing description/title/company/job)")
+    print("=" * 80)
+
+    matches = _find_key_matches(
+        resp,
+        keywords=["description", "title", "company", "job"],
+        max_results=15,
+    )
+
+    if not matches:
+        print("No obvious matching keys found.")
+    else:
+        for idx, (path, hit_keys, node) in enumerate(matches, start=1):
+            print(f"\n[{idx}] PATH: {path}")
+            print("Matching keys:", hit_keys)
+            print(_json_preview(node, max_chars=1000))
+
+    print("\n" + "=" * 80)
+    print("BEST-EFFORT PARSED JOB CANDIDATES")
+    print("=" * 80)
+
+    candidates = _extract_job_candidates(entities, max_results=10)
+
+    if not candidates:
+        print("No job-like entities were parsed.")
+    else:
+        for idx, item in enumerate(candidates, start=1):
+            print(f"\n[{idx}] {item['path']}")
+            print(f"Type:        {item['type']}")
+            print(f"URN:         {item['urn'] or '-'}")
+            print(f"Title:       {item['title'] or '-'}")
+            print(f"Company:     {item['company'] or '-'}")
+            print(f"Description: {(item['description'] or '-')[:800]}")
+
+    print("\n" + "=" * 80)
+    print("RAW ROOT SNIPPET")
+    print("=" * 80)
+    print(_json_preview(resp, max_chars=1500))
+
+
+def parse_linkedin_graphql(response_json):
+    """
+    Parses the normalized LinkedIn GraphQL response into a clean list of jobs.
+    """
+    included = response_json.get("included", [])
+
+    # 1. CREATE LOOKUP TABLE (Resolves 'URN' pointers)
+    urn_map = {}
+    for item in included:
+        urn = item.get("entityUrn") or item.get("urn")
+        if urn:
+            urn_map[urn] = item
+
+    results = []
+
+    # 2. EXTRACT EXACTLY 'JobPosting'
+    for item in included:
+        entity_type = item.get("$type", "")
+
+        # STRICT MATCH: Fixes the 46 duplicates/empty rows issue
+        if entity_type == "com.linkedin.voyager.dash.jobs.JobPosting":
+
+            # --- 1. TITLE ---
+            title = item.get("title", "Unknown Title")
+
+            # --- 2. COMPANY ---
+            company_name = "Unknown Company"
+
+            # Check direct string fields first
+            if item.get("companyName"):
+                company_name = item["companyName"]
+            elif "companyDetails" in item:
+                cd = item["companyDetails"]
+
+                # Check if it's a nested dictionary
+                if isinstance(cd.get("company"), dict) and cd["company"].get("name"):
+                    company_name = cd["company"]["name"]
+                else:
+                    # Follow URN pointers like '*company' or '*companyResolutionResult'
+                    for key, val in cd.items():
+                        if key.startswith("*") and isinstance(val, str) and val in urn_map:
+                            resolved = urn_map[val]
+                            if resolved.get("name"):
+                                company_name = resolved["name"]
+                                break
+
+            # --- 3. DESCRIPTION ---
+            description_text = ""
+            desc_urn = item.get("*description")
+
+            if desc_urn and desc_urn in urn_map:
+                desc_obj = urn_map[desc_urn]
+
+                # Depending on LinkedIn's A/B testing, text is stored differently
+                desc_val = desc_obj.get("description") or desc_obj.get("text")
+
+                if isinstance(desc_val, str):
+                    description_text = desc_val
+                elif isinstance(desc_val, dict):
+                    description_text = desc_val.get("text", "") or desc_val.get("rawText", "")
+
+            # --- BUILD RESULT ---
+            job = {
+                "title": title,
+                "company": company_name,
+                "urn": item.get("entityUrn"),
+                "description_snippet": description_text[:100].replace('\n', ' ') + "...",
+                "full_description": description_text
+            }
+            results.append(job)
+
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +654,14 @@ if __name__ == "__main__":
 
     print("\nTop-level keys:", list(data.keys()))
 
-    with open("/tmp/linkedin_graphql_response.json", "w") as fh:
+    clean_jobs = parse_linkedin_graphql(data)
+    print(f"\nSuccessfully extracted {len(clean_jobs)} structured jobs:")
+    for job in clean_jobs:
+        print(f"- {job['title']} at {job['company']}")
+
+    with open("/tmp/linkedin_graphql_response.json", "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2, ensure_ascii=False)
 
     print("\nSaved full response to /tmp/linkedin_graphql_response.json")
+
+    inspect_response(data)
