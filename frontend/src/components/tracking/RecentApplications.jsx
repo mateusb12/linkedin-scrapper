@@ -167,30 +167,54 @@ const CompetitionRichBadge = ({ applicants, velocity }) => {
   );
 };
 
-const StatusRichBadge = ({ state, closed }) => {
-  if (closed) {
+const ApplicationStatusBadge = ({ status }) => {
+  const base =
+    "inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border transition";
+
+  if (status === "Refused") {
     return (
-      <span className="flex items-center gap-1.5 text-xs font-bold text-red-400 bg-red-900/20 px-3 py-1.5 rounded-full border border-red-900/30">
-        <Ban size={12} /> CLOSED
+      <span
+        className={`${base} text-red-400 bg-red-500/10 border-red-500/30 shadow-[0_0_6px_rgba(239,68,68,0.2)]`}
+      >
+        <Ban size={12} /> REFUSED
       </span>
     );
   }
-  if (state === "SUSPENDED") {
+
+  if (status === "Accepted") {
     return (
-      <span className="flex items-center gap-1.5 text-xs font-bold text-orange-400 bg-orange-900/20 px-3 py-1.5 rounded-full border border-orange-900/30">
-        <AlertTriangle size={12} /> PAUSED
+      <span
+        className={`${base} text-green-400 bg-green-500/10 border-green-500/30 shadow-[0_0_6px_rgba(34,197,94,0.2)]`}
+      >
+        <CheckCircle2 size={12} /> ACCEPTED
       </span>
     );
   }
-  if (state === "LISTED") {
+
+  if (status === "Waiting") {
     return (
-      <span className="flex items-center gap-1.5 text-xs font-bold text-green-400 bg-green-900/20 px-3 py-1.5 rounded-full border border-green-900/30">
-        <CheckCircle2 size={12} /> ACTIVE
+      <span
+        className={`${base} text-yellow-400 bg-yellow-500/10 border-yellow-500/30 shadow-[0_0_6px_rgba(234,179,8,0.2)]`}
+      >
+        <Clock size={12} /> WAITING
       </span>
     );
   }
+
+  if (status === "Applied") {
+    return (
+      <span
+        className={`${base} text-blue-400 bg-blue-500/10 border-blue-500/30 shadow-[0_0_6px_rgba(59,130,246,0.2)]`}
+      >
+        <Briefcase size={12} /> APPLIED
+      </span>
+    );
+  }
+
   return (
-    <span className="text-gray-400 text-xs font-medium px-2">{state}</span>
+    <span className={`${base} text-gray-400 bg-gray-800 border-gray-700`}>
+      {status}
+    </span>
   );
 };
 
@@ -526,10 +550,7 @@ const RecentApplications = ({ onSelectJob }) => {
                   </td>
 
                   <td className="px-6 py-5 align-top text-center">
-                    <StatusRichBadge
-                      state={job.jobState}
-                      closed={job.applicationClosed}
-                    />
+                    <ApplicationStatusBadge status={job.applicationStatus} />
                   </td>
 
                   <td className="px-6 py-5 align-middle text-right">

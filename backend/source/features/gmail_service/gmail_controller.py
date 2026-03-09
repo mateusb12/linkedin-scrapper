@@ -527,13 +527,19 @@ def sync_emails_endpoint():
         session.close()
 
 
-@gmail_bp.route("/reconcile-backlog", methods=["GET"])
+@gmail_bp.route("/reconcile-backlog", methods=["POST"])
 def reconcile_backlog():
     session = get_db_session()
 
     try:
-        emails = session.query(Email).filter(Email.folder == "Job fails").all()
-        print(f"\n[Backlog] Processing {len(emails)} emails...")
+
+        emails = session.query(Email).filter(
+            Email.folder == "Job fails",
+            Email.job_urn.is_(None)
+        ).all()
+
+        print(f"\n[Backlog] Processing {len(emails)} unmatched emails")
+
         updated = 0
 
         for em in emails:
@@ -542,12 +548,10 @@ def reconcile_backlog():
 
         session.commit()
 
-        return jsonify(
-            {
-                "processed": len(emails),
-                "updated": updated,
-            }
-        ), 200
+        return jsonify({
+            "processed": len(emails),
+            "updated": updated
+        })
 
     finally:
         session.close()
