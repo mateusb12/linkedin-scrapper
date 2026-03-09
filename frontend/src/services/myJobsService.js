@@ -75,6 +75,7 @@ class AppliedJobModel {
       raw.listed_at ||
       raw.posted_date_text ||
       null;
+
     this.expireAt = raw.expire_at || null;
 
     this.applicationStatus = raw.application_status || "Waiting";
@@ -90,6 +91,17 @@ class AppliedJobModel {
 
     this.premiumTitle = raw.premium_title || "";
     this.premiumDescription = raw.premium_description || "";
+
+    this.emails = raw.emails || [];
+
+    this.lastEmail = raw.last_email
+      ? {
+          subject: raw.last_email.subject,
+          sender: raw.last_email.sender,
+          snippet: raw.last_email.snippet,
+          receivedAt: raw.last_email.receivedAt,
+        }
+      : null;
   }
 
   static fromApiArray(rawJobs) {

@@ -13,10 +13,13 @@ Rules:
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Set
+
+from sqlalchemy.orm import joinedload
 
 from database.database_connection import get_db_session
 from models.job_models import Job, Company
+from models.email_models import Email
 
 
 class JobRepository:
@@ -28,23 +31,73 @@ class JobRepository:
 
     @staticmethod
     def get_applied_jobs() -> List[dict]:
-        """Return all applied jobs ordered by applied_on desc."""
+        """
+        Return all applied jobs ordered by applied_on desc.
+
+        Each job will include:
+            - company
+            - emails (max 5 newest)
+            - last_email
+        """
+
         db = get_db_session()
+
         try:
             jobs = (
                 db.query(Job)
+                .options(joinedload(Job.company))
                 .filter(Job.has_applied == True)
                 .order_by(Job.applied_on.desc())
                 .all()
             )
-            return [job.to_dict() for job in jobs]
+
+            job_urns = [j.urn for j in jobs]
+
+            # Load emails for all jobs in ONE query
+            emails = (
+                db.query(Email)
+                .filter(Email.job_urn.in_(job_urns))
+                .order_by(Email.received_at.desc())
+                .all()
+            )
+
+            # Group emails by job
+            emails_by_job = {}
+
+            for email in emails:
+                emails_by_job.setdefault(email.job_urn, []).append(email)
+
+            result = []
+
+            for job in jobs:
+                job_dict = job.to_dict()
+
+                job_emails = emails_by_job.get(job.urn, [])
+
+                job_dict["emails"] = [
+                    e.to_dict()
+                    for e in job_emails[:5]
+                ]
+
+                job_dict["last_email"] = (
+                    job_emails[0].to_dict()
+                    if job_emails
+                    else None
+                )
+
+                result.append(job_dict)
+
+            return result
+
         finally:
             db.close()
 
     @staticmethod
     def get_applied_urns(limit: int = 50) -> Set[str]:
         """Return a set of URNs (cleaned) for recently applied jobs."""
+
         db = get_db_session()
+
         try:
             rows = (
                 db.query(Job.urn)
@@ -53,10 +106,12 @@ class JobRepository:
                 .limit(limit)
                 .all()
             )
+
             return {
                 str(r.urn).replace("urn:li:jobPosting:", "")
                 for r in rows
             }
+
         finally:
             db.close()
 
@@ -77,33 +132,58 @@ class JobRepository:
 
         Returns a list of {id, company, title, status} for each job processed.
         """
+
         db = get_db_session()
+
         saved_details = []
 
         try:
             for j in jobs_data:
+
                 job_id = str(j.get("job_id", ""))
+
                 if not job_id:
                     continue
 
-                # 1. Ensure company exists
+                # ─────────────────────────
+                # Ensure company exists
+                # ─────────────────────────
+
                 c_name = j.get("company") or "Unknown"
-                comp = db.query(Company).filter(Company.name == c_name).first()
+
+                comp = (
+                    db.query(Company)
+                    .filter(Company.name == c_name)
+                    .first()
+                )
+
                 if not comp:
                     comp = Company(
                         urn=f"urn:li:company:{uuid.uuid4()}",
                         name=c_name,
                     )
+
                     db.add(comp)
                     db.flush()
 
-                # 2. Upsert job
-                job = db.query(Job).filter(Job.urn == job_id).first()
+                # ─────────────────────────
+                # Upsert job
+                # ─────────────────────────
+
+                job = (
+                    db.query(Job)
+                    .filter(Job.urn == job_id)
+                    .first()
+                )
+
                 if not job:
                     job = Job(urn=job_id)
                     db.add(job)
 
-                # 3. Update fields
+                # ─────────────────────────
+                # Update fields
+                # ─────────────────────────
+
                 job.title = j.get("title")
                 job.posted_on = j.get("posted_at")
                 job.company_urn = comp.urn
@@ -117,23 +197,37 @@ class JobRepository:
                 job.application_closed = j.get("application_closed")
                 job.work_remote_allowed = j.get("work_remote_allowed")
 
-                # 4. Stage-specific flags
+                # ─────────────────────────
+                # Stage-specific flags
+                # ─────────────────────────
+
                 if stage == "applied":
                     job.has_applied = True
-                    job.applied_on = j.get("applied_at") or None
 
-                saved_details.append({
-                    "id": job_id,
-                    "company": c_name,
-                    "title": j.get("title"),
-                    "status": "saved",
-                })
+                    job.applied_on = (
+                            j.get("applied_at")
+                            or job.applied_on
+                    )
+
+                saved_details.append(
+                    {
+                        "id": job_id,
+                        "company": c_name,
+                        "title": j.get("title"),
+                        "status": "saved",
+                    }
+                )
 
             db.commit()
+
             return saved_details
 
         except Exception as e:
+
             db.rollback()
+
             raise e
+
         finally:
+
             db.close()

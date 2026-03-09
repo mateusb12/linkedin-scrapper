@@ -41,6 +41,7 @@ import {
   getCompetitionStyle,
 } from "./utils/jobUtils";
 import MonthPicker from "./smallComponents/MonthPicker.jsx";
+import { formatTimeAgo } from "../../utils/dateUtils.js";
 
 const pillBase =
   "inline-flex items-center gap-1 px-3 py-1 rounded-md border text-sm font-mono leading-none w-fit";
@@ -490,6 +491,22 @@ const RecentApplications = ({ onSelectJob }) => {
                         <Briefcase size={14} className="text-slate-500" />
                         {job.company}
                       </div>
+
+                      {job.lastEmail && (
+                        <div
+                          className="flex items-center gap-2 text-xs text-purple-300 bg-purple-900/20 border border-purple-500/20 px-2.5 py-1 rounded-md w-fit whitespace-nowrap"
+                          title={job.lastEmail.subject}
+                        >
+                          📩
+                          <span className="text-purple-300">Reply</span>
+                          <span className="text-purple-400">
+                            {formatDateBR(job.lastEmail.receivedAt)}
+                          </span>
+                          <span className="text-purple-500 text-[12px] font-mono">
+                            {formatTimeAgo(job.lastEmail.receivedAt)}
+                          </span>
+                        </div>
+                      )}
 
                       <div className="flex flex-wrap items-center gap-2 mt-1">
                         {job.location && (
