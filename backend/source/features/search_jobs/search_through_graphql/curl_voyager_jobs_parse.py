@@ -1,7 +1,7 @@
 import json
 import os
 import re
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import dataclass, asdict, fields as dataclass_fields
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -225,43 +225,64 @@ def _find_related_entities(included: list[dict], entity_type: str, job_id: str) 
     return results
 
 
-def _find_first_url(obj: Any) -> Optional[str]:
-    # direct URLs
-    for _, node in _walk(obj):
-        if isinstance(node, str) and node.startswith(("http://", "https://")):
-            return node
+def _is_http_url(value: Any) -> bool:
+    return isinstance(value, str) and value.startswith(("http://", "https://"))
 
-    # vector image composition
+
+def _is_probable_image_url(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+
+    lower = value.lower()
+
+    if any(lower.endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg")):
+        return True
+
+    if "media.licdn.com" in lower:
+        return True
+
+    return False
+
+
+def _build_best_vector_image_url(obj: Any) -> Optional[str]:
+    best_url = None
+    best_width = -1
+
     for _, node in _walk(obj):
         if not isinstance(node, dict):
             continue
 
-        root = node.get("rootUrl")
+        root_url = node.get("rootUrl")
         artifacts = node.get("artifacts")
 
-        if isinstance(root, str) and isinstance(artifacts, list) and artifacts:
-            chosen = None
-            chosen_width = -1
+        if not isinstance(root_url, str) or not isinstance(artifacts, list):
+            continue
 
-            for art in artifacts:
-                if not isinstance(art, dict):
-                    continue
+        for art in artifacts:
+            if not isinstance(art, dict):
+                continue
 
-                segment = (
-                        art.get("fileIdentifyingUrlPathSegment")
-                        or art.get("fileIdentifyingUrlPath")
-                        or art.get("pathSegment")
-                )
-                width = art.get("width", 0)
+            segment = (
+                    art.get("fileIdentifyingUrlPathSegment")
+                    or art.get("fileIdentifyingUrlPath")
+                    or art.get("pathSegment")
+            )
 
-                if isinstance(segment, str) and width >= chosen_width:
-                    chosen = segment
-                    chosen_width = width
+            if not isinstance(segment, str):
+                continue
 
-            if chosen:
-                return root + chosen
+            width = art.get("width") or 0
+            try:
+                width = int(width)
+            except Exception:
+                width = 0
 
-    return None
+            full_url = root_url + segment
+            if width > best_width:
+                best_width = width
+                best_url = full_url
+
+    return best_url
 
 
 def _format_epoch_millis(value: Any) -> Optional[str]:
@@ -320,7 +341,6 @@ def _resolve_company_node(item: dict, urn_map: dict[str, dict]) -> Optional[dict
             if isinstance(resolved, dict):
                 return resolved
 
-    # fallback generic search
     company_ref = _deep_find_first_value_by_keys(company_details, ["*company", "company"])
     if isinstance(company_ref, str):
         resolved = urn_map.get(company_ref)
@@ -419,21 +439,36 @@ def _resolve_location(item: dict, job_card: Optional[dict], urn_map: dict[str, d
 
 def _resolve_company_logo_url(item: dict, job_card: Optional[dict], urn_map: dict[str, dict]) -> Optional[str]:
     company_node = _resolve_company_node(item, urn_map)
+
     if isinstance(company_node, dict):
-        url = _find_first_url(company_node)
-        if url:
-            return url
+        vector_url = _build_best_vector_image_url(company_node)
+        if vector_url:
+            return vector_url
+
+        logo_resolution = company_node.get("logoResolutionResult")
+        if isinstance(logo_resolution, dict):
+            direct_url = logo_resolution.get("url")
+            if _is_http_url(direct_url) and not _is_probable_image_url(direct_url):
+                return direct_url
+
+            if _is_http_url(direct_url):
+                return direct_url
 
     if isinstance(job_card, dict):
-        url = _find_first_url(job_card)
-        if url:
-            return url
+        vector_url = _build_best_vector_image_url(job_card)
+        if vector_url:
+            return vector_url
 
     return None
 
 
-def _resolve_workplace_type(item: dict, title: Optional[str], location: Optional[str], description: Optional[str],
-                            urn_map: dict[str, dict]) -> Optional[str]:
+def _resolve_workplace_type(
+        item: dict,
+        title: Optional[str],
+        location: Optional[str],
+        description: Optional[str],
+        urn_map: dict[str, dict],
+) -> Optional[str]:
     refs = item.get("*jobWorkplaceTypes")
     if isinstance(refs, list):
         for urn in refs:
@@ -450,7 +485,6 @@ def _resolve_workplace_type(item: dict, title: Optional[str], location: Optional
                 if text:
                     return text
 
-            # fallback from URN numeric ID
             match = re.search(r":(\d+)$", urn)
             if match:
                 mapped = WORKPLACE_TYPE_ID_MAP.get(match.group(1))
@@ -468,8 +502,12 @@ def _resolve_workplace_type(item: dict, title: Optional[str], location: Optional
     return None
 
 
-def _resolve_employment_type(item: dict, job_card: Optional[dict], job_desc: Optional[dict],
-                             description: Optional[str]) -> Optional[str]:
+def _resolve_employment_type(
+        item: dict,
+        job_card: Optional[dict],
+        job_desc: Optional[dict],
+        description: Optional[str],
+) -> Optional[str]:
     direct = _deep_find_first_value_by_keys(
         [item, job_card, job_desc],
         [
@@ -525,18 +563,24 @@ def _resolve_promoted_status(item: dict, job_card: Optional[dict]) -> Optional[s
     return None
 
 
-def _resolve_apply_fields(job_id: str, item: dict, job_card: Optional[dict], included: list[dict]) -> tuple[
-    Optional[str], Optional[str]]:
+def _resolve_apply_fields(
+        job_id: str,
+        item: dict,
+        job_card: Optional[dict],
+        included: list[dict],
+) -> tuple[Optional[str], Optional[str]]:
     app_nodes = _find_related_entities(
         included,
         "com.linkedin.voyager.dash.jobs.JobSeekerApplicationDetail",
         job_id,
     )
 
-    candidate_nodes = [item]
+    candidate_nodes: list[dict] = []
+    candidate_nodes.extend([n for n in app_nodes if isinstance(n, dict)])
+    if isinstance(item, dict):
+        candidate_nodes.append(item)
     if isinstance(job_card, dict):
         candidate_nodes.append(job_card)
-    candidate_nodes.extend(app_nodes)
 
     url = None
     method = None
@@ -554,15 +598,16 @@ def _resolve_apply_fields(job_id: str, item: dict, job_card: Optional[dict], inc
                     "offsiteApplyUrl",
                     "externalApplyUrl",
                     "jobApplyUrl",
-                    "url",
                 ],
             )
-            if isinstance(raw_url, str) and raw_url.startswith(("http://", "https://")):
+            if _is_http_url(raw_url) and not _is_probable_image_url(raw_url):
                 url = raw_url
-            else:
-                nested_url = _find_first_url(raw_url)
-                if nested_url:
-                    url = nested_url
+
+        if method is None:
+            apply_cta = node.get("applyCtaText")
+            cta_text = _normalize_scalar_text(apply_cta)
+            if cta_text:
+                method = cta_text
 
         if method is None:
             raw_method = _deep_find_first_value_by_keys(
@@ -576,19 +621,33 @@ def _resolve_apply_fields(job_id: str, item: dict, job_card: Optional[dict], inc
             )
             method = _normalize_scalar_text(raw_method)
 
-    searchable = " ".join(
-        _normalize_scalar_text(n) or ""
-        for n in candidate_nodes
-        if isinstance(n, dict)
-    ).lower()
+        if method is None:
+            onsite_apply = node.get("onsiteApply")
+            in_page_offsite_apply = node.get("inPageOffsiteApply")
 
-    if method is None:
-        if "easy apply" in searchable:
+            if onsite_apply is True:
+                method = "Easy Apply"
+            elif onsite_apply is False or in_page_offsite_apply is True:
+                method = "Offsite Apply"
+
+    if isinstance(method, str):
+        m = method.strip().lower()
+        if m == "easy apply":
             method = "Easy Apply"
-        elif "offsite" in searchable or "external apply" in searchable:
+        elif m in {"apply", "apply now"}:
+            if url and "linkedin.com/job-apply/" in url:
+                method = "Easy Apply"
+            else:
+                method = "Offsite Apply"
+
+    if url and method is None:
+        if "linkedin.com/job-apply/" in url:
+            method = "Easy Apply"
+        else:
             method = "Offsite Apply"
-        elif url:
-            method = "Offsite Apply"
+
+    if isinstance(url, str) and _is_probable_image_url(url):
+        url = None
 
     return method, url
 
@@ -870,7 +929,6 @@ if __name__ == "__main__":
 
     inspect_response(data)
 
-    # Optional: dump parsed dataclasses as JSON beside the source file
     output_path = os.path.join(script_dir, "linkedin_graphql_parsed_jobs.json")
     with open(output_path, "w", encoding="utf-8") as fh:
         json.dump([asdict(job) for job in parsed_jobs], fh, indent=2, ensure_ascii=False)
