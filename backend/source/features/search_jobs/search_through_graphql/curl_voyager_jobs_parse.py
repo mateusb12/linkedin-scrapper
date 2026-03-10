@@ -22,7 +22,6 @@ class LinkedInJob:
     # --- Insights / Metadata ---
     workplace_type: Optional[str] = None
     employment_type: Optional[str] = None
-    promoted_status: Optional[str] = None
 
     # --- Apply / Interaction ---
     apply_method: Optional[str] = None
@@ -30,6 +29,7 @@ class LinkedInJob:
 
     # --- Timing ---
     posted_time: Optional[str] = None
+    posted_timestamp_ms: Optional[int] = None
 
 
 FIELD_DEBUG_KEYWORDS = {
@@ -604,22 +604,6 @@ def _resolve_employment_type(
     return None
 
 
-def _resolve_promoted_status(item: dict, job_card: Optional[dict]) -> Optional[str]:
-    value = _deep_find_first_value_by_keys(
-        [item, job_card],
-        ["promoted", "isPromoted", "promotedJob", "promotionType", "sponsored"],
-    )
-
-    if isinstance(value, bool):
-        return "Promoted" if value else "Not promoted"
-
-    text = _normalize_scalar_text(value)
-    if text:
-        return text
-
-    return None
-
-
 def _canonicalize_apply_method(
         cta_text: Optional[str],
         url: Optional[str],
@@ -756,6 +740,21 @@ def _resolve_posted_time(item: dict, job_desc: Optional[dict]) -> Optional[str]:
     return None
 
 
+def _resolve_posted_timestamp_ms(item: dict, job_desc: Optional[dict]) -> Optional[int]:
+    direct = _deep_find_first_value_by_keys(
+        [item, job_desc],
+        ["createdAt", "listedAt", "postedAt"],
+    )
+
+    if isinstance(direct, str) and direct.isdigit():
+        return int(direct)
+
+    if isinstance(direct, (int, float)):
+        return int(direct)
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Diagnostics
 # ---------------------------------------------------------------------------
@@ -836,11 +835,6 @@ def print_null_reason_summary(response_json: dict, parsed_jobs: list[LinkedInJob
         and item.get("$type") == "com.linkedin.voyager.dash.jobs.WorkplaceType"
     )
 
-    promoted_found = 0
-    for job in parsed_jobs:
-        if job.promoted_status:
-            promoted_found += 1
-
     print("\n" + "=" * 80)
     print("WHY SOME FIELDS ARE NULL")
     print("=" * 80)
@@ -859,9 +853,6 @@ def print_null_reason_summary(response_json: dict, parsed_jobs: list[LinkedInJob
     print(
         "  The parser only fills it when the field exists directly or when the text clearly "
         "contains signals like Full-time / Part-time / Contract / CLT / PJ."
-    )
-    print(
-        f"- promoted_status: populated {promoted_found}/{total_jobs}."
     )
     print(
         "  In this JOB_DETAILS prefetch payload, promoted/sponsored markers are often absent, "
@@ -999,16 +990,16 @@ def parse_linkedin_graphql(response_json: dict) -> list[LinkedInJob]:
         company_logo_url = _resolve_company_logo_url(item, job_card, urn_map)
         workplace_type = _resolve_workplace_type(item, title, location, description_text, urn_map)
         employment_type = _resolve_employment_type(item, job_card, job_desc, title, description_text)
-        promoted_status = _resolve_promoted_status(item, job_card)
         apply_method, company_apply_url = _resolve_apply_fields(job_id, item, job_card, included)
         posted_time = _resolve_posted_time(item, job_desc)
+        posted_timestamp_ms = _resolve_posted_timestamp_ms(item, job_desc)
 
         snippet = None
         if description_text:
             one_line = description_text.replace("\n", " ").strip()
             snippet = one_line[:220] + ("..." if len(one_line) > 220 else "")
 
-        job = LinkedInJob(
+        _job = LinkedInJob(
             job_id=job_id,
             title=title,
             description_snippet=snippet,
@@ -1017,13 +1008,13 @@ def parse_linkedin_graphql(response_json: dict) -> list[LinkedInJob]:
             company_logo_url=company_logo_url,
             workplace_type=workplace_type,
             employment_type=employment_type,
-            promoted_status=promoted_status,
             apply_method=apply_method,
             company_apply_url=company_apply_url,
             posted_time=posted_time,
+            posted_timestamp_ms=posted_timestamp_ms,
         )
 
-        results.append(job)
+        results.append(_job)
 
     return results
 
