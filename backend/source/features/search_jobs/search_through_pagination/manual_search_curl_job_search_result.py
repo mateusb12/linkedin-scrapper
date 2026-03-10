@@ -7,6 +7,7 @@ for search results and saves raw JSON for inspection.
 
 import json
 import gzip
+import os
 import urllib.request
 import urllib.error
 from dataclasses import dataclass, field
@@ -165,8 +166,13 @@ class LinkedInJobsScraper:
         data = json.loads(raw)
 
         if save_json:
-            with open(output_path, "w", encoding="utf-8") as f:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            full_path = os.path.join(script_dir, output_path)
+
+            with open(full_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
+
+            print(f"[INFO] Saved raw JSON response to {full_path}")
             print(f"[INFO] Saved raw JSON response to {output_path}")
 
         return self._parse(data)
