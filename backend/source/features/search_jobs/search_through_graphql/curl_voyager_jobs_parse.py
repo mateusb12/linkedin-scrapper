@@ -35,7 +35,7 @@ class LinkedInJob:
 FIELD_DEBUG_KEYWORDS = {
     "company_name": ["company", "name", "organization"],
     "location": ["location", "geo", "formatted", "primarydescription", "secondarydescription"],
-    "company_logo_url": ["logo", "image", "vector", "artwork", "picture"],
+    "company_logo_url": ["logo", "image", "vector", "artwork", "picture", "rooturl"],
     "workplace_type": ["workplace", "remote", "hybrid", "onsite"],
     "employment_type": ["employment", "jobtype", "job_type", "full-time", "part-time", "contract"],
     "promoted_status": ["promot", "sponsored"],
@@ -77,20 +77,57 @@ def _walk(obj: Any, path: str = "$"):
             yield from _walk(v, f"{path}[{i}]")
 
 
-def _extract_text(value: Any, max_parts: int = 10) -> Optional[str]:
+def _clean_text(text: str) -> str:
+    text = text.replace("\u00a0", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _extract_text(value: Any, max_parts: int = 12) -> Optional[str]:
+    """
+    Conservative text extractor.
+    Avoids pulling $type / $recipeTypes / other metadata noise.
+    """
     parts: list[str] = []
 
-    def rec(v: Any):
-        if len(parts) >= max_parts:
-            return
+    preferred_keys = (
+        "text",
+        "rawText",
+        "formattedText",
+        "accessibilityText",
+        "title",
+        "name",
+        "companyName",
+        "subtitle",
+        "description",
+        "defaultLocalizedName",
+        "localizedName",
+        "abbreviatedLocalizedName",
+        "postedOnText",
+        "formattedEmploymentStatus",
+        "employmentStatus",
+    )
 
-        if v is None:
+    ignored_keys = {
+        "$type",
+        "$recipeTypes",
+        "entityUrn",
+        "trackingUrn",
+        "trackingId",
+        "objectUrn",
+    }
+
+    def add_part(text: str):
+        text = _clean_text(text)
+        if text and text not in parts:
+            parts.append(text)
+
+    def rec(v: Any):
+        if len(parts) >= max_parts or v is None:
             return
 
         if isinstance(v, str):
-            text = " ".join(v.split())
-            if text and text not in parts:
-                parts.append(text)
+            add_part(v)
             return
 
         if isinstance(v, (int, float)):
@@ -98,34 +135,24 @@ def _extract_text(value: Any, max_parts: int = 10) -> Optional[str]:
             return
 
         if isinstance(v, dict):
-            for key in (
-                    "text",
-                    "rawText",
-                    "formattedText",
-                    "accessibilityText",
-                    "title",
-                    "name",
-                    "companyName",
-                    "subtitle",
-                    "description",
-                    "defaultLocalizedName",
-                    "localizedName",
-                    "abbreviatedLocalizedName",
-                    "postedOnText",
-            ):
+            for key in preferred_keys:
                 if key in v:
                     rec(v[key])
                     if len(parts) >= max_parts:
                         return
 
-            for _, sub in list(v.items())[:15]:
+            for k, sub in list(v.items())[:20]:
+                if k in ignored_keys:
+                    continue
+                if isinstance(k, str) and (k.startswith("$") or k.startswith("*")):
+                    continue
                 rec(sub)
                 if len(parts) >= max_parts:
                     return
             return
 
         if isinstance(v, list):
-            for sub in v[:10]:
+            for sub in v[:12]:
                 rec(sub)
                 if len(parts) >= max_parts:
                     return
@@ -143,8 +170,31 @@ def _normalize_scalar_text(value: Any) -> Optional[str]:
     text = _extract_text(value)
     if not text:
         return None
-    text = text.strip()
+    text = _clean_text(text)
     return text or None
+
+
+def _extract_plain_text(value: Any) -> Optional[str]:
+    """
+    Prefer direct user-visible text only.
+    Useful for CTA / label objects like applyCtaText.
+    """
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        text = _clean_text(value)
+        return text or None
+
+    if isinstance(value, dict):
+        for key in ("accessibilityText", "text", "rawText", "formattedText"):
+            raw = value.get(key)
+            if isinstance(raw, str):
+                raw = _clean_text(raw)
+                if raw:
+                    return raw
+
+    return None
 
 
 def _extract_job_id_from_urn(urn: Optional[str]) -> Optional[str]:
@@ -448,9 +498,6 @@ def _resolve_company_logo_url(item: dict, job_card: Optional[dict], urn_map: dic
         logo_resolution = company_node.get("logoResolutionResult")
         if isinstance(logo_resolution, dict):
             direct_url = logo_resolution.get("url")
-            if _is_http_url(direct_url) and not _is_probable_image_url(direct_url):
-                return direct_url
-
             if _is_http_url(direct_url):
                 return direct_url
 
@@ -492,7 +539,8 @@ def _resolve_workplace_type(
                     return mapped
 
     haystack = " ".join(x for x in [title, location, description] if x).lower()
-    if "hybrid" in haystack:
+
+    if "hybrid" in haystack or "híbrido" in haystack:
         return "Hybrid"
     if "remote" in haystack or "remoto" in haystack:
         return "Remote"
@@ -506,6 +554,7 @@ def _resolve_employment_type(
         item: dict,
         job_card: Optional[dict],
         job_desc: Optional[dict],
+        title: Optional[str],
         description: Optional[str],
 ) -> Optional[str]:
     direct = _deep_find_first_value_by_keys(
@@ -521,21 +570,29 @@ def _resolve_employment_type(
     if direct_text:
         return direct_text
 
-    text = " ".join(x for x in [description, _normalize_scalar_text(job_card), _normalize_scalar_text(job_desc)] if x)
+    candidate_texts = [
+        title,
+        description,
+        _normalize_scalar_text(item.get("description")),
+        _normalize_scalar_text(job_card.get("secondaryDescription")) if isinstance(job_card, dict) else None,
+        _normalize_scalar_text(job_desc.get("descriptionText")) if isinstance(job_desc, dict) else None,
+    ]
+    text = " ".join(x for x in candidate_texts if x)
     lower = text.lower()
 
     patterns = [
         (r"\bfull[- ]?time\b", "Full-time"),
         (r"\bpart[- ]?time\b", "Part-time"),
-        (r"\bcontract\b", "Contract"),
+        (r"\bcontract(or)?\b", "Contract"),
         (r"\bhourly contract\b", "Contract"),
         (r"\btemporary\b", "Temporary"),
         (r"\bintern(ship)?\b", "Internship"),
         (r"\bfreelance\b", "Freelance"),
         (r"\bestágio\b", "Internship"),
         (r"\btemporário\b", "Temporary"),
-        (r"\bintegral\b", "Full-time"),
+        (r"\btempo integral\b", "Full-time"),
         (r"\bmeio período\b", "Part-time"),
+        (r"\btempo parcial\b", "Part-time"),
         (r"\bpj\b", "Contract"),
         (r"\bclt\b", "Full-time"),
     ]
@@ -559,6 +616,39 @@ def _resolve_promoted_status(item: dict, job_card: Optional[dict]) -> Optional[s
     text = _normalize_scalar_text(value)
     if text:
         return text
+
+    return None
+
+
+def _canonicalize_apply_method(
+        cta_text: Optional[str],
+        url: Optional[str],
+        onsite_apply: Any,
+        in_page_offsite_apply: Any,
+) -> Optional[str]:
+    text = (cta_text or "").strip().lower()
+    url_lower = (url or "").lower()
+
+    if onsite_apply is True or "linkedin.com/job-apply/" in url_lower:
+        return "Easy Apply"
+
+    if "company website" in text:
+        return "Apply on company website"
+
+    if in_page_offsite_apply is True:
+        return "Apply on company website"
+
+    if url and "linkedin.com/job-apply/" not in url_lower:
+        return "Apply on company website"
+
+    if text in {"easy apply", "easy apply to this job"}:
+        return "Easy Apply"
+
+    if text in {"apply", "apply now"}:
+        return "Apply"
+
+    if cta_text:
+        return cta_text.strip()
 
     return None
 
@@ -603,11 +693,19 @@ def _resolve_apply_fields(
             if _is_http_url(raw_url) and not _is_probable_image_url(raw_url):
                 url = raw_url
 
+        cta = node.get("applyCtaText")
+        cta_text = _extract_plain_text(cta)
+
+        onsite_apply = node.get("onsiteApply")
+        in_page_offsite_apply = node.get("inPageOffsiteApply")
+
         if method is None:
-            apply_cta = node.get("applyCtaText")
-            cta_text = _normalize_scalar_text(apply_cta)
-            if cta_text:
-                method = cta_text
+            method = _canonicalize_apply_method(
+                cta_text=cta_text,
+                url=url,
+                onsite_apply=onsite_apply,
+                in_page_offsite_apply=in_page_offsite_apply,
+            )
 
         if method is None:
             raw_method = _deep_find_first_value_by_keys(
@@ -619,32 +717,19 @@ def _resolve_apply_fields(
                     "applicationType",
                 ],
             )
-            method = _normalize_scalar_text(raw_method)
-
-        if method is None:
-            onsite_apply = node.get("onsiteApply")
-            in_page_offsite_apply = node.get("inPageOffsiteApply")
-
-            if onsite_apply is True:
-                method = "Easy Apply"
-            elif onsite_apply is False or in_page_offsite_apply is True:
-                method = "Offsite Apply"
-
-    if isinstance(method, str):
-        m = method.strip().lower()
-        if m == "easy apply":
-            method = "Easy Apply"
-        elif m in {"apply", "apply now"}:
-            if url and "linkedin.com/job-apply/" in url:
-                method = "Easy Apply"
-            else:
-                method = "Offsite Apply"
+            raw_method_text = _extract_plain_text(raw_method) or _normalize_scalar_text(raw_method)
+            method = _canonicalize_apply_method(
+                cta_text=raw_method_text,
+                url=url,
+                onsite_apply=onsite_apply,
+                in_page_offsite_apply=in_page_offsite_apply,
+            )
 
     if url and method is None:
-        if "linkedin.com/job-apply/" in url:
+        if "linkedin.com/job-apply/" in url.lower():
             method = "Easy Apply"
         else:
-            method = "Offsite Apply"
+            method = "Apply on company website"
 
     if isinstance(url, str) and _is_probable_image_url(url):
         url = None
@@ -659,6 +744,7 @@ def _resolve_posted_time(item: dict, job_desc: Optional[dict]) -> Optional[str]:
             return posted_on
 
     direct = _deep_find_first_value_by_keys(item, ["formattedListedAt", "listedAt", "postedAt", "createdAt"])
+
     text = _normalize_scalar_text(direct)
     if text and not text.isdigit():
         return text
@@ -730,6 +816,61 @@ def print_dataclass_field_coverage(parsed_jobs: list[LinkedInJob]) -> dict[str, 
         "fully_populated": fully_populated,
         "extras": extras,
     }
+
+
+def print_null_reason_summary(response_json: dict, parsed_jobs: list[LinkedInJob]):
+    included = response_json.get("included", [])
+    total_jobs = len(parsed_jobs)
+
+    application_detail_count = sum(
+        1
+        for item in included
+        if isinstance(item, dict)
+        and item.get("$type") == "com.linkedin.voyager.dash.jobs.JobSeekerApplicationDetail"
+    )
+
+    workplace_type_count = sum(
+        1
+        for item in included
+        if isinstance(item, dict)
+        and item.get("$type") == "com.linkedin.voyager.dash.jobs.WorkplaceType"
+    )
+
+    promoted_found = 0
+    for job in parsed_jobs:
+        if job.promoted_status:
+            promoted_found += 1
+
+    print("\n" + "=" * 80)
+    print("WHY SOME FIELDS ARE NULL")
+    print("=" * 80)
+    print(
+        f"- apply_method / company_apply_url: this response contains "
+        f"{application_detail_count} JobSeekerApplicationDetail entities for {total_jobs} jobs."
+    )
+    print(
+        "  If a job does not have a JobSeekerApplicationDetail node, "
+        "LinkedIn often does not expose apply metadata in this payload."
+    )
+    print(
+        "- employment_type: LinkedIn usually does not send a dedicated employment type "
+        "for every job in this prefetch response."
+    )
+    print(
+        "  The parser only fills it when the field exists directly or when the text clearly "
+        "contains signals like Full-time / Part-time / Contract / CLT / PJ."
+    )
+    print(
+        f"- promoted_status: populated {promoted_found}/{total_jobs}."
+    )
+    print(
+        "  In this JOB_DETAILS prefetch payload, promoted/sponsored markers are often absent, "
+        "so null is expected unless LinkedIn exposes a reliable flag."
+    )
+    print(
+        f"- workplace_type: there are only {workplace_type_count} WorkplaceType entities in the response,"
+        " so many workplace values must be inferred from text."
+    )
 
 
 def debug_missing_field_sources(response_json: dict, fields_to_debug: list[str], max_jobs: int = 3):
@@ -857,19 +998,20 @@ def parse_linkedin_graphql(response_json: dict) -> list[LinkedInJob]:
         location = _resolve_location(item, job_card, urn_map)
         company_logo_url = _resolve_company_logo_url(item, job_card, urn_map)
         workplace_type = _resolve_workplace_type(item, title, location, description_text, urn_map)
-        employment_type = _resolve_employment_type(item, job_card, job_desc, description_text)
+        employment_type = _resolve_employment_type(item, job_card, job_desc, title, description_text)
         promoted_status = _resolve_promoted_status(item, job_card)
         apply_method, company_apply_url = _resolve_apply_fields(job_id, item, job_card, included)
         posted_time = _resolve_posted_time(item, job_desc)
 
+        snippet = None
+        if description_text:
+            one_line = description_text.replace("\n", " ").strip()
+            snippet = one_line[:220] + ("..." if len(one_line) > 220 else "")
+
         job = LinkedInJob(
             job_id=job_id,
             title=title,
-            description_snippet=(
-                description_text[:220].replace("\n", " ").strip() + "..."
-                if description_text
-                else None
-            ),
+            description_snippet=snippet,
             company_name=company_name,
             location=location,
             company_logo_url=company_logo_url,
@@ -912,6 +1054,7 @@ if __name__ == "__main__":
         )
 
     coverage = print_dataclass_field_coverage(parsed_jobs)
+    print_null_reason_summary(data, parsed_jobs)
 
     fields_to_debug = []
     for field_name in coverage["structure_missing"] + coverage["never_populated"]:
