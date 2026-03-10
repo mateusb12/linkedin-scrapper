@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useDarkMode } from "../../hooks/useDarkMode.jsx";
-import { ConfigCard, ScraperConfigCards } from "./ConfigCards.jsx";
+import { ScraperConfigCards, SCRAPER_CONFIGS } from "./ConfigCards.jsx";
 
 import {
   savePaginationCurl,
@@ -26,23 +26,13 @@ export default function FetchConfig() {
   const [isDark] = useDarkMode();
   const [statusMessage, setStatusMessage] = useState({});
 
-  const [pagConfig, setPagConfig] = useState(null);
-  const [indConfig, setIndConfig] = useState(null);
-  const [expConfig, setExpConfig] = useState(null);
-  const [connectionsConfig, setConnectionsConfig] = useState(null);
-  const [savedJobsConfig, setSavedJobsConfig] = useState(null);
-  const [premiumInsightsConfig, setPremiumInsightsConfig] = useState(null);
+  const [configsData, setConfigsData] = useState({});
 
   const [gmailToken, setGmailToken] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [gmailStatus, setGmailStatus] = useState("idle");
   const [profileId, setProfileId] = useState(null);
   const [profileLoading, setProfileLoading] = useState(true);
-
-  const [profMainConfig, setProfMainConfig] = useState(null);
-  const [profAboveConfig, setProfAboveConfig] = useState(null);
-  const [profBelowConfig, setProfBelowConfig] = useState(null);
-  const [notificationsConfig, setNotificationsConfig] = useState(null);
 
   const clearStatusMessage = () => setTimeout(() => setStatusMessage({}), 4000);
 
@@ -64,40 +54,21 @@ export default function FetchConfig() {
     };
 
     try {
-      const [
-        pag,
-        ind,
-        exp,
-        main,
-        above,
-        below,
-        conn,
-        savedJobs,
-        insights,
-        notif,
-      ] = await Promise.all([
-        loadConfigSafe(getPaginationCurl),
-        loadConfigSafe(getIndividualJobCurl),
-        loadConfigSafe(getExperienceCurl),
-        loadConfigSafe(() => getGenericCurl("ProfileMain")),
-        loadConfigSafe(() => getGenericCurl("ProfileAboveActivity")),
-        loadConfigSafe(() => getGenericCurl("ProfileBelowActivity")),
-        loadConfigSafe(() => getGenericCurl("Connections")),
-        loadConfigSafe(() => getGenericCurl("SavedJobs")),
-        loadConfigSafe(() => getGenericCurl("PremiumInsights")),
-        loadConfigSafe(() => getGenericCurl("Notifications")),
-      ]);
+      const newConfigsData = {};
 
-      setPagConfig(pag);
-      setIndConfig(ind);
-      setExpConfig(exp);
-      setProfMainConfig(main);
-      setProfAboveConfig(above);
-      setProfBelowConfig(below);
-      setConnectionsConfig(conn);
-      setSavedJobsConfig(savedJobs);
-      setPremiumInsightsConfig(insights);
-      setNotificationsConfig(notif);
+      await Promise.all(
+        SCRAPER_CONFIGS.map(async (meta) => {
+          let fn;
+          if (meta.apiType === "pagination") fn = getPaginationCurl;
+          else if (meta.apiType === "individual") fn = getIndividualJobCurl;
+          else if (meta.apiType === "experience") fn = getExperienceCurl;
+          else fn = () => getGenericCurl(meta.id);
+
+          newConfigsData[meta.id] = await loadConfigSafe(fn);
+        }),
+      );
+
+      setConfigsData(newConfigsData);
 
       const profiles = await getProfiles();
       if (profiles && profiles.length > 0) {
@@ -128,12 +99,32 @@ export default function FetchConfig() {
     loadAllData();
   }, [isDark]);
 
-  const onSavePag = async (curl) => {
-    setStatusMessage({ general: "Saving Pagination..." });
+  const handleSaveConfig = async (meta, curl) => {
+    setStatusMessage({ general: `Saving ${meta.title}...` });
     try {
-      await savePaginationCurl(curl);
-      setStatusMessage({ general: "✅ Pagination cURL Updated!" });
-      setPagConfig({ curl });
+      let processedCurl = curl;
+
+      if (meta.apiType === "pagination") {
+        await savePaginationCurl(curl);
+      } else if (meta.apiType === "individual") {
+        await saveIndividualJobCurl(curl);
+      } else if (meta.apiType === "experience") {
+        await saveExperienceCurl(curl);
+      } else if (meta.apiType === "connections") {
+        processedCurl = curl.replace(
+          /"startIndex"\s*:\s*\d+/g,
+          '"startIndex":{START_INDEX}',
+        );
+        await saveGenericCurl(meta.id, processedCurl);
+      } else {
+        await saveGenericCurl(meta.id, curl);
+      }
+
+      setStatusMessage({ general: `✅ ${meta.title} Updated!` });
+      setConfigsData((prev) => ({
+        ...prev,
+        [meta.id]: { curl: processedCurl },
+      }));
     } catch (error) {
       handleError(error);
     } finally {
@@ -141,157 +132,26 @@ export default function FetchConfig() {
     }
   };
 
-  const onDeletePag = async () => {
+  const handleDeleteConfig = async (meta) => {
     try {
-      await deletePaginationCurl();
-      setPagConfig(null);
-      setStatusMessage({ general: "🗑️ Pagination Config Deleted." });
+      if (meta.apiType === "pagination") {
+        await deletePaginationCurl();
+      } else if (meta.apiType === "individual") {
+        await deleteIndividualJobCurl();
+      } else if (meta.apiType === "experience") {
+        await deleteExperienceCurl();
+      } else {
+        await deleteGenericCurl(meta.id);
+      }
+
+      setConfigsData((prev) => ({ ...prev, [meta.id]: null }));
+      setStatusMessage({ general: `🗑️ ${meta.title} Deleted.` });
     } catch (error) {
       handleError(error);
     } finally {
       clearStatusMessage();
     }
   };
-
-  const onSaveInd = async (curl) => {
-    setStatusMessage({ general: "Saving Job Config..." });
-    try {
-      await saveIndividualJobCurl(curl);
-      setStatusMessage({ general: "✅ Job cURL Updated!" });
-      setIndConfig({ curl });
-    } catch (error) {
-      handleError(error);
-    } finally {
-      clearStatusMessage();
-    }
-  };
-
-  const onDeleteInd = async () => {
-    try {
-      await deleteIndividualJobCurl();
-      setIndConfig(null);
-      setStatusMessage({ general: "🗑️ Job Config Deleted." });
-    } catch (error) {
-      handleError(error);
-    } finally {
-      clearStatusMessage();
-    }
-  };
-
-  const onSaveExp = async (curl) => {
-    setStatusMessage({ general: "Saving Experience Config..." });
-    try {
-      await saveExperienceCurl(curl);
-      setStatusMessage({ general: "✅ Experience cURL Updated!" });
-      setExpConfig({ curl });
-    } catch (error) {
-      handleError(error);
-    } finally {
-      clearStatusMessage();
-    }
-  };
-
-  const onDeleteExp = async () => {
-    try {
-      await deleteExperienceCurl();
-      setExpConfig(null);
-      setStatusMessage({ general: "🗑️ Experience Config Deleted." });
-    } catch (error) {
-      handleError(error);
-    } finally {
-      clearStatusMessage();
-    }
-  };
-
-  const onSaveConnections = async (curl) => {
-    setStatusMessage({ general: "Saving Connections Config..." });
-    try {
-      const processedCurl = curl.replace(
-        /"startIndex"\s*:\s*\d+/g,
-        '"startIndex":{START_INDEX}',
-      );
-
-      await saveGenericCurl("Connections", processedCurl);
-      setStatusMessage({ general: "✅ Connections cURL Template Saved!" });
-      setConnectionsConfig({ curl: processedCurl });
-    } catch (error) {
-      handleError(error);
-    } finally {
-      clearStatusMessage();
-    }
-  };
-
-  const onDeleteConnections = async () => {
-    try {
-      await deleteGenericCurl("Connections");
-      setConnectionsConfig(null);
-      setStatusMessage({ general: "🗑️ Connections Config Deleted." });
-    } catch (error) {
-      handleError(error);
-    } finally {
-      clearStatusMessage();
-    }
-  };
-
-  const createGenericHandler = (configName, stateSetter, label) => {
-    return {
-      onSave: async (curl) => {
-        setStatusMessage({ general: `Saving ${label}...` });
-        try {
-          await saveGenericCurl(configName, curl);
-          setStatusMessage({ general: `✅ ${label} Updated!` });
-          stateSetter({ curl });
-        } catch (error) {
-          handleError(error);
-        } finally {
-          clearStatusMessage();
-        }
-      },
-      onDelete: async () => {
-        try {
-          await deleteGenericCurl(configName);
-          stateSetter(null);
-          setStatusMessage({ general: `🗑️ ${label} Deleted.` });
-        } catch (error) {
-          handleError(error);
-        } finally {
-          clearStatusMessage();
-        }
-      },
-    };
-  };
-
-  const profMainHandlers = createGenericHandler(
-    "ProfileMain",
-    setProfMainConfig,
-    "Profile Main",
-  );
-  const profAboveHandlers = createGenericHandler(
-    "ProfileAboveActivity",
-    setProfAboveConfig,
-    "Profile Above",
-  );
-  const profBelowHandlers = createGenericHandler(
-    "ProfileBelowActivity",
-    setProfBelowConfig,
-    "Profile Below",
-  );
-  const savedJobsHandlers = createGenericHandler(
-    "SavedJobs",
-    setSavedJobsConfig,
-    "Saved Jobs",
-  );
-  const premiumInsightsHandlers = createGenericHandler(
-    "PremiumInsights",
-    setPremiumInsightsConfig,
-    "Premium Insights",
-  );
-
-  const notificationsHandlers = createGenericHandler(
-    "Notifications",
-    setNotificationsConfig,
-    "Notifications",
-  );
 
   const handleSaveGmail = async () => {
     if (!gmailToken.trim()) return;
@@ -379,30 +239,9 @@ export default function FetchConfig() {
         </h3>
 
         <ScraperConfigCards
-          pagConfig={pagConfig}
-          indConfig={indConfig}
-          expConfig={expConfig}
-          profMainConfig={profMainConfig}
-          profAboveConfig={profAboveConfig}
-          profBelowConfig={profBelowConfig}
-          connectionsConfig={connectionsConfig}
-          savedJobsConfig={savedJobsConfig}
-          premiumInsightsConfig={premiumInsightsConfig}
-          notificationsConfig={notificationsConfig}
-          onSavePag={onSavePag}
-          onDeletePag={onDeletePag}
-          onSaveInd={onSaveInd}
-          onDeleteInd={onDeleteInd}
-          onSaveExp={onSaveExp}
-          onDeleteExp={onDeleteExp}
-          onSaveConnections={onSaveConnections}
-          onDeleteConnections={onDeleteConnections}
-          profMainHandlers={profMainHandlers}
-          profAboveHandlers={profAboveHandlers}
-          profBelowHandlers={profBelowHandlers}
-          savedJobsHandlers={savedJobsHandlers}
-          premiumInsightsHandlers={premiumInsightsHandlers}
-          notificationsHandlers={notificationsHandlers}
+          configsData={configsData}
+          onSave={handleSaveConfig}
+          onDelete={handleDeleteConfig}
         />
       </div>
 

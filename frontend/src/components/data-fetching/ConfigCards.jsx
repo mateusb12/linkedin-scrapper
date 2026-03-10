@@ -1,18 +1,115 @@
 import React, { useState } from "react";
 import { CopyableCodeBlock } from "./CopyableCodeBlock.jsx";
 
-const NETWORK_FILTER_PROFILE_MAIN = "/in/monicasbusatta/";
-const NETWORK_FILTER_PROFILE_ABOVE = "profileCardsAboveActivity";
-const NETWORK_FILTER_PROFILE_BELOW = "profileCardsBelowActivityPart1";
-
-const NETWORK_FILTER_PAGINATION = "jobCollectionSlug:recommended";
-const NETWORK_FILTER_INDIVIDUAL = "jobPostingDetailDescription_start";
-const NETWORK_FILTER_EXPERIENCE = "sdui.pagers.profile.details.experience";
-const NETWORK_FILTER_CONNECTIONS = "sdui.pagers.mynetwork.connectionsList";
-const NETWORK_FILTER_SAVED_JOBS = "/jobs-tracker/?stage=saved";
-const NETWORK_FILTER_PREMIUM_INSIGHTS =
-  "com.linkedin.sdui.generated.premium.dsl.impl.premiumApplicantInsights";
-const NETWORK_FILTER_NOTIFICATIONS = "voyagerIdentityDashNotificationCards";
+export const SCRAPER_CONFIGS = [
+  {
+    id: "pagination",
+    title: "📄 Pagination Request",
+    description: "Controls how we traverse the job list (pages 1, 2, 3...).",
+    networkFilter: "jobCollectionSlug:recommended",
+    placeholder: "Paste cURL with 'jobCollectionSlug' here...",
+    colorClass: "blue",
+    apiType: "pagination",
+  },
+  {
+    id: "individual",
+    title: "💼 Individual Job Request",
+    description: "Controls how we fetch details for a single job card.",
+    networkFilter: "jobPostingDetailDescription_start",
+    placeholder: "Paste cURL with 'jobPostingDetailDescription' here...",
+    colorClass: "purple",
+    apiType: "individual",
+  },
+  {
+    id: "experience",
+    title: "🧩 Experience Request",
+    description: "Controls how we fetch profile experience sections.",
+    networkFilter: "sdui.pagers.profile.details.experience",
+    placeholder:
+      "Paste POST cURL with 'sdui.pagers.profile.details.experience' here...",
+    colorClass: "green",
+    apiType: "experience",
+  },
+  {
+    id: "ProfileMain",
+    title: "👤 Profile Main Request",
+    description: "Chamada base para carregar Header e Skills do perfil.",
+    networkFilter: "/in/monicasbusatta/",
+    placeholder: "Cole o GET cURL da página base do perfil...",
+    colorClass: "orange",
+    apiType: "generic",
+  },
+  {
+    id: "ProfileAboveActivity",
+    title: "⬆️ Profile Above Activity",
+    description: "Carrega o 'About' e resumo do usuário (GraphQL).",
+    networkFilter: "profileCardsAboveActivity",
+    placeholder: "Cole o POST cURL contendo 'profileCardsAboveActivity'...",
+    colorClass: "teal",
+    apiType: "generic",
+  },
+  {
+    id: "ProfileBelowActivity",
+    title: "⬇️ Profile Below Activity",
+    description: "Carrega Experiência, Educação e Licenças (GraphQL).",
+    networkFilter: "profileCardsBelowActivityPart1",
+    placeholder:
+      "Cole o POST cURL contendo 'profileCardsBelowActivityPart1'...",
+    colorClass: "rose",
+    apiType: "generic",
+  },
+  {
+    id: "Connections",
+    title: "🤝 Connections Request",
+    description:
+      "Carrega a lista de conexões (paginada). O startIndex será formatado.",
+    networkFilter: "sdui.pagers.mynetwork.connectionsList",
+    placeholder: "Cole o POST cURL do connectionsList aqui...",
+    colorClass: "purple",
+    apiType: "connections",
+  },
+  {
+    id: "SavedJobs",
+    title: "📌 Saved Jobs Request",
+    description: "Carrega a lista de vagas salvas ou aplicadas no Job Tracker.",
+    networkFilter: "/jobs-tracker/?stage=saved",
+    placeholder: "Cole o POST cURL contendo '/jobs-tracker/?stage=saved'...",
+    colorClass: "blue",
+    apiType: "generic",
+  },
+  {
+    id: "PremiumInsights",
+    title: "💎 Premium Insights Request",
+    description:
+      "Carrega insights de comparação com outros candidatos (Premium).",
+    networkFilter:
+      "com.linkedin.sdui.generated.premium.dsl.impl.premiumApplicantInsights",
+    placeholder: "Cole o POST cURL contendo 'premiumApplicantInsights'...",
+    colorClass: "orange",
+    apiType: "generic",
+  },
+  {
+    id: "Notifications",
+    title: "🔔 Notifications Request",
+    description:
+      "Carrega cards de notificações (job applications, networking, etc).",
+    networkFilter: "voyagerIdentityDashNotificationCards",
+    placeholder:
+      "Cole o GET cURL contendo 'voyagerIdentityDashNotificationCards'...",
+    colorClass: "rose",
+    apiType: "generic",
+  },
+  {
+    id: "JobCardsLite",
+    title: "⚡ Job Cards Lite Prefetch",
+    description:
+      "Captures the voyagerJobsDashJobCards prefetch request (7 nearby jobs loaded alongside the current job). Useful for discovering additional job URNs and lightweight metadata.",
+    networkFilter: "voyagerJobsDashJobCards",
+    placeholder: "Paste GET cURL containing 'voyagerJobsDashJobCards'...",
+    colorClass: "teal",
+    apiType: "generic",
+  },
+];
 
 export const ConfigCard = ({
   title,
@@ -166,143 +263,22 @@ export const ConfigCard = ({
   );
 };
 
-export const ScraperConfigCards = ({
-  pagConfig,
-  indConfig,
-  expConfig,
-  profMainConfig,
-  profAboveConfig,
-  profBelowConfig,
-  connectionsConfig,
-  savedJobsConfig,
-  premiumInsightsConfig,
-  notificationsConfig,
-  onSavePag,
-  onDeletePag,
-  onSaveInd,
-  onDeleteInd,
-  onSaveExp,
-  onDeleteExp,
-  onSaveConnections,
-  onDeleteConnections,
-  profMainHandlers,
-  profAboveHandlers,
-  profBelowHandlers,
-  savedJobsHandlers,
-  premiumInsightsHandlers,
-  notificationsHandlers,
-}) => {
+export const ScraperConfigCards = ({ configsData, onSave, onDelete }) => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <ConfigCard
-        title="📄 Pagination Request"
-        description="Controls how we traverse the job list (pages 1, 2, 3...)."
-        networkFilter={NETWORK_FILTER_PAGINATION}
-        savedData={pagConfig}
-        onSave={onSavePag}
-        onDelete={onDeletePag}
-        placeholder="Paste cURL with 'jobCollectionSlug' here..."
-        colorClass="blue"
-      />
-
-      <ConfigCard
-        title="💼 Individual Job Request"
-        description="Controls how we fetch details for a single job card."
-        networkFilter={NETWORK_FILTER_INDIVIDUAL}
-        savedData={indConfig}
-        onSave={onSaveInd}
-        onDelete={onDeleteInd}
-        placeholder="Paste cURL with 'jobPostingDetailDescription' here..."
-        colorClass="purple"
-      />
-
-      <ConfigCard
-        title="🧩 Experience Request"
-        description="Controls how we fetch profile experience sections."
-        networkFilter={NETWORK_FILTER_EXPERIENCE}
-        savedData={expConfig}
-        onSave={onSaveExp}
-        onDelete={onDeleteExp}
-        placeholder="Paste POST cURL with 'sdui.pagers.profile.details.experience' here..."
-        colorClass="green"
-      />
-
-      <ConfigCard
-        title="👤 Profile Main Request"
-        description="Chamada base para carregar Header e Skills do perfil."
-        networkFilter={NETWORK_FILTER_PROFILE_MAIN}
-        savedData={profMainConfig}
-        onSave={profMainHandlers.onSave}
-        onDelete={profMainHandlers.onDelete}
-        placeholder="Cole o GET cURL da página base do perfil..."
-        colorClass="orange"
-      />
-
-      <ConfigCard
-        title="⬆️ Profile Above Activity"
-        description="Carrega o 'About' e resumo do usuário (GraphQL)."
-        networkFilter={NETWORK_FILTER_PROFILE_ABOVE}
-        savedData={profAboveConfig}
-        onSave={profAboveHandlers.onSave}
-        onDelete={profAboveHandlers.onDelete}
-        placeholder="Cole o POST cURL contendo 'profileCardsAboveActivity'..."
-        colorClass="teal"
-      />
-
-      <ConfigCard
-        title="⬇️ Profile Below Activity"
-        description="Carrega Experiência, Educação e Licenças (GraphQL)."
-        networkFilter={NETWORK_FILTER_PROFILE_BELOW}
-        savedData={profBelowConfig}
-        onSave={profBelowHandlers.onSave}
-        onDelete={profBelowHandlers.onDelete}
-        placeholder="Cole o POST cURL contendo 'profileCardsBelowActivityPart1'..."
-        colorClass="rose"
-      />
-
-      <ConfigCard
-        title="🤝 Connections Request"
-        description="Carrega a lista de conexões (paginada). O startIndex será formatado."
-        networkFilter={NETWORK_FILTER_CONNECTIONS}
-        savedData={connectionsConfig}
-        onSave={onSaveConnections}
-        onDelete={onDeleteConnections}
-        placeholder="Cole o POST cURL do connectionsList aqui..."
-        colorClass="purple"
-      />
-
-      <ConfigCard
-        title="📌 Saved Jobs Request"
-        description="Carrega a lista de vagas salvas ou aplicadas no Job Tracker."
-        networkFilter={NETWORK_FILTER_SAVED_JOBS}
-        savedData={savedJobsConfig}
-        onSave={savedJobsHandlers.onSave}
-        onDelete={savedJobsHandlers.onDelete}
-        placeholder="Cole o POST cURL contendo '/jobs-tracker/?stage=saved'..."
-        colorClass="blue"
-      />
-
-      <ConfigCard
-        title="💎 Premium Insights Request"
-        description="Carrega insights de comparação com outros candidatos (Premium)."
-        networkFilter={NETWORK_FILTER_PREMIUM_INSIGHTS}
-        savedData={premiumInsightsConfig}
-        onSave={premiumInsightsHandlers.onSave}
-        onDelete={premiumInsightsHandlers.onDelete}
-        placeholder="Cole o POST cURL contendo 'premiumApplicantInsights'..."
-        colorClass="orange"
-      />
-
-      <ConfigCard
-        title="🔔 Notifications Request"
-        description="Carrega cards de notificações (job applications, networking, etc)."
-        networkFilter={NETWORK_FILTER_NOTIFICATIONS}
-        savedData={notificationsConfig}
-        onSave={notificationsHandlers.onSave}
-        onDelete={notificationsHandlers.onDelete}
-        placeholder="Cole o GET cURL contendo 'voyagerIdentityDashNotificationCards'..."
-        colorClass="red"
-      />
+      {SCRAPER_CONFIGS.map((configMeta) => (
+        <ConfigCard
+          key={configMeta.id}
+          title={configMeta.title}
+          description={configMeta.description}
+          networkFilter={configMeta.networkFilter}
+          savedData={configsData ? configsData[configMeta.id] : null}
+          onSave={(curl) => onSave(configMeta, curl)}
+          onDelete={() => onDelete(configMeta)}
+          placeholder={configMeta.placeholder}
+          colorClass={configMeta.colorClass}
+        />
+      ))}
     </div>
   );
 };
