@@ -15,13 +15,14 @@ from datetime import datetime
 
 from flask import Blueprint, jsonify, request, Response, stream_with_context
 
+from source.features.enrich_jobs.linkedin_http_job_enricher import LinkedInJobEnricher
 from source.features.get_applied_jobs.applied_job_sync_service import JobSyncService
-from source.features.get_applied_jobs.linkedin_proxy import LinkedInProxy
 
 # Keep old import alive for backfill streaming (not yet refactored)
 from source.features.get_applied_jobs.applied_jobs_livestream_sync_service import (
     AppliedJobsIncrementalSync,
 )
+from source.features.get_applied_jobs.linkedin_http_proxy import LinkedInProxy
 from source.features.jobs.job_repository import JobRepository
 
 job_tracker_bp = Blueprint("job_tracker", __name__, url_prefix="/job-tracker")
@@ -79,13 +80,8 @@ def get_saved_live():
 @job_tracker_bp.route("/debug-job", methods=["GET"])
 def debug_job():
     """
-    Debug proxy: hit LinkedIn for a SINGLE job, return raw parsed data.
-    Zero DB writes. Accepts multiple identifier types.
-
-    Usage:
-        /job-tracker/debug-job?id=4012345678
-        /job-tracker/debug-job?urn=urn:li:jobPosting:4012345678
-        /job-tracker/debug-job?search=nubank+software+engineer
+    Debug proxy: hit LinkedIn for a SINGLE job, return fully enriched job.
+    Zero DB writes.
     """
     try:
         job_id = request.args.get("id")
@@ -102,43 +98,29 @@ def debug_job():
                 "error": "Pass ?id=<job_id>, ?urn=<full_urn>, or ?search=<company+title>",
             }), 400
 
-        proxy = LinkedInProxy(debug=True, slim_mode=True)
-
-        # If no direct ID, resolve from listing
+        # We still need the proxy just to resolve a search string to an ID
         if not job_id and search_query:
+            proxy = LinkedInProxy(debug=True, slim_mode=True)
             job_id = proxy.resolve_job_id(search_query)
             if not job_id:
-                return jsonify({
-                    "status": "error",
-                    "error": f"Could not resolve '{search_query}' to a job ID.",
-                    "hint": "Use /job-tracker/applied-live to browse IDs, then use ?id=",
-                }), 404
+                return jsonify({"status": "error", "error": "Not found"}), 404
 
-        # Fetch all three layers independently
-        merged = proxy.enrichment_pipeline(job_id)
-        # Resolve company if we got a URN
-        company = None
-        company_urn = merged.get("company_urn")
-        if company_urn:
-            company = proxy.fetch_company_details(company_urn)
+        # 🚀 Use the new Enricher to fetch everything!
 
-        # Build merged preview (details + premium + resolved company)
+        enricher = LinkedInJobEnricher(debug=True, slim_mode=True)
+        enriched_job = enricher.enrich_job(job_id)
 
-        if company and company.get("company_name"):
-            merged["company"] = company["company_name"]
-            merged["company_url"] = company.get("company_url")
-            merged["company_logo"] = company.get("company_logo")
-            print(f"[debug_job] company_urn={company_urn!r}")  # ADD
-            print(f"[debug_job] company result={company!r}")  # ADD
+        merged_dict = asdict(enriched_job)
 
         return jsonify({
             "status": "success",
             "resolved_job_id": job_id,
             "search_used": search_query,
             "data": {
-                "enrichment": merged,
-                "company": company,
-                "merged_preview": merged,
+                "enrichment": merged_dict,
+                "company": {"company_name": merged_dict.get("company")},
+                # Mocked to keep your previous response structure
+                "merged_preview": merged_dict,
             },
         }), 200
 

@@ -14,7 +14,8 @@ Rules:
 from dataclasses import asdict
 from typing import Dict, Any, List
 
-from source.features.get_applied_jobs.linkedin_proxy import LinkedInProxy, JobPost
+from source.features.get_applied_jobs.linkedin_http_proxy import LinkedInProxy
+from source.features.get_applied_jobs.utils_proxy import JobPost
 from source.features.jobs.job_repository import JobRepository
 
 

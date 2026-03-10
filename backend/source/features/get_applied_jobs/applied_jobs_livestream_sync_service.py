@@ -7,6 +7,7 @@ import json
 
 from database.database_connection import get_db_session
 from models.job_models import Job, Company
+from source.features.get_applied_jobs.linkedin_http_proxy import LinkedInProxy
 from source.features.get_applied_jobs.new_get_applied_jobs_service import JobTrackerFetcher
 
 
@@ -74,7 +75,6 @@ class AppliedJobsIncrementalSync:
     def sync_backfill_stream(cutoff_date):
         db = get_db_session()
 
-        from source.features.get_applied_jobs.linkedin_proxy import LinkedInProxy
         proxy = LinkedInProxy(debug=False, slim_mode=True)
 
         processed = 0
