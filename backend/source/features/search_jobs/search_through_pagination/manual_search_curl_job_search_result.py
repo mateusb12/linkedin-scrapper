@@ -1,7 +1,7 @@
 """
 LinkedIn Jobs Scraper
 Hardcoded curl request converted to a Python class.
-Produces structured JobPosting dataclasses as output.
+Produces structured JobPosting dataclasses as output and saves raw JSON for inspection.
 """
 
 import json
@@ -99,81 +99,67 @@ class LinkedInJobsScraper:
 
     URL = (
         "https://www.linkedin.com/voyager/api/voyagerJobsDashJobCards"
-        "?decorationId=com.linkedin.voyager.dash.deco.jobs.search"
-        ".JobSearchCardsCollection-220"
-        "&count=25"
+        "?decorationId=com.linkedin.voyager.dash.deco.jobs.search.JobSearchCardsCollectionLite-88"
+        "&count=7"
         "&q=jobSearch"
-        "&query=(origin:JOB_SEARCH_PAGE_JOB_FILTER,"
-        "selectedFilters:(timePostedRange:List(r604800)),"
+        "&query=(currentJobId:4383315635,origin:JOBS_HOME_KEYWORD_HISTORY,"
+        "keywords:Python%20NOT%20Est%C3%A1gio%20NOT%20Junior%20NOT%20Senior,"
+        "locationUnion:(geoId:106057199),selectedFilters:(distance:List(25.0),workplaceType:List(2)),"
         "spellCorrectionEnabled:true)"
-        "&start=25"
+        "&servedEventEnabled=false"
+        "&start=0"
     )
 
     HEADERS = {
-        "User-Agent": (
-            "Mozilla/5.0 (X11; Linux x86_64; rv:147.0) "
-            "Gecko/20100101 Firefox/147.0"
-        ),
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0",
         "Accept": "application/vnd.linkedin.normalized+json+2.1",
         "Accept-Language": "en-US,en;q=0.9",
         "Accept-Encoding": "gzip, deflate, br, zstd",
         "x-li-lang": "en_US",
-        "x-li-track": (
-            '{"clientVersion":"1.13.42613","mpVersion":"1.13.42613",'
-            '"osName":"web","timezoneOffset":-3,"timezone":"America/Fortaleza",'
-            '"deviceFormFactor":"DESKTOP","mpName":"voyager-web",'
-            '"displayDensity":1,"displayWidth":1920,"displayHeight":1080}'
-        ),
-        "x-li-page-instance": (
-            "urn:li:page:d_flagship3_search_srp_jobs;"
-            "+qnA20BTT7qK2juHfJrXRA=="
-        ),
+        "x-li-track": '{"clientVersion":"1.13.42707","mpVersion":"1.13.42707","osName":"web","timezoneOffset":-3,"timezone":"America/Fortaleza","deviceFormFactor":"DESKTOP","mpName":"voyager-web","displayDensity":1,"displayWidth":1920,"displayHeight":1080}',
+        "x-li-page-instance": "urn:li:page:d_flagship3_search_srp_jobs;d58W4sOdSoCaV3kV/8YB9w==",
         "csrf-token": "ajax:2777072973261931503",
         "x-restli-protocol-version": "2.0.0",
-        "x-li-pem-metadata": (
-            "Voyager - Careers - Jobs Search=jobs-search-results,"
-            "Voyager - Careers - Critical - careers-api=jobs-search-results"
-        ),
-        "x-li-prefetch": "1",
+        "x-li-pem-metadata": "Voyager - Careers - Jobs Search=jobs-search-results-prefetch",
+        "x-li-deco-include-micro-schema": "true",
         "Alt-Used": "www.linkedin.com",
         "Connection": "keep-alive",
-        "Referer": (
-            "https://www.linkedin.com/jobs/search/"
-            "?currentJobId=4378839371&f_TPR=r604800"
-            "&origin=JOB_SEARCH_PAGE_JOB_FILTER"
-        ),
+        "Referer": "https://www.linkedin.com/jobs/search/?currentJobId=4383315635&distance=25.0&f_WT=2&geoId=106057199&keywords=Python%20NOT%20Est%C3%A1gio%20NOT%20Junior%20NOT%20Senior&origin=JOBS_HOME_KEYWORD_HISTORY",
         "Cookie": (
             'bcookie="v=2&06a00d93-90e5-4ec0-8bee-f68d7c1c1d9f"; '
-            'bscookie="v=1&202602091233361bc29369-d82d-4513-8c0c-bde03df081a2'
-            'AQHxsH3xoCuk4BmYRXnlfBaz8McjnZz8"; '
-            'li_rm=AQGiGtBE_pOr3QAAAZxCZKYNd-Xu0HyppOttaOUvQNmZ-HWvMBthXFn'
-            'WKpDy4UAtwUCcBtootY5AtrQ5DBeflbr7zSxUbcaUodrjOwAbPF1a9CAPGKH7dTWl; '
-            'g_state={"i_l":0}; '
-            'timezone=America/Fortaleza; '
-            'li_theme=system; '
-            'li_theme_set=user; '
-            'JSESSIONID="ajax:2777072973261931503"; '
-            'li_at=AQEDAT016UkA2kzbAAABnLWy_BEAAAGc2b-AEU0AeCarHPFpq8noGEAS'
-            'tRJiOmwuKQEhik6SrxpIxyFGN0CDlXsf1Bv8dH3N9Te5KKMgZl3cwU3BAH8an'
-            'P3HvWie6d5i5XVPwhaWCCKeGMIOQEZ_ydxq; '
-            'liap=true; '
-            'lidc="b=VB05:s=V:r=V:a=V:p=V:g=7980:u=391:x=1:i=1772668398:'
-            't=1772754798:v=2:sig=AQFCOPU3psMoS0I_oN11bfCUZ6gbi2_e"; '
-            'lang=v=2&lang=en-us'
+            'bscookie="v=1&202602091233361bc29369-d82d-4513-8c0c-bde03df081a2AQHxsH3xoCuk4BmYRXnlfBaz8McjnZz8"; '
+            'li_rm=AQGiGtBE_pOr3QAAAZxCZKYNd-Xu0HyppOttaOUvQNmZ-HWvMBthXFnWKpDy4UAtwUCcBtootY5AtrQ5DBeflbr7zSxUbcaUodrjOwAbPF1a9CAPGKH7dTWl; '
+            'g_state={"i_l":0}; timezone=America/Fortaleza; li_theme=system; li_theme_set=user; '
+            'UserMatchHistory=AQJ1rTP0PefV7wAAAZzUBM29E_Wl8rwR-yNCmDQsj8ouXPA1G6LezqFwcw8gKpzJH3ez8joU-ApYISapeu04zaygwf2GDLcF1fdhNO71_Jrm2KqoQtm3QlOaG0wBWL5PJp6TSYt6822gz830RE0bKL9WQeiexPJIe_TvRThoy1H9DlE4hCqeleq-yF8CY0nN7Z8JcAYqsaT6Sy5WZnjm9v-zKfTubIIn_FsmbBW_BFIqw6dYgn8Ho6LoiXoqwKkIipK0juXI48OPG7prwvoCJQ9VwhIuQ7WEU_K8rNNc2MtlpttcX_tn3RsrRnRqPNMdbUONuY1jLGYdrk_zBdqU; '
+            'dfpfpt=77f99deb2144437ab82f05269fe4a036; sdui_ver=sdui-flagship:0.1.30243+SduiFlagship0; '
+            '_pxvid=8e02eed5-05b3-11f1-855d-85f84338a619; visit=v=1&M; JSESSIONID="ajax:2777072973261931503"; '
+            'li_at=AQEDAT016UkA2kzbAAABnLWy_BEAAAGc2b-AEU0AeCarHPFpq8noGEAStRJiOmwuKQEhik6SrxpIxyFGN0CDlXsf1Bv8dH3N9Te5KKMgZl3cwU3BAH8anP3HvWie6d5i5XVPwhaWCCKeGMIOQEZ_ydxq; '
+            'liap=true; _px3=1624fe839c7acd99f3c112f0e23dfbf8e3b080bcdfcf8dfa5f8f75edf8f3f1c1:EIDoBXglSmkeqLKsg2pQmfcgP2LlQzIK10PZA9VAPMTR+5ZJMA37XJt6BTgqs8bEGDDCDbjtpxHycriqzflZIQ==:1000:Y3P9a3iPrB6BCFcjw4JloYBukj/c0R8drMig4QZ7A7H80ppWcGzkm50+h0Jr7c1ySjetyuoQMX+wYfO6KkmXlxUv8HBvRs48KXOpASK4nqb5M0UhF7S0HeeOqNxnSrkiGhn5Gxi8EckRsM8Oym8P6aNWSyjHUC8dHmkj86W8lTSNIR0xI9+yfxmJ5hoS8o0Ymkc7Oo1Ji+QBO9DYowXzMIKOXRWoPcqic4Qqip6BNz5Vftaxpn8qllzLO9MzBJhsLdfvHha33Ktwe+OJPWkdahPliv7N242bENLI33AI8bqyL5o4XYgnqjhNBXQJFWF8ST4dlLYPZsjvUY50MpoeIUnMlFjrFfXeeaKKtixlGwdtk5EsnudY75rvy8YNHiGc/dybms//GYR9HWh4KxL0/B2yGPjr7cF+loOs0YdyaLA7pzVYAmiw9tPho5pZEynl56x/3ZgwKAH79VYFw7VUVc9n3WO7g6IBYKAvXcp69r0mmKg5NFq3eb2YuDz5QHQt; '
+            'lidc="b=VB05:s=V:r=V:a=V:p=V:g=7980:u=396:x=1:i=1773095765:t=1773182137:v=2:sig=AQEr4iKOh5EIYeEjC_f_HpzsNp8Y0tjl"; lang=v=2&lang=en-us; '
+            '__cf_bm=djTdtkgequpbQZi3tlMz9SEP28icWRXnMBvURDL7Y6E-1773158625-1.0.1.1-TbxToDIIK.RCj9s6.7xZ1d3pYqsAxt94AaLbIbPfiqKBuInde9FgG3txoxUuYeM5WClRO_SMmNVoH9d5Rb9xezZBcrgfuGKdMooUGqEetCo; '
+            'fptctx2=taBcrIH61PuCVH7eNCyH0FC0izOzUpX5wN2Z%252b5egc%252f53DRZaA4bKNdO9yJFow6lfKKgdq%252bxDje%252b9f9azVSoveqEn9i3koReTtGyAHcHqrEoymTsEmtmwZBeFFofyIfO4UFWpS7yUPmaKxxCuk3dT6HYDq4qw7xcGO2dBcHZPAi0XP9GPRZ%252blxItLrscVpNZoXth9youHknrlocTrlPPG7f0GpM8GDkGSRWdaMk1hQuZlbBaA%252fZMMIuypUyVs0%252bpxBhnczmhW69w8EYJzM3urRjQTiYFHyBtml1a3aRFPK1rROxjS00snOuU7JuXBLWTkRPKgUe1v%252bTRZJZwXA2cwJN%252fqbT8oDhyLhpaDi9j2Z%252bIwaIAyrYHrJ4zm3l%252fCPxxJAg9qSpgkCzL3ku28JTayVA%253d%253d'
         ),
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-origin",
         "Pragma": "no-cache",
         "Cache-Control": "no-cache",
+        "TE": "trailers"
     }
 
     # ---- Public API ----------------------------------------------------------
 
-    def fetch(self) -> JobSearchResult:
+    def fetch(self, save_json: bool = True, output_path: str = "raw_linkedin_response.json") -> JobSearchResult:
         """Perform the HTTP request and return a JobSearchResult."""
         raw = self._http_get()
         data = json.loads(raw)
+
+        # Save the raw output to a file so the structure can be examined
+        if save_json:
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+            print(f"[INFO] Saved raw JSON response to {output_path}")
+
         return self._parse(data)
 
     def fetch_from_file(self, path: str) -> JobSearchResult:
