@@ -1,7 +1,8 @@
 """
 LinkedIn Jobs Scraper
-Hardcoded curl request converted to a Python class.
-Produces structured JobPosting dataclasses as output and saves raw JSON for inspection.
+Hardcoded curl request converted to Python.
+Parses the LinkedIn normalized JSON into small, payload-aligned dataclasses
+for search results and saves raw JSON for inspection.
 """
 
 import json
@@ -10,7 +11,6 @@ import urllib.request
 import urllib.error
 from dataclasses import dataclass, field
 from typing import Optional
-from datetime import datetime
 
 
 # ---------------------------------------------------------------------------
@@ -18,68 +18,86 @@ from datetime import datetime
 # ---------------------------------------------------------------------------
 
 @dataclass
-class JobPosting:
-    job_id: str
-    title: str
-    company: str
-    location: str
-    work_type: str  # Remote / On-site / Hybrid
-    salary: Optional[str]
-    posted_at: Optional[datetime]
-    easy_apply: bool
-    promoted: bool
-    reposted: bool
-    content_source: str  # JOBS_PREMIUM / JOBS_PREMIUM_OFFLINE / JOBS_CREATE
-    applicant_signal: Optional[str]  # e.g. "Early applicant", "Be an early applicant"
-    reviewer_signal: Optional[str]  # e.g. "Actively reviewing applicants"
-    relevance_insight: Optional[str]  # e.g. "28 school alumni work here"
-    budget_exhausted: bool  # True when encryptedBiddingParameters == BUDGET_EXHAUSTED_JOB
-    linkedin_url: str
+class Company:
+    name: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    logo_url: Optional[str] = None
+    verified: Optional[bool] = None
+
+
+@dataclass
+class LinkedInJobCard:
+    job_id: Optional[str] = None
+    title: Optional[str] = None
+    location: Optional[str] = None
+
+    company: Optional[Company] = None
+
+    job_posting_urn: Optional[str] = None
+    normalized_job_posting_urn: Optional[str] = None
+
+    reposted: Optional[bool] = None
+    content_source: Optional[str] = None
+
+    @property
+    def linkedin_url(self) -> Optional[str]:
+        if not self.job_id:
+            return None
+        return f"https://www.linkedin.com/jobs/view/{self.job_id}"
 
     def __str__(self) -> str:
-        posted = self.posted_at.strftime("%b %d, %Y") if self.posted_at else "Unknown"
+        company_name = self.company.name if self.company and self.company.name else "Unknown company"
+        location = self.location or "Unknown location"
+
         lines = [
             f"{'─' * 60}",
-            f"  {self.title}",
-            f"  {self.company}  |  {self.location}  |  {self.work_type}",
-            f"  Posted : {posted}",
+            f"  {self.title or 'Unknown title'}",
+            f"  {company_name}  |  {location}",
         ]
-        if self.salary:
-            lines.append(f"  Salary : {self.salary}")
-        flags = []
-        if self.easy_apply:   flags.append("Easy Apply")
-        if self.promoted:     flags.append("Promoted")
-        if self.reposted:     flags.append("Reposted")
-        if self.budget_exhausted: flags.append("Budget Exhausted")
-        if flags:
-            lines.append(f"  Flags  : {', '.join(flags)}")
-        if self.applicant_signal:
-            lines.append(f"  Signal : {self.applicant_signal}")
-        if self.reviewer_signal:
-            lines.append(f"  Review : {self.reviewer_signal}")
-        if self.relevance_insight:
-            lines.append(f"  Why    : {self.relevance_insight}")
-        lines.append(f"  Source : {self.content_source}")
-        lines.append(f"  URL    : {self.linkedin_url}")
+
+        if self.reposted:
+            lines.append("  Flags  : Reposted")
+
+        if self.content_source:
+            lines.append(f"  Source : {self.content_source}")
+
+        if self.company and self.company.linkedin_url:
+            lines.append(f"  Company: {self.company.linkedin_url}")
+
+        if self.linkedin_url:
+            lines.append(f"  Job URL : {self.linkedin_url}")
+
         return "\n".join(lines)
 
 
 @dataclass
-class JobSearchResult:
-    total_results: int
-    page_start: int
-    page_count: int
-    jobs: list[JobPosting] = field(default_factory=list)
+class JobSearchMetadata:
+    keywords: Optional[str] = None
+    location: Optional[str] = None
+    total_results: int = 0
+    start: int = 0
+    count: int = 0
+
+
+@dataclass
+class LinkedInSearchResponse:
+    metadata: Optional[JobSearchMetadata] = None
+    jobs: list[LinkedInJobCard] = field(default_factory=list)
 
     def __str__(self) -> str:
+        meta = self.metadata or JobSearchMetadata()
+        first = meta.start + 1 if self.jobs else 0
+        last = meta.start + len(self.jobs)
+
         header = (
             f"\n{'═' * 60}\n"
             f"  LinkedIn Job Search Results\n"
-            f"  Total: {self.total_results:,}  |  "
-            f"Showing {self.page_start + 1}–{self.page_start + len(self.jobs)}\n"
+            f"  Total: {meta.total_results:,}  |  Showing {first}–{last}\n"
+            f"  Keywords: {meta.keywords or '-'}\n"
+            f"  Location: {meta.location or '-'}\n"
             f"{'═' * 60}"
         )
-        return header + "\n" + "\n".join(str(j) for j in self.jobs)
+        return header + ("\n" + "\n".join(str(job) for job in self.jobs) if self.jobs else "")
 
 
 # ---------------------------------------------------------------------------
@@ -94,8 +112,6 @@ class LinkedInJobsScraper:
     NOTE: The session cookies (li_at, JSESSIONID, csrf-token) expire quickly.
     Replace them with a fresh browser session when they stop working.
     """
-
-    # ---- Hardcoded request parameters ----------------------------------------
 
     URL = (
         "https://www.linkedin.com/voyager/api/voyagerJobsDashJobCards"
@@ -126,35 +142,28 @@ class LinkedInJobsScraper:
         "Connection": "keep-alive",
         "Referer": "https://www.linkedin.com/jobs/search/?currentJobId=4383315635&distance=25.0&f_WT=2&geoId=106057199&keywords=Python%20NOT%20Est%C3%A1gio%20NOT%20Junior%20NOT%20Senior&origin=JOBS_HOME_KEYWORD_HISTORY",
         "Cookie": (
-            'bcookie="v=2&06a00d93-90e5-4ec0-8bee-f68d7c1c1d9f"; '
-            'bscookie="v=1&202602091233361bc29369-d82d-4513-8c0c-bde03df081a2AQHxsH3xoCuk4BmYRXnlfBaz8McjnZz8"; '
-            'li_rm=AQGiGtBE_pOr3QAAAZxCZKYNd-Xu0HyppOttaOUvQNmZ-HWvMBthXFnWKpDy4UAtwUCcBtootY5AtrQ5DBeflbr7zSxUbcaUodrjOwAbPF1a9CAPGKH7dTWl; '
-            'g_state={"i_l":0}; timezone=America/Fortaleza; li_theme=system; li_theme_set=user; '
-            'UserMatchHistory=AQJ1rTP0PefV7wAAAZzUBM29E_Wl8rwR-yNCmDQsj8ouXPA1G6LezqFwcw8gKpzJH3ez8joU-ApYISapeu04zaygwf2GDLcF1fdhNO71_Jrm2KqoQtm3QlOaG0wBWL5PJp6TSYt6822gz830RE0bKL9WQeiexPJIe_TvRThoy1H9DlE4hCqeleq-yF8CY0nN7Z8JcAYqsaT6Sy5WZnjm9v-zKfTubIIn_FsmbBW_BFIqw6dYgn8Ho6LoiXoqwKkIipK0juXI48OPG7prwvoCJQ9VwhIuQ7WEU_K8rNNc2MtlpttcX_tn3RsrRnRqPNMdbUONuY1jLGYdrk_zBdqU; '
-            'dfpfpt=77f99deb2144437ab82f05269fe4a036; sdui_ver=sdui-flagship:0.1.30243+SduiFlagship0; '
-            '_pxvid=8e02eed5-05b3-11f1-855d-85f84338a619; visit=v=1&M; JSESSIONID="ajax:2777072973261931503"; '
-            'li_at=AQEDAT016UkA2kzbAAABnLWy_BEAAAGc2b-AEU0AeCarHPFpq8noGEAStRJiOmwuKQEhik6SrxpIxyFGN0CDlXsf1Bv8dH3N9Te5KKMgZl3cwU3BAH8anP3HvWie6d5i5XVPwhaWCCKeGMIOQEZ_ydxq; '
-            'liap=true; _px3=1624fe839c7acd99f3c112f0e23dfbf8e3b080bcdfcf8dfa5f8f75edf8f3f1c1:EIDoBXglSmkeqLKsg2pQmfcgP2LlQzIK10PZA9VAPMTR+5ZJMA37XJt6BTgqs8bEGDDCDbjtpxHycriqzflZIQ==:1000:Y3P9a3iPrB6BCFcjw4JloYBukj/c0R8drMig4QZ7A7H80ppWcGzkm50+h0Jr7c1ySjetyuoQMX+wYfO6KkmXlxUv8HBvRs48KXOpASK4nqb5M0UhF7S0HeeOqNxnSrkiGhn5Gxi8EckRsM8Oym8P6aNWSyjHUC8dHmkj86W8lTSNIR0xI9+yfxmJ5hoS8o0Ymkc7Oo1Ji+QBO9DYowXzMIKOXRWoPcqic4Qqip6BNz5Vftaxpn8qllzLO9MzBJhsLdfvHha33Ktwe+OJPWkdahPliv7N242bENLI33AI8bqyL5o4XYgnqjhNBXQJFWF8ST4dlLYPZsjvUY50MpoeIUnMlFjrFfXeeaKKtixlGwdtk5EsnudY75rvy8YNHiGc/dybms//GYR9HWh4KxL0/B2yGPjr7cF+loOs0YdyaLA7pzVYAmiw9tPho5pZEynl56x/3ZgwKAH79VYFw7VUVc9n3WO7g6IBYKAvXcp69r0mmKg5NFq3eb2YuDz5QHQt; '
-            'lidc="b=VB05:s=V:r=V:a=V:p=V:g=7980:u=396:x=1:i=1773095765:t=1773182137:v=2:sig=AQEr4iKOh5EIYeEjC_f_HpzsNp8Y0tjl"; lang=v=2&lang=en-us; '
-            '__cf_bm=djTdtkgequpbQZi3tlMz9SEP28icWRXnMBvURDL7Y6E-1773158625-1.0.1.1-TbxToDIIK.RCj9s6.7xZ1d3pYqsAxt94AaLbIbPfiqKBuInde9FgG3txoxUuYeM5WClRO_SMmNVoH9d5Rb9xezZBcrgfuGKdMooUGqEetCo; '
-            'fptctx2=taBcrIH61PuCVH7eNCyH0FC0izOzUpX5wN2Z%252b5egc%252f53DRZaA4bKNdO9yJFow6lfKKgdq%252bxDje%252b9f9azVSoveqEn9i3koReTtGyAHcHqrEoymTsEmtmwZBeFFofyIfO4UFWpS7yUPmaKxxCuk3dT6HYDq4qw7xcGO2dBcHZPAi0XP9GPRZ%252blxItLrscVpNZoXth9youHknrlocTrlPPG7f0GpM8GDkGSRWdaMk1hQuZlbBaA%252fZMMIuypUyVs0%252bpxBhnczmhW69w8EYJzM3urRjQTiYFHyBtml1a3aRFPK1rROxjS00snOuU7JuXBLWTkRPKgUe1v%252bTRZJZwXA2cwJN%252fqbT8oDhyLhpaDi9j2Z%252bIwaIAyrYHrJ4zm3l%252fCPxxJAg9qSpgkCzL3ku28JTayVA%253d%253d'
+            'li_at=AQEDAT016UkA2kzbAAABnLWy_BEAAAGc_ezafU0AlJzVvGiK12ZA31iSjRc_fVVqyAoZOHw_s57X0XOROjRy9Y5LZ8yOhEigz300TMqb3jU97Ae__KqZptySEb1bCH-CV2rwXZbwqxWmLY4keK9ds2qC; '
+            'JSESSIONID="ajax:2777072973261931503"; '
+            'bcookie="v=2&06a00d93-90e5-4ec0-8bee-f68d7c1c1d9f"'
         ),
         "Sec-Fetch-Dest": "empty",
         "Sec-Fetch-Mode": "cors",
         "Sec-Fetch-Site": "same-origin",
         "Pragma": "no-cache",
         "Cache-Control": "no-cache",
-        "TE": "trailers"
+        "TE": "trailers",
     }
 
-    # ---- Public API ----------------------------------------------------------
+    # ---- Public API ------------------------------------------------------
 
-    def fetch(self, save_json: bool = True, output_path: str = "raw_linkedin_response.json") -> JobSearchResult:
-        """Perform the HTTP request and return a JobSearchResult."""
+    def fetch(
+            self,
+            save_json: bool = True,
+            output_path: str = "raw_linkedin_response.json",
+    ) -> LinkedInSearchResponse:
         raw = self._http_get()
         data = json.loads(raw)
 
-        # Save the raw output to a file so the structure can be examined
         if save_json:
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
@@ -162,21 +171,18 @@ class LinkedInJobsScraper:
 
         return self._parse(data)
 
-    def fetch_from_file(self, path: str) -> JobSearchResult:
-        """Parse a locally saved JSON response (useful for offline dev/testing)."""
+    def fetch_from_file(self, path: str) -> LinkedInSearchResponse:
         with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
         return self._parse(data)
 
-    # ---- Private helpers -----------------------------------------------------
+    # ---- Private helpers -------------------------------------------------
 
     def _http_get(self) -> str:
         req = urllib.request.Request(self.URL, headers=self.HEADERS)
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
                 raw_bytes = resp.read()
-                # urllib decompresses gzip automatically when Accept-Encoding
-                # is set, but handle both cases defensively.
                 try:
                     return gzip.decompress(raw_bytes).decode("utf-8")
                 except OSError:
@@ -187,156 +193,160 @@ class LinkedInJobsScraper:
                 "Your session cookies may have expired."
             ) from exc
 
-    def _parse(self, data: dict) -> JobSearchResult:
-        root = data.get("data", data)  # top-level may or may not have "data" key
+    def _parse(self, data: dict) -> LinkedInSearchResponse:
+        root = data.get("data", data)
+        metadata = root.get("metadata", {})
         paging = root.get("paging", {})
         included: list[dict] = data.get("included", [])
 
-        # Build lookup maps from the "included" array
-        job_postings: dict[str, dict] = {}  # entityUrn -> posting dict
-        job_cards: dict[str, dict] = {}  # entityUrn (JOBS_SEARCH) -> card dict
+        postings_by_urn: dict[str, dict] = {}
+        cards_by_urn: dict[str, dict] = {}
+        companies_by_urn: dict[str, dict] = {}
+        geos_by_urn: dict[str, dict] = {}
 
         for item in included:
-            etype = item.get("$type", "")
             urn = item.get("entityUrn", "")
-            if etype == "com.linkedin.voyager.dash.jobs.JobPosting":
-                job_postings[urn] = item
-            elif (
-                    etype == "com.linkedin.voyager.dash.jobs.JobPostingCard"
-                    and "JOBS_SEARCH" in urn
-            ):
-                job_cards[urn] = item
+            item_type = item.get("$type", "")
 
-        jobs: list[JobPosting] = []
-        for card_urn, card in job_cards.items():
-            jobs.append(self._card_to_dataclass(card, job_postings))
+            if item_type == "com.linkedin.voyager.dash.jobs.JobPosting":
+                postings_by_urn[urn] = item
+            elif item_type == "com.linkedin.voyager.dash.jobs.JobPostingCard" and "JOBS_SEARCH" in urn:
+                cards_by_urn[urn] = item
+            elif item_type == "com.linkedin.voyager.dash.organization.Company":
+                companies_by_urn[urn] = item
+            elif item_type == "com.linkedin.voyager.dash.common.Geo":
+                geos_by_urn[urn] = item
 
-        # Preserve LinkedIn ordering via the elements array
-        elements = root.get("elements", [])
-        ordered_urns = []
-        for el in elements:
-            cu = el.get("jobCardUnion", {})
-            ref = cu.get("*jobPostingCard", "")
+        ordered_card_urns: list[str] = []
+        for element in root.get("elements", []):
+            ref = element.get("jobCardUnion", {}).get("*jobPostingCard")
             if ref:
-                ordered_urns.append(ref)
+                ordered_card_urns.append(ref)
 
-        ordered: list[JobPosting] = []
-        for urn in ordered_urns:
-            card = job_cards.get(urn)
-            if card:
-                ordered.append(self._card_to_dataclass(card, job_postings))
+        jobs: list[LinkedInJobCard] = []
+        seen: set[str] = set()
 
-        # Fall back to unordered if ordering failed
-        final_jobs = ordered if ordered else jobs
+        for card_urn in ordered_card_urns:
+            card = cards_by_urn.get(card_urn)
+            if not card:
+                continue
+            jobs.append(self._card_to_dataclass(card, postings_by_urn, companies_by_urn))
+            seen.add(card_urn)
 
-        return JobSearchResult(
-            total_results=paging.get("total", 0),
-            page_start=paging.get("start", 0),
-            page_count=paging.get("count", 25),
-            jobs=final_jobs,
+        for card_urn, card in cards_by_urn.items():
+            if card_urn not in seen:
+                jobs.append(self._card_to_dataclass(card, postings_by_urn, companies_by_urn))
+
+        location = self._extract_search_location(metadata, geos_by_urn)
+
+        meta = JobSearchMetadata(
+            keywords=metadata.get("keywords"),
+            location=location,
+            total_results=int(paging.get("total", 0) or 0),
+            start=int(paging.get("start", 0) or 0),
+            count=int(paging.get("count", len(jobs)) or len(jobs)),
+        )
+
+        return LinkedInSearchResponse(metadata=meta, jobs=jobs)
+
+    def _card_to_dataclass(
+            self,
+            card: dict,
+            postings_by_urn: dict[str, dict],
+            companies_by_urn: dict[str, dict],
+    ) -> LinkedInJobCard:
+        job_posting_urn = card.get("*jobPosting") or card.get("jobPostingUrn")
+        posting = postings_by_urn.get(job_posting_urn or "", {})
+
+        company_name = self._text(card.get("primaryDescription"))
+        location = self._text(card.get("secondaryDescription"))
+        company_url = self._get_company_url(card)
+        company_logo_url = self._get_company_logo_url(card, companies_by_urn)
+
+        company = Company(
+            name=company_name,
+            linkedin_url=company_url,
+            logo_url=company_logo_url,
+            verified=bool(card.get("*jobPostingVerification")),
+        )
+
+        return LinkedInJobCard(
+            job_id=self._extract_job_id(card.get("entityUrn")) or self._extract_job_id(job_posting_urn),
+            title=card.get("jobPostingTitle") or self._text(card.get("title")),
+            location=location,
+            company=company,
+            job_posting_urn=card.get("jobPostingUrn") or job_posting_urn,
+            normalized_job_posting_urn=card.get("preDashNormalizedJobPostingUrn"),
+            reposted=posting.get("repostedJob"),
+            content_source=posting.get("contentSource"),
         )
 
     @staticmethod
-    def _card_to_dataclass(card: dict, postings: dict) -> JobPosting:
-        # ---- IDs ----
-        card_urn = card.get("entityUrn", "")
-        job_id = card_urn.split("(")[1].split(",")[0] if "(" in card_urn else card_urn
-        posting_urn = card.get("*jobPosting") or card.get("jobPostingUrn", "")
-        posting = postings.get(posting_urn, {})
+    def _extract_search_location(metadata: dict, geos_by_urn: dict[str, dict]) -> Optional[str]:
+        geo_urn = metadata.get("*geo") or metadata.get("geoUrn")
+        geo = geos_by_urn.get(geo_urn or "", {})
+        return geo.get("fullLocalizedName") or geo.get("defaultLocalizedName")
 
-        # ---- Title ----
-        title = (
-                card.get("jobPostingTitle")
-                or LinkedInJobsScraper._text(card.get("title"))
-                or "Unknown"
-        )
-
-        # ---- Company ----
-        company = LinkedInJobsScraper._text(card.get("primaryDescription")) or "Unknown"
-
-        # ---- Location / work type ----
-        loc_text = LinkedInJobsScraper._text(card.get("secondaryDescription")) or ""
-        work_type = "Remote" if "Remote" in loc_text else (
-            "On-site" if "On-site" in loc_text else "Hybrid"
-        )
-        location = loc_text.replace("(Remote)", "").replace("(On-site)", "").strip().rstrip(",")
-
-        # ---- Salary ----
-        salary = LinkedInJobsScraper._text(card.get("tertiaryDescription"))
-
-        # ---- Dates ----
-        posted_at: Optional[datetime] = None
-        for footer in card.get("footerItems", []):
-            if footer.get("type") == "LISTED_DATE":
-                ts_ms = footer.get("timeAt")
-                if ts_ms:
-                    posted_at = datetime.utcfromtimestamp(ts_ms / 1000)
-                break
-
-        # ---- Flags from footerItems ----
-        footer_types = {f.get("type") for f in card.get("footerItems", [])}
-        easy_apply = "EASY_APPLY_TEXT" in footer_types
-        promoted = "PROMOTED" in footer_types
-
-        # ---- Applicant / reviewer signals ----
-        applicant_signal: Optional[str] = None
-        for footer in card.get("footerItems", []):
-            if footer.get("type") == "APPLICANT_COUNT_TEXT":
-                applicant_signal = LinkedInJobsScraper._text(footer.get("text"))
-                break
-
-        reviewer_signal: Optional[str] = None
-        relevance_text: Optional[str] = None
-        insight = card.get("relevanceInsight")
-        if insight:
-            relevance_text = LinkedInJobsScraper._text(insight.get("text"))
-            # Distinguish reviewer signals from alumni/connection signals
-            if relevance_text and any(
-                    kw in relevance_text
-                    for kw in ("review", "Actively", "applicant")
-            ):
-                reviewer_signal = relevance_text
-                relevance_text = None  # not a relevance insight if it's a reviewer note
-
-        # ---- Reposted ----
-        reposted = posting.get("repostedJob", False)
-
-        # ---- Content source ----
-        content_source = posting.get("contentSource", "UNKNOWN")
-
-        # ---- Budget exhausted ----
-        budget_exhausted = (
-                card.get("encryptedBiddingParameters") == "BUDGET_EXHAUSTED_JOB"
-        )
-
-        # ---- LinkedIn URL ----
-        linkedin_url = f"https://www.linkedin.com/jobs/view/{job_id}"
-
-        return JobPosting(
-            job_id=job_id,
-            title=title,
-            company=company,
-            location=location,
-            work_type=work_type,
-            salary=salary,
-            posted_at=posted_at,
-            easy_apply=easy_apply,
-            promoted=promoted,
-            reposted=reposted,
-            content_source=content_source,
-            applicant_signal=applicant_signal,
-            reviewer_signal=reviewer_signal,
-            relevance_insight=relevance_text,
-            budget_exhausted=budget_exhausted,
-            linkedin_url=linkedin_url,
-        )
+    @staticmethod
+    def _extract_job_id(urn: Optional[str]) -> Optional[str]:
+        if not urn:
+            return None
+        if "(" in urn and "," in urn:
+            return urn.split("(", 1)[1].split(",", 1)[0]
+        return urn.rsplit(":", 1)[-1]
 
     @staticmethod
     def _text(obj: Optional[dict]) -> Optional[str]:
-        """Safely extract the 'text' field from a LinkedIn text view-model."""
         if not obj:
             return None
-        return obj.get("text") or None
+        text = obj.get("text")
+        if text is None:
+            return None
+        return text.replace("\xa0", " ").strip()
+
+    @staticmethod
+    def _get_company_url(card: dict) -> Optional[str]:
+        logo = card.get("logo") or {}
+        return logo.get("actionTarget")
+
+    @classmethod
+    def _get_company_logo_url(cls, card: dict, companies_by_urn: dict[str, dict]) -> Optional[str]:
+        logo = card.get("logo") or {}
+        attributes = logo.get("attributes") or []
+
+        for attr in attributes:
+            detail_union = attr.get("detailDataUnion") or {}
+            company_urn = detail_union.get("companyLogo")
+            if not company_urn:
+                continue
+
+            company = companies_by_urn.get(company_urn, {})
+            vector = (company.get("logo") or {}).get("vectorImage")
+            url = cls._vector_image_to_url(vector)
+            if url:
+                return url
+
+        return None
+
+    @staticmethod
+    def _vector_image_to_url(vector_image: Optional[dict]) -> Optional[str]:
+        if not vector_image:
+            return None
+
+        root_url = vector_image.get("rootUrl")
+        artifacts = vector_image.get("artifacts") or []
+        if not root_url or not artifacts:
+            return None
+
+        best = max(
+            artifacts,
+            key=lambda artifact: (artifact.get("width", 0), artifact.get("height", 0)),
+        )
+        path = best.get("fileIdentifyingUrlPathSegment")
+        if not path:
+            return None
+
+        return f"{root_url}{path}"
 
 
 # ---------------------------------------------------------------------------
@@ -358,25 +368,29 @@ if __name__ == "__main__":
         print(f"[ERROR] {e}")
         raise SystemExit(1)
 
-    # Pretty-print the result
     print(result)
 
-    # --- Example: filter remote Python jobs ---
-    python_remote = [
-        j for j in result.jobs
-        if "python" in j.title.lower() and j.work_type == "Remote"
+    print(f"\nTotal parsed jobs: {len(result.jobs)}")
+
+    remote_python = [
+        job for job in result.jobs
+        if (job.title and "python" in job.title.lower())
+           and (job.location and "remote" in job.location.lower())
     ]
-    if python_remote:
+
+    if remote_python:
         print(f"\n{'═' * 60}")
-        print(f"  Remote Python jobs ({len(python_remote)} found):")
-        print('═' * 60)
-        for j in python_remote:
-            print(f"  • {j.title} @ {j.company}  —  {j.linkedin_url}")
+        print(f"  Remote Python jobs ({len(remote_python)} found):")
+        print(f"{'═' * 60}")
+        for job in remote_python:
+            company_name = job.company.name if job.company and job.company.name else "Unknown company"
+            print(f"  • {job.title} @ {company_name}  —  {job.linkedin_url}")
 
-    # --- Example: show only Easy Apply jobs ---
-    easy = [j for j in result.jobs if j.easy_apply]
-    print(f"\n  Easy Apply jobs: {len(easy)} / {len(result.jobs)}")
+    reposted = [job for job in result.jobs if job.reposted]
+    print(f"\n  Reposted jobs: {len(reposted)} / {len(result.jobs)}")
 
-    # --- Example: show budget-exhausted organic listings ---
-    organic = [j for j in result.jobs if j.budget_exhausted]
-    print(f"  Budget-exhausted (now organic): {len(organic)} / {len(result.jobs)}")
+    with_company_page = [
+        job for job in result.jobs
+        if job.company and job.company.linkedin_url
+    ]
+    print(f"  Jobs with company page URL: {len(with_company_page)} / {len(result.jobs)}")
