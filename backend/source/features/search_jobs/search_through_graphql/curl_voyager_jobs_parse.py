@@ -784,11 +784,13 @@ def main() -> None:
 
     run_full_audit(payload, parsed)
 
-    if args.save_json:
-        save_jobs_json(Path(args.save_json), parsed.jobs)
+    # always save
+    output_path = Path(__file__).parent / "linkedin_graphql_parsed_jobs.json"
+    save_jobs_json(output_path, parsed.jobs)
 
     print_header("DONE")
     print(f"Parsed {len(parsed.jobs)} job cards successfully.")
+    print(f"Saved parsed jobs to: {output_path}")
 
 
 if __name__ == "__main__":
