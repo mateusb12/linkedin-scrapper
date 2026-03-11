@@ -1,833 +1,426 @@
 import React, {
-  useState,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
-  useCallback,
+  useState,
 } from "react";
 import {
-  Code,
-  Briefcase,
+  Search,
   MapPin,
-  Clock,
-  Users,
-  Zap,
-  Building,
-  ChevronRight,
-  CheckCircle,
-  Target,
-  BookOpen,
-  Globe,
-  XCircle,
+  Building2,
+  ShieldCheck,
+  Repeat2,
+  ExternalLink,
+  Briefcase,
+  Database,
   Filter,
-  X,
-  CheckSquare,
+  XCircle,
+  ChevronRight,
+  Code2,
 } from "lucide-react";
 
-import {
-  getExperienceStyle,
-  getCompetitionStyle,
-} from "../tracking/utils/jobUtils";
+import { getGraphqlJobs } from "../../services/graphqlJobsService.js";
 
-const mockData = [
-  {
-    applicants: 5,
-    company: {
-      name: "Innovatech Solutions",
-      logo_url: "https://placehold.co/64x64/7c3aed/ffffff?text=IS",
-    },
-    job_url: "https://example.com/job/1",
-    location: "San Francisco, CA (On-site)",
-    posted_on: new Date(
-      new Date().setDate(new Date().getDate() - 1),
-    ).toISOString(),
-    title: "Senior Frontend Developer",
-    urn: "urn:li:fsd_jobPosting:1",
-    workplace_type: "On-site",
-    employment_type: "Full-time",
-    skills: '["React", "TypeScript", "Next.js", "GraphQL"]',
-    easy_apply: true,
-    language: "English",
-    has_applied: true,
-    applied_on: new Date().toISOString(),
-  },
-  {
-    applicants: 12,
-    company: {
-      name: "Auramind.ai",
-      logo_url:
-        "https://media.licdn.com/dms/image/v2/D4D0BAQEEnATeFu7uAw/company-logo_200_200/company-logo_200_200/0/1721777167872/auramind_ai_logo?e=1756944000&v=beta&t=d5_ogfQhy_swysPpWBOhvX6ce55VcsoQJZ_7Bz69UVg",
-    },
-    job_url: "https://www.linkedin.com/jobs/view/4257609291/",
-    location: "Goiânia, Goiás, Brazil (Remote)",
-    posted_on: new Date(
-      new Date().setDate(new Date().getDate() - 2),
-    ).toISOString(),
-    title: "Backend Developer - Python - Pleno",
-    urn: "urn:li:fsd_jobPosting:4257609291",
-    workplace_type: "Remote",
-    employment_type: "Full-time",
-    skills: '["Python", "Django", "Flask", "RESTful APIs"]',
-    easy_apply: true,
-    language: "Portuguese",
-    has_applied: false,
-  },
-  {
-    applicants: 3,
-    company: {
-      name: "WEX",
-      logo_url:
-        "https://media.licdn.com/dms/image/v2/D560BAQFhAT_f2S08EQ/company-logo_200_200/company-logo_200_200/0/1699284516534/wexinc_logo?e=1756944000&v=beta&t=NtZa7aSPem2JOsxFBPYXN28p70MHEoYBoGvVu-fdaQw",
-    },
-    job_url:
-      "https://careers.wexinc.com/us/en/job/WEXWEXUSR17144EXTERNALENUS/Mid-Python-Developer?utm_source=linkedin&utm_medium=phenom-feeds",
-    location: "São Paulo, Brazil (Hybrid)",
-    posted_on: new Date(
-      new Date().setDate(new Date().getDate() - 8),
-    ).toISOString(),
-    title: "Mid Python Developer",
-    urn: "urn:li:fsd_jobPosting:4161846248",
-    workplace_type: "Hybrid",
-    employment_type: "Full-time",
-    skills: null,
-    easy_apply: false,
-    language: "English",
-    has_applied: false,
-  },
-  {
-    applicants: 25,
-    company: {
-      name: "DataDriven Inc.",
-      logo_url: "https://placehold.co/64x64/db2777/ffffff?text=DD",
-    },
-    job_url: "https://example.com/job/2",
-    location: "New York, NY (Remote)",
-    posted_on: new Date(
-      new Date().setDate(new Date().getDate() - 15),
-    ).toISOString(),
-    title: "Data Scientist",
-    urn: "urn:li:fsd_jobPosting:2",
-    workplace_type: "Remote",
-    employment_type: "Contract",
-    skills: '["Python", "Pandas", "Scikit-learn", "TensorFlow"]',
-    easy_apply: false,
-    language: "English",
-    has_applied: true,
-    applied_on: new Date().toISOString(),
-  },
-  {
-    applicants: 0,
-    company: {
-      name: "MJV Technology & Innovation",
-      logo_url:
-        "https://media.licdn.com/dms/image/v2/D4D0BAQGlEIHzx81JxQ/company-logo_200_200/B4DZd_pzPSGkAM-/0/1750193354321/mjv_tech_and_innovation_logo?e=1756944000&v=beta&t=xR0LnBf7cjDPrMdJHVK3ij8oYNuFSuOmwBYOZXlY67A",
-    },
-    job_url: "https://mjvcarreiras.gupy.io/jobs/9231998",
-    location: "Brazil (Remote)",
-    posted_on: new Date(
-      new Date().setDate(new Date().getDate() - 40),
-    ).toISOString(),
-    title: "Pessoa Desenvolvedora Python/Golang",
-    urn: "urn:li:fsd_jobPosting:4237482675",
-    workplace_type: "Remote",
-    employment_type: "Full-time",
-    skills: '["Python", "Go", "SQL", "Docker", "Kubernetes"]',
-    easy_apply: false,
-    language: "Portuguese",
-    has_applied: false,
-  },
-  {
-    applicants: 8,
-    company: {
-      name: "CyberGuardians",
-      logo_url: "https://placehold.co/64x64/16a34a/ffffff?text=CG",
-    },
-    job_url: "https://example.com/job/3",
-    location: "London, UK (Hybrid)",
-    posted_on: new Date(
-      new Date().setDate(new Date().getDate() - 5),
-    ).toISOString(),
-    title: "Cybersecurity Analyst",
-    urn: "urn:li:fsd_jobPosting:3",
-    workplace_type: "Hybrid",
-    employment_type: "Full-time",
-    skills: '["SIEM", "Penetration Testing", "Firewalls"]',
-    easy_apply: true,
-    language: "English",
-    has_applied: false,
-  },
-  {
-    applicants: 1,
-    company: {
-      name: "Creative Minds Agency",
-      logo_url: "https://placehold.co/64x64/f97316/ffffff?text=CM",
-    },
-    job_url: "https://example.com/job/4",
-    location: "Remote",
-    posted_on: new Date().toISOString(),
-    title: "UX/UI Designer Intern",
-    urn: "urn:li:fsd_jobPosting:4",
-    workplace_type: "Remote",
-    employment_type: "Internship",
-    skills: '["Figma", "Adobe XD", "User Research"]',
-    easy_apply: false,
-    language: "English",
-    has_applied: false,
-  },
-];
-
-const Badge = ({ color, children }) => {
-  const colors = {
-    green:
-      "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
-    amber:
-      "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-    red: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
-  };
-
-  return (
-    <span
-      className={`px-3 py-1 rounded-full text-sm font-semibold ${colors[color]}`}
-    >
-      {children}
-    </span>
-  );
+const badgeTones = {
+  blue: "bg-sky-500/15 text-sky-300 border border-sky-500/30",
+  green: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
+  amber: "bg-amber-500/15 text-amber-300 border border-amber-500/30",
+  violet: "bg-violet-500/15 text-violet-300 border border-violet-500/30",
+  slate: "bg-slate-700/60 text-slate-300 border border-slate-600",
 };
 
-const JobListItem = ({ job, onSelect, isSelected }) => {
-  const baseClasses =
-    "p-4 border-l-4 cursor-pointer transition-colors duration-200";
-  const selectedClasses = "bg-sky-100 dark:bg-sky-900/30 border-sky-500";
-  const unselectedClasses =
-    "border-transparent hover:bg-gray-100 dark:hover:bg-gray-800";
+const normalizeText = (value = "") =>
+  value
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-    });
-  };
+const placeholderLogo = (companyName = "?") =>
+  `https://placehold.co/80x80/0f172a/e2e8f0?text=${encodeURIComponent(
+    companyName.charAt(0).toUpperCase() || "?",
+  )}`;
 
-  const compStyle = getCompetitionStyle(job.applicants);
-  const expStyle = getExperienceStyle(job.experience);
+const Badge = ({ tone = "slate", children }) => (
+  <span
+    className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${badgeTones[tone]}`}
+  >
+    {children}
+  </span>
+);
+
+const FilterSelect = ({ value, onChange, children }) => (
+  <div className="relative">
+    <select
+      value={value}
+      onChange={onChange}
+      className="w-full appearance-none rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-sky-500"
+    >
+      {children}
+    </select>
+
+    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
+      <svg
+        className="h-4 w-4 fill-current"
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 20 20"
+      >
+        <path d="M5.516 7.548 10 12.032l4.484-4.484 1.032 1.032L10 14.096 4.484 8.58z" />
+      </svg>
+    </div>
+  </div>
+);
+
+const EmptyState = ({ title, description }) => (
+  <div className="flex h-full flex-col items-center justify-center px-8 text-center text-slate-400">
+    <Filter size={42} className="mb-4 text-slate-500" />
+    <h3 className="text-lg font-semibold text-slate-200">{title}</h3>
+    <p className="mt-2 max-w-md text-sm">{description}</p>
+  </div>
+);
+
+const InfoCard = ({ icon: Icon, label, value }) => (
+  <div className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-800/70 px-4 py-3">
+    <Icon size={18} className="shrink-0 text-slate-400" />
+    <div className="min-w-0">
+      <p className="text-[11px] uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <p className="truncate text-sm text-slate-200">
+        {value || "Not specified"}
+      </p>
+    </div>
+  </div>
+);
+
+const Placeholder = ({ text = "None specified." }) => (
+  <div className="flex items-center text-sm italic text-slate-400">
+    <XCircle size={16} className="mr-2 shrink-0" />
+    <span>{text}</span>
+  </div>
+);
+
+const JobListItem = ({ job, isSelected, onSelect }) => {
+  const selectedClasses = isSelected
+    ? "border-sky-400 bg-sky-950/50"
+    : "border-transparent hover:bg-slate-800/40";
 
   return (
-    <div
-      onClick={() => onSelect(job)}
-      className={`${baseClasses} ${isSelected ? selectedClasses : unselectedClasses}`}
+    <button
+      type="button"
+      onClick={() => onSelect(job.id)}
+      className={`w-full border-l-4 p-4 text-left transition-colors ${selectedClasses}`}
     >
-      <div className="flex justify-between items-center">
-        <h3 className="font-bold text-gray-800 dark:text-gray-100 truncate">
-          {job.title || "Untitled Job"}
-        </h3>
-        <div className="flex gap-1">
-          {job.has_applied && (
-            <CheckCircle size={16} className="text-green-500" title="Applied" />
-          )}
-          {job.easy_apply && (
-            <Zap size={16} className="text-yellow-500" title="Easy Apply" />
-          )}
-        </div>
-      </div>
-      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-        {job.company?.name || "Unknown Company"}
-      </p>
-      <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-        {job.location || "Location not specified"}
-      </p>
+      <div className="flex gap-3">
+        <img
+          src={job.company.logo_url}
+          alt={`${job.company.name} logo`}
+          className="h-12 w-12 rounded-lg border border-slate-700 bg-slate-900 object-contain"
+          onError={(event) => {
+            event.currentTarget.onerror = null;
+            event.currentTarget.src = placeholderLogo(job.company.name);
+          }}
+        />
 
-      <div className="flex justify-between items-end mt-2">
-        <div className="flex gap-2">
-          {}
-          {job.applicants !== null && (
-            <span
-              className={`text-[10px] px-1.5 py-0.5 rounded border ${compStyle}`}
-            >
-              {job.applicants} applicants
-            </span>
-          )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="truncate font-semibold text-slate-100">
+              {job.title}
+            </h3>
+
+            <div className="flex shrink-0 items-center gap-1">
+              {job.verified && (
+                <ShieldCheck size={16} className="text-emerald-400" />
+              )}
+              {job.reposted && <Repeat2 size={16} className="text-amber-400" />}
+            </div>
+          </div>
+
+          <p className="mt-1 text-sm text-slate-300">{job.company.name}</p>
+          <p className="mt-1 truncate text-xs text-slate-400">{job.location}</p>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Badge tone="blue">{job.workplace_type}</Badge>
+            <Badge tone="green">{job.source_label}</Badge>
+            {job.keywords.slice(0, 2).map((keyword) => (
+              <Badge key={keyword} tone="violet">
+                {keyword}
+              </Badge>
+            ))}
+          </div>
         </div>
-        <p className="text-xs text-gray-400 italic">
-          {formatDate(job.posted_on)}
-        </p>
       </div>
-    </div>
+    </button>
   );
 };
 
 const JobDetailView = ({ job }) => {
   if (!job) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
-        <p>Select a job to see the details</p>
+      <div className="flex h-full items-center justify-center text-slate-400">
+        Select a job to see the details
       </div>
     );
   }
 
-  const parseJsonArray = (field) => {
-    if (!field) return [];
-    if (Array.isArray(field)) return field;
-    if (typeof field === "string") {
-      try {
-        const parsed = JSON.parse(field);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch (e) {
-        return [];
-      }
-    }
-    return [];
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return "N/A";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  };
-
-  const skills = parseJsonArray(job.skills || job.keywords);
-  const responsibilities = parseJsonArray(job.responsibilities);
-  const requirements = parseJsonArray(job.requirements || job.qualifications);
-
-  const compStyle = getCompetitionStyle(job.applicants);
-  const expStyle = getExperienceStyle(job.experience);
-
-  const Placeholder = ({ text = "None specified" }) => (
-    <div className="flex items-center text-gray-500 dark:text-gray-400 italic">
-      <XCircle size={16} className="mr-2 flex-shrink-0" />
-      <span>{text}</span>
-    </div>
-  );
-
   return (
-    <div className="p-6 md:p-8 h-full overflow-y-auto">
-      <div className="flex items-start mb-6">
+    <div className="h-full overflow-y-auto px-6 py-7 md:px-8">
+      <div className="mb-8 flex items-start gap-5">
         <img
-          src={job.company?.logo_url}
-          alt={`${job.company?.name} logo`}
-          className="w-16 h-16 rounded-lg mr-6 object-contain border border-gray-200 dark:border-gray-700"
-          onError={(e) => {
-            e.target.onerror = null;
-            e.target.src = `https://placehold.co/64x64/e2e8f0/4a5568?text=${job.company?.name?.charAt(0) || "?"}`;
+          src={job.company.logo_url}
+          alt={`${job.company.name} logo`}
+          className="h-16 w-16 rounded-xl border border-slate-700 bg-slate-900 object-contain"
+          onError={(event) => {
+            event.currentTarget.onerror = null;
+            event.currentTarget.src = placeholderLogo(job.company.name);
           }}
         />
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            {job.title || "Untitled Job"}
+
+        <div className="min-w-0 flex-1">
+          <h2 className="text-3xl font-bold leading-tight text-white">
+            {job.title}
           </h2>
-          <p className="text-lg text-gray-700 dark:text-gray-300">
-            {job.company?.name || "Unknown Company"}
-          </p>
-          {job.urn && (
-            <p
-              className="text-[11px] text-gray-400 dark:text-gray-500 font-mono mt-0.5 select-text"
-              title="LinkedIn Job URN"
-            >
-              {job.urn}
-            </p>
-          )}
-          {job.has_applied && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 mt-2 rounded bg-green-900/30 text-green-400 text-xs border border-green-800">
-              <CheckCircle size={12} /> Applied {formatDate(job.applied_on)}
-            </span>
-          )}
+
+          <p className="mt-1 text-xl text-slate-300">{job.company.name}</p>
+          <p className="mt-1 text-xs text-slate-500">Job ID: {job.job_id}</p>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {job.verified && <Badge tone="green">Verified</Badge>}
+            {job.reposted && <Badge tone="amber">Reposted</Badge>}
+            <Badge tone="blue">{job.workplace_type}</Badge>
+            <Badge tone="violet">{job.source_label}</Badge>
+          </div>
         </div>
       </div>
 
-      {}
-      <div className="flex flex-wrap items-center gap-4 mb-6">
+      <div className="mb-8 flex flex-wrap gap-3">
         <a
           href={job.job_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition-all duration-200 text-center"
+          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-500"
         >
-          {job.has_applied ? "View Application" : "Apply Now"}
+          <ExternalLink size={16} />
+          Open Job
         </a>
 
-        {}
-        <span
-          className={`flex items-center gap-2 px-4 py-2 font-semibold rounded-lg border ${compStyle}`}
-        >
-          <Users size={16} />
-          {job.applicants != null ? `${job.applicants} applicants` : "N/A"}
-          {job.applicants < 100 && job.applicants != null && (
-            <span className="text-[10px] ml-1 opacity-75">(Low)</span>
-          )}
-        </span>
-
-        {}
-        {job.experience && (
-          <span
-            className={`flex items-center gap-2 px-4 py-2 font-semibold rounded-lg border ${expStyle}`}
+        {job.company.page_url && (
+          <a
+            href={job.company.page_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-6 py-3 font-semibold text-slate-100 transition hover:bg-slate-700"
           >
-            <Target size={16} />
-            {job.experience.min}+ years experience
-          </span>
-        )}
-
-        {job.easy_apply && (
-          <span className="flex items-center gap-2 px-4 py-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300 font-semibold rounded-lg border border-yellow-200 dark:border-yellow-700">
-            <Zap size={16} /> Easy Apply
-          </span>
+            <Building2 size={16} />
+            Company Page
+          </a>
         )}
       </div>
 
-      {}
-      {}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 mb-8 text-sm">
-        {job.job_type && (
-          <div className="flex items-center text-indigo-900 dark:text-indigo-100 bg-indigo-100 dark:bg-indigo-900/40 p-3 rounded-lg border-l-4 border-indigo-500 dark:border-indigo-400 shadow-sm">
-            <Briefcase
-              size={18}
-              className="mr-3 text-indigo-600 dark:text-indigo-300 flex-shrink-0"
-            />
-            <span className="font-semibold text-sm">{job.job_type}</span>
-          </div>
-        )}
-
-        {Array.isArray(job.programming_languages) &&
-          job.programming_languages.length > 0 && (
-            <div className="flex items-center bg-violet-100 dark:bg-violet-900/40 p-3 rounded-lg border-l-4 border-violet-500 dark:border-violet-400 shadow-sm flex-wrap gap-2 text-violet-900 dark:text-violet-100">
-              <Code
-                size={18}
-                className="mr-3 text-violet-700 dark:text-violet-300 flex-shrink-0"
-              />
-              {job.programming_languages.map((lang, index) => (
-                <span
-                  key={index}
-                  className="bg-violet-200 dark:bg-violet-700 text-violet-900 dark:text-violet-100 px-2 py-0.5 rounded-full text-xs font-bold"
-                >
-                  {lang}
-                </span>
-              ))}
-            </div>
-          )}
-        <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
-          <MapPin size={18} className="mr-3 text-gray-500 flex-shrink-0" />{" "}
-          <span className="truncate">{job.location || "Not specified"}</span>
-        </div>
-        <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
-          <Briefcase size={18} className="mr-3 text-gray-500 flex-shrink-0" />{" "}
-          <span className="truncate">
-            {job.employment_type || "Not specified"}
-          </span>
-        </div>
-        <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
-          <Clock size={18} className="mr-3 text-gray-500 flex-shrink-0" />{" "}
-          <span className="truncate">Posted: {formatDate(job.posted_on)}</span>
-        </div>
-        <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
-          <Building size={18} className="mr-3 text-gray-500 flex-shrink-0" />{" "}
-          <span className="truncate">
-            {job.workplace_type || "Not specified"}
-          </span>
-        </div>
-        <div className="flex items-center text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
-          <Globe size={18} className="mr-3 text-gray-500 flex-shrink-0" />{" "}
-          <span className="truncate">{job.language || "Not specified"}</span>
-        </div>
+      <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <InfoCard icon={MapPin} label="Location" value={job.location} />
+        <InfoCard
+          icon={Briefcase}
+          label="Workplace Type"
+          value={job.workplace_type}
+        />
+        <InfoCard
+          icon={ShieldCheck}
+          label="Verification"
+          value={job.verified ? "Verified" : "Not verified"}
+        />
+        <InfoCard icon={Database} label="Source" value={job.source_label} />
       </div>
-
-      {job.description_snippet && (
-        <div className="mb-8 p-4 bg-gray-100 dark:bg-gray-800/60 rounded-lg border-l-4 border-sky-500">
-          <p className="text-gray-700 dark:text-gray-300 italic">
-            {job.description_snippet}
-          </p>
-        </div>
-      )}
 
       <div className="space-y-8">
-        <div>
-          <h3 className="text-xl font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700 flex items-center">
-            <ChevronRight size={20} className="mr-2" /> Skills
+        <section>
+          <h3 className="mb-4 flex items-center border-b border-slate-800 pb-2 text-xl font-semibold text-slate-100">
+            <Code2 size={18} className="mr-2" />
+            Tech Hints
           </h3>
-          {skills.length > 0 ? (
+
+          {job.keywords.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {skills.map((skill, index) => (
-                <span
-                  key={index}
-                  className="bg-sky-100 text-sky-800 text-xs font-semibold px-2.5 py-0.5 rounded-full dark:bg-sky-900 dark:text-sky-300"
-                >
-                  {skill}
-                </span>
+              {job.keywords.map((keyword) => (
+                <Badge key={keyword} tone="violet">
+                  {keyword}
+                </Badge>
               ))}
             </div>
           ) : (
-            <Placeholder />
+            <Placeholder text="No useful stack hints were extracted from the title." />
           )}
-        </div>
-        <div>
-          <h3 className="text-xl font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700 flex items-center">
-            <Target size={20} className="mr-2" /> Key Responsibilities
+        </section>
+
+        <section>
+          <h3 className="mb-4 flex items-center border-b border-slate-800 pb-2 text-xl font-semibold text-slate-100">
+            <ChevronRight size={18} className="mr-2" />
+            About This Listing
           </h3>
-          {responsibilities.length > 0 ? (
-            <ul className="space-y-2 text-gray-700 dark:text-gray-300">
-              {responsibilities.map((item, index) => (
-                <li key={index} className="flex items-start">
-                  <CheckCircle
-                    size={16}
-                    className="text-green-500 mr-3 mt-1 flex-shrink-0"
-                  />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
+
+          {job.description_snippet ? (
+            <div className="rounded-xl border border-slate-800 bg-slate-800/60 p-4 text-sm leading-7 text-slate-300">
+              {job.description_snippet}
+            </div>
           ) : (
-            <Placeholder />
+            <Placeholder text="This GraphQL dataset only has card-level data right now, so there is no description snippet yet." />
           )}
-        </div>
-        <div>
-          <h3 className="text-xl font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700 flex items-center">
-            <BookOpen size={20} className="mr-2" /> Qualifications
-          </h3>
-          {requirements.length > 0 ? (
-            <ul className="space-y-2 text-gray-700 dark:text-gray-300">
-              {requirements.map((item, index) => (
-                <li key={index} className="flex items-start">
-                  <CheckCircle
-                    size={16}
-                    className="text-green-500 mr-3 mt-1 flex-shrink-0"
-                  />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Placeholder />
-          )}
-        </div>
-        <div>
-          <h3 className="text-xl font-semibold mb-4 border-b pb-2 border-gray-200 dark:border-gray-700">
-            About the job
-          </h3>
-          <div className="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-300">
-            <p style={{ whiteSpace: "pre-wrap" }}>
-              {job.description_full || "No full description available."}
-            </p>
-          </div>
-        </div>
+        </section>
       </div>
-    </div>
-  );
-};
-
-const FilterSelect = ({ label, value, onChange, children }) => (
-  <div className="relative">
-    <select
-      value={value}
-      onChange={onChange}
-      className="w-full appearance-none p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-    >
-      {children}
-    </select>
-    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 dark:text-gray-300">
-      <svg
-        className="fill-current h-4 w-4"
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 20 20"
-      >
-        <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-      </svg>
-    </div>
-  </div>
-);
-
-const MultiSelectFilter = ({
-  options,
-  selectedOptions,
-  onChange,
-  placeholder = "Select skills...",
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (ref.current && !ref.current.contains(event.target)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [ref]);
-
-  const handleSelect = (option) => {
-    const newSelectedOptions = selectedOptions.includes(option)
-      ? selectedOptions.filter((item) => item !== option)
-      : [...selectedOptions, option];
-    onChange(newSelectedOptions);
-  };
-
-  const removeOption = (option) => {
-    onChange(selectedOptions.filter((item) => item !== option));
-  };
-
-  return (
-    <div className="relative col-span-1 md:col-span-2" ref={ref}>
-      <div
-        className="w-full flex flex-wrap gap-1 items-center p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 min-h-[42px] cursor-pointer"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        {selectedOptions.length > 0 ? (
-          selectedOptions.map((option) => (
-            <span
-              key={option}
-              className="flex items-center gap-1 bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded-full dark:bg-blue-900 dark:text-blue-300"
-            >
-              {option}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeOption(option);
-                }}
-                className="text-blue-500 hover:text-blue-700 focus:outline-none"
-                aria-label={`Remove ${option}`}
-              >
-                <X size={12} />
-              </button>
-            </span>
-          ))
-        ) : (
-          <span className="text-gray-500 dark:text-gray-400 px-1">
-            {placeholder}
-          </span>
-        )}
-      </div>
-      {isOpen && (
-        <div className="absolute z-10 w-full mt-1 max-h-60 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-lg">
-          {options.map((option) => (
-            <label
-              key={option}
-              className="flex items-center w-full px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
-            >
-              <input
-                type="checkbox"
-                checked={selectedOptions.includes(option)}
-                onChange={() => handleSelect(option)}
-                className="form-checkbox h-4 w-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
-              />
-              <span className="ml-3 text-gray-900 dark:text-gray-100">
-                {option}
-              </span>
-            </label>
-          ))}
-        </div>
-      )}
     </div>
   );
 };
 
 const MainJobListing = () => {
   const [jobs, setJobs] = useState([]);
-  const [filteredJobs, setFilteredJobs] = useState([]);
-  const [selectedJob, setSelectedJob] = useState(null);
+  const [selectedJobId, setSelectedJobId] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [workplaceType, setWorkplaceType] = useState("All");
-  const [datePosted, setDatePosted] = useState("All");
-  const [applicationType, setApplicationType] = useState("All");
-  const [appliedFilter, setAppliedFilter] = useState("All");
-  const [selectedSkills, setSelectedSkills] = useState([]);
+  const [verificationFilter, setVerificationFilter] = useState("All");
+  const [repostedFilter, setRepostedFilter] = useState("All");
+  const [sourceFilter, setSourceFilter] = useState("All");
   const [sortBy, setSortBy] = useState("relevance");
 
   const [isDragging, setIsDragging] = useState(false);
-  const [leftPanelWidth, setLeftPanelWidth] = useState(35);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(37);
+
   const containerRef = useRef(null);
-  const MIN_WIDTH = 25;
-  const MAX_WIDTH = 75;
+  const MIN_WIDTH = 28;
+  const MAX_WIDTH = 65;
 
   useEffect(() => {
-    const fetchJobs = async () => {
+    const loadJobs = async () => {
       try {
-        const response = await fetch("http://localhost:5000/jobs/all");
-        if (!response.ok)
-          throw new Error(`HTTP error! status: ${response.status}`);
-        const data = await response.json();
+        const data = await getGraphqlJobs();
         setJobs(data);
-        if (data.length > 0) setSelectedJob(data[0]);
+        if (data.length > 0) setSelectedJobId(data[0].id);
       } catch (error) {
-        console.error("Failed to fetch jobs from API, using mock data.", error);
-        setJobs(mockData);
-        if (mockData.length > 0) setSelectedJob(mockData[0]);
+        console.error("Failed to load hardcoded GraphQL jobs:", error);
+      } finally {
+        setLoading(false);
       }
     };
 
-    fetchJobs();
+    loadJobs();
   }, []);
 
-  const uniqueSkills = useMemo(() => {
-    const allSkills = new Set();
-    jobs.forEach((job) => {
-      let skillsArray = [];
-      const skillsData = job.skills || job.keywords;
-      if (skillsData) {
-        try {
-          const parsed = JSON.parse(skillsData);
-          if (Array.isArray(parsed)) skillsArray = parsed;
-        } catch (e) {
-          if (typeof skillsData === "string" && skillsData.includes(",")) {
-            skillsArray = skillsData.split(",").map((s) => s.trim());
-          } else if (typeof skillsData === "string") {
-            skillsArray = [skillsData];
-          }
-        }
-      }
-      skillsArray.forEach((skill) => {
-        if (typeof skill === "string" && skill.trim()) {
-          allSkills.add(skill.trim());
-        }
-      });
-    });
-    return Array.from(allSkills).sort();
+  const sourceOptions = useMemo(() => {
+    const map = new Map();
+    jobs.forEach((job) => map.set(job.source_key, job.source_label));
+    return Array.from(map.entries()).map(([value, label]) => ({
+      value,
+      label,
+    }));
   }, [jobs]);
 
-  useEffect(() => {
-    let processedJobs = [...jobs];
+  const filteredJobs = useMemo(() => {
+    let result = [...jobs];
 
-    if (searchTerm) {
-      const normalize = (s) => (s || "").toLowerCase().trim();
-      const normalizedFilter = normalize(searchTerm);
-      processedJobs = processedJobs.filter((job) => {
-        const title = normalize(job.title);
-        const company = normalize(job.company?.name);
-        return (
-          title.includes(normalizedFilter) || company.includes(normalizedFilter)
-        );
+    if (searchTerm.trim()) {
+      const query = normalizeText(searchTerm);
+
+      result = result.filter((job) => {
+        const haystack = [
+          job.title,
+          job.company.name,
+          job.location,
+          job.workplace_type,
+          job.source_label,
+          ...(job.keywords || []),
+        ]
+          .join(" ")
+          .trim();
+
+        return normalizeText(haystack).includes(query);
       });
     }
 
     if (workplaceType !== "All") {
-      processedJobs = processedJobs.filter(
-        (job) => job.workplace_type === workplaceType,
-      );
+      result = result.filter((job) => job.workplace_type === workplaceType);
     }
 
-    if (datePosted !== "All") {
-      const cutoffDate = new Date();
-      const daysToSubtract = parseInt(datePosted, 10);
-      cutoffDate.setDate(cutoffDate.getDate() - daysToSubtract);
-
-      processedJobs = processedJobs.filter((job) => {
-        if (!job.posted_on) return false;
-        const postedDate = new Date(job.posted_on);
-        return postedDate >= cutoffDate;
-      });
+    if (verificationFilter === "Verified") {
+      result = result.filter((job) => job.verified);
+    } else if (verificationFilter === "Unverified") {
+      result = result.filter((job) => !job.verified);
     }
 
-    if (applicationType !== "All") {
-      const isEasyApply = applicationType === "easy_apply";
-      processedJobs = processedJobs.filter(
-        (job) => job.easy_apply === isEasyApply,
-      );
+    if (repostedFilter === "Reposted") {
+      result = result.filter((job) => job.reposted);
+    } else if (repostedFilter === "Original") {
+      result = result.filter((job) => !job.reposted);
     }
 
-    if (appliedFilter === "Applied") {
-      processedJobs = processedJobs.filter(
-        (job) =>
-          job.has_applied === true ||
-          (job.applied_on && job.applied_on !== null),
-      );
-    } else if (appliedFilter === "Not Applied") {
-      processedJobs = processedJobs.filter(
-        (job) => !job.has_applied && !job.applied_on,
-      );
+    if (sourceFilter !== "All") {
+      result = result.filter((job) => job.source_key === sourceFilter);
     }
 
-    if (selectedSkills.length > 0) {
-      processedJobs = processedJobs.filter((job) => {
-        const skillsData = job.skills || job.keywords;
-        if (!skillsData) return false;
-
-        let jobSkills = [];
-        if (typeof skillsData === "string") {
-          try {
-            const parsed = JSON.parse(skillsData);
-            if (Array.isArray(parsed)) jobSkills = parsed.map((s) => s.trim());
-          } catch (e) {
-            if (skillsData.includes(",")) {
-              jobSkills = skillsData.split(",").map((s) => s.trim());
-            } else {
-              jobSkills = [skillsData];
-            }
-          }
-        } else if (Array.isArray(skillsData)) {
-          jobSkills = skillsData.map((s) => s.trim());
-        }
-        return selectedSkills.every((selectedSkill) =>
-          jobSkills.includes(selectedSkill),
-        );
-      });
+    if (sortBy === "title") {
+      result.sort((a, b) => a.title.localeCompare(b.title));
+    } else if (sortBy === "company") {
+      result.sort((a, b) => a.company.name.localeCompare(b.company.name));
     }
 
-    if (sortBy === "date") {
-      processedJobs.sort(
-        (a, b) => new Date(b.posted_on) - new Date(a.posted_on),
-      );
-    } else if (sortBy === "applied_date") {
-      processedJobs.sort((a, b) => {
-        const dateA = a.applied_on ? new Date(a.applied_on) : new Date(0);
-        const dateB = b.applied_on ? new Date(b.applied_on) : new Date(0);
-
-        return dateB - dateA;
-      });
-    }
-
-    setFilteredJobs(processedJobs);
-
-    if (
-      selectedJob &&
-      !processedJobs.some((job) => job.urn === selectedJob.urn)
-    ) {
-      setSelectedJob(processedJobs.length > 0 ? processedJobs[0] : null);
-    } else if (!selectedJob && processedJobs.length > 0) {
-      setSelectedJob(processedJobs[0]);
-    }
+    return result;
   }, [
+    jobs,
     searchTerm,
     workplaceType,
-    datePosted,
-    applicationType,
-    appliedFilter,
-    selectedSkills,
+    verificationFilter,
+    repostedFilter,
+    sourceFilter,
     sortBy,
-    jobs,
-    selectedJob,
   ]);
 
-  const handleMouseDown = (e) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (!filteredJobs.length) {
+      setSelectedJobId(null);
+      return;
+    }
+
+    const stillExists = filteredJobs.some((job) => job.id === selectedJobId);
+    if (!stillExists) {
+      setSelectedJobId(filteredJobs[0].id);
+    }
+  }, [filteredJobs, selectedJobId]);
+
+  const selectedJob =
+    filteredJobs.find((job) => job.id === selectedJobId) || null;
+
+  const handleMouseDown = (event) => {
+    event.preventDefault();
     setIsDragging(true);
   };
 
   const handleMouseUp = useCallback(() => setIsDragging(false), []);
 
   const handleMouseMove = useCallback(
-    (e) => {
+    (event) => {
       if (!isDragging || !containerRef.current) return;
+
       const containerRect = containerRef.current.getBoundingClientRect();
-      const newWidthPx = e.clientX - containerRect.left;
+      const newWidthPx = event.clientX - containerRect.left;
       const newWidthPercent = (newWidthPx / containerRect.width) * 100;
       const clampedWidth = Math.max(
         MIN_WIDTH,
         Math.min(newWidthPercent, MAX_WIDTH),
       );
+
       setLeftPanelWidth(clampedWidth);
     },
-    [isDragging, MIN_WIDTH, MAX_WIDTH],
+    [isDragging],
   );
 
   useEffect(() => {
-    if (isDragging) {
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-    }
+    if (!isDragging) return;
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
@@ -835,115 +428,115 @@ const MainJobListing = () => {
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
   return (
-    <div className="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
+    <div className="h-screen bg-[#081120] font-sans text-slate-100">
       <div
         ref={containerRef}
-        className="flex h-screen"
+        className="flex h-full"
         style={{ userSelect: isDragging ? "none" : "auto" }}
       >
-        {}
-        <div
-          className="flex flex-col flex-shrink-0"
+        <aside
+          className="flex shrink-0 flex-col border-r border-slate-800 bg-[#0b1526]"
           style={{ width: `${leftPanelWidth}%` }}
         >
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700 space-y-4">
-            {}
-            <input
-              type="text"
-              placeholder="Search by title or company..."
-              className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              onChange={(e) => setSearchTerm(e.target.value)}
-              value={searchTerm}
-            />
+          <div className="space-y-4 border-b border-slate-800 p-4">
+            <div className="relative">
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search by title, company or stack..."
+                className="w-full rounded-lg border border-slate-700 bg-slate-800/80 py-2 pl-10 pr-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-sky-500"
+              />
+            </div>
 
-            {}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <FilterSelect
                 value={workplaceType}
-                onChange={(e) => setWorkplaceType(e.target.value)}
+                onChange={(event) => setWorkplaceType(event.target.value)}
               >
                 <option value="All">All Workplaces</option>
                 <option value="Remote">Remote</option>
                 <option value="Hybrid">Hybrid</option>
                 <option value="On-site">On-site</option>
+                <option value="Not specified">Not specified</option>
               </FilterSelect>
+
               <FilterSelect
-                value={datePosted}
-                onChange={(e) => setDatePosted(e.target.value)}
+                value={verificationFilter}
+                onChange={(event) => setVerificationFilter(event.target.value)}
               >
-                <option value="All">Any Time</option>
-                <option value="1">Last 24 hours</option>
-                <option value="7">Last 7 days</option>
-                <option value="14">Last 14 days</option>
-                <option value="30">Last 30 days</option>
+                <option value="All">All Verification</option>
+                <option value="Verified">Verified</option>
+                <option value="Unverified">Unverified</option>
               </FilterSelect>
+
               <FilterSelect
-                value={applicationType}
-                onChange={(e) => setApplicationType(e.target.value)}
+                value={repostedFilter}
+                onChange={(event) => setRepostedFilter(event.target.value)}
               >
-                <option value="All">All Application Types</option>
-                <option value="easy_apply">Easy Apply</option>
-                <option value="company_website">Company Website</option>
+                <option value="All">All Listings</option>
+                <option value="Reposted">Reposted</option>
+                <option value="Original">Original</option>
               </FilterSelect>
+
               <FilterSelect
-                value={appliedFilter}
-                onChange={(e) => setAppliedFilter(e.target.value)}
+                value={sourceFilter}
+                onChange={(event) => setSourceFilter(event.target.value)}
               >
-                <option value="All">All Statuses</option>
-                <option value="Applied">Applied</option>
-                <option value="Not Applied">Not Applied</option>
+                <option value="All">All Sources</option>
+                {sourceOptions.map((source) => (
+                  <option key={source.value} value={source.value}>
+                    {source.label}
+                  </option>
+                ))}
               </FilterSelect>
+
               <FilterSelect
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
+                onChange={(event) => setSortBy(event.target.value)}
               >
                 <option value="relevance">Sort by: Relevance</option>
-                <option value="date">Sort by: Date Posted</option>
-                <option value="applied_date">Sort by: Applied Date</option> {}
+                <option value="title">Sort by: Title</option>
+                <option value="company">Sort by: Company</option>
               </FilterSelect>
-              <MultiSelectFilter
-                options={uniqueSkills}
-                selectedOptions={selectedSkills}
-                onChange={setSelectedSkills}
-                placeholder="Filter by skills..."
-              />
             </div>
 
-            {}
-            <p className="text-sm text-gray-500 dark:text-gray-400 pl-1">
-              {filteredJobs.length} results
+            <p className="pl-1 text-sm text-slate-400">
+              {loading ? "Loading..." : `${filteredJobs.length} results`}
             </p>
           </div>
 
-          {}
-          <div className="flex-grow overflow-y-auto">
-            {filteredJobs.length > 0 ? (
+          <div className="flex-1 overflow-y-auto">
+            {loading ? (
+              <div className="p-6 text-sm text-slate-400">Loading jobs...</div>
+            ) : filteredJobs.length > 0 ? (
               filteredJobs.map((job) => (
                 <JobListItem
-                  key={job.urn}
+                  key={job.id}
                   job={job}
-                  onSelect={setSelectedJob}
-                  isSelected={selectedJob?.urn === job.urn}
+                  isSelected={selectedJobId === job.id}
+                  onSelect={setSelectedJobId}
                 />
               ))
             ) : (
-              <div className="p-8 text-center text-gray-500">
-                <Filter size={48} className="mx-auto mb-4 text-gray-400" />
-                <h3 className="text-xl font-semibold">No jobs found</h3>
-                <p>Try adjusting your search or filter criteria.</p>
-              </div>
+              <EmptyState
+                title="No jobs found"
+                description="Try changing the search term or one of the filters."
+              />
             )}
           </div>
-        </div>
+        </aside>
 
-        {}
         <div
-          className="w-2 cursor-col-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-500 dark:hover:bg-blue-600 transition-colors duration-200"
+          className="w-2 cursor-col-resize bg-slate-800 transition hover:bg-sky-500"
           onMouseDown={handleMouseDown}
         />
 
-        {}
-        <main className="flex-grow bg-white dark:bg-gray-800/50">
+        <main className="flex-1 bg-[#0d1728]">
           <JobDetailView job={selectedJob} />
         </main>
       </div>
