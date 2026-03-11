@@ -505,15 +505,15 @@ if __name__ == "__main__":
         print(f"TITLE: {job.title}")
         print(f"PRIMARY DESCRIPTION: {job.primary_description}")
         print(f"SECONDARY DESCRIPTION: {job.secondary_description}")
-        print(f"LOGO URN: {job.logo_urn}")
-        print(f"LOGO URL: {job.company_logo_url}")
-        print(f"COMPANY PAGE: {job.company_linkedin_url}")
-        print(f"JOB POSTING URN: {job.card.job_posting_urn}")
-        print(f"NORMALIZED JOB URN: {job.card.normalized_job_posting_urn}")
-        print(f"TRACKING URN: {job.tracking_urn}")
-        print(f"REPOSTED: {job.reposted_job}")
-        print(f"CONTENT SOURCE: {job.content_source}")
-        print(f"VERIFIED: {job.is_verified}")
-        print(f"VERIFICATION CONTROL: {job.verification_control_name}")
         print(f"LINKEDIN URL: {job.linkedin_url}")
         print("-" * 80)
+
+    # Save parsed JSON in same folder as script
+    from dataclasses import asdict
+
+    output_path = Path(__file__).with_name("parsed_linkedin_jobs.json")
+
+    with output_path.open("w", encoding="utf-8") as f:
+        json.dump([asdict(job) for job in result.jobs], f, indent=2, ensure_ascii=False)
+
+    print(f"\nSaved parsed jobs to: {output_path}")
