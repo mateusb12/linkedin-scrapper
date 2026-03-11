@@ -38,6 +38,24 @@ const normalizeText = (value = "") =>
     .toLowerCase()
     .trim();
 
+const buildUniqueOptions = (items, getValue, getLabel = (value) => value) => {
+  const map = new Map();
+
+  items.forEach((item) => {
+    const value = getValue(item);
+
+    if (value === undefined || value === null || String(value).trim() === "") {
+      return;
+    }
+
+    map.set(value, getLabel(value, item));
+  });
+
+  return Array.from(map.entries())
+    .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => String(a.label).localeCompare(String(b.label)));
+};
+
 const placeholderLogo = (companyName = "?") =>
   `https://placehold.co/80x80/0f172a/e2e8f0?text=${encodeURIComponent(
     companyName.charAt(0).toUpperCase() || "?",
@@ -308,13 +326,16 @@ const MainJobListing = () => {
     loadJobs();
   }, []);
 
+  const workplaceOptions = useMemo(() => {
+    return buildUniqueOptions(jobs, (job) => job.workplace_type);
+  }, [jobs]);
+
   const sourceOptions = useMemo(() => {
-    const map = new Map();
-    jobs.forEach((job) => map.set(job.source_key, job.source_label));
-    return Array.from(map.entries()).map(([value, label]) => ({
-      value,
-      label,
-    }));
+    return buildUniqueOptions(
+      jobs,
+      (job) => job.source_key,
+      (_, job) => job.source_label,
+    );
   }, [jobs]);
 
   const filteredJobs = useMemo(() => {
@@ -459,10 +480,11 @@ const MainJobListing = () => {
                 onChange={(event) => setWorkplaceType(event.target.value)}
               >
                 <option value="All">All Workplaces</option>
-                <option value="Remote">Remote</option>
-                <option value="Hybrid">Hybrid</option>
-                <option value="On-site">On-site</option>
-                <option value="Not specified">Not specified</option>
+                {workplaceOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </FilterSelect>
 
               <FilterSelect
