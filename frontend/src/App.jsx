@@ -4,7 +4,7 @@ import FullLayout from "./components/home/FullLayout.jsx";
 
 import FetchConfig from "./components/data-fetching/FetchConfig.jsx";
 import { FetchJobsView } from "./components/data-fetching/FetchJobs.jsx";
-import JobList from "./components/home/JobList.jsx";
+import JobList from "./components/search-jobs/JobList.jsx";
 import { JobDashboard } from "./components/tracking/JobDashboard.jsx";
 import Match from "./components/match-find/Match.jsx";
 import UserProfile from "./components/profile/userProfile.jsx";
