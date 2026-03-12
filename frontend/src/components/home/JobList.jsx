@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 
 import { getGraphqlJobs } from "../../services/graphqlJobsService.js";
+import { formatShortDateTime } from "../../utils/dateUtils.js";
 
 const JOBS_CACHE_KEY = "graphql_jobs_cache_v1";
 
@@ -66,19 +67,6 @@ const placeholderLogo = (companyName = "?") =>
   `https://placehold.co/80x80/0f172a/e2e8f0?text=${encodeURIComponent(
     companyName.charAt(0).toUpperCase() || "?",
   )}`;
-
-const formatCacheTimestamp = (value) => {
-  if (!value) return "No cache";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return "Invalid cache date";
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "medium",
-  }).format(date);
-};
 
 const formatDateValue = (value) => {
   if (!value) return "Not specified";
@@ -658,7 +646,7 @@ const MainJobListing = () => {
                       <span className="truncate">
                         {cacheStatusLabel}
                         {cacheTimestamp
-                          ? ` • ${formatCacheTimestamp(cacheTimestamp)}`
+                          ? ` • ${formatShortDateTime(cacheTimestamp)}`
                           : ""}
                       </span>
                     </Badge>
