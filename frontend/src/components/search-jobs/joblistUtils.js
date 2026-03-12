@@ -9,6 +9,7 @@ import {
 } from "../tracking/utils/jobUtils.js";
 
 export const JOBS_CACHE_KEY = "graphql_jobs_cache_v1";
+export const NEGATIVE_KEYWORDS_CACHE_KEY = "negative_keywords_v1";
 
 export const badgeTones = {
   blue: "bg-sky-500/15 text-sky-300 border border-sky-500/30",
@@ -224,4 +225,20 @@ export const writeJobsCache = (jobs) => {
 
 export const clearJobsCache = () => {
   localStorage.removeItem(JOBS_CACHE_KEY);
+};
+
+export const readNegativeKeywordsCache = () => {
+  try {
+    const raw = localStorage.getItem(NEGATIVE_KEYWORDS_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn("Failed to read negative keywords cache:", error);
+    return [];
+  }
+};
+
+export const writeNegativeKeywordsCache = (keywords) => {
+  localStorage.setItem(NEGATIVE_KEYWORDS_CACHE_KEY, JSON.stringify(keywords));
 };

@@ -16,6 +16,7 @@ import {
   Database,
   Filter,
   ChevronUp,
+  ChevronDown,
   XCircle,
   ChevronRight,
   Code2,
@@ -48,7 +49,11 @@ import {
   placeholderLogo,
   readJobsCache,
   writeJobsCache,
+  readNegativeKeywordsCache,
+  writeNegativeKeywordsCache,
 } from "./joblistUtils.js";
+
+const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const Badge = ({ tone = "slate", children }) => (
   <span
@@ -151,20 +156,24 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
   const hiddenCount = insights.techStack.length - visibleTech.length;
 
   const selectedClasses = isSelected
-    ? "border-sky-400/70 bg-sky-950/40 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.14)]"
-    : "border-slate-800 bg-[#0a1728] hover:border-slate-700 hover:bg-slate-800/40";
+    ? job.isNegativeMatch
+      ? "border-red-500/70 bg-red-950/40 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.14)] opacity-100"
+      : "border-sky-400/70 bg-sky-950/40 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.14)]"
+    : job.isNegativeMatch
+      ? "border-red-900/30 bg-red-950/10 hover:border-red-800/40 hover:bg-red-900/20 opacity-60 hover:opacity-100"
+      : "border-slate-800 bg-[#0a1728] hover:border-slate-700 hover:bg-slate-800/40";
 
   return (
     <button
       type="button"
       onClick={() => onSelect(job.id)}
-      className={`mx-3 my-2 block w-[calc(100%-1.5rem)] rounded-2xl border p-4 text-left transition-colors ${selectedClasses}`}
+      className={`mx-3 my-2 block w-[calc(100%-1.5rem)] rounded-2xl border p-4 text-left transition-all ${selectedClasses}`}
     >
       <div className="flex gap-3">
         <img
           src={job.company.logo_url}
           alt={`${job.company.name} logo`}
-          className="h-12 w-12 shrink-0 rounded-xl border border-slate-700 bg-slate-900 object-contain"
+          className={`h-12 w-12 shrink-0 rounded-xl border border-slate-700 bg-slate-900 object-contain ${job.isNegativeMatch ? "grayscale" : ""}`}
           onError={(event) => {
             event.currentTarget.onerror = null;
             event.currentTarget.src = placeholderLogo(job.company.name);
@@ -174,7 +183,9 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h3 className="truncate text-[18px] font-semibold leading-tight text-slate-100">
+              <h3
+                className={`truncate text-[18px] font-semibold leading-tight ${job.isNegativeMatch ? "text-red-200/70" : "text-slate-100"}`}
+              >
                 {job.title}
               </h3>
 
@@ -188,6 +199,13 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
             </div>
 
             <div className="flex shrink-0 items-center gap-1.5">
+              {job.isNegativeMatch && (
+                <XCircle
+                  size={16}
+                  className="text-red-500"
+                  title="Matches Negative Keyword"
+                />
+              )}
               {job.verified && (
                 <ShieldCheck size={16} className="text-emerald-400" />
               )}
@@ -313,6 +331,11 @@ const JobDetailView = ({ job }) => {
         <div className="min-w-0 flex-1">
           <h2 className="text-3xl font-bold leading-tight text-white">
             {job.title}
+            {job.isNegativeMatch && (
+              <span className="ml-3 inline-flex items-center gap-1 align-middle rounded-md border border-red-900 bg-red-500/20 px-2 py-0.5 text-xs font-semibold text-red-400">
+                <XCircle size={12} /> Negative Match
+              </span>
+            )}
           </h2>
 
           <p className="mt-1 text-xl text-slate-300">{job.company.name}</p>
@@ -539,6 +562,10 @@ const MainJobListing = () => {
   const [cacheTimestamp, setCacheTimestamp] = useState(null);
   const [loadedFromCache, setLoadedFromCache] = useState(false);
 
+  const [negativeKeywords, setNegativeKeywords] = useState([]);
+  const [newNegativeKeyword, setNewNegativeKeyword] = useState("");
+  const [isNegativeFilterOpen, setIsNegativeFilterOpen] = useState(false);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [workplaceType, setWorkplaceType] = useState("All");
   const [verificationFilter, setVerificationFilter] = useState("All");
@@ -552,6 +579,29 @@ const MainJobListing = () => {
   const containerRef = useRef(null);
   const MIN_WIDTH = 28;
   const MAX_WIDTH = 65;
+
+  useEffect(() => {
+    setNegativeKeywords(readNegativeKeywordsCache());
+  }, []);
+
+  const handleAddNegativeKeyword = (e) => {
+    e.preventDefault();
+    if (!newNegativeKeyword.trim()) return;
+    const normalized = newNegativeKeyword.trim().toLowerCase();
+
+    if (!negativeKeywords.includes(normalized)) {
+      const updated = [...negativeKeywords, normalized];
+      setNegativeKeywords(updated);
+      writeNegativeKeywordsCache(updated);
+    }
+    setNewNegativeKeyword("");
+  };
+
+  const handleRemoveNegativeKeyword = (keyword) => {
+    const updated = negativeKeywords.filter((k) => k !== keyword);
+    setNegativeKeywords(updated);
+    writeNegativeKeywordsCache(updated);
+  };
 
   const applyJobs = useCallback((data) => {
     setJobs(Array.isArray(data) ? data : []);
@@ -644,7 +694,32 @@ const MainJobListing = () => {
   }, [jobs]);
 
   const filteredJobs = useMemo(() => {
-    let result = [...jobs];
+    let result = jobs.map((job) => {
+      let isNegativeMatch = false;
+      if (negativeKeywords.length > 0) {
+        const haystack = [
+          job.title,
+          job.company.name,
+          job.description_snippet,
+          job.description_full,
+          ...(job.keywords || []),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        isNegativeMatch = negativeKeywords.some((kw) => {
+          const escapedKw = escapeRegExp(kw.toLowerCase());
+
+          const regex = new RegExp(
+            `(?<![\\w+#-])${escapedKw}(?![\\w+#-])`,
+            "i",
+          );
+          return regex.test(haystack);
+        });
+      }
+      return { ...job, isNegativeMatch };
+    });
 
     if (searchTerm.trim()) {
       const query = normalizeText(searchTerm);
@@ -692,21 +767,26 @@ const MainJobListing = () => {
       result = result.filter((job) => job.source_key === sourceFilter);
     }
 
-    if (sortBy === "title") {
-      result.sort((a, b) => a.title.localeCompare(b.title));
-    } else if (sortBy === "company") {
-      result.sort((a, b) => a.company.name.localeCompare(b.company.name));
-    } else if (sortBy === "applicants") {
-      result.sort(
-        (a, b) => (a.applicants_total || 0) - (b.applicants_total || 0),
-      );
-    } else if (sortBy === "recent") {
-      result.sort(
-        (a, b) =>
+    result.sort((a, b) => {
+      if (a.isNegativeMatch !== b.isNegativeMatch) {
+        return a.isNegativeMatch ? 1 : -1;
+      }
+
+      if (sortBy === "title") {
+        return a.title.localeCompare(b.title);
+      } else if (sortBy === "company") {
+        return a.company.name.localeCompare(b.company.name);
+      } else if (sortBy === "applicants") {
+        return (a.applicants_total || 0) - (b.applicants_total || 0);
+      } else if (sortBy === "recent") {
+        return (
           new Date(b.posted_at || 0).getTime() -
-          new Date(a.posted_at || 0).getTime(),
-      );
-    }
+          new Date(a.posted_at || 0).getTime()
+        );
+      }
+
+      return 0;
+    });
 
     return result;
   }, [
@@ -717,6 +797,7 @@ const MainJobListing = () => {
     repostedFilter,
     sourceFilter,
     sortBy,
+    negativeKeywords,
   ]);
 
   useEffect(() => {
@@ -899,6 +980,78 @@ const MainJobListing = () => {
                   </option>
                 ))}
               </FilterSelect>
+            </div>
+
+            <div className="rounded-xl border border-slate-700 bg-slate-800/30 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setIsNegativeFilterOpen(!isNegativeFilterOpen)}
+                className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800/50"
+              >
+                <div className="flex items-center gap-2">
+                  <Filter size={15} className="text-red-400" />
+                  Negative Keywords
+                  {negativeKeywords.length > 0 && (
+                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500/20 text-[10px] text-red-300">
+                      {negativeKeywords.length}
+                    </span>
+                  )}
+                </div>
+                {isNegativeFilterOpen ? (
+                  <ChevronUp size={16} className="text-slate-400" />
+                ) : (
+                  <ChevronDown size={16} className="text-slate-400" />
+                )}
+              </button>
+
+              {isNegativeFilterOpen && (
+                <div className="border-t border-slate-700/50 p-3">
+                  <form
+                    onSubmit={handleAddNegativeKeyword}
+                    className="mb-3 flex gap-2"
+                  >
+                    <input
+                      type="text"
+                      value={newNegativeKeyword}
+                      onChange={(e) => setNewNegativeKeyword(e.target.value)}
+                      placeholder="e.g., Java, PHP..."
+                      className="flex-1 rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-1.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-red-500/50"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!newNegativeKeyword.trim()}
+                      className="rounded-lg bg-red-500/20 px-3 py-1.5 text-sm font-semibold text-red-300 transition hover:bg-red-500/30 disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                  </form>
+
+                  {negativeKeywords.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {negativeKeywords.map((kw) => (
+                        <span
+                          key={kw}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-red-900/50 bg-red-950/30 px-2 py-1 text-[11px] font-medium text-red-200"
+                        >
+                          {kw}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveNegativeKeyword(kw)}
+                            className="rounded-full text-red-400 hover:bg-red-900/50 hover:text-red-200"
+                          >
+                            <XCircle size={12} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">
+                      No keywords added. Jobs matching these keywords will turn
+                      red and move to the bottom.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between gap-3">
