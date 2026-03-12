@@ -25,7 +25,22 @@ import {
 } from "lucide-react";
 
 import { getGraphqlJobs } from "../../services/graphqlJobsService.js";
-import { formatShortDateTime, formatTimeAgo } from "../../utils/dateUtils.js";
+import { formatShortDateTime } from "../../utils/dateUtils.js";
+import {
+  cleanJobDescription,
+  extractExperienceFromDescription,
+  extractFoundations,
+  extractJobTypeFromDescription,
+  extractSeniorityFromDescription,
+  extractSpecifics,
+  getCompetitionStyle,
+  getExperienceStyle,
+  getPostedStyle,
+  getSeniorityStyle,
+  getTechBadgeStyle,
+  getTechIcon,
+  getTypeStyle,
+} from "../tracking/utils/jobUtils.js";
 
 const JOBS_CACHE_KEY = "graphql_jobs_cache_v1";
 
@@ -36,6 +51,18 @@ const badgeTones = {
   violet: "bg-violet-500/15 text-violet-300 border border-violet-500/30",
   slate: "bg-slate-700/60 text-slate-300 border border-slate-600",
 };
+
+const GENERIC_TECH_LABELS = new Set([
+  "remote",
+  "backend",
+  "frontend",
+  "full stack",
+  "full-stack",
+  "senior",
+  "junior",
+  "pleno",
+  "node",
+]);
 
 const normalizeText = (value = "") =>
   value
@@ -81,30 +108,115 @@ const formatDateValue = (value) => {
   }).format(date);
 };
 
-const formatRelativeTimeLabel = (value) => {
-  const formatted = formatTimeAgo(value);
-  return formatted.replace(/[()]/g, "").trim();
-};
-
 const formatApplicantsLabel = (value) => {
   if (value == null) return "Not specified";
   return `${value} applicant${value === 1 ? "" : "s"}`;
 };
 
-const getCardKeywords = (job) => {
-  const normalizedWorkplace = normalizeText(job.workplace_type);
+const getRelativeTimeMeta = (value) => {
+  if (!value) return null;
 
-  return (job.keywords || [])
-    .filter((keyword) => {
-      const normalizedKeyword = normalizeText(keyword);
+  const date = new Date(value);
 
-      if (!normalizedKeyword) return false;
-      if (normalizedKeyword === normalizedWorkplace) return false;
-      if (normalizedKeyword === "remote") return false;
+  if (Number.isNaN(date.getTime())) return null;
+
+  const diffMs = Date.now() - date.getTime();
+
+  if (diffMs < 0) {
+    return { short: "now", long: "just now" };
+  }
+
+  const minutes = Math.floor(diffMs / (1000 * 60));
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const weeks = Math.floor(days / 7);
+  const months = Math.floor(days / 30);
+  const years = Math.floor(days / 365);
+
+  if (minutes < 1) return { short: "now", long: "just now" };
+  if (minutes < 60) return { short: `${minutes}m`, long: `${minutes}m ago` };
+  if (hours < 24) return { short: `${hours}h`, long: `${hours}h ago` };
+  if (days < 7) return { short: `${days}d`, long: `${days}d ago` };
+  if (days < 30) return { short: `${weeks}w`, long: `${weeks}w ago` };
+  if (days < 365) return { short: `${months}mo`, long: `${months}mo ago` };
+
+  return { short: `${years}y`, long: `${years}y ago` };
+};
+
+const getPostedBadgeText = (value) => {
+  const meta = getRelativeTimeMeta(value);
+  if (!meta) return "Posted N/A";
+  return `Posted ${meta.long}`;
+};
+
+const getPostedBadgeClasses = (value) => {
+  const meta = getRelativeTimeMeta(value);
+
+  if (!meta) {
+    return "text-gray-300 bg-gray-700/50 border-gray-600";
+  }
+
+  if (meta.short === "now" || /m$|h$/i.test(meta.short)) {
+    return "text-emerald-400 bg-emerald-900/30 border-emerald-700/50";
+  }
+
+  return getPostedStyle(`Posted ${meta.short}`);
+};
+
+const dedupeLabels = (labels = []) => {
+  const map = new Map();
+
+  labels.forEach((label) => {
+    if (!label || !String(label).trim()) return;
+    const normalized = normalizeText(label);
+    if (!normalized) return;
+    if (!map.has(normalized)) {
+      map.set(normalized, label);
+    }
+  });
+
+  return Array.from(map.values());
+};
+
+const getMeaningfulTechStack = (job, inferredTechs) => {
+  return dedupeLabels([...(inferredTechs || []), ...(job.keywords || [])])
+    .filter((tech) => {
+      const normalized = normalizeText(tech);
+
+      if (!normalized) return false;
+      if (GENERIC_TECH_LABELS.has(normalized)) return false;
+      if (normalized === normalizeText(job.workplace_type)) return false;
+      if (normalized === normalizeText(job.source_label)) return false;
 
       return true;
     })
-    .slice(0, 2);
+    .slice(0, 8);
+};
+
+const buildJobInsights = (job) => {
+  const rawDescription = job.description_full || job.description_snippet || "";
+  const combinedText = [job.title, rawDescription].filter(Boolean).join("\n\n");
+
+  const cleanedDescription = rawDescription
+    ? cleanJobDescription(rawDescription)
+    : null;
+
+  const seniority = extractSeniorityFromDescription(combinedText);
+  const jobType = extractJobTypeFromDescription(combinedText);
+  const experience = extractExperienceFromDescription(combinedText);
+
+  const foundations = extractFoundations(combinedText);
+  const specifics = extractSpecifics(combinedText);
+
+  const techStack = getMeaningfulTechStack(job, [...specifics, ...foundations]);
+
+  return {
+    cleanedDescription,
+    seniority,
+    jobType,
+    experience,
+    techStack,
+  };
 };
 
 const readJobsCache = () => {
@@ -148,6 +260,37 @@ const Badge = ({ tone = "slate", children }) => (
     {children}
   </span>
 );
+
+const InsightBadge = ({ icon: Icon, className = "", children }) => (
+  <span
+    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${className}`}
+  >
+    {Icon ? <Icon size={12} className="shrink-0" /> : null}
+    <span className="truncate">{children}</span>
+  </span>
+);
+
+const TechBadge = ({ tech, index }) => {
+  const icon = getTechIcon(tech);
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${getTechBadgeStyle(index, tech)}`}
+    >
+      {icon ? (
+        <img
+          src={icon}
+          alt=""
+          className="h-3.5 w-3.5 shrink-0 object-contain"
+          loading="lazy"
+        />
+      ) : (
+        <Code2 size={12} className="shrink-0" />
+      )}
+      <span>{tech}</span>
+    </span>
+  );
+};
 
 const FilterSelect = ({ value, onChange, children }) => (
   <div className="relative">
@@ -201,12 +344,11 @@ const Placeholder = ({ text = "None specified." }) => (
 );
 
 const JobListItem = ({ job, isSelected, onSelect }) => {
+  const insights = buildJobInsights(job);
+
   const selectedClasses = isSelected
     ? "border-sky-400/70 bg-sky-950/40 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.14)]"
     : "border-slate-800 bg-[#0a1728] hover:border-slate-700 hover:bg-slate-800/40";
-
-  const relativePosted = formatRelativeTimeLabel(job.posted_at);
-  const cardKeywords = getCardKeywords(job);
 
   return (
     <button
@@ -231,9 +373,11 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
               <h3 className="truncate text-[18px] font-semibold leading-tight text-slate-100">
                 {job.title}
               </h3>
+
               <p className="mt-1 truncate text-sm text-slate-300">
                 {job.company.name}
               </p>
+
               <p className="mt-1 truncate text-xs text-slate-400">
                 {job.location}
               </p>
@@ -252,30 +396,61 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
               <Badge tone="blue">{job.workplace_type}</Badge>
             )}
 
-            {relativePosted && (
-              <Badge tone="amber">
-                <span className="inline-flex items-center gap-1">
-                  <Clock3 size={12} />
-                  {relativePosted}
-                </span>
-              </Badge>
-            )}
+            <InsightBadge
+              icon={Clock3}
+              className={getPostedBadgeClasses(job.posted_at)}
+            >
+              {getPostedBadgeText(job.posted_at)}
+            </InsightBadge>
 
             {job.applicants_total != null && (
-              <Badge tone="slate">
-                <span className="inline-flex items-center gap-1">
-                  <Users size={12} />
-                  {job.applicants_total}
-                </span>
-              </Badge>
+              <InsightBadge
+                icon={Users}
+                className={getCompetitionStyle(job.applicants_total)}
+              >
+                {formatApplicantsLabel(job.applicants_total)}
+              </InsightBadge>
             )}
 
-            {cardKeywords.map((keyword) => (
-              <Badge key={keyword} tone="violet">
-                {keyword}
-              </Badge>
-            ))}
+            {insights.seniority && (
+              <InsightBadge
+                icon={Briefcase}
+                className={getSeniorityStyle(insights.seniority)}
+              >
+                {insights.seniority}
+              </InsightBadge>
+            )}
+
+            {insights.jobType && (
+              <InsightBadge
+                icon={Code2}
+                className={getTypeStyle(insights.jobType)}
+              >
+                {insights.jobType}
+              </InsightBadge>
+            )}
+
+            {insights.experience?.text && (
+              <InsightBadge
+                icon={Clock3}
+                className={getExperienceStyle(insights.experience)}
+              >
+                {insights.experience.text}
+              </InsightBadge>
+            )}
           </div>
+
+          {insights.techStack.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {insights.techStack.slice(0, 4).map((tech, index) => (
+                <TechBadge
+                  key={`${job.id}-${tech}`}
+                  tech={tech}
+                  index={index}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </button>
@@ -291,9 +466,12 @@ const JobDetailView = ({ job }) => {
     );
   }
 
-  const description = job.description_full || job.description_snippet || null;
-  const relativePosted = formatRelativeTimeLabel(job.posted_at);
-  const applicantsLabel = formatApplicantsLabel(job.applicants_total);
+  const insights = buildJobInsights(job);
+  const description =
+    insights.cleanedDescription ||
+    job.description_full ||
+    job.description_snippet ||
+    null;
 
   return (
     <div className="h-full overflow-y-auto px-6 py-7 md:px-8">
@@ -320,14 +498,52 @@ const JobDetailView = ({ job }) => {
           <div className="mt-3 flex flex-wrap gap-2">
             {job.verified && <Badge tone="green">Verified</Badge>}
             {job.reposted && <Badge tone="amber">Reposted</Badge>}
+
             {job.workplace_type && job.workplace_type !== "Not specified" && (
               <Badge tone="blue">{job.workplace_type}</Badge>
             )}
-            {relativePosted && (
-              <Badge tone="amber">Posted {relativePosted}</Badge>
-            )}
+
+            <InsightBadge
+              icon={Clock3}
+              className={getPostedBadgeClasses(job.posted_at)}
+            >
+              {getPostedBadgeText(job.posted_at)}
+            </InsightBadge>
+
             {job.applicants_total != null && (
-              <Badge tone="slate">{applicantsLabel}</Badge>
+              <InsightBadge
+                icon={Users}
+                className={getCompetitionStyle(job.applicants_total)}
+              >
+                {formatApplicantsLabel(job.applicants_total)}
+              </InsightBadge>
+            )}
+
+            {insights.seniority && (
+              <InsightBadge
+                icon={Briefcase}
+                className={getSeniorityStyle(insights.seniority)}
+              >
+                {insights.seniority}
+              </InsightBadge>
+            )}
+
+            {insights.jobType && (
+              <InsightBadge
+                icon={Code2}
+                className={getTypeStyle(insights.jobType)}
+              >
+                {insights.jobType}
+              </InsightBadge>
+            )}
+
+            {insights.experience?.text && (
+              <InsightBadge
+                icon={Clock3}
+                className={getExperienceStyle(insights.experience)}
+              >
+                {insights.experience.text}
+              </InsightBadge>
             )}
           </div>
         </div>
@@ -355,6 +571,18 @@ const JobDetailView = ({ job }) => {
             Company Page
           </a>
         )}
+
+        {job.company.url && job.company.url !== job.company.page_url && (
+          <a
+            href={job.company.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-6 py-3 font-semibold text-slate-100 transition hover:bg-slate-700"
+          >
+            <Building2 size={16} />
+            Company Website
+          </a>
+        )}
       </div>
 
       <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -366,19 +594,23 @@ const JobDetailView = ({ job }) => {
         />
         <InfoCard
           icon={Clock3}
-          label="Posted"
-          value={relativePosted || "Not specified"}
-        />
-        <InfoCard
-          icon={Clock3}
-          label="Published At"
+          label="Posted At"
           value={formatDateValue(job.posted_at)}
         />
-        <InfoCard icon={Users} label="Applicants" value={applicantsLabel} />
+        <InfoCard
+          icon={Users}
+          label="Applicants"
+          value={formatApplicantsLabel(job.applicants_total)}
+        />
         <InfoCard
           icon={ShieldCheck}
           label="Verification"
           value={job.verified ? "Verified" : "Not verified"}
+        />
+        <InfoCard
+          icon={Code2}
+          label="Role Focus"
+          value={insights.jobType || "Not specified"}
         />
       </div>
 
@@ -386,19 +618,73 @@ const JobDetailView = ({ job }) => {
         <section>
           <h3 className="mb-4 flex items-center border-b border-slate-800 pb-2 text-xl font-semibold text-slate-100">
             <Code2 size={18} className="mr-2" />
-            Tech Hints
+            Extracted Signals
           </h3>
 
-          {job.keywords.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {insights.seniority && (
+              <InsightBadge
+                icon={Briefcase}
+                className={getSeniorityStyle(insights.seniority)}
+              >
+                Seniority: {insights.seniority}
+              </InsightBadge>
+            )}
+
+            {insights.jobType && (
+              <InsightBadge
+                icon={Code2}
+                className={getTypeStyle(insights.jobType)}
+              >
+                Type: {insights.jobType}
+              </InsightBadge>
+            )}
+
+            {insights.experience?.text && (
+              <InsightBadge
+                icon={Clock3}
+                className={getExperienceStyle(insights.experience)}
+              >
+                Experience: {insights.experience.text}
+              </InsightBadge>
+            )}
+
+            {job.applicants_total != null && (
+              <InsightBadge
+                icon={Users}
+                className={getCompetitionStyle(job.applicants_total)}
+              >
+                Competition: {formatApplicantsLabel(job.applicants_total)}
+              </InsightBadge>
+            )}
+
+            <InsightBadge
+              icon={Clock3}
+              className={getPostedBadgeClasses(job.posted_at)}
+            >
+              {getPostedBadgeText(job.posted_at)}
+            </InsightBadge>
+          </div>
+        </section>
+
+        <section>
+          <h3 className="mb-4 flex items-center border-b border-slate-800 pb-2 text-xl font-semibold text-slate-100">
+            <Code2 size={18} className="mr-2" />
+            Detected Stack
+          </h3>
+
+          {insights.techStack.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {job.keywords.map((keyword) => (
-                <Badge key={keyword} tone="violet">
-                  {keyword}
-                </Badge>
+              {insights.techStack.map((tech, index) => (
+                <TechBadge
+                  key={`${job.id}-detail-${tech}`}
+                  tech={tech}
+                  index={index}
+                />
               ))}
             </div>
           ) : (
-            <Placeholder text="No useful stack hints were extracted from the title." />
+            <Placeholder text="No useful stack hints were extracted from this listing." />
           )}
         </section>
 
@@ -540,6 +826,8 @@ const MainJobListing = () => {
       const query = normalizeText(searchTerm);
 
       result = result.filter((job) => {
+        const insights = buildJobInsights(job);
+
         const haystack = [
           job.title,
           job.company.name,
@@ -547,7 +835,12 @@ const MainJobListing = () => {
           job.workplace_type,
           job.source_label,
           ...(job.keywords || []),
+          ...(insights.techStack || []),
+          insights.seniority,
+          insights.jobType,
+          insights.experience?.text,
         ]
+          .filter(Boolean)
           .join(" ")
           .trim();
 
@@ -686,7 +979,7 @@ const MainJobListing = () => {
                 type="text"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search by title, company or stack..."
+                placeholder="Search by title, company, stack or seniority..."
                 className="w-full rounded-xl border border-slate-700 bg-slate-800/80 py-2.5 pl-10 pr-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-sky-500"
               />
             </div>
