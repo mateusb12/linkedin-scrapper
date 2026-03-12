@@ -31,7 +31,7 @@ const JOBS_CACHE_KEY = "graphql_jobs_cache_v1";
 const badgeTones = {
   blue: "bg-sky-500/15 text-sky-300 border border-sky-500/30",
   green: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
-  amber: "bg-amber-500/15 text-amber-300 border border-amber-500/30",
+  amber: "bg-amber-400/20 text-amber-300 border border-amber-400/50",
   violet: "bg-violet-500/15 text-violet-300 border border-violet-500/30",
   slate: "bg-slate-700/60 text-slate-300 border border-slate-600",
 };
@@ -129,7 +129,7 @@ const clearJobsCache = () => {
 
 const Badge = ({ tone = "slate", children }) => (
   <span
-    className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${badgeTones[tone]}`}
+    className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold max-w-full ${badgeTones[tone]}`}
   >
     {children}
   </span>
@@ -470,6 +470,7 @@ const MainJobListing = () => {
     clearJobsCache();
     setCacheTimestamp(null);
     setLoadedFromCache(false);
+    setErrorMessage("");
   };
 
   const workplaceOptions = useMemo(() => {
@@ -604,6 +605,18 @@ const MainJobListing = () => {
     };
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
+  const cacheStatusTone = !cacheTimestamp
+    ? "slate"
+    : loadedFromCache
+      ? "amber"
+      : "green";
+
+  const cacheStatusLabel = !cacheTimestamp
+    ? "No cache"
+    : loadedFromCache
+      ? ""
+      : "Fresh data";
+
   return (
     <div className="h-screen bg-[#081120] font-sans text-slate-100">
       <div
@@ -616,52 +629,77 @@ const MainJobListing = () => {
           style={{ width: `${leftPanelWidth}%` }}
         >
           <div className="space-y-4 border-b border-slate-800 p-4">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-              <div className="relative flex-1">
-                <Search
-                  size={16}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search by title, company or stack..."
-                  className="w-full rounded-lg border border-slate-700 bg-slate-800/80 py-2 pl-10 pr-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-sky-500"
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleRefreshCache}
-                  disabled={loading}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <RefreshCw
-                    size={15}
-                    className={loading ? "animate-spin" : ""}
-                  />
-                  Refresh cache
-                </button>
-
-                <div className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-slate-300">
-                  <Clock3 size={14} className="text-slate-400" />
-                  <span>Cache: {formatCacheTimestamp(cacheTimestamp)}</span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleClearCache}
-                  className="inline-flex items-center justify-center rounded-lg border border-red-900/60 bg-red-950/40 p-2 text-red-300 transition hover:bg-red-900/30"
-                  title="Clear cache"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
+            <div className="relative">
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search by title, company or stack..."
+                className="w-full rounded-xl border border-slate-700 bg-slate-800/80 py-2.5 pl-10 pr-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-sky-500"
+              />
             </div>
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-slate-700 bg-slate-800/30 p-2.5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-800/80 shadow-inner">
+                  <Database size={16} className="text-sky-400" />
+                </div>
+
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <span className="shrink-0 text-sm font-semibold text-slate-100">
+                    Cache
+                  </span>
+                  <div className="min-w-0 truncate">
+                    <Badge tone={cacheStatusTone}>
+                      <span className="truncate">
+                        {cacheStatusLabel}
+                        {cacheTimestamp
+                          ? ` • ${formatCacheTimestamp(cacheTimestamp)}`
+                          : ""}
+                      </span>
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRefreshCache}
+                    disabled={loading}
+                    aria-label="Refresh cache"
+                    title="Refresh cache"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-600 bg-slate-700/50 text-slate-200 transition hover:bg-slate-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <RefreshCw
+                      size={14}
+                      className={loading ? "animate-spin" : ""}
+                    />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleClearCache}
+                    aria-label="Clear cache"
+                    title="Clear cache"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-500/30 bg-red-500/10 text-red-400 transition hover:border-red-500/50 hover:bg-red-500/20 hover:text-red-300"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+
+              {errorMessage && (
+                <div className="mt-2.5 border-t border-slate-700/60 pt-2.5">
+                  <p className="text-xs text-red-300">{errorMessage}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
               <FilterSelect
                 value={workplaceType}
                 onChange={(event) => setWorkplaceType(event.target.value)}
@@ -703,33 +741,25 @@ const MainJobListing = () => {
                   </option>
                 ))}
               </FilterSelect>
-
-              <FilterSelect
-                value={sortBy}
-                onChange={(event) => setSortBy(event.target.value)}
-              >
-                <option value="relevance">Sort by: Relevance</option>
-                <option value="recent">Sort by: Most Recent</option>
-                <option value="applicants">Sort by: Applicants</option>
-                <option value="title">Sort by: Title</option>
-                <option value="company">Sort by: Company</option>
-              </FilterSelect>
             </div>
 
-            <div className="space-y-1 pl-1 text-sm text-slate-400">
-              <p>{loading ? "Loading..." : `${filteredJobs.length} results`}</p>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <FilterSelect
+                  value={sortBy}
+                  onChange={(event) => setSortBy(event.target.value)}
+                >
+                  <option value="relevance">Sort by: Relevance</option>
+                  <option value="recent">Sort by: Most Recent</option>
+                  <option value="applicants">Sort by: Applicants</option>
+                  <option value="title">Sort by: Title</option>
+                  <option value="company">Sort by: Company</option>
+                </FilterSelect>
+              </div>
 
-              <p className="text-xs text-slate-500">
-                {cacheTimestamp
-                  ? loadedFromCache
-                    ? "Loaded from local cache. Refresh cache to fetch backend again."
-                    : "Fresh data loaded from backend and saved to cache."
-                  : "No cache saved yet. The next successful backend response will be cached."}
-              </p>
-
-              {errorMessage && (
-                <p className="text-xs text-amber-300">{errorMessage}</p>
-              )}
+              <div className="shrink-0 text-sm text-slate-400">
+                {loading ? "Loading..." : `${filteredJobs.length} results`}
+              </div>
             </div>
           </div>
 
