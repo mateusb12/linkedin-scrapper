@@ -28,231 +28,27 @@ import {
 import { getGraphqlJobs } from "../../services/graphqlJobsService.js";
 import { formatShortDateTime } from "../../utils/dateUtils.js";
 import {
-  cleanJobDescription,
-  extractExperienceFromDescription,
-  extractFoundations,
-  extractJobTypeFromDescription,
-  extractSeniorityFromDescription,
-  extractSpecifics,
   getCompetitionStyle,
   getExperienceStyle,
-  getPostedStyle,
   getSeniorityStyle,
   getTechBadgeStyle,
   getTechIcon,
   getTypeStyle,
 } from "../tracking/utils/jobUtils.js";
-
-const JOBS_CACHE_KEY = "graphql_jobs_cache_v1";
-
-const badgeTones = {
-  blue: "bg-sky-500/15 text-sky-300 border border-sky-500/30",
-  green: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
-  amber: "bg-amber-400/20 text-amber-300 border border-amber-400/50",
-  violet: "bg-violet-500/15 text-violet-300 border border-violet-500/30",
-  slate: "bg-slate-700/60 text-slate-300 border border-slate-600",
-};
-
-const GENERIC_TECH_LABELS = new Set([
-  "remote",
-  "backend",
-  "frontend",
-  "full stack",
-  "full-stack",
-  "senior",
-  "junior",
-  "pleno",
-  "node",
-]);
-
-const normalizeText = (value = "") =>
-  value
-    .toString()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-
-const buildUniqueOptions = (items, getValue, getLabel = (value) => value) => {
-  const map = new Map();
-
-  items.forEach((item) => {
-    const value = getValue(item);
-
-    if (value === undefined || value === null || String(value).trim() === "") {
-      return;
-    }
-
-    map.set(value, getLabel(value, item));
-  });
-
-  return Array.from(map.entries())
-    .map(([value, label]) => ({ value, label }))
-    .sort((a, b) => String(a.label).localeCompare(String(b.label)));
-};
-
-const placeholderLogo = (companyName = "?") =>
-  `https://placehold.co/80x80/0f172a/e2e8f0?text=${encodeURIComponent(
-    companyName.charAt(0).toUpperCase() || "?",
-  )}`;
-
-const formatDateValue = (value) => {
-  if (!value) return "Not specified";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return "Not specified";
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(date);
-};
-
-const formatApplicantsLabel = (value) => {
-  if (value == null) return "Not specified";
-  return `${value} applicant${value === 1 ? "" : "s"}`;
-};
-
-const getRelativeTimeMeta = (value) => {
-  if (!value) return null;
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return null;
-
-  const diffMs = Date.now() - date.getTime();
-
-  if (diffMs < 0) {
-    return { short: "now", long: "just now" };
-  }
-
-  const minutes = Math.floor(diffMs / (1000 * 60));
-  const hours = Math.floor(diffMs / (1000 * 60 * 60));
-  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  const weeks = Math.floor(days / 7);
-  const months = Math.floor(days / 30);
-  const years = Math.floor(days / 365);
-
-  if (minutes < 1) return { short: "now", long: "just now" };
-  if (minutes < 60) return { short: `${minutes}m`, long: `${minutes}m ago` };
-  if (hours < 24) return { short: `${hours}h`, long: `${hours}h ago` };
-  if (days < 7) return { short: `${days}d`, long: `${days}d ago` };
-  if (days < 30) return { short: `${weeks}w`, long: `${weeks}w ago` };
-  if (days < 365) return { short: `${months}mo`, long: `${months}mo ago` };
-
-  return { short: `${years}y`, long: `${years}y ago` };
-};
-
-const getPostedBadgeText = (value) => {
-  const meta = getRelativeTimeMeta(value);
-  if (!meta) return "Posted N/A";
-  return `Posted ${meta.long}`;
-};
-
-const getPostedBadgeClasses = (value) => {
-  const meta = getRelativeTimeMeta(value);
-
-  if (!meta) {
-    return "text-gray-300 bg-gray-700/50 border-gray-600";
-  }
-
-  if (meta.short === "now" || /m$|h$/i.test(meta.short)) {
-    return "text-emerald-400 bg-emerald-900/30 border-emerald-700/50";
-  }
-
-  return getPostedStyle(`Posted ${meta.short}`);
-};
-
-const dedupeLabels = (labels = []) => {
-  const map = new Map();
-
-  labels.forEach((label) => {
-    if (!label || !String(label).trim()) return;
-    const normalized = normalizeText(label);
-    if (!normalized) return;
-    if (!map.has(normalized)) {
-      map.set(normalized, label);
-    }
-  });
-
-  return Array.from(map.values());
-};
-
-const getMeaningfulTechStack = (job, inferredTechs) => {
-  return dedupeLabels([...(inferredTechs || []), ...(job.keywords || [])])
-    .filter((tech) => {
-      const normalized = normalizeText(tech);
-
-      if (!normalized) return false;
-      if (GENERIC_TECH_LABELS.has(normalized)) return false;
-      if (normalized === normalizeText(job.workplace_type)) return false;
-      if (normalized === normalizeText(job.source_label)) return false;
-
-      return true;
-    })
-    .slice(0, 8);
-};
-
-const buildJobInsights = (job) => {
-  const rawDescription = job.description_full || job.description_snippet || "";
-  const combinedText = [job.title, rawDescription].filter(Boolean).join("\n\n");
-
-  const cleanedDescription = rawDescription
-    ? cleanJobDescription(rawDescription)
-    : null;
-
-  const seniority = extractSeniorityFromDescription(combinedText);
-  const jobType = extractJobTypeFromDescription(combinedText);
-  const experience = extractExperienceFromDescription(combinedText);
-
-  const foundations = extractFoundations(combinedText);
-  const specifics = extractSpecifics(combinedText);
-
-  const techStack = getMeaningfulTechStack(job, [...specifics, ...foundations]);
-
-  return {
-    cleanedDescription,
-    seniority,
-    jobType,
-    experience,
-    techStack,
-  };
-};
-
-const readJobsCache = () => {
-  try {
-    const raw = localStorage.getItem(JOBS_CACHE_KEY);
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-
-    if (!parsed || !Array.isArray(parsed.jobs)) return null;
-
-    return {
-      jobs: parsed.jobs,
-      cachedAt: parsed.cachedAt || null,
-    };
-  } catch (error) {
-    console.warn("Failed to read GraphQL jobs cache:", error);
-    return null;
-  }
-};
-
-const writeJobsCache = (jobs) => {
-  const payload = {
-    jobs,
-    cachedAt: new Date().toISOString(),
-  };
-
-  localStorage.setItem(JOBS_CACHE_KEY, JSON.stringify(payload));
-
-  return payload.cachedAt;
-};
-
-const clearJobsCache = () => {
-  localStorage.removeItem(JOBS_CACHE_KEY);
-};
+import {
+  badgeTones,
+  buildJobInsights,
+  buildUniqueOptions,
+  clearJobsCache,
+  formatApplicantsLabel,
+  formatDateValue,
+  getPostedBadgeClasses,
+  getPostedBadgeText,
+  normalizeText,
+  placeholderLogo,
+  readJobsCache,
+  writeJobsCache,
+} from "./joblistUtils.js";
 
 const Badge = ({ tone = "slate", children }) => (
   <span
@@ -446,18 +242,18 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
             </div>
 
             {insights.techStack.length > 0 && (
-              <div className="flex flex-wrap gap-2 pt-3 border-t border-slate-700/50">
+              <div className="flex flex-wrap gap-2 border-t border-slate-700/50 pt-3">
                 {visibleTech.map((tech, index) => (
                   <TechBadge key={tech} tech={tech} index={index} />
                 ))}
 
                 {hiddenCount > 0 && !showAllTech && (
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={(event) => {
+                      event.stopPropagation();
                       setShowAllTech(true);
                     }}
-                    className="px-2 py-1 text-[11px] font-semibold rounded-full border border-slate-600 bg-slate-800/60 text-slate-300 hover:bg-slate-700 transition"
+                    className="rounded-full border border-slate-600 bg-slate-800/60 px-2 py-1 text-[11px] font-semibold text-slate-300 transition hover:bg-slate-700"
                     title={insights.techStack.slice(3).join(", ")}
                   >
                     +{hiddenCount}
@@ -466,11 +262,11 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
 
                 {showAllTech && (
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={(event) => {
+                      event.stopPropagation();
                       setShowAllTech(false);
                     }}
-                    className="flex items-center justify-center px-2 py-1 rounded-full border border-slate-600 bg-slate-800/60 text-slate-300 hover:bg-slate-700 transition"
+                    className="flex items-center justify-center rounded-full border border-slate-600 bg-slate-800/60 px-2 py-1 text-slate-300 transition hover:bg-slate-700"
                     title="Collapse"
                   >
                     <ChevronUp size={12} />
@@ -930,6 +726,7 @@ const MainJobListing = () => {
     }
 
     const stillExists = filteredJobs.some((job) => job.id === selectedJobId);
+
     if (!stillExists) {
       setSelectedJobId(filteredJobs[0].id);
     }
@@ -980,12 +777,6 @@ const MainJobListing = () => {
       ? "amber"
       : "green";
 
-  const cacheStatusLabel = !cacheTimestamp
-    ? "No cache"
-    : loadedFromCache
-      ? ""
-      : "Fresh data";
-
   return (
     <div className="h-screen bg-[#081120] font-sans text-slate-100">
       <div
@@ -1018,7 +809,7 @@ const MainJobListing = () => {
                   <Database size={16} className="text-sky-400" />
                 </div>
 
-                <div className="flex flex-1 items-center h-9">
+                <div className="flex h-9 flex-1 items-center">
                   <span className="text-sm font-semibold text-slate-100">
                     Cache
                   </span>
