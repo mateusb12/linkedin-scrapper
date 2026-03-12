@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 
 import { getGraphqlJobs } from "../../services/graphqlJobsService.js";
-import { formatShortDateTime } from "../../utils/dateUtils.js";
+import { formatShortDateTime, formatTimeAgo } from "../../utils/dateUtils.js";
 
 const JOBS_CACHE_KEY = "graphql_jobs_cache_v1";
 
@@ -81,6 +81,32 @@ const formatDateValue = (value) => {
   }).format(date);
 };
 
+const formatRelativeTimeLabel = (value) => {
+  const formatted = formatTimeAgo(value);
+  return formatted.replace(/[()]/g, "").trim();
+};
+
+const formatApplicantsLabel = (value) => {
+  if (value == null) return "Not specified";
+  return `${value} applicant${value === 1 ? "" : "s"}`;
+};
+
+const getCardKeywords = (job) => {
+  const normalizedWorkplace = normalizeText(job.workplace_type);
+
+  return (job.keywords || [])
+    .filter((keyword) => {
+      const normalizedKeyword = normalizeText(keyword);
+
+      if (!normalizedKeyword) return false;
+      if (normalizedKeyword === normalizedWorkplace) return false;
+      if (normalizedKeyword === "remote") return false;
+
+      return true;
+    })
+    .slice(0, 2);
+};
+
 const readJobsCache = () => {
   try {
     const raw = localStorage.getItem(JOBS_CACHE_KEY);
@@ -117,7 +143,7 @@ const clearJobsCache = () => {
 
 const Badge = ({ tone = "slate", children }) => (
   <span
-    className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold max-w-full ${badgeTones[tone]}`}
+    className={`inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${badgeTones[tone]}`}
   >
     {children}
   </span>
@@ -176,20 +202,23 @@ const Placeholder = ({ text = "None specified." }) => (
 
 const JobListItem = ({ job, isSelected, onSelect }) => {
   const selectedClasses = isSelected
-    ? "border-sky-400 bg-sky-950/50"
-    : "border-transparent hover:bg-slate-800/40";
+    ? "border-sky-400/70 bg-sky-950/40 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.14)]"
+    : "border-slate-800 bg-[#0a1728] hover:border-slate-700 hover:bg-slate-800/40";
+
+  const relativePosted = formatRelativeTimeLabel(job.posted_at);
+  const cardKeywords = getCardKeywords(job);
 
   return (
     <button
       type="button"
       onClick={() => onSelect(job.id)}
-      className={`w-full border-l-4 p-4 text-left transition-colors ${selectedClasses}`}
+      className={`mx-3 my-2 block w-[calc(100%-1.5rem)] rounded-2xl border p-4 text-left transition-colors ${selectedClasses}`}
     >
       <div className="flex gap-3">
         <img
           src={job.company.logo_url}
           alt={`${job.company.name} logo`}
-          className="h-12 w-12 rounded-lg border border-slate-700 bg-slate-900 object-contain"
+          className="h-12 w-12 shrink-0 rounded-xl border border-slate-700 bg-slate-900 object-contain"
           onError={(event) => {
             event.currentTarget.onerror = null;
             event.currentTarget.src = placeholderLogo(job.company.name);
@@ -197,12 +226,20 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
         />
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="truncate font-semibold text-slate-100">
-              {job.title}
-            </h3>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="truncate text-[18px] font-semibold leading-tight text-slate-100">
+                {job.title}
+              </h3>
+              <p className="mt-1 truncate text-sm text-slate-300">
+                {job.company.name}
+              </p>
+              <p className="mt-1 truncate text-xs text-slate-400">
+                {job.location}
+              </p>
+            </div>
 
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex shrink-0 items-center gap-1.5">
               {job.verified && (
                 <ShieldCheck size={16} className="text-emerald-400" />
               )}
@@ -210,13 +247,30 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
             </div>
           </div>
 
-          <p className="mt-1 text-sm text-slate-300">{job.company.name}</p>
-          <p className="mt-1 truncate text-xs text-slate-400">{job.location}</p>
-
           <div className="mt-3 flex flex-wrap gap-2">
-            <Badge tone="blue">{job.workplace_type}</Badge>
-            <Badge tone="green">{job.source_label}</Badge>
-            {job.keywords.slice(0, 2).map((keyword) => (
+            {job.workplace_type && job.workplace_type !== "Not specified" && (
+              <Badge tone="blue">{job.workplace_type}</Badge>
+            )}
+
+            {relativePosted && (
+              <Badge tone="amber">
+                <span className="inline-flex items-center gap-1">
+                  <Clock3 size={12} />
+                  {relativePosted}
+                </span>
+              </Badge>
+            )}
+
+            {job.applicants_total != null && (
+              <Badge tone="slate">
+                <span className="inline-flex items-center gap-1">
+                  <Users size={12} />
+                  {job.applicants_total}
+                </span>
+              </Badge>
+            )}
+
+            {cardKeywords.map((keyword) => (
               <Badge key={keyword} tone="violet">
                 {keyword}
               </Badge>
@@ -238,6 +292,8 @@ const JobDetailView = ({ job }) => {
   }
 
   const description = job.description_full || job.description_snippet || null;
+  const relativePosted = formatRelativeTimeLabel(job.posted_at);
+  const applicantsLabel = formatApplicantsLabel(job.applicants_total);
 
   return (
     <div className="h-full overflow-y-auto px-6 py-7 md:px-8">
@@ -258,13 +314,21 @@ const JobDetailView = ({ job }) => {
           </h2>
 
           <p className="mt-1 text-xl text-slate-300">{job.company.name}</p>
+          <p className="mt-1 text-sm text-slate-400">{job.location}</p>
           <p className="mt-1 text-xs text-slate-500">Job ID: {job.job_id}</p>
 
           <div className="mt-3 flex flex-wrap gap-2">
             {job.verified && <Badge tone="green">Verified</Badge>}
             {job.reposted && <Badge tone="amber">Reposted</Badge>}
-            <Badge tone="blue">{job.workplace_type}</Badge>
-            <Badge tone="violet">{job.source_label}</Badge>
+            {job.workplace_type && job.workplace_type !== "Not specified" && (
+              <Badge tone="blue">{job.workplace_type}</Badge>
+            )}
+            {relativePosted && (
+              <Badge tone="amber">Posted {relativePosted}</Badge>
+            )}
+            {job.applicants_total != null && (
+              <Badge tone="slate">{applicantsLabel}</Badge>
+            )}
           </div>
         </div>
       </div>
@@ -301,24 +365,20 @@ const JobDetailView = ({ job }) => {
           value={job.workplace_type}
         />
         <InfoCard
-          icon={ShieldCheck}
-          label="Verification"
-          value={job.verified ? "Verified" : "Not verified"}
-        />
-        <InfoCard icon={Database} label="Source" value={job.source_label} />
-        <InfoCard
-          icon={Users}
-          label="Applicants"
-          value={
-            job.applicants_total != null
-              ? String(job.applicants_total)
-              : "Not specified"
-          }
+          icon={Clock3}
+          label="Posted"
+          value={relativePosted || "Not specified"}
         />
         <InfoCard
           icon={Clock3}
-          label="Posted At"
+          label="Published At"
           value={formatDateValue(job.posted_at)}
+        />
+        <InfoCard icon={Users} label="Applicants" value={applicantsLabel} />
+        <InfoCard
+          icon={ShieldCheck}
+          label="Verification"
+          value={job.verified ? "Verified" : "Not verified"}
         />
       </div>
 
@@ -751,7 +811,7 @@ const MainJobListing = () => {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto py-1">
             {loading ? (
               <div className="p-6 text-sm text-slate-400">Loading jobs...</div>
             ) : filteredJobs.length > 0 ? (
