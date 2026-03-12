@@ -26,7 +26,7 @@ import {
   Users,
 } from "lucide-react";
 
-import { getGraphqlJobs } from "../../services/graphqlJobsService.js";
+import { streamGraphqlJobs } from "../../services/graphqlJobsService.js";
 import { formatShortDateTime } from "../../utils/dateUtils.js";
 import {
   getCompetitionStyle,
@@ -146,6 +146,42 @@ const Placeholder = ({ text = "None specified." }) => (
     <span>{text}</span>
   </div>
 );
+
+const LiveProgressBar = ({ progressData }) => {
+  if (!progressData) return null;
+
+  const { step, message, current, total } = progressData;
+  let percent = 0;
+
+  if (step === "fetching") {
+    percent = 10;
+  } else if (step === "parsing") {
+    percent = 20;
+  } else if (step === "enriching" && total > 0) {
+    const enrichPercent = (current / total) * 80;
+    percent = 20 + enrichPercent;
+  }
+
+  return (
+    <div className="mx-4 my-3 overflow-hidden rounded-xl border border-sky-900/40 bg-slate-800/40 p-3 shadow-[0_0_15px_rgba(14,165,233,0.1)]">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-medium text-sky-400">
+          <RefreshCw size={12} className="mr-1.5 inline animate-spin" />
+          {message}
+        </span>
+        <span className="text-xs font-bold text-sky-300">
+          {Math.round(percent)}%
+        </span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-900/60">
+        <div
+          className="h-full rounded-full bg-sky-500 transition-all duration-300 ease-out"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </div>
+  );
+};
 
 const JobListItem = ({ job, isSelected, onSelect }) => {
   const [showAllTech, setShowAllTech] = useState(false);
@@ -560,6 +596,8 @@ const MainJobListing = () => {
   const [jobs, setJobs] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const [progressData, setProgressData] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [cacheTimestamp, setCacheTimestamp] = useState(null);
   const [loadedFromCache, setLoadedFromCache] = useState(false);
@@ -631,6 +669,7 @@ const MainJobListing = () => {
     async ({ forceRefresh = false } = {}) => {
       setLoading(true);
       setErrorMessage("");
+      setProgressData(null);
 
       if (!forceRefresh) {
         const cached = readJobsCache();
@@ -645,7 +684,10 @@ const MainJobListing = () => {
       }
 
       try {
-        const data = await getGraphqlJobs();
+        const data = await streamGraphqlJobs({}, (progressUpdate) => {
+          setProgressData(progressUpdate);
+        });
+
         const cachedAt = writeJobsCache(data);
 
         applyJobs(data);
@@ -671,6 +713,7 @@ const MainJobListing = () => {
         }
       } finally {
         setLoading(false);
+        setProgressData(null);
       }
     },
     [applyJobs],
@@ -1141,8 +1184,12 @@ const MainJobListing = () => {
           </div>
 
           <div className="flex-1 overflow-y-auto py-1">
+            {loading && <LiveProgressBar progressData={progressData} />}
+
             {loading ? (
-              <div className="p-6 text-sm text-slate-400">Loading jobs...</div>
+              <div className="p-6 text-sm text-slate-400 text-center animate-pulse">
+                Fetching latest data...
+              </div>
             ) : filteredJobs.length > 0 ? (
               filteredJobs.map((job) => (
                 <JobListItem

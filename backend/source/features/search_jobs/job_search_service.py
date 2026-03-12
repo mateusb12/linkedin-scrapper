@@ -96,15 +96,39 @@ class LinkedInJobsSearchService:
             enrich_jobs: bool = True,
     ) -> dict[str, Any]:
         """
-        Full orchestration flow for endpoint usage.
-
-        Returns:
-            {
-              "meta": {...},
-              "audit": {...},
-              "jobs": [...]
-            }
+        Wrapper síncrono para garantir retrocompatibilidade.
+        Ele consome a versão stream e retorna apenas os dados finais processados.
         """
+        result = {}
+        for event in self.search_jobs_stream(
+                page=page,
+                count=count,
+                tuning=tuning,
+                debug=debug,
+                save_raw_json=save_raw_json,
+                save_parsed_json=save_parsed_json,
+                enrich_jobs=enrich_jobs,
+        ):
+            if event.get("type") == "result":
+                result = event.get("data", {})
+
+        return result
+
+    def search_jobs_stream(
+            self,
+            page: int = 1,
+            count: int | None = None,
+            tuning: JobSearchTuning | None = None,
+            debug: bool = False,
+            save_raw_json: bool = True,
+            save_parsed_json: bool = True,
+            enrich_jobs: bool = True,
+    ):
+        """
+        Full orchestration flow for endpoint usage with stream/progress capability.
+        Yields events throughout the lifecycle.
+        """
+        yield {"type": "progress", "step": "fetching", "message": "Fetching jobs from LinkedIn..."}
 
         raw_payload = fetch_and_save(
             page=page,
@@ -117,6 +141,8 @@ class LinkedInJobsSearchService:
         if not save_raw_json and self.raw_json_path.exists():
             self.raw_json_path.unlink(missing_ok=True)
 
+        yield {"type": "progress", "step": "parsing", "message": "Parsing payload data..."}
+
         parsed_output: ParseOutput = parse_linkedin_graphql_response(raw_payload)
 
         parsed_jobs_json = jobs_to_json_serializable(parsed_output.jobs)
@@ -126,7 +152,12 @@ class LinkedInJobsSearchService:
         duplicates_removed = original_job_count - len(parsed_jobs_json)
 
         if enrich_jobs:
-            final_jobs_json = self._enrich_parsed_jobs(parsed_jobs_json)
+            final_jobs_json = []
+            for event_type, data in self._enrich_parsed_jobs_stream(parsed_jobs_json):
+                if event_type == "progress":
+                    yield {"type": "progress", **data}
+                elif event_type == "result":
+                    final_jobs_json = data
         else:
             final_jobs_json = parsed_jobs_json
 
@@ -134,7 +165,7 @@ class LinkedInJobsSearchService:
             with self.parsed_json_path.open("w", encoding="utf-8") as f:
                 json.dump(final_jobs_json, f, ensure_ascii=False, indent=2)
 
-        return {
+        yield {"type": "result", "data": {
             "meta": {
                 "page": page,
                 "count": len(final_jobs_json),
@@ -149,13 +180,19 @@ class LinkedInJobsSearchService:
             },
             "audit": self._build_audit(parsed_output.jobs),
             "jobs": final_jobs_json,
-        }
+        }}
 
     def _enrich_parsed_jobs(self, parsed_jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Wrapper síncrono para o antigo enrich_parsed_jobs"""
+        for event_type, data in self._enrich_parsed_jobs_stream(parsed_jobs):
+            if event_type == "result":
+                return data
+        return parsed_jobs
+
+    def _enrich_parsed_jobs_stream(self, parsed_jobs: list[dict[str, Any]]):
         """
-        Convert parsed card payload into seed/base jobs, batch-enrich them, then merge the
-        enriched fields back into the original parsed payload so we preserve search-specific
-        card fields while gaining hydrated job details.
+        Convert parsed card payload into seed/base jobs, batch-enrich them in chunks,
+        and yield progress while merging enriched fields back.
         """
         base_jobs: list[dict[str, Any]] = []
 
@@ -166,9 +203,29 @@ class LinkedInJobsSearchService:
             base_jobs.append(self._build_base_job_seed(job))
 
         if not base_jobs:
-            return parsed_jobs
+            yield "result", parsed_jobs
+            return
 
-        enriched_job_objects = self.batch_enricher.enrich_base_jobs(base_jobs)
+        total = len(base_jobs)
+        enriched_job_objects = []
+
+        # Aqui está o pulo do gato: processamos em batches de 1 (ou maiores)
+        # pra você conseguir ter o update de progresso fino: "job 3/55"
+        chunk_size = 1
+
+        for i in range(0, total, chunk_size):
+            chunk = base_jobs[i:i + chunk_size]
+            enriched = self.batch_enricher.enrich_base_jobs(chunk)
+            enriched_job_objects.extend(enriched)
+
+            current = min(i + chunk_size, total)
+            yield "progress", {
+                "step": "enriching",
+                "current": current,
+                "total": total,
+                "message": f"Enriquecendo vaga {current}/{total}"
+            }
+
         enriched_by_id = {
             str(job.job_id): asdict(job)
             for job in enriched_job_objects
@@ -202,7 +259,7 @@ class LinkedInJobsSearchService:
 
             merged_jobs.append(merged)
 
-        return merged_jobs
+        yield "result", merged_jobs
 
     def _build_base_job_seed(self, job: dict[str, Any]) -> dict[str, Any]:
         """

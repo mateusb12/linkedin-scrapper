@@ -7,11 +7,12 @@ Each endpoint is a thin wire to the correct layer:
 No business logic lives here.
 """
 
+import json
 import traceback
 from enum import Enum
 from typing import Any
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, Response
 
 from source.features.search_jobs.curl_voyager_jobs_fetch import JobSearchTuning, WorkType, JobType, ExperienceLevel, \
     DatePosted, SearchOrigin, SortBy
@@ -188,6 +189,18 @@ def _enum_options(enum_cls: type[Enum]) -> list[dict[str, str]]:
     return [{"name": member.name, "value": member.value} for member in enum_cls]
 
 
+def _get_search_params() -> dict[str, Any]:
+    """Extrai todos os parâmetros comuns para evitar repetição nos endpoints."""
+    return {
+        "page": _parse_int(_get_input("page", default=1), "page") or 1,
+        "count": _parse_int(_get_input("count"), "count"),
+        "debug": _parse_bool(_get_input("debug", default=False), default=False),
+        "save_raw_json": _parse_bool(_get_input("save_raw_json", "saveRawJson", default=True), default=True),
+        "save_parsed_json": _parse_bool(_get_input("save_parsed_json", "saveParsedJson", default=True), default=True),
+        "tuning": _build_tuning_from_request()
+    }
+
+
 # ══════════════════════════════════════════════════════════════
 # LINKEDIN-ONLY endpoints (LinkedInJobsSearchService) — zero DB writes
 # ══════════════════════════════════════════════════════════════
@@ -202,29 +215,9 @@ def search_jobs_live():
     - zero DB writes
     """
     try:
-        page = _parse_int(_get_input("page", default=1), "page") or 1
-        count = _parse_int(_get_input("count"), "count")
-        debug = _parse_bool(_get_input("debug", default=False), default=False)
-        save_raw_json = _parse_bool(
-            _get_input("save_raw_json", "saveRawJson", default=True),
-            default=True,
-        )
-        save_parsed_json = _parse_bool(
-            _get_input("save_parsed_json", "saveParsedJson", default=True),
-            default=True,
-        )
-
-        tuning = _build_tuning_from_request()
-
+        params = _get_search_params()
         service = LinkedInJobsSearchService()
-        result = service.search_jobs(
-            page=page,
-            count=count,
-            tuning=tuning,
-            debug=debug,
-            save_raw_json=save_raw_json,
-            save_parsed_json=save_parsed_json,
-        )
+        result = service.search_jobs(**params)
 
         return jsonify({
             "status": "success",
@@ -244,6 +237,39 @@ def search_jobs_live():
         }), 500
 
 
+@search_jobs_bp.route("/live/stream", methods=["GET", "POST"])
+def search_jobs_live_stream():
+    """
+    Endpoint SSE (Server-Sent Events) para acompanhamento em tempo real
+    do progresso de fetch/parse/enriquecimento (ex: job 3/55).
+    """
+    try:
+        params = _get_search_params()
+    except ValueError as e:
+        return jsonify({"status": "error", "error": str(e)}), 400
+
+    def generate():
+        try:
+            service = LinkedInJobsSearchService()
+            # Iteramos sobre o generator que yielda tanto 'progress' quanto 'result'
+            for event in service.search_jobs_stream(**params):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            error_event = {
+                "type": "error",
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }
+            yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+
+    response = Response(generate(), mimetype="text/event-stream")
+    # Headers cruciais para garantir que a conexão fique aberta e não seja buferizada
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Connection"] = "keep-alive"
+    response.headers["X-Accel-Buffering"] = "no"
+    return response
+
+
 @search_jobs_bp.route("/debug-live", methods=["GET", "POST"])
 def search_jobs_debug_live():
     """
@@ -251,29 +277,12 @@ def search_jobs_debug_live():
     Useful while stabilizing filters / Voyager query shape.
     """
     try:
-        page = _parse_int(_get_input("page", default=1), "page") or 1
-        count = _parse_int(_get_input("count"), "count")
-        debug = _parse_bool(_get_input("debug", default=True), default=True)
-        save_raw_json = _parse_bool(
-            _get_input("save_raw_json", "saveRawJson", default=True),
-            default=True,
-        )
-        save_parsed_json = _parse_bool(
-            _get_input("save_parsed_json", "saveParsedJson", default=True),
-            default=True,
-        )
-
-        tuning = _build_tuning_from_request()
+        params = _get_search_params()
+        # Override debug explicitly for this endpoint
+        params["debug"] = _parse_bool(_get_input("debug", default=True), default=True)
 
         service = LinkedInJobsSearchService()
-        result = service.search_jobs(
-            page=page,
-            count=count,
-            tuning=tuning,
-            debug=debug,
-            save_raw_json=save_raw_json,
-            save_parsed_json=save_parsed_json,
-        )
+        result = service.search_jobs(**params)
 
         return jsonify({
             "status": "success",

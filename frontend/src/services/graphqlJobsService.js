@@ -356,6 +356,65 @@ async function fetchGraphqlJobsResponse(params = {}) {
   return GraphqlJobsResponseModel.fromAPI(json);
 }
 
+export async function streamGraphqlJobs(params = {}, onProgress) {
+  const url = buildUrl(`${API_BASE_URL}/search-jobs/live/stream`, {
+    page: 1,
+    count: 10,
+    ...params,
+  });
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "text/event-stream",
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new Error(
+      `Failed to stream jobs (${response.status}) - ${errorText}`,
+    );
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    const parts = buffer.split("\n\n");
+
+    buffer = parts.pop() || "";
+
+    for (const part of parts) {
+      if (part.startsWith("data: ")) {
+        const jsonStr = part.replace(/^data:\s*/, "").trim();
+        if (!jsonStr) continue;
+
+        try {
+          const parsed = JSON.parse(jsonStr);
+
+          if (parsed.type === "progress" && onProgress) {
+            onProgress(parsed);
+          } else if (parsed.type === "result") {
+            const responseModel = GraphqlJobsResponseModel.fromAPI(parsed.data);
+            return responseModel.jobs;
+          } else if (parsed.type === "error") {
+            throw new Error(parsed.error);
+          }
+        } catch (e) {
+          console.error("Error parsing SSE chunk:", e, part);
+        }
+      }
+    }
+  }
+}
+
 export async function getGraphqlJobs(params = {}) {
   const result = await fetchGraphqlJobsResponse(params);
   return result.jobs;
