@@ -53,6 +53,8 @@ import {
   writeNegativeKeywordsCache,
 } from "./joblistUtils.js";
 
+const APPLICANTS_LIMIT_CACHE_KEY = "negative_applicants_limit_v1";
+
 const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const Badge = ({ tone = "slate", children }) => (
@@ -203,7 +205,7 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
                 <XCircle
                   size={16}
                   className="text-red-500"
-                  title="Matches Negative Keyword"
+                  title="Matches Negative Filter"
                 />
               )}
               {job.verified && (
@@ -564,6 +566,14 @@ const MainJobListing = () => {
 
   const [negativeKeywords, setNegativeKeywords] = useState([]);
   const [newNegativeKeyword, setNewNegativeKeyword] = useState("");
+  const [maxApplicantsLimit, setMaxApplicantsLimit] = useState(() => {
+    try {
+      const cached = localStorage.getItem(APPLICANTS_LIMIT_CACHE_KEY);
+      return cached ? Number(cached) : Number.MAX_SAFE_INTEGER;
+    } catch {
+      return Number.MAX_SAFE_INTEGER;
+    }
+  });
   const [isNegativeFilterOpen, setIsNegativeFilterOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -681,6 +691,21 @@ const MainJobListing = () => {
     setErrorMessage("");
   };
 
+  const maxPossibleApplicants = useMemo(() => {
+    if (!jobs || jobs.length === 0) return 100;
+    const max = Math.max(...jobs.map((job) => job.applicants_total || 0));
+    return max > 0 ? max : 100;
+  }, [jobs]);
+
+  const handleApplicantsLimitChange = (e) => {
+    const val = Number(e.target.value);
+
+    const newValue =
+      val >= maxPossibleApplicants ? Number.MAX_SAFE_INTEGER : val;
+    setMaxApplicantsLimit(newValue);
+    localStorage.setItem(APPLICANTS_LIMIT_CACHE_KEY, newValue.toString());
+  };
+
   const workplaceOptions = useMemo(() => {
     return buildUniqueOptions(jobs, (job) => job.workplace_type);
   }, [jobs]);
@@ -696,6 +721,7 @@ const MainJobListing = () => {
   const filteredJobs = useMemo(() => {
     let result = jobs.map((job) => {
       let isNegativeMatch = false;
+
       if (negativeKeywords.length > 0) {
         const haystack = [
           job.title,
@@ -710,7 +736,6 @@ const MainJobListing = () => {
 
         isNegativeMatch = negativeKeywords.some((kw) => {
           const escapedKw = escapeRegExp(kw.toLowerCase());
-
           const regex = new RegExp(
             `(?<![\\w+#-])${escapedKw}(?![\\w+#-])`,
             "i",
@@ -718,6 +743,13 @@ const MainJobListing = () => {
           return regex.test(haystack);
         });
       }
+
+      if (!isNegativeMatch && maxApplicantsLimit !== Number.MAX_SAFE_INTEGER) {
+        if ((job.applicants_total || 0) > maxApplicantsLimit) {
+          isNegativeMatch = true;
+        }
+      }
+
       return { ...job, isNegativeMatch };
     });
 
@@ -798,6 +830,7 @@ const MainJobListing = () => {
     sourceFilter,
     sortBy,
     negativeKeywords,
+    maxApplicantsLimit,
   ]);
 
   useEffect(() => {
@@ -857,6 +890,10 @@ const MainJobListing = () => {
     : loadedFromCache
       ? "amber"
       : "green";
+
+  const activeFiltersCount =
+    (negativeKeywords.length > 0 ? 1 : 0) +
+    (maxApplicantsLimit !== Number.MAX_SAFE_INTEGER ? 1 : 0);
 
   return (
     <div className="h-screen bg-[#081120] font-sans text-slate-100">
@@ -990,10 +1027,10 @@ const MainJobListing = () => {
               >
                 <div className="flex items-center gap-2">
                   <Filter size={15} className="text-red-400" />
-                  Negative Keywords
-                  {negativeKeywords.length > 0 && (
+                  Negative Filters
+                  {activeFiltersCount > 0 && (
                     <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500/20 text-[10px] text-red-300">
-                      {negativeKeywords.length}
+                      {activeFiltersCount}
                     </span>
                   )}
                 </div>
@@ -1026,8 +1063,8 @@ const MainJobListing = () => {
                     </button>
                   </form>
 
-                  {negativeKeywords.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
+                  {negativeKeywords.length > 0 && (
+                    <div className="mb-4 flex flex-wrap gap-2">
                       {negativeKeywords.map((kw) => (
                         <span
                           key={kw}
@@ -1044,12 +1081,41 @@ const MainJobListing = () => {
                         </span>
                       ))}
                     </div>
-                  ) : (
-                    <p className="text-xs text-slate-500">
-                      No keywords added. Jobs matching these keywords will turn
-                      red and move to the bottom.
-                    </p>
                   )}
+
+                  <div
+                    className={`mt-2 ${negativeKeywords.length > 0 ? "border-t border-slate-700/50 pt-3" : ""}`}
+                  >
+                    <div className="mb-2 flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                        <Users size={14} className="text-slate-400" /> Max
+                        Applicants
+                      </label>
+                      <span className="text-xs font-medium text-red-300">
+                        {maxApplicantsLimit === Number.MAX_SAFE_INTEGER
+                          ? "Unlimited"
+                          : maxApplicantsLimit}
+                      </span>
+                    </div>
+
+                    <input
+                      type="range"
+                      min="0"
+                      max={maxPossibleApplicants}
+                      value={
+                        maxApplicantsLimit === Number.MAX_SAFE_INTEGER
+                          ? maxPossibleApplicants
+                          : maxApplicantsLimit
+                      }
+                      onChange={handleApplicantsLimitChange}
+                      className="h-1.5 w-full appearance-none rounded-lg bg-slate-700 accent-red-500 cursor-pointer"
+                    />
+
+                    <div className="mt-1 flex justify-between text-[10px] text-slate-500">
+                      <span>0</span>
+                      <span>{maxPossibleApplicants} (Max)</span>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
