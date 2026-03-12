@@ -18,6 +18,7 @@ import {
   Trash2,
   Clock3,
   Users,
+  X,
 } from "lucide-react";
 
 import { formatShortDateTime } from "../../utils/dateUtils.js";
@@ -145,7 +146,7 @@ const LiveProgressBar = ({ progressData }) => {
   }
 
   return (
-    <div className="mx-4 my-3 overflow-hidden rounded-xl border border-sky-900/40 bg-slate-800/40 p-3 shadow-[0_0_15px_rgba(14,165,233,0.1)]">
+    <div className="w-full overflow-hidden rounded-xl border border-sky-900/40 bg-slate-800/40 p-3 shadow-[0_0_15px_rgba(14,165,233,0.1)] mt-4">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-xs font-medium text-sky-400">
           <RefreshCw size={12} className="mr-1.5 inline animate-spin" />
@@ -160,6 +161,117 @@ const LiveProgressBar = ({ progressData }) => {
           className="h-full rounded-full bg-sky-500 transition-all duration-300 ease-out"
           style={{ width: `${percent}%` }}
         />
+      </div>
+    </div>
+  );
+};
+
+const FetchJobsModal = ({
+  isOpen,
+  onClose,
+  fetchCount,
+  setFetchCount,
+  onConfirm,
+  loading,
+  progressData,
+}) => {
+  if (!isOpen) return null;
+
+  const handleIncrement = (amount) => {
+    setFetchCount((prev) => Math.max(1, prev + amount));
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
+            <RefreshCw size={20} className="text-sky-400" />
+            Fetch New Jobs
+          </h2>
+          {!loading && (
+            <button
+              onClick={onClose}
+              className="rounded-full p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+            >
+              <X size={20} />
+            </button>
+          )}
+        </div>
+
+        <p className="mb-6 text-sm text-slate-400">
+          How many jobs would you like to fetch from the backend?
+        </p>
+
+        <div className="mb-6 flex flex-col items-center gap-4">
+          <div className="flex items-center gap-4 bg-slate-800/50 p-3 rounded-xl border border-slate-700/50">
+            <button
+              onClick={() => handleIncrement(-10)}
+              disabled={loading || fetchCount <= 10}
+              className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-700 text-xl font-bold text-slate-200 transition hover:bg-slate-600 disabled:opacity-50"
+            >
+              -
+            </button>
+            <div className="flex w-20 flex-col items-center">
+              <span className="text-3xl font-bold text-sky-400">
+                {fetchCount}
+              </span>
+              <span className="text-[10px] uppercase tracking-wider text-slate-500">
+                Jobs
+              </span>
+            </div>
+            <button
+              onClick={() => handleIncrement(10)}
+              disabled={loading}
+              className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-700 text-xl font-bold text-slate-200 transition hover:bg-slate-600 disabled:opacity-50"
+            >
+              +
+            </button>
+          </div>
+
+          <div className="flex gap-2">
+            {[10, 25, 50, 100].map((preset) => (
+              <button
+                key={preset}
+                onClick={() => setFetchCount(preset)}
+                disabled={loading}
+                className={`rounded-lg border px-3 py-1 text-xs font-semibold transition ${
+                  fetchCount === preset
+                    ? "border-sky-500 bg-sky-500/20 text-sky-300"
+                    : "border-slate-700 bg-slate-800 text-slate-400 hover:border-slate-500 hover:text-slate-200"
+                } disabled:opacity-50`}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="mt-4">
+            <LiveProgressBar progressData={progressData} />
+            <p className="mt-3 text-center text-xs text-slate-500">
+              Please wait while we fetch and enrich the data. This might take a
+              moment.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-6 flex justify-end gap-3 border-t border-slate-800 pt-4">
+            <button
+              onClick={onClose}
+              className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800 hover:text-white"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => onConfirm(fetchCount)}
+              className="flex items-center gap-2 rounded-xl bg-sky-600 px-6 py-2 text-sm font-bold text-white shadow-lg shadow-sky-900/20 transition hover:bg-sky-500"
+            >
+              <Database size={16} />
+              Start Fetching
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -584,8 +696,14 @@ const JobListingView = ({
   errorMessage,
   cacheTimestamp,
   loadedFromCache,
-  onRefreshCache,
+
+  onRefreshCacheClick,
   onClearCache,
+  isFetchModalOpen,
+  setIsFetchModalOpen,
+  fetchCount,
+  setFetchCount,
+  onConfirmFetch,
 
   searchTerm,
   setSearchTerm,
@@ -663,6 +781,16 @@ const JobListingView = ({
 
   return (
     <div className="h-screen bg-[#081120] font-sans text-slate-100">
+      <FetchJobsModal
+        isOpen={isFetchModalOpen}
+        onClose={() => setIsFetchModalOpen(false)}
+        fetchCount={fetchCount}
+        setFetchCount={setFetchCount}
+        onConfirm={onConfirmFetch}
+        loading={loading}
+        progressData={progressData}
+      />
+
       <div
         ref={containerRef}
         className="flex h-full"
@@ -702,7 +830,7 @@ const JobListingView = ({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={onRefreshCache}
+                    onClick={onRefreshCacheClick}
                     disabled={loading}
                     aria-label="Refresh cache"
                     title="Refresh cache"
@@ -901,19 +1029,13 @@ const JobListingView = ({
               </div>
 
               <div className="shrink-0 text-sm text-slate-400">
-                {loading ? "Loading..." : `${filteredJobs.length} results`}
+                {`${filteredJobs.length} results`}
               </div>
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto py-1">
-            {loading && <LiveProgressBar progressData={progressData} />}
-
-            {loading ? (
-              <div className="p-6 text-sm text-slate-400 text-center animate-pulse">
-                Fetching latest data...
-              </div>
-            ) : filteredJobs.length > 0 ? (
+            {filteredJobs.length > 0 ? (
               filteredJobs.map((job) => (
                 <JobListItem
                   key={job.id}

@@ -22,6 +22,9 @@ const MainJobListing = () => {
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const [isFetchModalOpen, setIsFetchModalOpen] = useState(false);
+  const [fetchCount, setFetchCount] = useState(10);
+
   const [progressData, setProgressData] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [cacheTimestamp, setCacheTimestamp] = useState(null);
@@ -83,7 +86,7 @@ const MainJobListing = () => {
   }, []);
 
   const loadJobs = useCallback(
-    async ({ forceRefresh = false } = {}) => {
+    async ({ forceRefresh = false, count = 10 } = {}) => {
       setLoading(true);
       setErrorMessage("");
       setProgressData(null);
@@ -101,7 +104,7 @@ const MainJobListing = () => {
       }
 
       try {
-        const data = await streamGraphqlJobs({}, (progressUpdate) => {
+        const data = await streamGraphqlJobs({ count }, (progressUpdate) => {
           setProgressData(progressUpdate);
         });
 
@@ -130,7 +133,6 @@ const MainJobListing = () => {
         }
       } finally {
         setLoading(false);
-        setProgressData(null);
       }
     },
     [applyJobs],
@@ -140,8 +142,15 @@ const MainJobListing = () => {
     loadJobs();
   }, [loadJobs]);
 
-  const handleRefreshCache = async () => {
-    await loadJobs({ forceRefresh: true });
+  const handleRefreshCacheClick = () => {
+    setIsFetchModalOpen(true);
+  };
+
+  const handleConfirmFetch = async (count) => {
+    await loadJobs({ forceRefresh: true, count });
+
+    setIsFetchModalOpen(false);
+    setProgressData(null);
   };
 
   const handleClearCache = () => {
@@ -323,8 +332,13 @@ const MainJobListing = () => {
       errorMessage={errorMessage}
       cacheTimestamp={cacheTimestamp}
       loadedFromCache={loadedFromCache}
-      onRefreshCache={handleRefreshCache}
+      onRefreshCacheClick={handleRefreshCacheClick}
       onClearCache={handleClearCache}
+      isFetchModalOpen={isFetchModalOpen}
+      setIsFetchModalOpen={setIsFetchModalOpen}
+      fetchCount={fetchCount}
+      setFetchCount={setFetchCount}
+      onConfirmFetch={handleConfirmFetch}
       searchTerm={searchTerm}
       setSearchTerm={setSearchTerm}
       workplaceType={workplaceType}
