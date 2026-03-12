@@ -25,6 +25,29 @@ from source.features.search_jobs.curl_voyager_jobs_parse import (
 )
 
 
+def _deduplicate_jobs(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Remove duplicate jobs using normalized_job_posting_urn or job_id.
+    """
+    seen = set()
+    unique = []
+
+    for job in jobs:
+        key = (
+                job.get("normalized_job_posting_urn")
+                or job.get("job_posting_urn")
+                or job.get("job_id")
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+        unique.append(job)
+
+    return unique
+
+
 class LinkedInJobsSearchService:
     """
     Orchestrates:
@@ -98,6 +121,10 @@ class LinkedInJobsSearchService:
 
         parsed_jobs_json = jobs_to_json_serializable(parsed_output.jobs)
 
+        original_job_count = len(parsed_jobs_json)
+        parsed_jobs_json = _deduplicate_jobs(parsed_jobs_json)
+        duplicates_removed = original_job_count - len(parsed_jobs_json)
+
         if enrich_jobs:
             final_jobs_json = self._enrich_parsed_jobs(parsed_jobs_json)
         else:
@@ -110,7 +137,8 @@ class LinkedInJobsSearchService:
         return {
             "meta": {
                 "page": page,
-                "count": count,
+                "count": len(final_jobs_json),
+                "duplicates_removed": duplicates_removed,
                 "raw_json_path": str(self.raw_json_path) if save_raw_json else None,
                 "parsed_json_path": str(self.parsed_json_path) if save_parsed_json else None,
                 "keywords": parsed_output.search_metadata.keywords,
@@ -157,7 +185,6 @@ class LinkedInJobsSearchService:
 
             merged = {**parsed_job, **enriched}
 
-            # Preserve compatibility with search-card shaped payloads
             if merged.get("company") and not merged.get("company_name"):
                 merged["company_name"] = merged["company"]
 

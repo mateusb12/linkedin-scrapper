@@ -18,9 +18,15 @@ import {
   XCircle,
   ChevronRight,
   Code2,
+  RefreshCw,
+  Trash2,
+  Clock3,
+  Users,
 } from "lucide-react";
 
 import { getGraphqlJobs } from "../../services/graphqlJobsService.js";
+
+const JOBS_CACHE_KEY = "graphql_jobs_cache_v1";
 
 const badgeTones = {
   blue: "bg-sky-500/15 text-sky-300 border border-sky-500/30",
@@ -60,6 +66,66 @@ const placeholderLogo = (companyName = "?") =>
   `https://placehold.co/80x80/0f172a/e2e8f0?text=${encodeURIComponent(
     companyName.charAt(0).toUpperCase() || "?",
   )}`;
+
+const formatCacheTimestamp = (value) => {
+  if (!value) return "No cache";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "Invalid cache date";
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "medium",
+  }).format(date);
+};
+
+const formatDateValue = (value) => {
+  if (!value) return "Not specified";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "Not specified";
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+};
+
+const readJobsCache = () => {
+  try {
+    const raw = localStorage.getItem(JOBS_CACHE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+
+    if (!parsed || !Array.isArray(parsed.jobs)) return null;
+
+    return {
+      jobs: parsed.jobs,
+      cachedAt: parsed.cachedAt || null,
+    };
+  } catch (error) {
+    console.warn("Failed to read GraphQL jobs cache:", error);
+    return null;
+  }
+};
+
+const writeJobsCache = (jobs) => {
+  const payload = {
+    jobs,
+    cachedAt: new Date().toISOString(),
+  };
+
+  localStorage.setItem(JOBS_CACHE_KEY, JSON.stringify(payload));
+
+  return payload.cachedAt;
+};
+
+const clearJobsCache = () => {
+  localStorage.removeItem(JOBS_CACHE_KEY);
+};
 
 const Badge = ({ tone = "slate", children }) => (
   <span
@@ -183,6 +249,8 @@ const JobDetailView = ({ job }) => {
     );
   }
 
+  const description = job.description_full || job.description_snippet || null;
+
   return (
     <div className="h-full overflow-y-auto px-6 py-7 md:px-8">
       <div className="mb-8 flex items-start gap-5">
@@ -250,6 +318,20 @@ const JobDetailView = ({ job }) => {
           value={job.verified ? "Verified" : "Not verified"}
         />
         <InfoCard icon={Database} label="Source" value={job.source_label} />
+        <InfoCard
+          icon={Users}
+          label="Applicants"
+          value={
+            job.applicants_total != null
+              ? String(job.applicants_total)
+              : "Not specified"
+          }
+        />
+        <InfoCard
+          icon={Clock3}
+          label="Posted At"
+          value={formatDateValue(job.posted_at)}
+        />
       </div>
 
       <div className="space-y-8">
@@ -278,12 +360,12 @@ const JobDetailView = ({ job }) => {
             About This Listing
           </h3>
 
-          {job.description_snippet ? (
-            <div className="rounded-xl border border-slate-800 bg-slate-800/60 p-4 text-sm leading-7 text-slate-300">
-              {job.description_snippet}
+          {description ? (
+            <div className="whitespace-pre-wrap rounded-xl border border-slate-800 bg-slate-800/60 p-4 text-sm leading-7 text-slate-300">
+              {description}
             </div>
           ) : (
-            <Placeholder text="This GraphQL dataset only has card-level data right now, so there is no description snippet yet." />
+            <Placeholder text="No description is available for this listing." />
           )}
         </section>
       </div>
@@ -295,6 +377,9 @@ const MainJobListing = () => {
   const [jobs, setJobs] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [cacheTimestamp, setCacheTimestamp] = useState(null);
+  const [loadedFromCache, setLoadedFromCache] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [workplaceType, setWorkplaceType] = useState("All");
@@ -310,21 +395,82 @@ const MainJobListing = () => {
   const MIN_WIDTH = 28;
   const MAX_WIDTH = 65;
 
-  useEffect(() => {
-    const loadJobs = async () => {
+  const applyJobs = useCallback((data) => {
+    setJobs(Array.isArray(data) ? data : []);
+    setSelectedJobId((currentSelectedId) => {
+      if (
+        Array.isArray(data) &&
+        data.some((job) => job.id === currentSelectedId)
+      ) {
+        return currentSelectedId;
+      }
+
+      return data?.[0]?.id ?? null;
+    });
+  }, []);
+
+  const loadJobs = useCallback(
+    async ({ forceRefresh = false } = {}) => {
+      setLoading(true);
+      setErrorMessage("");
+
+      if (!forceRefresh) {
+        const cached = readJobsCache();
+
+        if (cached?.jobs) {
+          applyJobs(cached.jobs);
+          setCacheTimestamp(cached.cachedAt || null);
+          setLoadedFromCache(true);
+          setLoading(false);
+          return;
+        }
+      }
+
       try {
         const data = await getGraphqlJobs();
-        setJobs(data);
-        if (data.length > 0) setSelectedJobId(data[0].id);
+        const cachedAt = writeJobsCache(data);
+
+        applyJobs(data);
+        setCacheTimestamp(cachedAt);
+        setLoadedFromCache(false);
       } catch (error) {
-        console.error("Failed to load hardcoded GraphQL jobs:", error);
+        console.error("Failed to load GraphQL jobs:", error);
+
+        const cached = readJobsCache();
+
+        if (cached?.jobs) {
+          applyJobs(cached.jobs);
+          setCacheTimestamp(cached.cachedAt || null);
+          setLoadedFromCache(true);
+          setErrorMessage(
+            "Backend fetch failed. Showing the latest cached jobs instead.",
+          );
+        } else {
+          applyJobs([]);
+          setErrorMessage(
+            error?.message || "Failed to load jobs from backend.",
+          );
+        }
       } finally {
         setLoading(false);
       }
-    };
+    },
+    [applyJobs],
+  );
 
+  useEffect(() => {
     loadJobs();
-  }, []);
+  }, [loadJobs]);
+
+  const handleRefreshCache = async () => {
+    await loadJobs({ forceRefresh: true });
+  };
+
+  const handleClearCache = () => {
+    clearJobsCache();
+    setCacheTimestamp(null);
+    setLoadedFromCache(false);
+  };
 
   const workplaceOptions = useMemo(() => {
     return buildUniqueOptions(jobs, (job) => job.workplace_type);
@@ -384,6 +530,16 @@ const MainJobListing = () => {
       result.sort((a, b) => a.title.localeCompare(b.title));
     } else if (sortBy === "company") {
       result.sort((a, b) => a.company.name.localeCompare(b.company.name));
+    } else if (sortBy === "applicants") {
+      result.sort(
+        (a, b) => (b.applicants_total || 0) - (a.applicants_total || 0),
+      );
+    } else if (sortBy === "recent") {
+      result.sort(
+        (a, b) =>
+          new Date(b.posted_at || 0).getTime() -
+          new Date(a.posted_at || 0).getTime(),
+      );
     }
 
     return result;
@@ -460,18 +616,49 @@ const MainJobListing = () => {
           style={{ width: `${leftPanelWidth}%` }}
         >
           <div className="space-y-4 border-b border-slate-800 p-4">
-            <div className="relative">
-              <Search
-                size={16}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search by title, company or stack..."
-                className="w-full rounded-lg border border-slate-700 bg-slate-800/80 py-2 pl-10 pr-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-sky-500"
-              />
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="relative flex-1">
+                <Search
+                  size={16}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search by title, company or stack..."
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800/80 py-2 pl-10 pr-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-400 focus:border-sky-500"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRefreshCache}
+                  disabled={loading}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <RefreshCw
+                    size={15}
+                    className={loading ? "animate-spin" : ""}
+                  />
+                  Refresh cache
+                </button>
+
+                <div className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs text-slate-300">
+                  <Clock3 size={14} className="text-slate-400" />
+                  <span>Cache: {formatCacheTimestamp(cacheTimestamp)}</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleClearCache}
+                  className="inline-flex items-center justify-center rounded-lg border border-red-900/60 bg-red-950/40 p-2 text-red-300 transition hover:bg-red-900/30"
+                  title="Clear cache"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -522,14 +709,28 @@ const MainJobListing = () => {
                 onChange={(event) => setSortBy(event.target.value)}
               >
                 <option value="relevance">Sort by: Relevance</option>
+                <option value="recent">Sort by: Most Recent</option>
+                <option value="applicants">Sort by: Applicants</option>
                 <option value="title">Sort by: Title</option>
                 <option value="company">Sort by: Company</option>
               </FilterSelect>
             </div>
 
-            <p className="pl-1 text-sm text-slate-400">
-              {loading ? "Loading..." : `${filteredJobs.length} results`}
-            </p>
+            <div className="space-y-1 pl-1 text-sm text-slate-400">
+              <p>{loading ? "Loading..." : `${filteredJobs.length} results`}</p>
+
+              <p className="text-xs text-slate-500">
+                {cacheTimestamp
+                  ? loadedFromCache
+                    ? "Loaded from local cache. Refresh cache to fetch backend again."
+                    : "Fresh data loaded from backend and saved to cache."
+                  : "No cache saved yet. The next successful backend response will be cached."}
+              </p>
+
+              {errorMessage && (
+                <p className="text-xs text-amber-300">{errorMessage}</p>
+              )}
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto">

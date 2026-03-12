@@ -1,96 +1,8 @@
-const HARDCODED_GRAPHQL_JOBS = [
-  {
-    job_id: "4382263720",
-    title: "Python Developer | Remote",
-    company_name: "Crossing Hurdles",
-    location_text: "Brazil (Remote)",
-    company_page_url: "https://www.linkedin.com/company/crossinghurdles/life",
-    company_logo_url:
-      "https://media.licdn.com/dms/image/v2/D560BAQEGLWHBZmzzcA/company-logo_400_400/B56ZYzlx2LHEAg-/0/1744622264274/crossinghurdles_logo?e=1774483200&v=beta&t=W5hoPfrdbt8rLxZZhVzuNDMplCK72Wuk7hsrf3JbiBU",
-    reposted_job: true,
-    verified: true,
-    source_key: "JOBS_PREMIUM_OFFLINE",
-    description_snippet: null,
-  },
-  {
-    job_id: "4383367339",
-    title: "Desenvolvedor Full Stack Python E React",
-    company_name: "Bravi",
-    location_text: "Florianópolis, Santa Catarina, Brazil (Remote)",
-    company_page_url: "https://www.linkedin.com/company/bravidoes/life",
-    company_logo_url:
-      "https://media.licdn.com/dms/image/v2/D4D0BAQFHu-vX8N8ZUg/company-logo_400_400/company-logo_400_400/0/1731351913783/bravidoes_logo?e=1774483200&v=beta&t=cUvOgXnVsxNq1nLUwft5rLHJI9TK6CzpE-u-I3g1uww",
-    reposted_job: false,
-    verified: true,
-    source_key: "JOBS_CREATE",
-    description_snippet: null,
-  },
-  {
-    job_id: "4383315635",
-    title: "Software Engineer (Python) - Remote",
-    company_name: "Taskify AI",
-    location_text: "Latin America (Remote)",
-    company_page_url: "https://www.linkedin.com/company/taskify-jobs/life",
-    company_logo_url:
-      "https://media.licdn.com/dms/image/v2/D560BAQHwYYsCzKBKLQ/company-logo_400_400/B56Zr35RPuLwAc-/0/1765095577069?e=1774483200&v=beta&t=2WxaBKdp7EKZdZQYHGnIclsMwC-1mp19r3Kitoo1RME",
-    reposted_job: false,
-    verified: true,
-    source_key: "JOBS_PREMIUM_OFFLINE",
-    description_snippet: null,
-  },
-  {
-    job_id: "4380640814",
-    title: "Back-end Python (Django)",
-    company_name: "Magnet SPA",
-    location_text: "Latin America (Remote)",
-    company_page_url: "https://www.linkedin.com/company/magnet-spa/life",
-    company_logo_url:
-      "https://media.licdn.com/dms/image/v2/C4D0BAQF4IIyJ84_t6g/company-logo_400_400/company-logo_400_400/0/1630527772616/magnet_spa_logo?e=1774483200&v=beta&t=YHP7sxg1qAxq4wlebdFA6rSDukF9UQ1tVFg4AfZwBo0",
-    reposted_job: false,
-    verified: true,
-    source_key: "JOBS_CREATE",
-    description_snippet: null,
-  },
-  {
-    job_id: "4380805185",
-    title: "Desenvolvedor - Remoto",
-    company_name: "Getronics",
-    location_text: "Brazil (Remote)",
-    company_page_url: "https://www.linkedin.com/company/getronics/life",
-    company_logo_url:
-      "https://media.licdn.com/dms/image/v2/D4D0BAQHhM2cdBhTEYg/company-logo_400_400/B4DZXHlgC7G4Ac-/0/1742810251831/getronics_logo?e=1774483200&v=beta&t=kkwz6ardIonyVy8WYfwX_1HPG4KDiVanjxwgcRHfOak",
-    reposted_job: false,
-    verified: true,
-    source_key: "JOBS_PREMIUM_OFFLINE",
-    description_snippet: null,
-  },
-  {
-    job_id: "4380628567",
-    title: "Desenvolvedor(a) back-end Python Pleno",
-    company_name: "Makasí",
-    location_text: "Brazil (Remote)",
-    company_page_url: "https://www.linkedin.com/company/makas%C3%AD/life",
-    company_logo_url:
-      "https://media.licdn.com/dms/image/v2/C4D0BAQHiblnLmTYcWg/company-logo_400_400/company-logo_400_400/0/1677847546053/makas_logo?e=1774483200&v=beta&t=kQYndvg7hhwrP3_MPVLlGfsm8kpoSJ0PYFc7yn8cLm8",
-    reposted_job: false,
-    verified: true,
-    source_key: "JOBS_CREATE",
-    description_snippet: null,
-  },
-  {
-    job_id: "4379970543",
-    title: "Desenvolvedor Python Senior",
-    company_name: "Jaya Tech",
-    location_text: "Brazil (Remote)",
-    company_page_url: "https://www.linkedin.com/company/jaya-apps/life",
-    company_logo_url:
-      "https://media.licdn.com/dms/image/v2/D4D0BAQFT0YYRZkSHkQ/company-logo_400_400/B4DZi_PL_dGQAY-/0/1755555086723/jaya_apps_logo?e=1774483200&v=beta&t=VsP9HZ_HkYRFLJP2DZorReDzxYSeOmlLfxwM2R0bgUo",
-    reposted_job: false,
-    verified: true,
-    source_key: "JOBS_PREMIUM_OFFLINE",
-    description_snippet: null,
-  },
-];
+const API_BASE_URL = (
+  import.meta.env.VITE_API_URL || "http://localhost:5000"
+).replace(/\/$/, "");
+
+const LIVE_JOBS_ENDPOINT = `${API_BASE_URL}/search-jobs/live`;
 
 const SOURCE_LABELS = {
   JOBS_CREATE: "Direct post",
@@ -101,27 +13,42 @@ const TITLE_HINTS = [
   { match: "python", label: "Python" },
   { match: "react", label: "React" },
   { match: "django", label: "Django" },
+  { match: "fastapi", label: "FastAPI" },
+  { match: "flask", label: "Flask" },
+  { match: "node", label: "Node.js" },
+  { match: "nest", label: "NestJS" },
+  { match: "typescript", label: "TypeScript" },
+  { match: "javascript", label: "JavaScript" },
   { match: "full stack", label: "Full Stack" },
   { match: "fullstack", label: "Full Stack" },
   { match: "back-end", label: "Backend" },
   { match: "backend", label: "Backend" },
+  { match: "front-end", label: "Frontend" },
+  { match: "frontend", label: "Frontend" },
   { match: "senior", label: "Senior" },
   { match: "pleno", label: "Pleno" },
+  { match: "junior", label: "Junior" },
   { match: "remote", label: "Remote" },
 ];
 
-function inferWorkplaceType(locationText = "") {
-  const value = locationText.toLowerCase();
+function inferWorkplaceType(locationText = "", workRemoteAllowed = false) {
+  const value = String(locationText).toLowerCase();
 
-  if (value.includes("remote")) return "Remote";
+  if (workRemoteAllowed || value.includes("remote")) return "Remote";
   if (value.includes("hybrid")) return "Hybrid";
-  if (value.includes("on-site") || value.includes("onsite")) return "On-site";
+  if (
+    value.includes("on-site") ||
+    value.includes("onsite") ||
+    value.includes("presencial")
+  ) {
+    return "On-site";
+  }
 
   return "Not specified";
 }
 
-function inferKeywords(title = "") {
-  const value = title.toLowerCase();
+function inferKeywords(title = "", description = "") {
+  const value = `${title} ${description}`.toLowerCase();
 
   return Array.from(
     new Set(
@@ -133,6 +60,8 @@ function inferKeywords(title = "") {
 }
 
 function normalizeSourceLabel(sourceKey = "") {
+  if (!sourceKey) return "Unknown source";
+
   return (
     SOURCE_LABELS[sourceKey] ||
     sourceKey
@@ -143,38 +72,305 @@ function normalizeSourceLabel(sourceKey = "") {
   );
 }
 
-function normalizeJob(job) {
-  const cleanTitle = (job.title || "").trim();
+function extractJobId(apiData) {
+  if (apiData?.job_id != null) return String(apiData.job_id);
+  if (apiData?.id != null) return String(apiData.id);
 
-  return {
-    id: job.job_id,
-    job_id: job.job_id,
-    title: cleanTitle || "Untitled job",
-    company: {
-      name: job.company_name || "Unknown company",
-      logo_url: job.company_logo_url || "",
-      page_url: job.company_page_url || "",
+  const urns = [
+    apiData?.job_posting_urn,
+    apiData?.normalized_job_posting_urn,
+    apiData?.tracking_urn,
+    apiData?.card_entity_urn,
+    apiData?.search_card_urn,
+  ].filter(Boolean);
+
+  for (const urn of urns) {
+    const match = String(urn).match(/(\d{6,})/);
+    if (match) return match[1];
+  }
+
+  return null;
+}
+
+function toNumberOrNull(value) {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function buildUrl(baseUrl, params = {}) {
+  const url = new URL(baseUrl);
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value == null || value === "") return;
+    url.searchParams.set(key, String(value));
+  });
+
+  return url.toString();
+}
+
+async function parseJsonResponse(response) {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (!contentType.includes("application/json")) {
+    const text = await response.text();
+    throw new Error(`Expected JSON response, got: ${text || "empty response"}`);
+  }
+
+  return response.json();
+}
+
+class GraphqlJobModel {
+  id;
+  job_id;
+  title;
+  company;
+  company_name;
+  company_logo_url;
+  company_page_url;
+  company_url;
+  company_urn;
+  location;
+  location_text;
+  workplace_type;
+  verified;
+  reposted;
+  reposted_job;
+  source_key;
+  source_label;
+  job_url;
+  description_snippet;
+  description_full;
+  keywords;
+  applicants;
+  applicants_total;
+  applicants_last_24h;
+  applicants_velocity_24h;
+  posted_at;
+  expire_at;
+  created_at;
+  work_remote_allowed;
+  applied;
+  applied_at;
+  application_closed;
+  premium_title;
+  premium_description;
+  seniority_distribution;
+  education_distribution;
+  verification_action_target;
+  verification_badge_system_image;
+  raw;
+
+  constructor(cleanData) {
+    Object.assign(this, cleanData);
+  }
+
+  static fromAPI(apiData) {
+    if (!apiData) return null;
+
+    const jobId = extractJobId(apiData);
+
+    if (!jobId) {
+      console.warn("GraphqlJobModel: job skipped due to missing ID", apiData);
+      return null;
+    }
+
+    const title = (
+      apiData.title ||
+      apiData.title_raw_from_job_posting ||
+      ""
+    ).trim();
+    const descriptionFull = apiData.description_full || null;
+    const descriptionSnippet =
+      apiData.description_snippet ||
+      (descriptionFull ? String(descriptionFull).slice(0, 280) : null);
+
+    const companyName =
+      apiData.company_name || apiData.company || "Unknown company";
+    const companyLogoUrl =
+      apiData.company_logo_url || apiData.company_logo || "";
+    const companyPageUrl = apiData.company_page_url || "";
+    const companyUrl = apiData.company_url || "";
+    const locationText =
+      apiData.location_text || apiData.location || "Not specified";
+    const sourceKey = apiData.source_key || apiData.content_source || "";
+
+    const verified =
+      apiData.verified ??
+      Boolean(
+        apiData.verification_urn ||
+        apiData.verification_action_target ||
+        apiData.verification_badge_system_image ||
+        apiData.has_verification_record,
+      );
+
+    const cleanData = {
+      id: jobId,
+      job_id: jobId,
+
+      title: title || "Untitled job",
+
+      company: {
+        name: companyName,
+        logo_url: companyLogoUrl,
+        page_url: companyPageUrl,
+        url: companyUrl,
+        urn: apiData.company_urn || null,
+      },
+
+      company_name: companyName,
+      company_logo_url: companyLogoUrl,
+      company_page_url: companyPageUrl,
+      company_url: companyUrl,
+      company_urn: apiData.company_urn || null,
+
+      location: locationText,
+      location_text: locationText,
+      workplace_type: inferWorkplaceType(
+        locationText,
+        apiData.work_remote_allowed,
+      ),
+
+      verified: Boolean(verified),
+      reposted: Boolean(apiData.reposted_job),
+      reposted_job: Boolean(apiData.reposted_job),
+
+      source_key: sourceKey,
+      source_label: normalizeSourceLabel(sourceKey),
+
+      job_url:
+        apiData.job_url || `https://www.linkedin.com/jobs/view/${jobId}/`,
+
+      description_snippet: descriptionSnippet,
+      description_full: descriptionFull,
+
+      keywords: inferKeywords(
+        title,
+        descriptionSnippet || descriptionFull || "",
+      ),
+
+      applicants: toNumberOrNull(
+        apiData.applicants ?? apiData.applicants_total,
+      ),
+      applicants_total: toNumberOrNull(
+        apiData.applicants_total ?? apiData.applicants,
+      ),
+      applicants_last_24h: toNumberOrNull(apiData.applicants_last_24h),
+      applicants_velocity_24h: toNumberOrNull(apiData.applicants_velocity_24h),
+
+      posted_at: apiData.posted_at || null,
+      expire_at: apiData.expire_at || null,
+      created_at: apiData.created_at || null,
+
+      work_remote_allowed: Boolean(apiData.work_remote_allowed),
+      applied: Boolean(apiData.applied),
+      applied_at: apiData.applied_at || null,
+      application_closed: apiData.application_closed ?? null,
+
+      premium_title: apiData.premium_title || null,
+      premium_description: apiData.premium_description || null,
+
+      seniority_distribution: Array.isArray(apiData.seniority_distribution)
+        ? apiData.seniority_distribution
+        : [],
+
+      education_distribution: Array.isArray(apiData.education_distribution)
+        ? apiData.education_distribution
+        : [],
+
+      verification_action_target: apiData.verification_action_target || null,
+      verification_badge_system_image:
+        apiData.verification_badge_system_image || null,
+
+      raw: apiData,
+    };
+
+    return new GraphqlJobModel(cleanData);
+  }
+}
+
+class GraphqlJobsResponseModel {
+  status;
+  jobs;
+  audit;
+  meta;
+
+  constructor(cleanData) {
+    Object.assign(this, cleanData);
+  }
+
+  static fromAPI(apiData) {
+    if (!apiData) {
+      return new GraphqlJobsResponseModel({
+        status: "error",
+        jobs: [],
+        audit: null,
+        meta: null,
+      });
+    }
+
+    const payloadRoot = apiData.data || apiData;
+    const rawJobs = Array.isArray(payloadRoot?.jobs)
+      ? payloadRoot.jobs
+      : Array.isArray(apiData)
+        ? apiData
+        : [];
+
+    const jobs = rawJobs
+      .map((job) => GraphqlJobModel.fromAPI(job))
+      .filter((job) => job !== null);
+
+    return new GraphqlJobsResponseModel({
+      status: apiData.status || "success",
+      jobs,
+      audit: payloadRoot?.audit || null,
+      meta: payloadRoot?.meta || null,
+    });
+  }
+}
+
+async function fetchGraphqlJobsResponse(params = {}) {
+  const url = buildUrl(LIVE_JOBS_ENDPOINT, {
+    page: 1,
+    count: 10,
+    ...params,
+  });
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
     },
-    location: job.location_text || "Not specified",
-    workplace_type: inferWorkplaceType(job.location_text),
-    verified: Boolean(job.verified),
-    reposted: Boolean(job.reposted_job),
-    source_key: job.source_key,
-    source_label: normalizeSourceLabel(job.source_key),
-    job_url: `https://www.linkedin.com/jobs/view/${job.job_id}/`,
-    description_snippet: job.description_snippet || null,
-    keywords: inferKeywords(cleanTitle),
-  };
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new Error(
+      `Failed to fetch jobs (${response.status} ${response.statusText})${
+        errorText ? ` - ${errorText}` : ""
+      }`,
+    );
+  }
+
+  const json = await parseJsonResponse(response);
+  return GraphqlJobsResponseModel.fromAPI(json);
 }
 
-const NORMALIZED_JOBS = HARDCODED_GRAPHQL_JOBS.map(normalizeJob);
-
-export async function getGraphqlJobs() {
-  return Promise.resolve(NORMALIZED_JOBS);
+export async function getGraphqlJobs(params = {}) {
+  const result = await fetchGraphqlJobsResponse(params);
+  return result.jobs;
 }
 
-export async function getGraphqlJobById(jobId) {
-  return Promise.resolve(
-    NORMALIZED_JOBS.find((job) => job.job_id === String(jobId)) ?? null,
-  );
+export async function getGraphqlJobsWithMeta(params = {}) {
+  return fetchGraphqlJobsResponse(params);
+}
+
+export async function getGraphqlJobById(jobId, params = {}) {
+  const jobs = await getGraphqlJobs({
+    count: 100,
+    page: 1,
+    ...params,
+  });
+
+  return jobs.find((job) => String(job.job_id) === String(jobId)) ?? null;
 }
