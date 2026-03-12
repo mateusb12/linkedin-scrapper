@@ -5,6 +5,9 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from source.features.enrich_jobs.linkedin_http_batch_enricher import (
+    BatchEnrichmentService,
+)
 from source.features.search_jobs.curl_voyager_jobs_fetch import (
     DatePosted,
     ExperienceLevel,
@@ -26,17 +29,30 @@ class LinkedInJobsSearchService:
     """
     Orchestrates:
     1) fetch raw LinkedIn GraphQL payload
-    2) parse the payload into meaningful job data
-    3) optionally save raw and parsed JSON artifacts
+    2) parse the payload into meaningful job card data
+    3) enrich parsed jobs through BatchEnrichmentService
+    4) optionally save raw and parsed/enriched JSON artifacts
 
     This class does NOT duplicate fetch or parse logic.
     It imports and reuses both existing files.
     """
 
-    def __init__(self, base_dir: str | Path | None = None):
+    def __init__(
+            self,
+            base_dir: str | Path | None = None,
+            debug: bool = False,
+            slim_mode: bool = True,
+    ):
         self.base_dir = Path(base_dir) if base_dir else Path(__file__).parent
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
+        self.debug = debug
+        self.slim_mode = slim_mode
+        self.batch_enricher = BatchEnrichmentService(
+            debug=debug,
+            slim_mode=slim_mode,
+            return_seed_on_failure=True,
+        )
 
     @property
     def raw_json_path(self) -> Path:
@@ -46,7 +62,6 @@ class LinkedInJobsSearchService:
     def parsed_json_path(self) -> Path:
         return self.base_dir / "linkedin_graphql_parsed_jobs.json"
 
-
     def search_jobs(
             self,
             page: int = 1,
@@ -55,6 +70,7 @@ class LinkedInJobsSearchService:
             debug: bool = False,
             save_raw_json: bool = True,
             save_parsed_json: bool = True,
+            enrich_jobs: bool = True,
     ) -> dict[str, Any]:
         """
         Full orchestration flow for endpoint usage.
@@ -81,9 +97,15 @@ class LinkedInJobsSearchService:
         parsed_output: ParseOutput = parse_linkedin_graphql_response(raw_payload)
 
         parsed_jobs_json = jobs_to_json_serializable(parsed_output.jobs)
+
+        if enrich_jobs:
+            final_jobs_json = self._enrich_parsed_jobs(parsed_jobs_json)
+        else:
+            final_jobs_json = parsed_jobs_json
+
         if save_parsed_json:
             with self.parsed_json_path.open("w", encoding="utf-8") as f:
-                json.dump(parsed_jobs_json, f, ensure_ascii=False, indent=2)
+                json.dump(final_jobs_json, f, ensure_ascii=False, indent=2)
 
         return {
             "meta": {
@@ -95,11 +117,95 @@ class LinkedInJobsSearchService:
                 "origin": parsed_output.search_metadata.origin,
                 "paging": asdict(parsed_output.paging),
                 "geo": asdict(parsed_output.geo) if parsed_output.geo else None,
+                "jobs_enriched": enrich_jobs,
             },
             "audit": self._build_audit(parsed_output.jobs),
-            "jobs": parsed_jobs_json,
+            "jobs": final_jobs_json,
         }
 
+    def _enrich_parsed_jobs(self, parsed_jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """
+        Convert parsed card payload into seed/base jobs, batch-enrich them, then merge the
+        enriched fields back into the original parsed payload so we preserve search-specific
+        card fields while gaining hydrated job details.
+        """
+        base_jobs: list[dict[str, Any]] = []
+
+        for job in parsed_jobs:
+            job_id = str(job.get("job_id") or "").strip()
+            if not job_id:
+                continue
+            base_jobs.append(self._build_base_job_seed(job))
+
+        if not base_jobs:
+            return parsed_jobs
+
+        enriched_job_objects = self.batch_enricher.enrich_base_jobs(base_jobs)
+        enriched_by_id = {
+            str(job.job_id): asdict(job)
+            for job in enriched_job_objects
+        }
+
+        merged_jobs: list[dict[str, Any]] = []
+        for parsed_job in parsed_jobs:
+            job_id = str(parsed_job.get("job_id") or "").strip()
+            enriched = enriched_by_id.get(job_id)
+
+            if not enriched:
+                merged_jobs.append(parsed_job)
+                continue
+
+            merged = {**parsed_job, **enriched}
+
+            # Preserve compatibility with search-card shaped payloads
+            if merged.get("company") and not merged.get("company_name"):
+                merged["company_name"] = merged["company"]
+
+            if merged.get("location") and not merged.get("location_text"):
+                merged["location_text"] = merged["location"]
+
+            if merged.get("company_logo") and not merged.get("company_logo_url"):
+                merged["company_logo_url"] = merged["company_logo"]
+
+            if merged.get("company_url") and not merged.get("company_page_url"):
+                merged["company_page_url"] = merged["company_url"]
+
+            if merged.get("description_full") and not merged.get("description_snippet"):
+                merged["description_snippet"] = merged["description_full"][:280]
+
+            merged_jobs.append(merged)
+
+        return merged_jobs
+
+    def _build_base_job_seed(self, job: dict[str, Any]) -> dict[str, Any]:
+        """
+        Map parsed GraphQL card fields into the generic shape expected by BatchEnrichmentService.
+        """
+        job_id = str(job.get("job_id") or "").strip()
+
+        return {
+            "job_id": job_id,
+            "job_url": self._build_job_url(job_id),
+            "title": (
+                    job.get("title")
+                    or job.get("title_raw_from_job_posting")
+                    or job.get("title_accessibility_text")
+            ),
+            "company": job.get("company_name") or job.get("company"),
+            "company_urn": job.get("company_urn"),
+            "company_logo": job.get("company_logo_url") or job.get("company_logo"),
+            "location": job.get("location_text") or job.get("location"),
+            "posted_at": (
+                    job.get("listed_at")
+                    or job.get("posted_at")
+                    or job.get("created_at")
+                    or job.get("formatted_posted_date")
+            ),
+            "description_full": job.get("description_snippet"),
+        }
+
+    def _build_job_url(self, job_id: str) -> str:
+        return f"https://www.linkedin.com/jobs/view/{job_id}/"
 
     def _build_audit(self, jobs: list[ParsedJobCard]) -> dict[str, Any]:
         total = len(jobs)
@@ -151,9 +257,8 @@ class LinkedInJobsSearchService:
         }
 
 
-
 if __name__ == "__main__":
-    service = LinkedInJobsSearchService()
+    service = LinkedInJobsSearchService(debug=False, slim_mode=True)
 
     search = JobSearchTuning(
         current_job_id="4381764035",
@@ -179,6 +284,7 @@ if __name__ == "__main__":
         debug=False,
         save_raw_json=True,
         save_parsed_json=True,
+        enrich_jobs=True,
     )
 
     print(json.dumps(result["audit"], indent=2, ensure_ascii=False))
