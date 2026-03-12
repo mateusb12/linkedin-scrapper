@@ -344,7 +344,14 @@ const Placeholder = ({ text = "None specified." }) => (
 );
 
 const JobListItem = ({ job, isSelected, onSelect }) => {
+  const [showAllTech, setShowAllTech] = useState(false);
   const insights = buildJobInsights(job);
+
+  const visibleTech = showAllTech
+    ? insights.techStack
+    : insights.techStack.slice(0, 3);
+
+  const hiddenCount = insights.techStack.length - visibleTech.length;
 
   const selectedClasses = isSelected
     ? "border-sky-400/70 bg-sky-950/40 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.14)]"
@@ -392,65 +399,35 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
-            {job.workplace_type && job.workplace_type !== "Not specified" && (
-              <Badge tone="blue">{job.workplace_type}</Badge>
+            {visibleTech.map((tech, index) => (
+              <TechBadge key={tech} tech={tech} index={index} />
+            ))}
+
+            {hiddenCount > 0 && !showAllTech && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowAllTech(true);
+                }}
+                className="px-2 py-1 text-xs rounded-full border border-slate-600 text-slate-300 hover:bg-slate-700"
+                title={insights.techStack.slice(3).join(", ")}
+              >
+                +{hiddenCount}
+              </button>
             )}
 
-            <InsightBadge
-              icon={Clock3}
-              className={getPostedBadgeClasses(job.posted_at)}
-            >
-              {getPostedBadgeText(job.posted_at)}
-            </InsightBadge>
-
-            {job.applicants_total != null && (
-              <InsightBadge
-                icon={Users}
-                className={getCompetitionStyle(job.applicants_total)}
+            {showAllTech && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowAllTech(false);
+                }}
+                className="px-2 py-1 text-xs rounded-full border border-slate-600 text-slate-300 hover:bg-slate-700"
               >
-                {formatApplicantsLabel(job.applicants_total)}
-              </InsightBadge>
-            )}
-
-            {insights.seniority && (
-              <InsightBadge
-                icon={Briefcase}
-                className={getSeniorityStyle(insights.seniority)}
-              >
-                {insights.seniority}
-              </InsightBadge>
-            )}
-
-            {insights.jobType && (
-              <InsightBadge
-                icon={Code2}
-                className={getTypeStyle(insights.jobType)}
-              >
-                {insights.jobType}
-              </InsightBadge>
-            )}
-
-            {insights.experience?.text && (
-              <InsightBadge
-                icon={Clock3}
-                className={getExperienceStyle(insights.experience)}
-              >
-                {insights.experience.text}
-              </InsightBadge>
+                collapse
+              </button>
             )}
           </div>
-
-          {insights.techStack.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {insights.techStack.slice(0, 4).map((tech, index) => (
-                <TechBadge
-                  key={`${job.id}-${tech}`}
-                  tech={tech}
-                  index={index}
-                />
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </button>
