@@ -15,6 +15,7 @@ import {
   Briefcase,
   Database,
   Filter,
+  ChevronUp,
   XCircle,
   ChevronRight,
   Code2,
@@ -469,9 +470,10 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
                       e.stopPropagation();
                       setShowAllTech(false);
                     }}
-                    className="px-2 py-1 text-[11px] font-semibold rounded-full border border-slate-600 bg-slate-800/60 text-slate-300 hover:bg-slate-700 transition"
+                    className="flex items-center justify-center px-2 py-1 rounded-full border border-slate-600 bg-slate-800/60 text-slate-300 hover:bg-slate-700 transition"
+                    title="Collapse"
                   >
-                    collapse
+                    <ChevronUp size={12} />
                   </button>
                 )}
               </div>
