@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from source.features.enrich_jobs.linkedin_http_batch_enricher import BatchEnrichmentService
 from source.features.enrich_jobs.linkedin_http_job_enricher import LinkedInJobEnricher
 from source.features.fetch_curl.linkedin_http_client import LinkedInClient
 from source.features.get_applied_jobs.utils_proxy import (
@@ -38,7 +39,11 @@ class LinkedInProxy:
     def __init__(self, debug: bool = False, slim_mode: bool = True):
         self.debug = debug
         self.client = LinkedInClient("SavedJobs", slim_mode=slim_mode)
-        self.enricher = LinkedInJobEnricher(debug=debug, slim_mode=slim_mode)
+        self.batch_enricher = BatchEnrichmentService(
+            debug=debug,
+            slim_mode=slim_mode,
+            return_seed_on_failure=True,
+        )
 
         from database.database_connection import get_db_session
         from models.fetch_models import FetchCurl
@@ -236,17 +241,15 @@ class LinkedInProxy:
                 break
 
             page_index += 1
-            time.sleep(1.0)
 
         _log(f"✅ Total base jobs: {len(all_base_jobs)}")
 
-        job_objects = []
         should_enrich = stage in ["applied", "saved"]
-        for base in all_base_jobs:
-            if should_enrich:
-                job_objects.append(self.enricher.enrich_job(base["job_id"]))
-            else:
-                job_objects.append(JobPost.from_dict(base))
+
+        if should_enrich:
+            job_objects = self.batch_enricher.enrich_base_jobs(all_base_jobs)
+        else:
+            job_objects = [JobPost.from_dict(base) for base in all_base_jobs]
 
         return JobServiceResponse(count=len(job_objects), stage=stage, jobs=job_objects)
 

@@ -1,12 +1,22 @@
 """
 linkedin_job_enricher.py — SINGLE JOB ENRICHMENT
-Solely focused on enriching a single job.
-Takes a job_urn or job_id, fetches Voyager details, Premium insights, and Notifications.
+
+Low-level single-job fetcher/parser.
+This file should NOT own batch pacing, retry, or backoff logic.
+
+Responsibilities:
+    - fetch Voyager job details
+    - fetch Premium insights
+    - fetch Notifications
+    - optionally resolve company details fallback
+    - return one enriched JobPost
+
+Cross-request concerns like retry / exponential backoff / jitter should live in
+BatchEnrichmentService.
 """
 
 import json
 import re
-import time
 import sys
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional
@@ -23,14 +33,49 @@ from source.features.get_applied_jobs.utils_proxy import (
     ms_to_iso,
     parse_notification_for_job,
     PREMIUM_ENABLED,
-    REQUEST_DELAY_SECONDS,
     log as _log,
 )
+
+RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504, 999}
+
+
+class EnrichmentError(RuntimeError):
+    def __init__(
+            self,
+            operation: str,
+            status_code: Optional[int] = None,
+            message: str = "",
+    ):
+        self.operation = operation
+        self.status_code = status_code
+        self.message = message
+        super().__init__(self.__str__())
+
+    def __str__(self) -> str:
+        base = self.operation
+        if self.status_code is not None:
+            base += f" [HTTP {self.status_code}]"
+        if self.message:
+            base += f" {self.message}"
+        return base
+
+
+class RetryableEnrichmentError(EnrichmentError):
+    pass
+
+
+class NonRetryableEnrichmentError(EnrichmentError):
+    pass
 
 
 class LinkedInJobEnricher:
     """
     Takes a job_urn as input and returns an enriched JobPost.
+
+    Important:
+    - This class is intentionally "low-level"
+    - It does NOT do retry/backoff/jitter
+    - BatchEnrichmentService should wrap this class for production batch flows
     """
 
     def __init__(self, debug: bool = False, slim_mode: bool = True):
@@ -67,31 +112,67 @@ class LinkedInJobEnricher:
                 self.notifications_url = rec_notif.base_url
                 self.notifications_method = rec_notif.method or "GET"
                 self.notifications_headers = json.loads(rec_notif.headers) if rec_notif.headers else {}
-                _log(f"✓ Loaded Notifications config from DB in Enricher")
+                _log("✓ Loaded Notifications config from DB in Enricher")
             else:
-                _log(f"⚠️ Notifications config not found in FetchCurl table")
+                _log("⚠️ Notifications config not found in FetchCurl table")
         finally:
             db.close()
 
-    def fetch_job_details(self, job_id: str) -> Dict[str, Any]:
-        """Fetch Voyager job details. Returns a plain dict, datetimes as ISO strings."""
+    def _get_csrf_token(self) -> Optional[str]:
         session = self.client.session
         csrf = session.headers.get("csrf-token")
-        if not csrf:
-            for c in session.cookies:
-                if c.name == "JSESSIONID":
-                    csrf = c.value.replace('"', "")
-                    break
+        if csrf:
+            return csrf
+
+        for c in session.cookies:
+            if c.name == "JSESSIONID":
+                return c.value.replace('"', "")
+
+        return None
+
+    def _raise_http_error(self, operation: str, status_code: int, body: str = "") -> None:
+        snippet = re.sub(r"\s+", " ", (body or "").strip())[:300]
+        exc_cls = (
+            RetryableEnrichmentError
+            if status_code in RETRYABLE_HTTP_STATUSES
+            else NonRetryableEnrichmentError
+        )
+        raise exc_cls(
+            operation=operation,
+            status_code=status_code,
+            message=snippet,
+        )
+
+    def fetch_job_details(self, job_id: str, raise_on_failure: bool = False) -> Dict[str, Any]:
+        """Fetch Voyager job details. Returns a plain dict, datetimes as ISO strings."""
+        session = self.client.session
+        csrf = self._get_csrf_token()
 
         url = f"https://www.linkedin.com/voyager/api/jobs/jobPostings/{job_id}"
-        resp = session.get(
-            url,
-            headers={"csrf-token": csrf, "accept": "application/json"},
-            timeout=20,
-        )
+
+        try:
+            resp = session.get(
+                url,
+                headers={"csrf-token": csrf, "accept": "application/json"},
+                timeout=20,
+            )
+        except requests.RequestException as e:
+            if raise_on_failure:
+                raise RetryableEnrichmentError(
+                    operation=f"fetch_job_details({job_id})",
+                    message=str(e),
+                )
+            _log(f"❌ fetch_job_details({job_id}) request error: {e}")
+            return {"_error": str(e)}
 
         if resp.status_code != 200:
             _log(f"⚠️ fetch_job_details({job_id}): HTTP {resp.status_code}")
+            if raise_on_failure:
+                self._raise_http_error(
+                    operation=f"fetch_job_details({job_id})",
+                    status_code=resp.status_code,
+                    body=resp.text,
+                )
             return {"_raw": None, "_status": resp.status_code}
 
         try:
@@ -127,10 +208,7 @@ class LinkedInJobEnricher:
                 company_name = company_desc.get("companyName")
 
             if not company_name:
-                company_name = (
-                        d.get("companyName")
-                        or d.get("formattedCompanyName")
-                )
+                company_name = d.get("companyName") or d.get("formattedCompanyName")
 
             company_logo = None
             company_url = None
@@ -144,8 +222,8 @@ class LinkedInJobEnricher:
                     if root_url and artifacts:
                         best = max(artifacts, key=lambda a: a.get("width", 0))
                         company_logo = root_url + best.get("fileIdentifyingUrlPathSegment", "")
-                    elif isinstance(logo_obj, str):
-                        company_logo = logo_obj
+                elif isinstance(logo_obj, str):
+                    company_logo = logo_obj
 
             location = d.get("formattedLocation")
 
@@ -169,32 +247,55 @@ class LinkedInJobEnricher:
                 "_raw_company_details": company_details if self.debug else None,
                 "_raw_company_description": company_desc if self.debug else None,
             }
+
+        except (RetryableEnrichmentError, NonRetryableEnrichmentError):
+            raise
         except Exception as e:
+            if raise_on_failure:
+                raise NonRetryableEnrichmentError(
+                    operation=f"fetch_job_details({job_id})",
+                    message=f"parse error: {e}",
+                )
             _log(f"❌ fetch_job_details({job_id}) parse error: {e}")
             return {"_error": str(e)}
 
-    def fetch_company_details(self, company_urn: str) -> Dict[str, Any]:
+    def fetch_company_details(
+            self,
+            company_urn: str,
+            raise_on_failure: bool = False,
+    ) -> Dict[str, Any]:
         """Resolve a company URN to name, logo, and URL via Voyager."""
         company_id = company_urn.split(":")[-1] if ":" in company_urn else company_urn
 
         session = self.client.session
-        csrf = session.headers.get("csrf-token")
-        if not csrf:
-            for c in session.cookies:
-                if c.name == "JSESSIONID":
-                    csrf = c.value.replace('"', "")
-                    break
+        csrf = self._get_csrf_token()
 
         url = f"https://www.linkedin.com/voyager/api/organization/companies/{company_id}"
-        resp = session.get(
-            url,
-            headers={"csrf-token": csrf, "accept": "application/json"},
-            timeout=20,
-        )
+
+        try:
+            resp = session.get(
+                url,
+                headers={"csrf-token": csrf, "accept": "application/json"},
+                timeout=20,
+            )
+        except requests.RequestException as e:
+            if raise_on_failure:
+                raise RetryableEnrichmentError(
+                    operation=f"fetch_company_details({company_id})",
+                    message=str(e),
+                )
+            _log(f"❌ fetch_company_details({company_id}) request error: {e}")
+            return {"_error": str(e)}
 
         if resp.status_code != 200:
             _log(f"⚠️ fetch_company_details({company_id}): HTTP {resp.status_code}")
             _log(f"⚠️ Body snippet: {resp.text[:500]}")
+            if raise_on_failure:
+                self._raise_http_error(
+                    operation=f"fetch_company_details({company_id})",
+                    status_code=resp.status_code,
+                    body=resp.text,
+                )
             return {"_status": resp.status_code}
 
         try:
@@ -217,21 +318,37 @@ class LinkedInJobEnricher:
             return {
                 "company_id": company_id,
                 "company_name": d.get("name") or d.get("universalName"),
-                "company_url": d.get("companyPageUrl") or d.get("url")
+                "company_url": d.get("companyPageUrl")
+                               or d.get("url")
                                or f"https://www.linkedin.com/company/{d.get('universalName', company_id)}/",
                 "company_logo": logo_url,
                 "description": d.get("description"),
-                "industry": d.get("companyIndustries", [{}])[0].get("localizedName") if d.get(
-                    "companyIndustries") else None,
+                "industry": (
+                    d.get("companyIndustries", [{}])[0].get("localizedName")
+                    if d.get("companyIndustries")
+                    else None
+                ),
                 "staff_count": d.get("staffCount"),
                 "headquarters": d.get("headquarter", {}).get("city") if d.get("headquarter") else None,
                 "_raw_keys": sorted(d.keys()) if self.debug else None,
             }
+
+        except (RetryableEnrichmentError, NonRetryableEnrichmentError):
+            raise
         except Exception as e:
+            if raise_on_failure:
+                raise NonRetryableEnrichmentError(
+                    operation=f"fetch_company_details({company_id})",
+                    message=f"parse error: {e}",
+                )
             _log(f"❌ fetch_company_details({company_id}) parse error: {e}")
             return {"_error": str(e)}
 
-    def fetch_premium_insights(self, job_id: str) -> Dict[str, Any]:
+    def fetch_premium_insights(
+            self,
+            job_id: str,
+            raise_on_failure: bool = False,
+    ) -> Dict[str, Any]:
         """Fetch Premium RSC insights."""
         empty = {
             "premium_component_found": False,
@@ -244,6 +361,7 @@ class LinkedInJobEnricher:
             "learn_more_url": None,
             "data_sdui_components": [],
         }
+
         try:
             if not PREMIUM_ENABLED or not self.premium_url:
                 return empty
@@ -258,57 +376,98 @@ class LinkedInJobEnricher:
             headers.pop("Accept-Encoding", None)
             headers["Accept-Encoding"] = "identity"
 
-            r = requests.request(
-                method=self.premium_method,
-                url=self.premium_url,
-                headers=headers,
-                data=body,
-                timeout=20,
-            )
+            try:
+                r = requests.request(
+                    method=self.premium_method,
+                    url=self.premium_url,
+                    headers=headers,
+                    data=body,
+                    timeout=20,
+                )
+            except requests.RequestException as e:
+                if raise_on_failure:
+                    raise RetryableEnrichmentError(
+                        operation=f"fetch_premium_insights({job_id})",
+                        message=str(e),
+                    )
+                _log(f"⚠️ fetch_premium_insights({job_id}) request error: {e}")
+                return empty
 
             if r.status_code != 200:
+                if raise_on_failure:
+                    self._raise_http_error(
+                        operation=f"fetch_premium_insights({job_id})",
+                        status_code=r.status_code,
+                        body=r.text,
+                    )
                 raise RuntimeError(f"HTTP {r.status_code}")
 
             return self.premium_parser.parse(r.text)
 
+        except (RetryableEnrichmentError, NonRetryableEnrichmentError):
+            raise
         except Exception as e:
+            if raise_on_failure:
+                raise NonRetryableEnrichmentError(
+                    operation=f"fetch_premium_insights({job_id})",
+                    message=str(e),
+                )
             _log(f"⚠️ fetch_premium_insights({job_id}) error: {e}")
             return empty
 
-    def fetch_notifications_for_job(self, job_id: str) -> Optional[NotificationEvent]:
+    def fetch_notifications_for_job(
+            self,
+            job_id: str,
+            raise_on_failure: bool = False,
+    ) -> Optional[NotificationEvent]:
         """Fetch notifications and extract 'Application viewed' event for a specific job ID."""
         if not self.notifications_url:
-            _log(f"❌ Notifications config not loaded from database")
-            _log(f"❌ Make sure 'Notifications' record exists in FetchCurl table")
+            _log("❌ Notifications config not loaded from database")
+            _log("❌ Make sure 'Notifications' record exists in FetchCurl table")
             return None
 
         session = self.client.session
-        csrf = session.headers.get("csrf-token")
-        if not csrf:
-            for c in session.cookies:
-                if c.name == "JSESSIONID":
-                    csrf = c.value.replace('"', "")
-                    break
+        csrf = self._get_csrf_token()
 
         try:
             headers = session.headers.copy()
             headers.update(self.notifications_headers)
             headers["csrf-token"] = csrf
 
-            resp = session.request(
-                method=self.notifications_method,
-                url=self.notifications_url,
-                headers=headers,
-                timeout=20,
-            )
+            try:
+                resp = session.request(
+                    method=self.notifications_method,
+                    url=self.notifications_url,
+                    headers=headers,
+                    timeout=20,
+                )
+            except requests.RequestException as e:
+                if raise_on_failure:
+                    raise RetryableEnrichmentError(
+                        operation=f"fetch_notifications_for_job({job_id})",
+                        message=str(e),
+                    )
+                _log(f"❌ fetch_notifications_for_job({job_id}) request error: {e}")
+                return None
 
             if resp.status_code != 200:
                 _log(f"⚠️ HTTP {resp.status_code}")
+                if raise_on_failure:
+                    self._raise_http_error(
+                        operation=f"fetch_notifications_for_job({job_id})",
+                        status_code=resp.status_code,
+                        body=resp.text,
+                    )
                 return None
 
             try:
                 data = resp.json()
             except Exception as e:
+                if raise_on_failure:
+                    raise NonRetryableEnrichmentError(
+                        operation=f"fetch_notifications_for_job({job_id})",
+                        message=f"json parse error: {e}",
+                    )
                 _log(f"⚠️ Failed to parse JSON response: {e}")
                 return None
 
@@ -321,7 +480,14 @@ class LinkedInJobEnricher:
 
             return notification_event
 
+        except (RetryableEnrichmentError, NonRetryableEnrichmentError):
+            raise
         except Exception as e:
+            if raise_on_failure:
+                raise NonRetryableEnrichmentError(
+                    operation=f"fetch_notifications_for_job({job_id})",
+                    message=str(e),
+                )
             _log(f"❌ fetch_notifications_for_job({job_id}) error: {e}")
             import traceback
             traceback.print_exc()
@@ -344,23 +510,23 @@ class LinkedInJobEnricher:
 
     def enrich_job(self, job_urn: str) -> JobPost:
         """
-        Sync-layer enrichment: Takes a job_urn as input and returns an enriched JobPost.
+        Legacy single-job orchestration helper.
+
+        Important:
+        - no sleep here
+        - no retry/backoff here
+        - BatchEnrichmentService should be preferred for production flows
         """
-        # Parse job_id if a full URN was passed
         job_id = str(job_urn).split(":")[-1] if ":" in str(job_urn) else str(job_urn)
 
         base_job_dict = {
             "job_id": job_id,
-            "job_url": f"https://www.linkedin.com/jobs/view/{job_id}/"
+            "job_url": f"https://www.linkedin.com/jobs/view/{job_id}/",
         }
 
-        # Step 1: Fetch enriched data
         enriched = self._fetch_and_merge_enrichment(job_id)
-
-        # Step 2: Merge enriched data into base dict
         base_job_dict.update(enriched)
 
-        # Step 3: Company URN fallback
         if base_job_dict.get("company") in [None, "Unknown"] and base_job_dict.get("company_urn"):
             company_info = self.fetch_company_details(base_job_dict["company_urn"])
             if company_info.get("company_name"):
@@ -370,13 +536,9 @@ class LinkedInJobEnricher:
             if company_info.get("company_logo") and not base_job_dict.get("company_logo"):
                 base_job_dict["company_logo"] = company_info["company_logo"]
 
-        # Step 4: Applicants normalization
         app_tot = base_job_dict.get("applicants_total")
         if isinstance(app_tot, int) and app_tot > 0:
             base_job_dict["applicants"] = app_tot
-
-        # Step 5: Rate limiting
-        time.sleep(REQUEST_DELAY_SECONDS)
 
         return JobPost.from_dict(base_job_dict)
 
@@ -395,14 +557,14 @@ if __name__ == "__main__":
         notification = enricher.fetch_notifications_for_job(test_job_id)
 
         if notification:
-            print(f"\n✅ SUCCESS - Notification Event Found:")
+            print("\n✅ SUCCESS - Notification Event Found:")
             print(f"   Job ID: {notification.job_id}")
             print(f"   Event Type: {notification.event_type}")
             print(f"   Timestamp: {notification.timestamp}")
             print(f"   Status: {notification.status}")
             print(f"   Company: {notification.company}")
             print(f"   Headline: {notification.headline}")
-            print(f"\n📋 Full Data:")
+            print("\n📋 Full Data:")
             print(notification.to_dict())
         else:
             print(f"\n⚠️  No notification found for job {test_job_id}")

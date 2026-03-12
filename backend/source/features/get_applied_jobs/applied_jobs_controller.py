@@ -15,6 +15,7 @@ from datetime import datetime
 
 from flask import Blueprint, jsonify, request, Response, stream_with_context
 
+from source.features.enrich_jobs.linkedin_http_batch_enricher import BatchEnrichmentService
 from source.features.enrich_jobs.linkedin_http_job_enricher import LinkedInJobEnricher
 from source.features.get_applied_jobs.applied_job_sync_service import JobSyncService
 
@@ -107,7 +108,11 @@ def debug_job():
 
         # 🚀 Use the new Enricher to fetch everything!
 
-        enricher = LinkedInJobEnricher(debug=True, slim_mode=True)
+        enricher = BatchEnrichmentService(
+            debug=True,
+            slim_mode=True,
+            return_seed_on_failure=False,
+        )
         enriched_job = enricher.enrich_job(job_id)
 
         merged_dict = asdict(enriched_job)
