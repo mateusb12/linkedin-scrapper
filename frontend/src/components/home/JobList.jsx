@@ -961,36 +961,26 @@ const MainJobListing = () => {
               />
             </div>
 
-            <div className="rounded-xl border border-slate-700 bg-slate-800/30 p-2.5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-800/80 shadow-inner">
+            <div className="rounded-xl border border-slate-700 bg-slate-800/30 px-3 py-2.5">
+              <div className="relative grid grid-cols-[40px_1fr_auto] items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 bg-slate-800/80">
                   <Database size={16} className="text-sky-400" />
                 </div>
 
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <span className="shrink-0 text-sm font-semibold text-slate-100">
+                <div className="flex flex-1 items-center h-9">
+                  <span className="text-sm font-semibold text-slate-100">
                     Cache
                   </span>
-                  <div className="min-w-0 truncate">
-                    <Badge tone={cacheStatusTone}>
-                      <span className="truncate">
-                        {cacheStatusLabel}
-                        {cacheTimestamp
-                          ? ` • ${formatShortDateTime(cacheTimestamp)}`
-                          : ""}
-                      </span>
-                    </Badge>
-                  </div>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={handleRefreshCache}
                     disabled={loading}
                     aria-label="Refresh cache"
                     title="Refresh cache"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-600 bg-slate-700/50 text-slate-200 transition hover:bg-slate-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-600 bg-slate-700/50 text-slate-200 transition hover:bg-slate-600 hover:text-white disabled:opacity-50"
                   >
                     <RefreshCw
                       size={14}
@@ -1003,15 +993,23 @@ const MainJobListing = () => {
                     onClick={handleClearCache}
                     aria-label="Clear cache"
                     title="Clear cache"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-500/30 bg-red-500/10 text-red-400 transition hover:border-red-500/50 hover:bg-red-500/20 hover:text-red-300"
+                    className="flex h-8 w-8 items-center justify-center rounded-md border border-red-500/30 bg-red-500/10 text-red-400 transition hover:border-red-500/50 hover:bg-red-500/20 hover:text-red-300"
                   >
                     <Trash2 size={14} />
                   </button>
                 </div>
+
+                {cacheTimestamp && (
+                  <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center">
+                    <Badge tone={cacheStatusTone}>
+                      {formatShortDateTime(cacheTimestamp)}
+                    </Badge>
+                  </div>
+                )}
               </div>
 
               {errorMessage && (
-                <div className="mt-2.5 border-t border-slate-700/60 pt-2.5">
+                <div className="mt-2 border-t border-slate-700/60 pt-2">
                   <p className="text-xs text-red-300">{errorMessage}</p>
                 </div>
               )}
