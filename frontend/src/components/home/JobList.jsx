@@ -900,7 +900,7 @@ const MainJobListing = () => {
       result.sort((a, b) => a.company.name.localeCompare(b.company.name));
     } else if (sortBy === "applicants") {
       result.sort(
-        (a, b) => (b.applicants_total || 0) - (a.applicants_total || 0),
+        (a, b) => (a.applicants_total || 0) - (b.applicants_total || 0),
       );
     } else if (sortBy === "recent") {
       result.sort(
