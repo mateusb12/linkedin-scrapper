@@ -501,22 +501,34 @@ def fetch_and_save(
         count: int | None = None,
         tuning: JobSearchTuning | None = None,
         debug: bool = False,
+        save_json: bool = True,
 ) -> dict:
+    """
+    Fetch LinkedIn GraphQL payload.
+
+    Modes:
+    - save_json=True  → saves file (CLI/debug mode)
+    - save_json=False → pure in-memory mode (service/API)
+    """
+
     fetcher = VoyagerJobsLiteFetcher(
         page=page,
         count=count,
         tuning=tuning,
         debug=debug,
     )
+
     data = fetcher.fetch_raw()
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    output_path = os.path.join(script_dir, f"search_through_graphql/linkedin_graphql_response.json")
+    if save_json:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        output_path = os.path.join(script_dir, "linkedin_graphql_response.json")
 
-    with open(output_path, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2, ensure_ascii=False)
+        with open(output_path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2, ensure_ascii=False)
 
-    print(f"✅ Successfully saved response to: {output_path}")
+        print(f"✅ Successfully saved response to: {output_path}")
+
     print(f"Resolved count={fetcher.count}, start={fetcher.start}")
     print(f"Final Voyager URL: {fetcher.url}")
     print(f"Final Browser Referer: {fetcher.browser_referer}")

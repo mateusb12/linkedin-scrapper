@@ -37,9 +37,6 @@ class LinkedInJobsSearchService:
         self.base_dir = Path(base_dir) if base_dir else Path(__file__).parent
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
-    # -------------------------------------------------------------------------
-    # Paths
-    # -------------------------------------------------------------------------
 
     @property
     def raw_json_path(self) -> Path:
@@ -49,9 +46,6 @@ class LinkedInJobsSearchService:
     def parsed_json_path(self) -> Path:
         return self.base_dir / "linkedin_graphql_parsed_jobs.json"
 
-    # -------------------------------------------------------------------------
-    # Orchestration
-    # -------------------------------------------------------------------------
 
     def search_jobs(
             self,
@@ -73,28 +67,24 @@ class LinkedInJobsSearchService:
             }
         """
 
-        # 1) FETCH using existing fetch module
         raw_payload = fetch_and_save(
             page=page,
             count=count,
             tuning=tuning,
             debug=debug,
+            save_json=save_raw_json,
         )
 
-        # If caller doesn't want raw JSON persisted, delete the file created by fetch_and_save
         if not save_raw_json and self.raw_json_path.exists():
             self.raw_json_path.unlink(missing_ok=True)
 
-        # 2) PARSE using existing parse module
         parsed_output: ParseOutput = parse_linkedin_graphql_response(raw_payload)
 
-        # 3) Save parsed JSON if requested
         parsed_jobs_json = jobs_to_json_serializable(parsed_output.jobs)
         if save_parsed_json:
             with self.parsed_json_path.open("w", encoding="utf-8") as f:
                 json.dump(parsed_jobs_json, f, ensure_ascii=False, indent=2)
 
-        # 4) Return structured result for endpoint
         return {
             "meta": {
                 "page": page,
@@ -110,9 +100,6 @@ class LinkedInJobsSearchService:
             "jobs": parsed_jobs_json,
         }
 
-    # -------------------------------------------------------------------------
-    # Audit
-    # -------------------------------------------------------------------------
 
     def _build_audit(self, jobs: list[ParsedJobCard]) -> dict[str, Any]:
         total = len(jobs)
@@ -164,9 +151,6 @@ class LinkedInJobsSearchService:
         }
 
 
-# -----------------------------------------------------------------------------
-# Example local usage
-# -----------------------------------------------------------------------------
 
 if __name__ == "__main__":
     service = LinkedInJobsSearchService()
