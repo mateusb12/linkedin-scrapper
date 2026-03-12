@@ -398,34 +398,83 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
             </div>
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2">
-            {visibleTech.map((tech, index) => (
-              <TechBadge key={tech} tech={tech} index={index} />
-            ))}
+          <div className="mt-4 flex flex-col gap-3">
+            <div className="flex flex-wrap gap-2">
+              {insights.seniority && (
+                <InsightBadge
+                  icon={Briefcase}
+                  className={getSeniorityStyle(insights.seniority)}
+                >
+                  {insights.seniority}
+                </InsightBadge>
+              )}
 
-            {hiddenCount > 0 && !showAllTech && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowAllTech(true);
-                }}
-                className="px-2 py-1 text-xs rounded-full border border-slate-600 text-slate-300 hover:bg-slate-700"
-                title={insights.techStack.slice(3).join(", ")}
-              >
-                +{hiddenCount}
-              </button>
-            )}
+              {insights.jobType && (
+                <InsightBadge
+                  icon={Code2}
+                  className={getTypeStyle(insights.jobType)}
+                >
+                  {insights.jobType}
+                </InsightBadge>
+              )}
 
-            {showAllTech && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowAllTech(false);
-                }}
-                className="px-2 py-1 text-xs rounded-full border border-slate-600 text-slate-300 hover:bg-slate-700"
+              {insights.experience?.text && (
+                <InsightBadge
+                  icon={Clock3}
+                  className={getExperienceStyle(insights.experience)}
+                >
+                  {insights.experience.text} exp
+                </InsightBadge>
+              )}
+
+              {job.applicants_total != null && (
+                <InsightBadge
+                  icon={Users}
+                  className={getCompetitionStyle(job.applicants_total)}
+                >
+                  {formatApplicantsLabel(job.applicants_total)}
+                </InsightBadge>
+              )}
+
+              <InsightBadge
+                icon={Clock3}
+                className={getPostedBadgeClasses(job.posted_at)}
               >
-                collapse
-              </button>
+                {getPostedBadgeText(job.posted_at)}
+              </InsightBadge>
+            </div>
+
+            {insights.techStack.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-3 border-t border-slate-700/50">
+                {visibleTech.map((tech, index) => (
+                  <TechBadge key={tech} tech={tech} index={index} />
+                ))}
+
+                {hiddenCount > 0 && !showAllTech && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowAllTech(true);
+                    }}
+                    className="px-2 py-1 text-[11px] font-semibold rounded-full border border-slate-600 bg-slate-800/60 text-slate-300 hover:bg-slate-700 transition"
+                    title={insights.techStack.slice(3).join(", ")}
+                  >
+                    +{hiddenCount}
+                  </button>
+                )}
+
+                {showAllTech && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowAllTech(false);
+                    }}
+                    className="px-2 py-1 text-[11px] font-semibold rounded-full border border-slate-600 bg-slate-800/60 text-slate-300 hover:bg-slate-700 transition"
+                  >
+                    collapse
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -519,7 +568,7 @@ const JobDetailView = ({ job }) => {
                 icon={Clock3}
                 className={getExperienceStyle(insights.experience)}
               >
-                {insights.experience.text}
+                {insights.experience.text} exp
               </InsightBadge>
             )}
           </div>
@@ -622,7 +671,7 @@ const JobDetailView = ({ job }) => {
                 icon={Clock3}
                 className={getExperienceStyle(insights.experience)}
               >
-                Experience: {insights.experience.text}
+                Experience: {insights.experience.text} exp
               </InsightBadge>
             )}
 
