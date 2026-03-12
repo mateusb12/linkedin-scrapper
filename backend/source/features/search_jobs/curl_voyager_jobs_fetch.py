@@ -10,7 +10,7 @@ from urllib.parse import parse_qsl, quote, unquote, urlsplit, urlunsplit, urlenc
 
 # --- Add project root to path ---
 project_root = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
+    os.path.join(os.path.dirname(__file__), "", "..", "..", "..")
 )
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -511,7 +511,7 @@ def fetch_and_save(
     data = fetcher.fetch_raw()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    output_path = os.path.join(script_dir, f"linkedin_graphql_response.json")
+    output_path = os.path.join(script_dir, f"search_through_graphql/linkedin_graphql_response.json")
 
     with open(output_path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2, ensure_ascii=False)
@@ -530,7 +530,7 @@ def fetch_and_save(
 
 if __name__ == "__main__":
     PAGE = 1
-    COUNT = 7
+    COUNT = 50
     DEBUG = False
 
     SEARCH = JobSearchTuning(

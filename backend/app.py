@@ -20,6 +20,7 @@ from source.features.resume.resume_data import resume_bp
 from source.features.fetch_curl import fetch_curl_bp
 from source.features.job_population.population_controller import population_bp
 from database.database_connection import create_db_and_tables
+from source.features.search_jobs.job_search_controller import search_jobs_bp
 
 load_dotenv()
 
@@ -71,6 +72,7 @@ app.register_blueprint(services_bp)
 app.register_blueprint(gmail_bp)
 app.register_blueprint(connections_bp)
 app.register_blueprint(job_tracker_bp)
+app.register_blueprint(search_jobs_bp)
 
 
 @app.route('/')
