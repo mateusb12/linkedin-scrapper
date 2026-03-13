@@ -346,6 +346,16 @@ const MainJobListing = () => {
         );
       }
 
+      if (sortBy === "score") {
+        const scoreDiff = (b.positiveScore || 0) - (a.positiveScore || 0);
+
+        if (scoreDiff !== 0) {
+          return scoreDiff;
+        }
+
+        return a.title.localeCompare(b.title);
+      }
+
       if (sortBy === "title") {
         return a.title.localeCompare(b.title);
       }

@@ -1190,6 +1190,7 @@ const JobListingView = ({
                   onChange={(event) => setSortBy(event.target.value)}
                 >
                   <option value="relevance">Sort by: Relevance</option>
+                  <option value="score">Sort by: Highest Score</option>
                   <option value="recent">Sort by: Most Recent</option>
                   <option value="applicants">Sort by: Applicants</option>
                   <option value="title">Sort by: Title</option>
