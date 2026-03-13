@@ -22,9 +22,6 @@ const MainJobListing = () => {
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const [isFetchModalOpen, setIsFetchModalOpen] = useState(false);
-  const [fetchCount, setFetchCount] = useState(10);
-
   const [progressData, setProgressData] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [cacheTimestamp, setCacheTimestamp] = useState(null);
@@ -40,7 +37,6 @@ const MainJobListing = () => {
       return Number.MAX_SAFE_INTEGER;
     }
   });
-  const [isNegativeFilterOpen, setIsNegativeFilterOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [workplaceType, setWorkplaceType] = useState("All");
@@ -53,9 +49,11 @@ const MainJobListing = () => {
     setNegativeKeywords(readNegativeKeywordsCache());
   }, []);
 
-  const handleAddNegativeKeyword = (e) => {
-    e.preventDefault();
+  const handleAddNegativeKeyword = (event) => {
+    event.preventDefault();
+
     if (!newNegativeKeyword.trim()) return;
+
     const normalized = newNegativeKeyword.trim().toLowerCase();
 
     if (!negativeKeywords.includes(normalized)) {
@@ -63,17 +61,19 @@ const MainJobListing = () => {
       setNegativeKeywords(updated);
       writeNegativeKeywordsCache(updated);
     }
+
     setNewNegativeKeyword("");
   };
 
   const handleRemoveNegativeKeyword = (keyword) => {
-    const updated = negativeKeywords.filter((k) => k !== keyword);
+    const updated = negativeKeywords.filter((item) => item !== keyword);
     setNegativeKeywords(updated);
     writeNegativeKeywordsCache(updated);
   };
 
   const applyJobs = useCallback((data) => {
     setJobs(Array.isArray(data) ? data : []);
+
     setSelectedJobId((currentSelectedId) => {
       if (
         Array.isArray(data) &&
@@ -81,6 +81,7 @@ const MainJobListing = () => {
       ) {
         return currentSelectedId;
       }
+
       return data?.[0]?.id ?? null;
     });
   }, []);
@@ -142,14 +143,8 @@ const MainJobListing = () => {
     loadJobs();
   }, [loadJobs]);
 
-  const handleRefreshCacheClick = () => {
-    setIsFetchModalOpen(true);
-  };
-
   const handleConfirmFetch = async (count) => {
     await loadJobs({ forceRefresh: true, count });
-
-    setIsFetchModalOpen(false);
     setProgressData(null);
   };
 
@@ -162,14 +157,16 @@ const MainJobListing = () => {
 
   const maxPossibleApplicants = useMemo(() => {
     if (!jobs || jobs.length === 0) return 100;
+
     const max = Math.max(...jobs.map((job) => job.applicants_total || 0));
     return max > 0 ? max : 100;
   }, [jobs]);
 
-  const handleApplicantsLimitChange = (e) => {
-    const val = Number(e.target.value);
+  const handleApplicantsLimitChange = (event) => {
+    const value = Number(event.target.value);
     const newValue =
-      val >= maxPossibleApplicants ? Number.MAX_SAFE_INTEGER : val;
+      value >= maxPossibleApplicants ? Number.MAX_SAFE_INTEGER : value;
+
     setMaxApplicantsLimit(newValue);
     localStorage.setItem(APPLICANTS_LIMIT_CACHE_KEY, newValue.toString());
   };
@@ -202,12 +199,13 @@ const MainJobListing = () => {
           .join(" ")
           .toLowerCase();
 
-        isNegativeMatch = negativeKeywords.some((kw) => {
-          const escapedKw = escapeRegExp(kw.toLowerCase());
+        isNegativeMatch = negativeKeywords.some((keyword) => {
+          const escapedKeyword = escapeRegExp(keyword.toLowerCase());
           const regex = new RegExp(
-            `(?<![\\w+#-])${escapedKw}(?![\\w+#-])`,
+            `(?<![\\w+#-])${escapedKeyword}(?![\\w+#-])`,
             "i",
           );
+
           return regex.test(haystack);
         });
       }
@@ -274,11 +272,17 @@ const MainJobListing = () => {
 
       if (sortBy === "title") {
         return a.title.localeCompare(b.title);
-      } else if (sortBy === "company") {
+      }
+
+      if (sortBy === "company") {
         return a.company.name.localeCompare(b.company.name);
-      } else if (sortBy === "applicants") {
+      }
+
+      if (sortBy === "applicants") {
         return (a.applicants_total || 0) - (b.applicants_total || 0);
-      } else if (sortBy === "recent") {
+      }
+
+      if (sortBy === "recent") {
         return (
           new Date(b.posted_at || 0).getTime() -
           new Date(a.posted_at || 0).getTime()
@@ -327,48 +331,49 @@ const MainJobListing = () => {
 
   return (
     <JobListingView
-      filteredJobs={filteredJobs}
-      negativeMatchCount={negativeMatchCount}
-      selectedJobId={selectedJobId}
-      selectedJob={selectedJob}
-      onSelectJob={setSelectedJobId}
-      loading={loading}
-      progressData={progressData}
-      errorMessage={errorMessage}
-      cacheTimestamp={cacheTimestamp}
-      loadedFromCache={loadedFromCache}
-      onRefreshCacheClick={handleRefreshCacheClick}
-      onClearCache={handleClearCache}
-      isFetchModalOpen={isFetchModalOpen}
-      setIsFetchModalOpen={setIsFetchModalOpen}
-      fetchCount={fetchCount}
-      setFetchCount={setFetchCount}
-      onConfirmFetch={handleConfirmFetch}
-      searchTerm={searchTerm}
-      setSearchTerm={setSearchTerm}
-      workplaceType={workplaceType}
-      setWorkplaceType={setWorkplaceType}
-      workplaceOptions={workplaceOptions}
-      verificationFilter={verificationFilter}
-      setVerificationFilter={setVerificationFilter}
-      repostedFilter={repostedFilter}
-      setRepostedFilter={setRepostedFilter}
-      sourceFilter={sourceFilter}
-      setSourceFilter={setSourceFilter}
-      sourceOptions={sourceOptions}
-      sortBy={sortBy}
-      setSortBy={setSortBy}
-      isNegativeFilterOpen={isNegativeFilterOpen}
-      setIsNegativeFilterOpen={setIsNegativeFilterOpen}
-      newNegativeKeyword={newNegativeKeyword}
-      setNewNegativeKeyword={setNewNegativeKeyword}
-      handleAddNegativeKeyword={handleAddNegativeKeyword}
-      negativeKeywords={negativeKeywords}
-      handleRemoveNegativeKeyword={handleRemoveNegativeKeyword}
-      maxApplicantsLimit={maxApplicantsLimit}
-      maxPossibleApplicants={maxPossibleApplicants}
-      handleApplicantsLimitChange={handleApplicantsLimitChange}
-      activeFiltersCount={activeFiltersCount}
+      jobsState={{
+        filteredJobs,
+        negativeMatchCount,
+        selectedJobId,
+        selectedJob,
+        loading,
+        progressData,
+        errorMessage,
+        cacheTimestamp,
+        loadedFromCache,
+      }}
+      filtersState={{
+        searchTerm,
+        workplaceType,
+        verificationFilter,
+        repostedFilter,
+        sourceFilter,
+        sortBy,
+        negativeKeywords,
+        newNegativeKeyword,
+        maxApplicantsLimit,
+        activeFiltersCount,
+      }}
+      filterOptions={{
+        workplaceOptions,
+        sourceOptions,
+        maxPossibleApplicants,
+      }}
+      actions={{
+        onSelectJob: setSelectedJobId,
+        onConfirmFetch: handleConfirmFetch,
+        onClearCache: handleClearCache,
+        setSearchTerm,
+        setWorkplaceType,
+        setVerificationFilter,
+        setRepostedFilter,
+        setSourceFilter,
+        setSortBy,
+        setNewNegativeKeyword,
+        addNegativeKeyword: handleAddNegativeKeyword,
+        removeNegativeKeyword: handleRemoveNegativeKeyword,
+        onApplicantsLimitChange: handleApplicantsLimitChange,
+      }}
     />
   );
 };

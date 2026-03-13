@@ -146,7 +146,7 @@ const LiveProgressBar = ({ progressData }) => {
   }
 
   return (
-    <div className="w-full overflow-hidden rounded-xl border border-sky-900/40 bg-slate-800/40 p-3 shadow-[0_0_15px_rgba(14,165,233,0.1)] mt-4">
+    <div className="mt-4 w-full overflow-hidden rounded-xl border border-sky-900/40 bg-slate-800/40 p-3 shadow-[0_0_15px_rgba(14,165,233,0.1)]">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-xs font-medium text-sky-400">
           <RefreshCw size={12} className="mr-1.5 inline animate-spin" />
@@ -156,6 +156,7 @@ const LiveProgressBar = ({ progressData }) => {
           {Math.round(percent)}%
         </span>
       </div>
+
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-900/60">
         <div
           className="h-full rounded-full bg-sky-500 transition-all duration-300 ease-out"
@@ -185,10 +186,11 @@ const FetchJobsModal = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
+          <h2 className="flex items-center gap-2 text-xl font-bold text-slate-100">
             <RefreshCw size={20} className="text-sky-400" />
             Fetch New Jobs
           </h2>
+
           {!loading && (
             <button
               onClick={onClose}
@@ -204,7 +206,7 @@ const FetchJobsModal = ({
         </p>
 
         <div className="mb-6 flex flex-col items-center gap-4">
-          <div className="flex items-center gap-4 bg-slate-800/50 p-3 rounded-xl border border-slate-700/50">
+          <div className="flex items-center gap-4 rounded-xl border border-slate-700/50 bg-slate-800/50 p-3">
             <button
               onClick={() => handleIncrement(-10)}
               disabled={loading || fetchCount <= 10}
@@ -212,6 +214,7 @@ const FetchJobsModal = ({
             >
               -
             </button>
+
             <div className="flex w-20 flex-col items-center">
               <span className="text-3xl font-bold text-sky-400">
                 {fetchCount}
@@ -220,6 +223,7 @@ const FetchJobsModal = ({
                 Jobs
               </span>
             </div>
+
             <button
               onClick={() => handleIncrement(10)}
               disabled={loading}
@@ -263,6 +267,7 @@ const FetchJobsModal = ({
             >
               Cancel
             </button>
+
             <button
               onClick={() => onConfirm(fetchCount)}
               className="flex items-center gap-2 rounded-xl bg-sky-600 px-6 py-2 text-sm font-bold text-white shadow-lg shadow-sky-900/20 transition hover:bg-sky-500"
@@ -338,9 +343,11 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
                   title="Matches Negative Filter"
                 />
               )}
+
               {job.verified && (
                 <ShieldCheck size={16} className="text-emerald-400" />
               )}
+
               {job.reposted && <Repeat2 size={16} className="text-amber-400" />}
             </div>
           </div>
@@ -687,54 +694,61 @@ const JobDetailView = ({ job }) => {
 };
 
 const JobListingView = ({
-  filteredJobs,
-  negativeMatchCount,
-  selectedJobId,
-  selectedJob,
-  onSelectJob,
-  loading,
-  progressData,
-  errorMessage,
-  cacheTimestamp,
-  loadedFromCache,
-
-  onRefreshCacheClick,
-  onClearCache,
-  isFetchModalOpen,
-  setIsFetchModalOpen,
-  fetchCount,
-  setFetchCount,
-  onConfirmFetch,
-
-  searchTerm,
-  setSearchTerm,
-  workplaceType,
-  setWorkplaceType,
-  workplaceOptions,
-  verificationFilter,
-  setVerificationFilter,
-  repostedFilter,
-  setRepostedFilter,
-  sourceFilter,
-  setSourceFilter,
-  sourceOptions,
-  sortBy,
-  setSortBy,
-
-  isNegativeFilterOpen,
-  setIsNegativeFilterOpen,
-  newNegativeKeyword,
-  setNewNegativeKeyword,
-  handleAddNegativeKeyword,
-  negativeKeywords,
-  handleRemoveNegativeKeyword,
-  maxApplicantsLimit,
-  maxPossibleApplicants,
-  handleApplicantsLimitChange,
-  activeFiltersCount,
+  jobsState,
+  filtersState,
+  filterOptions,
+  actions,
 }) => {
+  const {
+    filteredJobs,
+    negativeMatchCount,
+    selectedJobId,
+    selectedJob,
+    loading,
+    progressData,
+    errorMessage,
+    cacheTimestamp,
+    loadedFromCache,
+  } = jobsState;
+
+  const {
+    searchTerm,
+    workplaceType,
+    verificationFilter,
+    repostedFilter,
+    sourceFilter,
+    sortBy,
+    negativeKeywords,
+    newNegativeKeyword,
+    maxApplicantsLimit,
+    activeFiltersCount,
+  } = filtersState;
+
+  const { workplaceOptions, sourceOptions, maxPossibleApplicants } =
+    filterOptions;
+
+  const {
+    onSelectJob,
+    onConfirmFetch,
+    onClearCache,
+    setSearchTerm,
+    setWorkplaceType,
+    setVerificationFilter,
+    setRepostedFilter,
+    setSourceFilter,
+    setSortBy,
+    setNewNegativeKeyword,
+    addNegativeKeyword,
+    removeNegativeKeyword,
+    onApplicantsLimitChange,
+  } = actions;
+
   const [isDragging, setIsDragging] = useState(false);
   const [leftPanelWidth, setLeftPanelWidth] = useState(37);
+  const [isFetchModalOpen, setIsFetchModalOpen] = useState(false);
+  const [fetchCount, setFetchCount] = useState(10);
+  const [isNegativeFilterOpen, setIsNegativeFilterOpen] = useState(false);
+
   const containerRef = useRef(null);
 
   const MIN_WIDTH = 28;
@@ -751,7 +765,9 @@ const JobListingView = ({
     setIsDragging(true);
   };
 
-  const handleMouseUp = useCallback(() => setIsDragging(false), []);
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
 
   const handleMouseMove = useCallback(
     (event) => {
@@ -772,13 +788,20 @@ const JobListingView = ({
 
   useEffect(() => {
     if (!isDragging) return;
+
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
+
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isDragging, handleMouseMove, handleMouseUp]);
+
+  const handleConfirmFetchAndClose = async (count) => {
+    await onConfirmFetch(count);
+    setIsFetchModalOpen(false);
+  };
 
   return (
     <div className="h-screen bg-[#081120] font-sans text-slate-100">
@@ -787,7 +810,7 @@ const JobListingView = ({
         onClose={() => setIsFetchModalOpen(false)}
         fetchCount={fetchCount}
         setFetchCount={setFetchCount}
-        onConfirm={onConfirmFetch}
+        onConfirm={handleConfirmFetchAndClose}
         loading={loading}
         progressData={progressData}
       />
@@ -831,7 +854,7 @@ const JobListingView = ({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={onRefreshCacheClick}
+                    onClick={() => setIsFetchModalOpen(true)}
                     disabled={loading}
                     aria-label="Refresh cache"
                     title="Refresh cache"
@@ -914,10 +937,10 @@ const JobListingView = ({
               </FilterSelect>
             </div>
 
-            <div className="rounded-xl border border-slate-700 bg-slate-800/30 overflow-hidden">
+            <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-800/30">
               <button
                 type="button"
-                onClick={() => setIsNegativeFilterOpen(!isNegativeFilterOpen)}
+                onClick={() => setIsNegativeFilterOpen((prev) => !prev)}
                 className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800/50"
               >
                 <div className="flex items-center gap-2">
@@ -929,6 +952,7 @@ const JobListingView = ({
                     </span>
                   )}
                 </div>
+
                 {isNegativeFilterOpen ? (
                   <ChevronUp size={16} className="text-slate-400" />
                 ) : (
@@ -939,16 +963,19 @@ const JobListingView = ({
               {isNegativeFilterOpen && (
                 <div className="border-t border-slate-700/50 p-3">
                   <form
-                    onSubmit={handleAddNegativeKeyword}
+                    onSubmit={addNegativeKeyword}
                     className="mb-3 flex gap-2"
                   >
                     <input
                       type="text"
                       value={newNegativeKeyword}
-                      onChange={(e) => setNewNegativeKeyword(e.target.value)}
+                      onChange={(event) =>
+                        setNewNegativeKeyword(event.target.value)
+                      }
                       placeholder="e.g., Java, PHP..."
                       className="flex-1 rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-1.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-red-500/50"
                     />
+
                     <button
                       type="submit"
                       disabled={!newNegativeKeyword.trim()}
@@ -960,15 +987,15 @@ const JobListingView = ({
 
                   {negativeKeywords.length > 0 && (
                     <div className="mb-4 flex flex-wrap gap-2">
-                      {negativeKeywords.map((kw) => (
+                      {negativeKeywords.map((keyword) => (
                         <span
-                          key={kw}
+                          key={keyword}
                           className="inline-flex items-center gap-1.5 rounded-md border border-red-900/50 bg-red-950/30 px-2 py-1 text-[11px] font-medium text-red-200"
                         >
-                          {kw}
+                          {keyword}
                           <button
                             type="button"
-                            onClick={() => handleRemoveNegativeKeyword(kw)}
+                            onClick={() => removeNegativeKeyword(keyword)}
                             className="rounded-full text-red-400 hover:bg-red-900/50 hover:text-red-200"
                           >
                             <XCircle size={12} />
@@ -982,10 +1009,11 @@ const JobListingView = ({
                     className={`mt-2 ${negativeKeywords.length > 0 ? "border-t border-slate-700/50 pt-3" : ""}`}
                   >
                     <div className="mb-2 flex items-center justify-between">
-                      <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                        <Users size={14} className="text-slate-400" /> Max
-                        Applicants
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+                        <Users size={14} className="text-slate-400" />
+                        Max Applicants
                       </label>
+
                       <span className="text-xs font-medium text-red-300">
                         {maxApplicantsLimit === Number.MAX_SAFE_INTEGER
                           ? "Unlimited"
@@ -1002,8 +1030,8 @@ const JobListingView = ({
                           ? maxPossibleApplicants
                           : maxApplicantsLimit
                       }
-                      onChange={handleApplicantsLimitChange}
-                      className="h-1.5 w-full appearance-none rounded-lg bg-slate-700 accent-red-500 cursor-pointer"
+                      onChange={onApplicantsLimitChange}
+                      className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-slate-700 accent-red-500"
                     />
 
                     <div className="mt-1 flex justify-between text-[10px] text-slate-500">
@@ -1029,11 +1057,11 @@ const JobListingView = ({
                 </FilterSelect>
               </div>
 
-              <div className="shrink-0 text-sm text-slate-400 flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2 text-sm text-slate-400">
                 <span>{filteredJobs.length} results</span>
 
                 {negativeMatchCount > 0 && (
-                  <span className="text-red-400 text-xs">
+                  <span className="text-xs text-red-400">
                     ({negativeMatchCount} filtered)
                   </span>
                 )}
