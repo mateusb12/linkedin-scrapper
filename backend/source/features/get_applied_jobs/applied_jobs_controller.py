@@ -181,6 +181,9 @@ def sync_applied_backfill_stream():
     return response
 
 
+import traceback
+
+
 @job_tracker_bp.route("/sync-applied-smart", methods=["POST"])
 def sync_applied_smart():
     """Smart sync: diff LinkedIn vs DB, enrich + save only new jobs."""
@@ -188,5 +191,13 @@ def sync_applied_smart():
         service = JobSyncService(debug=True, slim_mode=True)
         result = service.sync_smart()
         return jsonify(result), 200
+
     except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
+        print("\n❌ SYNC ERROR")
+        traceback.print_exc()
+
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500

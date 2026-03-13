@@ -315,3 +315,6 @@ class LinkedInProxy:
             "job_url": f"https://www.linkedin.com/jobs/view/{job_id_str}/",
             "posted_at": posted_at,
         }
+
+    def enrich_single_job(self, job_id: str):
+        return self.batch_enricher.enrich_job(job_id)

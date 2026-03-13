@@ -10,7 +10,7 @@ Rules:
     - Contains no raw SQL and no raw HTTP calls
     - Pure coordination logic
 """
-
+import re
 from dataclasses import asdict
 from typing import Dict, Any, List
 
@@ -56,7 +56,9 @@ class JobSyncService:
         # 4. Enrich new jobs via LinkedIn
         enriched: List[JobPost] = []
         for base in new_candidates:
-            enriched.append(self.proxy.enrich_single_job(base))
+            job_id = re.sub(r"\D", "", str(base["job_id"]))
+            enriched_job = self.proxy.batch_enricher.enrich_job(job_id)
+            enriched.append(enriched_job)
 
         # 5. Convert to plain dicts and save
         jobs_dicts = [self._job_post_to_dict(jp) for jp in enriched]
