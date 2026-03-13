@@ -688,6 +688,7 @@ const JobDetailView = ({ job }) => {
 
 const JobListingView = ({
   filteredJobs,
+  negativeMatchCount,
   selectedJobId,
   selectedJob,
   onSelectJob,
@@ -1028,8 +1029,14 @@ const JobListingView = ({
                 </FilterSelect>
               </div>
 
-              <div className="shrink-0 text-sm text-slate-400">
-                {`${filteredJobs.length} results`}
+              <div className="shrink-0 text-sm text-slate-400 flex items-center gap-2">
+                <span>{filteredJobs.length} results</span>
+
+                {negativeMatchCount > 0 && (
+                  <span className="text-red-400 text-xs">
+                    ({negativeMatchCount} filtered)
+                  </span>
+                )}
               </div>
             </div>
           </div>

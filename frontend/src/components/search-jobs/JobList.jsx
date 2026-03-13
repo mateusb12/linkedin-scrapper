@@ -301,6 +301,10 @@ const MainJobListing = () => {
     maxApplicantsLimit,
   ]);
 
+  const negativeMatchCount = useMemo(() => {
+    return filteredJobs.filter((job) => job.isNegativeMatch).length;
+  }, [filteredJobs]);
+
   useEffect(() => {
     if (!filteredJobs.length) {
       setSelectedJobId(null);
@@ -324,6 +328,7 @@ const MainJobListing = () => {
   return (
     <JobListingView
       filteredJobs={filteredJobs}
+      negativeMatchCount={negativeMatchCount}
       selectedJobId={selectedJobId}
       selectedJob={selectedJob}
       onSelectJob={setSelectedJobId}
