@@ -19,6 +19,7 @@ import {
   Clock3,
   Users,
   X,
+  Sparkles,
 } from "lucide-react";
 
 import { formatShortDateTime } from "../../utils/dateUtils.js";
@@ -48,14 +49,47 @@ const Badge = ({ tone = "slate", children }) => (
   </span>
 );
 
-const InsightBadge = ({ icon: Icon, className = "", children }) => (
+const InsightBadge = ({ icon: Icon, className = "", title = "", children }) => (
   <span
+    title={title}
     className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${className}`}
   >
     {Icon ? <Icon size={12} className="shrink-0" /> : null}
     <span className="truncate">{children}</span>
   </span>
 );
+
+const getScoreStyle = (score = 0) => {
+  if (score >= 3) {
+    return "border-emerald-500/30 bg-emerald-500/15 text-emerald-300";
+  }
+
+  if (score === 2) {
+    return "border-sky-500/30 bg-sky-500/15 text-sky-300";
+  }
+
+  if (score === 1) {
+    return "border-violet-500/30 bg-violet-500/15 text-violet-300";
+  }
+
+  return "border-slate-600 bg-slate-800/70 text-slate-300";
+};
+
+const ScoreBadge = ({ score = 0, matchedKeywords = [] }) => {
+  const title = matchedKeywords.length
+    ? `Matched positive keywords: ${matchedKeywords.join(", ")}`
+    : "No positive keyword matched";
+
+  return (
+    <InsightBadge
+      icon={Sparkles}
+      className={getScoreStyle(score)}
+      title={title}
+    >
+      Score {score}
+    </InsightBadge>
+  );
+};
 
 const TechBadge = ({ tech, index }) => {
   const icon = getTechIcon(tech);
@@ -354,6 +388,11 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
 
           <div className="mt-4 flex flex-col gap-3">
             <div className="flex flex-wrap gap-2">
+              <ScoreBadge
+                score={job.positiveScore}
+                matchedKeywords={job.matchedPositiveKeywords}
+              />
+
               {insights.seniority && (
                 <InsightBadge
                   icon={Briefcase}
@@ -482,6 +521,11 @@ const JobDetailView = ({ job }) => {
           <p className="mt-1 text-xs text-slate-500">Job ID: {job.job_id}</p>
 
           <div className="mt-3 flex flex-wrap gap-2">
+            <ScoreBadge
+              score={job.positiveScore}
+              matchedKeywords={job.matchedPositiveKeywords}
+            />
+
             {job.verified && <Badge tone="green">Verified</Badge>}
             {job.reposted && <Badge tone="amber">Reposted</Badge>}
 
@@ -532,6 +576,15 @@ const JobDetailView = ({ job }) => {
               </InsightBadge>
             )}
           </div>
+
+          {job.matchedPositiveKeywords?.length > 0 && (
+            <p className="mt-3 text-sm text-slate-400">
+              Positive matches:{" "}
+              <span className="text-slate-200">
+                {job.matchedPositiveKeywords.join(", ")}
+              </span>
+            </p>
+          )}
         </div>
       </div>
 
@@ -594,9 +647,9 @@ const JobDetailView = ({ job }) => {
           value={job.verified ? "Verified" : "Not verified"}
         />
         <InfoCard
-          icon={Code2}
-          label="Role Focus"
-          value={insights.jobType || "Not specified"}
+          icon={Sparkles}
+          label="Score"
+          value={String(job.positiveScore || 0)}
         />
       </div>
 
@@ -608,6 +661,11 @@ const JobDetailView = ({ job }) => {
           </h3>
 
           <div className="flex flex-wrap gap-2">
+            <ScoreBadge
+              score={job.positiveScore}
+              matchedKeywords={job.matchedPositiveKeywords}
+            />
+
             {insights.seniority && (
               <InsightBadge
                 icon={Briefcase}
@@ -720,8 +778,11 @@ const JobListingView = ({
     sortBy,
     negativeKeywords,
     newNegativeKeyword,
+    positiveKeywords,
+    newPositiveKeyword,
     maxApplicantsLimit,
-    activeFiltersCount,
+    negativeFiltersCount,
+    positiveFiltersCount,
   } = filtersState;
 
   const { workplaceOptions, sourceOptions, maxPossibleApplicants } =
@@ -740,6 +801,9 @@ const JobListingView = ({
     setNewNegativeKeyword,
     addNegativeKeyword,
     removeNegativeKeyword,
+    setNewPositiveKeyword,
+    addPositiveKeyword,
+    removePositiveKeyword,
     onApplicantsLimitChange,
   } = actions;
 
@@ -748,6 +812,7 @@ const JobListingView = ({
   const [isFetchModalOpen, setIsFetchModalOpen] = useState(false);
   const [fetchCount, setFetchCount] = useState(10);
   const [isNegativeFilterOpen, setIsNegativeFilterOpen] = useState(false);
+  const [isPositiveFilterOpen, setIsPositiveFilterOpen] = useState(false);
 
   const containerRef = useRef(null);
 
@@ -940,15 +1005,90 @@ const JobListingView = ({
             <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-800/30">
               <button
                 type="button"
+                onClick={() => setIsPositiveFilterOpen((prev) => !prev)}
+                className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800/50"
+              >
+                <div className="flex items-center gap-2">
+                  <Sparkles size={15} className="text-emerald-400" />
+                  Positive Keywords
+                  {positiveFiltersCount > 0 && (
+                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500/20 px-1 text-[10px] text-emerald-300">
+                      {positiveKeywords.length}
+                    </span>
+                  )}
+                </div>
+
+                {isPositiveFilterOpen ? (
+                  <ChevronUp size={16} className="text-slate-400" />
+                ) : (
+                  <ChevronDown size={16} className="text-slate-400" />
+                )}
+              </button>
+
+              {isPositiveFilterOpen && (
+                <div className="border-t border-slate-700/50 p-3">
+                  <form
+                    onSubmit={addPositiveKeyword}
+                    className="mb-3 flex gap-2"
+                  >
+                    <input
+                      type="text"
+                      value={newPositiveKeyword}
+                      onChange={(event) =>
+                        setNewPositiveKeyword(event.target.value)
+                      }
+                      placeholder="e.g., React, Node, AWS..."
+                      className="flex-1 rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-1.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50"
+                    />
+
+                    <button
+                      type="submit"
+                      disabled={!newPositiveKeyword.trim()}
+                      className="rounded-lg bg-emerald-500/20 px-3 py-1.5 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/30 disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                  </form>
+
+                  {positiveKeywords.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {positiveKeywords.map((keyword) => (
+                        <span
+                          key={keyword}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-emerald-900/50 bg-emerald-950/30 px-2 py-1 text-[11px] font-medium text-emerald-200"
+                        >
+                          {keyword}
+                          <button
+                            type="button"
+                            onClick={() => removePositiveKeyword(keyword)}
+                            className="rounded-full text-emerald-400 hover:bg-emerald-900/50 hover:text-emerald-200"
+                          >
+                            <XCircle size={12} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-slate-400">
+                    Each matched positive keyword adds +1 to the job score.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-800/30">
+              <button
+                type="button"
                 onClick={() => setIsNegativeFilterOpen((prev) => !prev)}
                 className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800/50"
               >
                 <div className="flex items-center gap-2">
                   <Filter size={15} className="text-red-400" />
                   Negative Filters
-                  {activeFiltersCount > 0 && (
+                  {negativeFiltersCount > 0 && (
                     <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500/20 text-[10px] text-red-300">
-                      {activeFiltersCount}
+                      {negativeFiltersCount}
                     </span>
                   )}
                 </div>

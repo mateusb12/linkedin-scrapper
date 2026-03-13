@@ -14,8 +14,47 @@ import {
 import JobListingView from "./JobListingView.jsx";
 
 const APPLICANTS_LIMIT_CACHE_KEY = "negative_applicants_limit_v1";
+const POSITIVE_KEYWORDS_CACHE_KEY = "positive_keywords_v1";
 
 const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const readPositiveKeywordsCache = () => {
+  try {
+    const cached = localStorage.getItem(POSITIVE_KEYWORDS_CACHE_KEY);
+    const parsed = cached ? JSON.parse(cached) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const writePositiveKeywordsCache = (keywords) => {
+  try {
+    localStorage.setItem(POSITIVE_KEYWORDS_CACHE_KEY, JSON.stringify(keywords));
+  } catch (error) {
+    console.error("Failed to write positive keywords cache:", error);
+  }
+};
+
+const matchesKeyword = (haystack, keyword) => {
+  const escapedKeyword = escapeRegExp(keyword.toLowerCase());
+  const regex = new RegExp(`(?<![\\w+#-])${escapedKeyword}(?![\\w+#-])`, "i");
+
+  return regex.test(haystack);
+};
+
+const buildKeywordHaystack = (job) => {
+  return [
+    job.title,
+    job.company?.name,
+    job.description_snippet,
+    job.description_full,
+    ...(job.keywords || []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+};
 
 const MainJobListing = () => {
   const [jobs, setJobs] = useState([]);
@@ -29,6 +68,10 @@ const MainJobListing = () => {
 
   const [negativeKeywords, setNegativeKeywords] = useState([]);
   const [newNegativeKeyword, setNewNegativeKeyword] = useState("");
+
+  const [positiveKeywords, setPositiveKeywords] = useState([]);
+  const [newPositiveKeyword, setNewPositiveKeyword] = useState("");
+
   const [maxApplicantsLimit, setMaxApplicantsLimit] = useState(() => {
     try {
       const cached = localStorage.getItem(APPLICANTS_LIMIT_CACHE_KEY);
@@ -47,6 +90,7 @@ const MainJobListing = () => {
 
   useEffect(() => {
     setNegativeKeywords(readNegativeKeywordsCache());
+    setPositiveKeywords(readPositiveKeywordsCache());
   }, []);
 
   const handleAddNegativeKeyword = (event) => {
@@ -69,6 +113,28 @@ const MainJobListing = () => {
     const updated = negativeKeywords.filter((item) => item !== keyword);
     setNegativeKeywords(updated);
     writeNegativeKeywordsCache(updated);
+  };
+
+  const handleAddPositiveKeyword = (event) => {
+    event.preventDefault();
+
+    if (!newPositiveKeyword.trim()) return;
+
+    const normalized = newPositiveKeyword.trim().toLowerCase();
+
+    if (!positiveKeywords.includes(normalized)) {
+      const updated = [...positiveKeywords, normalized];
+      setPositiveKeywords(updated);
+      writePositiveKeywordsCache(updated);
+    }
+
+    setNewPositiveKeyword("");
+  };
+
+  const handleRemovePositiveKeyword = (keyword) => {
+    const updated = positiveKeywords.filter((item) => item !== keyword);
+    setPositiveKeywords(updated);
+    writePositiveKeywordsCache(updated);
   };
 
   const applyJobs = useCallback((data) => {
@@ -185,29 +251,21 @@ const MainJobListing = () => {
 
   const filteredJobs = useMemo(() => {
     let result = jobs.map((job) => {
+      const haystack = buildKeywordHaystack(job);
+
+      const matchedPositiveKeywords =
+        positiveKeywords.length > 0
+          ? positiveKeywords.filter((keyword) =>
+              matchesKeyword(haystack, keyword),
+            )
+          : [];
+
       let isNegativeMatch = false;
 
       if (negativeKeywords.length > 0) {
-        const haystack = [
-          job.title,
-          job.company.name,
-          job.description_snippet,
-          job.description_full,
-          ...(job.keywords || []),
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
-        isNegativeMatch = negativeKeywords.some((keyword) => {
-          const escapedKeyword = escapeRegExp(keyword.toLowerCase());
-          const regex = new RegExp(
-            `(?<![\\w+#-])${escapedKeyword}(?![\\w+#-])`,
-            "i",
-          );
-
-          return regex.test(haystack);
-        });
+        isNegativeMatch = negativeKeywords.some((keyword) =>
+          matchesKeyword(haystack, keyword),
+        );
       }
 
       if (!isNegativeMatch && maxApplicantsLimit !== Number.MAX_SAFE_INTEGER) {
@@ -216,7 +274,12 @@ const MainJobListing = () => {
         }
       }
 
-      return { ...job, isNegativeMatch };
+      return {
+        ...job,
+        isNegativeMatch,
+        positiveScore: matchedPositiveKeywords.length,
+        matchedPositiveKeywords,
+      };
     });
 
     if (searchTerm.trim()) {
@@ -270,6 +333,19 @@ const MainJobListing = () => {
         return a.isNegativeMatch ? 1 : -1;
       }
 
+      if (sortBy === "relevance") {
+        const scoreDiff = (b.positiveScore || 0) - (a.positiveScore || 0);
+
+        if (scoreDiff !== 0) {
+          return scoreDiff;
+        }
+
+        return (
+          new Date(b.posted_at || 0).getTime() -
+          new Date(a.posted_at || 0).getTime()
+        );
+      }
+
       if (sortBy === "title") {
         return a.title.localeCompare(b.title);
       }
@@ -302,6 +378,7 @@ const MainJobListing = () => {
     sourceFilter,
     sortBy,
     negativeKeywords,
+    positiveKeywords,
     maxApplicantsLimit,
   ]);
 
@@ -325,9 +402,11 @@ const MainJobListing = () => {
   const selectedJob =
     filteredJobs.find((job) => job.id === selectedJobId) || null;
 
-  const activeFiltersCount =
+  const negativeFiltersCount =
     (negativeKeywords.length > 0 ? 1 : 0) +
     (maxApplicantsLimit !== Number.MAX_SAFE_INTEGER ? 1 : 0);
+
+  const positiveFiltersCount = positiveKeywords.length > 0 ? 1 : 0;
 
   return (
     <JobListingView
@@ -351,8 +430,11 @@ const MainJobListing = () => {
         sortBy,
         negativeKeywords,
         newNegativeKeyword,
+        positiveKeywords,
+        newPositiveKeyword,
         maxApplicantsLimit,
-        activeFiltersCount,
+        negativeFiltersCount,
+        positiveFiltersCount,
       }}
       filterOptions={{
         workplaceOptions,
@@ -372,6 +454,9 @@ const MainJobListing = () => {
         setNewNegativeKeyword,
         addNegativeKeyword: handleAddNegativeKeyword,
         removeNegativeKeyword: handleRemoveNegativeKeyword,
+        setNewPositiveKeyword,
+        addPositiveKeyword: handleAddPositiveKeyword,
+        removePositiveKeyword: handleRemovePositiveKeyword,
         onApplicantsLimitChange: handleApplicantsLimitChange,
       }}
     />
