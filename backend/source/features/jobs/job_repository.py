@@ -30,6 +30,27 @@ class JobRepository:
     # ──────────────────────────────────────────
 
     @staticmethod
+    def _parse_datetime(value):
+        if value is None:
+            return None
+
+        if isinstance(value, datetime):
+            return value
+
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return None
+
+            # suporta ISO com Z ou +00:00
+            raw = raw.replace("Z", "+00:00")
+            return datetime.fromisoformat(raw)
+
+        raise TypeError(
+            f"Invalid datetime value for DB: {value!r} ({type(value).__name__})"
+        )
+
+    @staticmethod
     def get_applied_jobs() -> List[dict]:
         """
         Return all applied jobs ordered by applied_on desc.
@@ -193,19 +214,14 @@ class JobRepository:
                 job.premium_description = j.get("premium_description")
                 job.job_url = j.get("job_url")
                 job.job_state = j.get("job_state")
-                job.expire_at = j.get("expire_at")
+                job.expire_at = JobRepository._parse_datetime(j.get("expire_at"))
                 job.application_closed = j.get("application_closed")
                 job.work_remote_allowed = j.get("work_remote_allowed")
 
-                # ─────────────────────────
-                # Stage-specific flags
-                # ─────────────────────────
-
                 if stage == "applied":
                     job.has_applied = True
-
                     job.applied_on = (
-                            j.get("applied_at")
+                            JobRepository._parse_datetime(j.get("applied_at"))
                             or job.applied_on
                     )
 
