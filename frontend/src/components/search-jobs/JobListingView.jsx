@@ -20,6 +20,8 @@ import {
   Users,
   X,
   Sparkles,
+  Target,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import { formatShortDateTime } from "../../utils/dateUtils.js";
@@ -374,7 +376,7 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
                 <XCircle
                   size={16}
                   className="text-red-500"
-                  title="Matches Negative Filter"
+                  title="Matches Negative Filter or Missing Must-Have"
                 />
               )}
 
@@ -585,6 +587,15 @@ const JobDetailView = ({ job }) => {
               </span>
             </p>
           )}
+
+          {job.missingMustHaveKeywords?.length > 0 && (
+            <p className="mt-1 text-sm text-red-400">
+              Missing required keywords:{" "}
+              <span className="font-semibold">
+                {job.missingMustHaveKeywords.join(", ")}
+              </span>
+            </p>
+          )}
         </div>
       </div>
 
@@ -780,9 +791,12 @@ const JobListingView = ({
     newNegativeKeyword,
     positiveKeywords,
     newPositiveKeyword,
+    mustHaveKeywords,
+    newMustHaveKeyword,
     maxApplicantsLimit,
     negativeFiltersCount,
     positiveFiltersCount,
+    mustHaveFiltersCount,
   } = filtersState;
 
   const { workplaceOptions, sourceOptions, maxPossibleApplicants } =
@@ -804,15 +818,22 @@ const JobListingView = ({
     setNewPositiveKeyword,
     addPositiveKeyword,
     removePositiveKeyword,
+    setNewMustHaveKeyword,
+    addMustHaveKeyword,
+    removeMustHaveKeyword,
     onApplicantsLimitChange,
   } = actions;
 
   const [isDragging, setIsDragging] = useState(false);
   const [leftPanelWidth, setLeftPanelWidth] = useState(37);
   const [isFetchModalOpen, setIsFetchModalOpen] = useState(false);
-  const [fetchCount, setFetchCount] = useState(10);
-  const [isNegativeFilterOpen, setIsNegativeFilterOpen] = useState(false);
+
+  const [isGeneralFiltersOpen, setIsGeneralFiltersOpen] = useState(false);
+  const [isMustHaveFilterOpen, setIsMustHaveFilterOpen] = useState(false);
   const [isPositiveFilterOpen, setIsPositiveFilterOpen] = useState(false);
+  const [isNegativeFilterOpen, setIsNegativeFilterOpen] = useState(false);
+
+  const [fetchCount, setFetchCount] = useState(10);
 
   const containerRef = useRef(null);
 
@@ -867,6 +888,13 @@ const JobListingView = ({
     await onConfirmFetch(count);
     setIsFetchModalOpen(false);
   };
+
+  const activeGeneralFiltersCount = [
+    workplaceType !== "All",
+    verificationFilter !== "All",
+    repostedFilter !== "All",
+    sourceFilter !== "All",
+  ].filter(Boolean).length;
 
   return (
     <div className="h-screen bg-[#081120] font-sans text-slate-100">
@@ -958,48 +986,155 @@ const JobListingView = ({
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <FilterSelect
-                value={workplaceType}
-                onChange={(event) => setWorkplaceType(event.target.value)}
+            <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-800/30">
+              <button
+                type="button"
+                onClick={() => setIsGeneralFiltersOpen((prev) => !prev)}
+                className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800/50"
               >
-                <option value="All">All Workplaces</option>
-                {workplaceOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </FilterSelect>
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal size={15} className="text-sky-400" />
+                  General Filters
+                  {activeGeneralFiltersCount > 0 && (
+                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500/20 px-1 text-[10px] text-sky-300">
+                      {activeGeneralFiltersCount}
+                    </span>
+                  )}
+                </div>
 
-              <FilterSelect
-                value={verificationFilter}
-                onChange={(event) => setVerificationFilter(event.target.value)}
-              >
-                <option value="All">All Verification</option>
-                <option value="Verified">Verified</option>
-                <option value="Unverified">Unverified</option>
-              </FilterSelect>
+                {isGeneralFiltersOpen ? (
+                  <ChevronUp size={16} className="text-slate-400" />
+                ) : (
+                  <ChevronDown size={16} className="text-slate-400" />
+                )}
+              </button>
 
-              <FilterSelect
-                value={repostedFilter}
-                onChange={(event) => setRepostedFilter(event.target.value)}
-              >
-                <option value="All">All Listings</option>
-                <option value="Reposted">Reposted</option>
-                <option value="Original">Original</option>
-              </FilterSelect>
+              {isGeneralFiltersOpen && (
+                <div className="border-t border-slate-700/50 p-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <FilterSelect
+                      value={workplaceType}
+                      onChange={(event) => setWorkplaceType(event.target.value)}
+                    >
+                      <option value="All">All Workplaces</option>
+                      {workplaceOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </FilterSelect>
 
-              <FilterSelect
-                value={sourceFilter}
-                onChange={(event) => setSourceFilter(event.target.value)}
+                    <FilterSelect
+                      value={verificationFilter}
+                      onChange={(event) =>
+                        setVerificationFilter(event.target.value)
+                      }
+                    >
+                      <option value="All">All Verification</option>
+                      <option value="Verified">Verified</option>
+                      <option value="Unverified">Unverified</option>
+                    </FilterSelect>
+
+                    <FilterSelect
+                      value={repostedFilter}
+                      onChange={(event) =>
+                        setRepostedFilter(event.target.value)
+                      }
+                    >
+                      <option value="All">All Listings</option>
+                      <option value="Reposted">Reposted</option>
+                      <option value="Original">Original</option>
+                    </FilterSelect>
+
+                    <FilterSelect
+                      value={sourceFilter}
+                      onChange={(event) => setSourceFilter(event.target.value)}
+                    >
+                      <option value="All">All Sources</option>
+                      {sourceOptions.map((source) => (
+                        <option key={source.value} value={source.value}>
+                          {source.label}
+                        </option>
+                      ))}
+                    </FilterSelect>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-800/30">
+              <button
+                type="button"
+                onClick={() => setIsMustHaveFilterOpen((prev) => !prev)}
+                className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800/50"
               >
-                <option value="All">All Sources</option>
-                {sourceOptions.map((source) => (
-                  <option key={source.value} value={source.value}>
-                    {source.label}
-                  </option>
-                ))}
-              </FilterSelect>
+                <div className="flex items-center gap-2">
+                  <Target size={15} className="text-amber-400" />
+                  Must-Have Keywords
+                  {mustHaveFiltersCount > 0 && (
+                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500/20 px-1 text-[10px] text-amber-300">
+                      {mustHaveKeywords.length}
+                    </span>
+                  )}
+                </div>
+
+                {isMustHaveFilterOpen ? (
+                  <ChevronUp size={16} className="text-slate-400" />
+                ) : (
+                  <ChevronDown size={16} className="text-slate-400" />
+                )}
+              </button>
+
+              {isMustHaveFilterOpen && (
+                <div className="border-t border-slate-700/50 p-3">
+                  <form
+                    onSubmit={addMustHaveKeyword}
+                    className="mb-3 flex gap-2"
+                  >
+                    <input
+                      type="text"
+                      value={newMustHaveKeyword}
+                      onChange={(event) =>
+                        setNewMustHaveKeyword(event.target.value)
+                      }
+                      placeholder="e.g., Python, SQL..."
+                      className="flex-1 rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-1.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-amber-500/50"
+                    />
+
+                    <button
+                      type="submit"
+                      disabled={!newMustHaveKeyword.trim()}
+                      className="rounded-lg bg-amber-500/20 px-3 py-1.5 text-sm font-semibold text-amber-300 transition hover:bg-amber-500/30 disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                  </form>
+
+                  {mustHaveKeywords.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {mustHaveKeywords.map((keyword) => (
+                        <span
+                          key={keyword}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-amber-900/50 bg-amber-950/30 px-2 py-1 text-[11px] font-medium text-amber-200"
+                        >
+                          {keyword}
+                          <button
+                            type="button"
+                            onClick={() => removeMustHaveKeyword(keyword)}
+                            className="rounded-full text-amber-400 hover:bg-amber-900/50 hover:text-amber-200"
+                          >
+                            <XCircle size={12} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-slate-400">
+                    Jobs missing any of these will be marked negative.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-800/30">
@@ -1087,7 +1222,7 @@ const JobListingView = ({
                   <Filter size={15} className="text-red-400" />
                   Negative Filters
                   {negativeFiltersCount > 0 && (
-                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500/20 text-[10px] text-red-300">
+                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500/20 px-1 text-[10px] text-red-300">
                       {negativeFiltersCount}
                     </span>
                   )}

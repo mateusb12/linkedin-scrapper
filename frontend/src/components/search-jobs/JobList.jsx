@@ -15,6 +15,7 @@ import JobListingView from "./JobListingView.jsx";
 
 const APPLICANTS_LIMIT_CACHE_KEY = "negative_applicants_limit_v1";
 const POSITIVE_KEYWORDS_CACHE_KEY = "positive_keywords_v1";
+const MUST_HAVE_KEYWORDS_CACHE_KEY = "must_have_keywords_v1";
 
 const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -33,6 +34,27 @@ const writePositiveKeywordsCache = (keywords) => {
     localStorage.setItem(POSITIVE_KEYWORDS_CACHE_KEY, JSON.stringify(keywords));
   } catch (error) {
     console.error("Failed to write positive keywords cache:", error);
+  }
+};
+
+const readMustHaveKeywordsCache = () => {
+  try {
+    const cached = localStorage.getItem(MUST_HAVE_KEYWORDS_CACHE_KEY);
+    const parsed = cached ? JSON.parse(cached) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeMustHaveKeywordsCache = (keywords) => {
+  try {
+    localStorage.setItem(
+      MUST_HAVE_KEYWORDS_CACHE_KEY,
+      JSON.stringify(keywords),
+    );
+  } catch (error) {
+    console.error("Failed to write must-have keywords cache:", error);
   }
 };
 
@@ -72,6 +94,9 @@ const MainJobListing = () => {
   const [positiveKeywords, setPositiveKeywords] = useState([]);
   const [newPositiveKeyword, setNewPositiveKeyword] = useState("");
 
+  const [mustHaveKeywords, setMustHaveKeywords] = useState([]);
+  const [newMustHaveKeyword, setNewMustHaveKeyword] = useState("");
+
   const [maxApplicantsLimit, setMaxApplicantsLimit] = useState(() => {
     try {
       const cached = localStorage.getItem(APPLICANTS_LIMIT_CACHE_KEY);
@@ -91,6 +116,7 @@ const MainJobListing = () => {
   useEffect(() => {
     setNegativeKeywords(readNegativeKeywordsCache());
     setPositiveKeywords(readPositiveKeywordsCache());
+    setMustHaveKeywords(readMustHaveKeywordsCache());
   }, []);
 
   const handleAddNegativeKeyword = (event) => {
@@ -135,6 +161,28 @@ const MainJobListing = () => {
     const updated = positiveKeywords.filter((item) => item !== keyword);
     setPositiveKeywords(updated);
     writePositiveKeywordsCache(updated);
+  };
+
+  const handleAddMustHaveKeyword = (event) => {
+    event.preventDefault();
+
+    if (!newMustHaveKeyword.trim()) return;
+
+    const normalized = newMustHaveKeyword.trim().toLowerCase();
+
+    if (!mustHaveKeywords.includes(normalized)) {
+      const updated = [...mustHaveKeywords, normalized];
+      setMustHaveKeywords(updated);
+      writeMustHaveKeywordsCache(updated);
+    }
+
+    setNewMustHaveKeyword("");
+  };
+
+  const handleRemoveMustHaveKeyword = (keyword) => {
+    const updated = mustHaveKeywords.filter((item) => item !== keyword);
+    setMustHaveKeywords(updated);
+    writeMustHaveKeywordsCache(updated);
   };
 
   const applyJobs = useCallback((data) => {
@@ -261,11 +309,21 @@ const MainJobListing = () => {
           : [];
 
       let isNegativeMatch = false;
+      let missingMustHaveKeywords = [];
 
       if (negativeKeywords.length > 0) {
         isNegativeMatch = negativeKeywords.some((keyword) =>
           matchesKeyword(haystack, keyword),
         );
+      }
+
+      if (!isNegativeMatch && mustHaveKeywords.length > 0) {
+        missingMustHaveKeywords = mustHaveKeywords.filter(
+          (keyword) => !matchesKeyword(haystack, keyword),
+        );
+        if (missingMustHaveKeywords.length > 0) {
+          isNegativeMatch = true;
+        }
       }
 
       if (!isNegativeMatch && maxApplicantsLimit !== Number.MAX_SAFE_INTEGER) {
@@ -279,6 +337,7 @@ const MainJobListing = () => {
         isNegativeMatch,
         positiveScore: matchedPositiveKeywords.length,
         matchedPositiveKeywords,
+        missingMustHaveKeywords,
       };
     });
 
@@ -389,6 +448,7 @@ const MainJobListing = () => {
     sortBy,
     negativeKeywords,
     positiveKeywords,
+    mustHaveKeywords,
     maxApplicantsLimit,
   ]);
 
@@ -417,6 +477,7 @@ const MainJobListing = () => {
     (maxApplicantsLimit !== Number.MAX_SAFE_INTEGER ? 1 : 0);
 
   const positiveFiltersCount = positiveKeywords.length > 0 ? 1 : 0;
+  const mustHaveFiltersCount = mustHaveKeywords.length > 0 ? 1 : 0;
 
   return (
     <JobListingView
@@ -442,9 +503,12 @@ const MainJobListing = () => {
         newNegativeKeyword,
         positiveKeywords,
         newPositiveKeyword,
+        mustHaveKeywords,
+        newMustHaveKeyword,
         maxApplicantsLimit,
         negativeFiltersCount,
         positiveFiltersCount,
+        mustHaveFiltersCount,
       }}
       filterOptions={{
         workplaceOptions,
@@ -467,6 +531,9 @@ const MainJobListing = () => {
         setNewPositiveKeyword,
         addPositiveKeyword: handleAddPositiveKeyword,
         removePositiveKeyword: handleRemovePositiveKeyword,
+        setNewMustHaveKeyword,
+        addMustHaveKeyword: handleAddMustHaveKeyword,
+        removeMustHaveKeyword: handleRemoveMustHaveKeyword,
         onApplicantsLimitChange: handleApplicantsLimitChange,
       }}
     />
