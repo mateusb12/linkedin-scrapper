@@ -932,60 +932,6 @@ const JobListingView = ({
               />
             </div>
 
-            <div className="rounded-xl border border-slate-700 bg-slate-800/30 px-3 py-2.5">
-              <div className="relative grid grid-cols-[40px_1fr_auto] items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 bg-slate-800/80">
-                  <Database size={16} className="text-sky-400" />
-                </div>
-
-                <div className="flex h-9 flex-1 items-center">
-                  <span className="text-sm font-semibold text-slate-100">
-                    Cache
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsFetchModalOpen(true)}
-                    disabled={loading}
-                    aria-label="Refresh cache"
-                    title="Refresh cache"
-                    className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-600 bg-slate-700/50 text-slate-200 transition hover:bg-slate-600 hover:text-white disabled:opacity-50"
-                  >
-                    <RefreshCw
-                      size={14}
-                      className={loading ? "animate-spin" : ""}
-                    />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={onClearCache}
-                    aria-label="Clear cache"
-                    title="Clear cache"
-                    className="flex h-8 w-8 items-center justify-center rounded-md border border-red-500/30 bg-red-500/10 text-red-400 transition hover:border-red-500/50 hover:bg-red-500/20 hover:text-red-300"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-
-                {cacheTimestamp && (
-                  <div className="pointer-events-none absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center">
-                    <Badge tone={cacheStatusTone}>
-                      {formatShortDateTime(cacheTimestamp)}
-                    </Badge>
-                  </div>
-                )}
-              </div>
-
-              {errorMessage && (
-                <div className="mt-2 border-t border-slate-700/60 pt-2">
-                  <p className="text-xs text-red-300">{errorMessage}</p>
-                </div>
-              )}
-            </div>
-
             <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-800/30">
               <button
                 type="button"
@@ -1010,7 +956,59 @@ const JobListingView = ({
               </button>
 
               {isGeneralFiltersOpen && (
-                <div className="border-t border-slate-700/50 p-3">
+                <div className="border-t border-slate-700/50 p-3 space-y-3">
+                  <div className="rounded-lg border border-slate-700/60 bg-slate-900/30 px-3 py-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex flex-wrap items-center gap-2">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-700 bg-slate-800/80">
+                          <Database size={14} className="text-sky-400" />
+                        </div>
+
+                        <span className="text-sm font-medium text-slate-100">
+                          Cache
+                        </span>
+
+                        {cacheTimestamp && (
+                          <Badge tone={cacheStatusTone}>
+                            {formatShortDateTime(cacheTimestamp)}
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsFetchModalOpen(true)}
+                          disabled={loading}
+                          aria-label="Refresh cache"
+                          title="Refresh cache"
+                          className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-600 bg-slate-700/50 text-slate-200 transition hover:bg-slate-600 hover:text-white disabled:opacity-50"
+                        >
+                          <RefreshCw
+                            size={14}
+                            className={loading ? "animate-spin" : ""}
+                          />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={onClearCache}
+                          aria-label="Clear cache"
+                          title="Clear cache"
+                          className="flex h-8 w-8 items-center justify-center rounded-md border border-red-500/30 bg-red-500/10 text-red-400 transition hover:border-red-500/50 hover:bg-red-500/20 hover:text-red-300"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {errorMessage && (
+                      <p className="mt-2 text-xs text-red-300">
+                        {errorMessage}
+                      </p>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <FilterSelect
                       value={workplaceType}
