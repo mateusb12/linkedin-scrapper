@@ -1,3 +1,5 @@
+import React from "react";
+import { Sparkles, Code2 } from "lucide-react";
 import {
   cleanJobDescription,
   extractExperienceFromDescription,
@@ -6,6 +8,8 @@ import {
   extractSeniorityFromDescription,
   extractSpecifics,
   getPostedStyle,
+  getTechIcon,
+  getTechBadgeStyle,
 } from "../tracking/utils/jobUtils.js";
 
 export const JOBS_CACHE_KEY = "graphql_jobs_cache_v1";
@@ -241,4 +245,81 @@ export const readNegativeKeywordsCache = () => {
 
 export const writeNegativeKeywordsCache = (keywords) => {
   localStorage.setItem(NEGATIVE_KEYWORDS_CACHE_KEY, JSON.stringify(keywords));
+};
+
+export const Badge = ({ tone = "slate", children }) => (
+  <span
+    className={`inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${badgeTones[tone]}`}
+  >
+    {children}
+  </span>
+);
+
+export const InsightBadge = ({
+  icon: Icon,
+  className = "",
+  title = "",
+  children,
+}) => (
+  <span
+    title={title}
+    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${className}`}
+  >
+    {Icon ? <Icon size={12} className="shrink-0" /> : null}
+    <span className="truncate">{children}</span>
+  </span>
+);
+
+export const getScoreStyle = (score = 0) => {
+  if (score >= 3) {
+    return "border-emerald-500/30 bg-emerald-500/15 text-emerald-300";
+  }
+
+  if (score === 2) {
+    return "border-sky-500/30 bg-sky-500/15 text-sky-300";
+  }
+
+  if (score === 1) {
+    return "border-violet-500/30 bg-violet-500/15 text-violet-300";
+  }
+
+  return "border-slate-600 bg-slate-800/70 text-slate-300";
+};
+
+export const ScoreBadge = ({ score = 0, matchedKeywords = [] }) => {
+  const title = matchedKeywords.length
+    ? `Matched positive keywords: ${matchedKeywords.join(", ")}`
+    : "No positive keyword matched";
+
+  return (
+    <InsightBadge
+      icon={Sparkles}
+      className={getScoreStyle(score)}
+      title={title}
+    >
+      Score {score}
+    </InsightBadge>
+  );
+};
+
+export const TechBadge = ({ tech, index }) => {
+  const icon = getTechIcon(tech);
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${getTechBadgeStyle(index, tech)}`}
+    >
+      {icon ? (
+        <img
+          src={icon}
+          alt=""
+          className="h-3.5 w-3.5 shrink-0 object-contain"
+          loading="lazy"
+        />
+      ) : (
+        <Code2 size={12} className="shrink-0" />
+      )}
+      <span>{tech}</span>
+    </span>
+  );
 };

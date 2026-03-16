@@ -9,7 +9,7 @@ import {
   writeJobsCache,
   readNegativeKeywordsCache,
   writeNegativeKeywordsCache,
-} from "./joblistUtils.js";
+} from "./joblistUtils.jsx";
 
 import JobListingView from "./JobListingView.jsx";
 import { useToast } from "../toast/Toast.jsx";
