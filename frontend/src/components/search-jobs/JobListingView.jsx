@@ -166,10 +166,87 @@ const Placeholder = ({ text = "None specified." }) => (
   </div>
 );
 
+const formatRemainingTime = (ms) => {
+  if (!Number.isFinite(ms) || ms <= 0) return "—";
+
+  const totalSeconds = Math.ceil(ms / 1000);
+
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+
+  const totalMinutes = Math.ceil(totalSeconds / 60);
+
+  if (totalMinutes < 60) {
+    return `${totalMinutes}min`;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (minutes === 0) {
+    return `${hours}h`;
+  }
+
+  return `${hours}h ${minutes}min`;
+};
+
+const formatEta = (date) => {
+  if (!date) return "—";
+
+  return date.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 const LiveProgressBar = ({ progressData }) => {
+  const [enrichStartedAt, setEnrichStartedAt] = useState(null);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!progressData) {
+      setEnrichStartedAt(null);
+      setNow(Date.now());
+      return;
+    }
+
+    if (progressData.step === "fetching") {
+      setEnrichStartedAt(null);
+      setNow(Date.now());
+      return;
+    }
+
+    if (
+      progressData.step === "enriching" &&
+      progressData.total > 0 &&
+      enrichStartedAt === null
+    ) {
+      setEnrichStartedAt(Date.now());
+      setNow(Date.now());
+    }
+  }, [progressData, enrichStartedAt]);
+
+  useEffect(() => {
+    if (
+      !progressData ||
+      progressData.step !== "enriching" ||
+      !enrichStartedAt
+    ) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [progressData, enrichStartedAt]);
+
   if (!progressData) return null;
 
-  const { step, message, current, total } = progressData;
+  const { step, message, current = 0, total = 0 } = progressData;
+
   let percent = 0;
 
   if (step === "fetching") {
@@ -180,6 +257,31 @@ const LiveProgressBar = ({ progressData }) => {
     const enrichPercent = (current / total) * 80;
     percent = 20 + enrichPercent;
   }
+
+  const elapsedMs =
+    step === "enriching" && enrichStartedAt
+      ? Math.max(now - enrichStartedAt, 0)
+      : 0;
+
+  const elapsedMinutes = elapsedMs / 60000;
+
+  const jobsPerMinute =
+    step === "enriching" && current > 0 && elapsedMinutes > 0
+      ? current / elapsedMinutes
+      : null;
+
+  const remainingJobs =
+    step === "enriching" && total > 0 ? Math.max(total - current, 0) : null;
+
+  const remainingMs =
+    jobsPerMinute && remainingJobs != null
+      ? (remainingJobs / jobsPerMinute) * 60000
+      : null;
+
+  const eta =
+    remainingMs && Number.isFinite(remainingMs)
+      ? new Date(now + remainingMs)
+      : null;
 
   return (
     <div className="mt-4 w-full overflow-hidden rounded-xl border border-sky-900/40 bg-slate-800/40 p-3 shadow-[0_0_15px_rgba(14,165,233,0.1)]">
@@ -198,6 +300,44 @@ const LiveProgressBar = ({ progressData }) => {
           className="h-full rounded-full bg-sky-500 transition-all duration-300 ease-out"
           style={{ width: `${percent}%` }}
         />
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-lg border border-slate-700/60 bg-slate-900/30 px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">
+            jobs/min
+          </p>
+          <p className="text-sm font-semibold text-slate-100">
+            {jobsPerMinute ? jobsPerMinute.toFixed(2) : "—"}
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-slate-700/60 bg-slate-900/30 px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">
+            jobs faltando
+          </p>
+          <p className="text-sm font-semibold text-slate-100">
+            {remainingJobs != null ? `${remainingJobs} jobs` : "—"}
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-slate-700/60 bg-slate-900/30 px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">
+            tempo restante
+          </p>
+          <p className="text-sm font-semibold text-slate-100">
+            {formatRemainingTime(remainingMs)}
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-slate-700/60 bg-slate-900/30 px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">
+            ETA
+          </p>
+          <p className="text-sm font-semibold text-slate-100">
+            {formatEta(eta)}
+          </p>
+        </div>
       </div>
     </div>
   );
