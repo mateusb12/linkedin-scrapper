@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+} from "react";
 import { streamGraphqlJobs } from "../../services/graphqlJobsService.js";
 import {
   buildJobInsights,
@@ -11,7 +17,8 @@ import {
   writeNegativeKeywordsCache,
 } from "./joblistUtils.jsx";
 
-import JobListingView from "./JobListingView.jsx";
+import JobListingSidebar from "./JobListingSidebar.jsx";
+import JobListingJobDetails from "./JobListingJobDetails.jsx";
 import { useToast } from "../toast/Toast.jsx";
 
 const APPLICANTS_LIMIT_CACHE_KEY = "negative_applicants_limit_v1";
@@ -118,11 +125,56 @@ const MainJobListing = () => {
   const [sourceFilter, setSourceFilter] = useState("All");
   const [sortBy, setSortBy] = useState("relevance");
 
+  const [isDragging, setIsDragging] = useState(false);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(37);
+  const containerRef = useRef(null);
+
+  const MIN_WIDTH = 28;
+  const MAX_WIDTH = 65;
+
   useEffect(() => {
     setNegativeKeywords(readNegativeKeywordsCache());
     setPositiveKeywords(readPositiveKeywordsCache());
     setMustHaveKeywords(readMustHaveKeywordsCache());
   }, []);
+
+  const handleMouseDown = (event) => {
+    event.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  const handleMouseMove = useCallback(
+    (event) => {
+      if (!isDragging || !containerRef.current) return;
+
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const newWidthPx = event.clientX - containerRect.left;
+      const newWidthPercent = (newWidthPx / containerRect.width) * 100;
+      const clampedWidth = Math.max(
+        MIN_WIDTH,
+        Math.min(newWidthPercent, MAX_WIDTH),
+      );
+
+      setLeftPanelWidth(clampedWidth);
+    },
+    [isDragging],
+  );
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging, handleMouseMove, handleMouseUp]);
 
   const handleAddNegativeKeyword = (event) => {
     event.preventDefault();
@@ -505,72 +557,102 @@ const MainJobListing = () => {
   const positiveFiltersCount = positiveKeywords.length > 0 ? 1 : 0;
   const mustHaveFiltersCount = mustHaveKeywords.length > 0 ? 1 : 0;
 
+  const jobsState = {
+    filteredJobs,
+    negativeMatchCount,
+    selectedJobId,
+    selectedJob,
+    loading,
+    progressData,
+    errorMessage,
+    cacheTimestamp,
+    loadedFromCache,
+  };
+
+  const filtersState = {
+    searchTerm,
+    workplaceType,
+    verificationFilter,
+    repostedFilter,
+    sourceFilter,
+    sortBy,
+    negativeKeywords,
+    newNegativeKeyword,
+    positiveKeywords,
+    newPositiveKeyword,
+    mustHaveKeywords,
+    newMustHaveKeyword,
+    maxApplicantsLimit,
+    negativeFiltersCount,
+    positiveFiltersCount,
+    mustHaveFiltersCount,
+  };
+
+  const filterOptions = {
+    workplaceOptions,
+    sourceOptions,
+    maxPossibleApplicants,
+  };
+
+  const actions = {
+    onSelectJob: setSelectedJobId,
+    onConfirmFetch: handleConfirmFetch,
+    onClearCache: handleClearCache,
+    setSearchTerm,
+    setWorkplaceType,
+    setVerificationFilter,
+    setRepostedFilter,
+    setSourceFilter,
+    setSortBy,
+    setNewNegativeKeyword,
+    addNegativeKeyword: handleAddNegativeKeyword,
+    removeNegativeKeyword: handleRemoveNegativeKeyword,
+    setNewPositiveKeyword,
+    addPositiveKeyword: handleAddPositiveKeyword,
+    removePositiveKeyword: handleRemovePositiveKeyword,
+    setNewMustHaveKeyword,
+    addMustHaveKeyword: handleAddMustHaveKeyword,
+    removeMustHaveKeyword: handleRemoveMustHaveKeyword,
+    onApplicantsLimitChange: handleApplicantsLimitChange,
+  };
+
+  const fetchModalState = {
+    isFetchModalOpen,
+    fetchCount,
+  };
+
+  const fetchModalActions = {
+    setIsFetchModalOpen,
+    setFetchCount,
+  };
+
   return (
-    <JobListingView
-      jobsState={{
-        filteredJobs,
-        negativeMatchCount,
-        selectedJobId,
-        selectedJob,
-        loading,
-        progressData,
-        errorMessage,
-        cacheTimestamp,
-        loadedFromCache,
-      }}
-      filtersState={{
-        searchTerm,
-        workplaceType,
-        verificationFilter,
-        repostedFilter,
-        sourceFilter,
-        sortBy,
-        negativeKeywords,
-        newNegativeKeyword,
-        positiveKeywords,
-        newPositiveKeyword,
-        mustHaveKeywords,
-        newMustHaveKeyword,
-        maxApplicantsLimit,
-        negativeFiltersCount,
-        positiveFiltersCount,
-        mustHaveFiltersCount,
-      }}
-      filterOptions={{
-        workplaceOptions,
-        sourceOptions,
-        maxPossibleApplicants,
-      }}
-      actions={{
-        onSelectJob: setSelectedJobId,
-        onConfirmFetch: handleConfirmFetch,
-        onClearCache: handleClearCache,
-        setSearchTerm,
-        setWorkplaceType,
-        setVerificationFilter,
-        setRepostedFilter,
-        setSourceFilter,
-        setSortBy,
-        setNewNegativeKeyword,
-        addNegativeKeyword: handleAddNegativeKeyword,
-        removeNegativeKeyword: handleRemoveNegativeKeyword,
-        setNewPositiveKeyword,
-        addPositiveKeyword: handleAddPositiveKeyword,
-        removePositiveKeyword: handleRemovePositiveKeyword,
-        setNewMustHaveKeyword,
-        addMustHaveKeyword: handleAddMustHaveKeyword,
-        removeMustHaveKeyword: handleRemoveMustHaveKeyword,
-        onApplicantsLimitChange: handleApplicantsLimitChange,
-      }}
-      fetchModalState={{
-        isFetchModalOpen,
-        fetchCount,
-      }}
-      fetchModalActions={{
-        setIsFetchModalOpen,
-        setFetchCount,
-      }}
-    />
+    <div className="h-screen bg-[#081120] font-sans text-slate-100">
+      <div
+        ref={containerRef}
+        className="flex h-full"
+        style={{ userSelect: isDragging ? "none" : "auto" }}
+      >
+        <JobListingSidebar
+          leftPanelWidth={leftPanelWidth}
+          jobsState={jobsState}
+          filtersState={filtersState}
+          filterOptions={filterOptions}
+          actions={actions}
+          fetchModalState={fetchModalState}
+          fetchModalActions={fetchModalActions}
+        />
+
+        <div
+          className="w-2 cursor-col-resize bg-slate-800 transition hover:bg-sky-500"
+          onMouseDown={handleMouseDown}
+        />
+
+        <main className="flex-1 bg-[#0d1728]">
+          <JobListingJobDetails job={selectedJob} />
+        </main>
+      </div>
+    </div>
   );
 };
 
