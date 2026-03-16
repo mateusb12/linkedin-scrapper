@@ -88,6 +88,9 @@ const MainJobListing = () => {
   const [cacheTimestamp, setCacheTimestamp] = useState(null);
   const [loadedFromCache, setLoadedFromCache] = useState(false);
 
+  const [isFetchModalOpen, setIsFetchModalOpen] = useState(false);
+  const [fetchCount, setFetchCount] = useState(10);
+
   const [negativeKeywords, setNegativeKeywords] = useState([]);
   const [newNegativeKeyword, setNewNegativeKeyword] = useState("");
 
@@ -254,19 +257,36 @@ const MainJobListing = () => {
   );
 
   useEffect(() => {
-    loadJobs();
-  }, [loadJobs]);
+    const cached = readJobsCache();
+
+    if (cached?.jobs) {
+      applyJobs(cached.jobs);
+      setCacheTimestamp(cached.cachedAt || null);
+      setLoadedFromCache(true);
+      setLoading(false);
+      return;
+    }
+
+    applyJobs([]);
+    setCacheTimestamp(null);
+    setLoadedFromCache(false);
+    setLoading(false);
+  }, [applyJobs]);
 
   const handleConfirmFetch = async (count) => {
     await loadJobs({ forceRefresh: true, count });
     setProgressData(null);
+    setIsFetchModalOpen(false);
   };
 
   const handleClearCache = () => {
     clearJobsCache();
+    applyJobs([]);
     setCacheTimestamp(null);
     setLoadedFromCache(false);
     setErrorMessage("");
+    setProgressData(null);
+    setIsFetchModalOpen(true);
   };
 
   const maxPossibleApplicants = useMemo(() => {
@@ -535,6 +555,14 @@ const MainJobListing = () => {
         addMustHaveKeyword: handleAddMustHaveKeyword,
         removeMustHaveKeyword: handleRemoveMustHaveKeyword,
         onApplicantsLimitChange: handleApplicantsLimitChange,
+      }}
+      fetchModalState={{
+        isFetchModalOpen,
+        fetchCount,
+      }}
+      fetchModalActions={{
+        setIsFetchModalOpen,
+        setFetchCount,
       }}
     />
   );

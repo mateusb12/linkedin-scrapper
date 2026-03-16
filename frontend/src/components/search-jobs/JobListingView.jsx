@@ -767,6 +767,8 @@ const JobListingView = ({
   filtersState,
   filterOptions,
   actions,
+  fetchModalState,
+  fetchModalActions,
 }) => {
   const {
     filteredJobs,
@@ -826,14 +828,14 @@ const JobListingView = ({
 
   const [isDragging, setIsDragging] = useState(false);
   const [leftPanelWidth, setLeftPanelWidth] = useState(37);
-  const [isFetchModalOpen, setIsFetchModalOpen] = useState(false);
 
   const [isGeneralFiltersOpen, setIsGeneralFiltersOpen] = useState(false);
   const [isMustHaveFilterOpen, setIsMustHaveFilterOpen] = useState(false);
   const [isPositiveFilterOpen, setIsPositiveFilterOpen] = useState(false);
   const [isNegativeFilterOpen, setIsNegativeFilterOpen] = useState(false);
 
-  const [fetchCount, setFetchCount] = useState(10);
+  const { isFetchModalOpen, fetchCount } = fetchModalState;
+  const { setIsFetchModalOpen, setFetchCount } = fetchModalActions;
 
   const containerRef = useRef(null);
 
