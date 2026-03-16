@@ -15,6 +15,8 @@ import {
   writeJobsCache,
   readNegativeKeywordsCache,
   writeNegativeKeywordsCache,
+  readNegativeCompaniesCache,
+  writeNegativeCompaniesCache,
 } from "./joblistUtils.jsx";
 
 import JobListingSidebar from "./JobListingSidebar.jsx";
@@ -103,6 +105,8 @@ const MainJobListing = () => {
   const [negativeKeywords, setNegativeKeywords] = useState([]);
   const [newNegativeKeyword, setNewNegativeKeyword] = useState("");
 
+  const [negativeCompanies, setNegativeCompanies] = useState([]);
+
   const [positiveKeywords, setPositiveKeywords] = useState([]);
   const [newPositiveKeyword, setNewPositiveKeyword] = useState("");
 
@@ -136,6 +140,7 @@ const MainJobListing = () => {
     setNegativeKeywords(readNegativeKeywordsCache());
     setPositiveKeywords(readPositiveKeywordsCache());
     setMustHaveKeywords(readMustHaveKeywordsCache());
+    setNegativeCompanies(readNegativeCompaniesCache());
   }, []);
 
   const handleMouseDown = (event) => {
@@ -196,6 +201,16 @@ const MainJobListing = () => {
     const updated = negativeKeywords.filter((item) => item !== keyword);
     setNegativeKeywords(updated);
     writeNegativeKeywordsCache(updated);
+  };
+
+  const handleToggleNegativeCompany = (companyName) => {
+    setNegativeCompanies((prev) => {
+      const updated = prev.includes(companyName)
+        ? prev.filter((c) => c !== companyName)
+        : [...prev, companyName];
+      writeNegativeCompaniesCache(updated);
+      return updated;
+    });
   };
 
   const handleAddPositiveKeyword = (event) => {
@@ -375,6 +390,10 @@ const MainJobListing = () => {
     );
   }, [jobs]);
 
+  const companyOptions = useMemo(() => {
+    return buildUniqueOptions(jobs, (job) => job.company?.name);
+  }, [jobs]);
+
   const filteredJobs = useMemo(() => {
     let result = jobs.map((job) => {
       const haystack = buildKeywordHaystack(job);
@@ -393,6 +412,12 @@ const MainJobListing = () => {
         isNegativeMatch = negativeKeywords.some((keyword) =>
           matchesKeyword(haystack, keyword),
         );
+      }
+
+      if (!isNegativeMatch && negativeCompanies.length > 0) {
+        if (negativeCompanies.includes(job.company?.name)) {
+          isNegativeMatch = true;
+        }
       }
 
       if (!isNegativeMatch && mustHaveKeywords.length > 0) {
@@ -525,6 +550,7 @@ const MainJobListing = () => {
     sourceFilter,
     sortBy,
     negativeKeywords,
+    negativeCompanies,
     positiveKeywords,
     mustHaveKeywords,
     maxApplicantsLimit,
@@ -552,6 +578,7 @@ const MainJobListing = () => {
 
   const negativeFiltersCount =
     (negativeKeywords.length > 0 ? 1 : 0) +
+    (negativeCompanies.length > 0 ? 1 : 0) +
     (maxApplicantsLimit !== Number.MAX_SAFE_INTEGER ? 1 : 0);
 
   const positiveFiltersCount = positiveKeywords.length > 0 ? 1 : 0;
@@ -578,6 +605,7 @@ const MainJobListing = () => {
     sortBy,
     negativeKeywords,
     newNegativeKeyword,
+    negativeCompanies,
     positiveKeywords,
     newPositiveKeyword,
     mustHaveKeywords,
@@ -591,6 +619,7 @@ const MainJobListing = () => {
   const filterOptions = {
     workplaceOptions,
     sourceOptions,
+    companyOptions,
     maxPossibleApplicants,
   };
 
@@ -607,6 +636,7 @@ const MainJobListing = () => {
     setNewNegativeKeyword,
     addNegativeKeyword: handleAddNegativeKeyword,
     removeNegativeKeyword: handleRemoveNegativeKeyword,
+    toggleNegativeCompany: handleToggleNegativeCompany,
     setNewPositiveKeyword,
     addPositiveKeyword: handleAddPositiveKeyword,
     removePositiveKeyword: handleRemovePositiveKeyword,
