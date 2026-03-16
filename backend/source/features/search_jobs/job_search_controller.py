@@ -197,7 +197,10 @@ def _get_search_params() -> dict[str, Any]:
         "debug": _parse_bool(_get_input("debug", default=False), default=False),
         "save_raw_json": _parse_bool(_get_input("save_raw_json", "saveRawJson", default=True), default=True),
         "save_parsed_json": _parse_bool(_get_input("save_parsed_json", "saveParsedJson", default=True), default=True),
-        "tuning": _build_tuning_from_request()
+        "tuning": _build_tuning_from_request(),
+        "blacklist": _normalize_list_input(
+            _get_input("blacklist", "blackList", "blacklistedCompanies")
+        ),
     }
 
 

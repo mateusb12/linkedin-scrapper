@@ -94,6 +94,7 @@ class LinkedInJobsSearchService:
             save_raw_json: bool = True,
             save_parsed_json: bool = True,
             enrich_jobs: bool = True,
+            blacklist: list[str] | None = None,
     ) -> dict[str, Any]:
         """
         Wrapper síncrono para garantir retrocompatibilidade.
@@ -108,6 +109,7 @@ class LinkedInJobsSearchService:
                 save_raw_json=save_raw_json,
                 save_parsed_json=save_parsed_json,
                 enrich_jobs=enrich_jobs,
+                blacklist=blacklist,
         ):
             if event.get("type") == "result":
                 result = event.get("data", {})
@@ -123,6 +125,7 @@ class LinkedInJobsSearchService:
             save_raw_json: bool = True,
             save_parsed_json: bool = True,
             enrich_jobs: bool = True,
+            blacklist: list[str] | None = None,
     ):
         """
         Full orchestration flow for endpoint usage with stream/progress capability.
@@ -150,6 +153,8 @@ class LinkedInJobsSearchService:
         original_job_count = len(parsed_jobs_json)
         parsed_jobs_json = _deduplicate_jobs(parsed_jobs_json)
         duplicates_removed = original_job_count - len(parsed_jobs_json)
+
+        self.batch_enricher.set_blacklist(blacklist or [])
 
         if enrich_jobs:
             final_jobs_json = []

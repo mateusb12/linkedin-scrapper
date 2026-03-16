@@ -291,9 +291,15 @@ const MainJobListing = () => {
       }
 
       try {
-        const data = await streamGraphqlJobs({ count }, (progressUpdate) => {
-          setProgressData(progressUpdate);
-        });
+        const data = await streamGraphqlJobs(
+          {
+            count,
+            blacklist: negativeCompanies,
+          },
+          (progressUpdate) => {
+            setProgressData(progressUpdate);
+          },
+        );
 
         const cachedAt = writeJobsCache(data);
 
@@ -326,7 +332,7 @@ const MainJobListing = () => {
         setLoading(false);
       }
     },
-    [applyJobs],
+    [applyJobs, toast, negativeCompanies],
   );
 
   useEffect(() => {

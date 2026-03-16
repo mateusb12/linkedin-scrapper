@@ -12,6 +12,7 @@ Low-level HTTP parsing stays inside LinkedInJobEnricher.
 
 import random
 import time
+import unicodedata
 from dataclasses import asdict
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
@@ -54,6 +55,44 @@ class BatchEnrichmentService:
         self.return_seed_on_failure = return_seed_on_failure
 
         self._current_job_id: Optional[str] = None
+
+        self.blacklist: list[str] = []
+        self._blacklist_set: set[str] = set()
+
+    def set_blacklist(self, companies: Optional[List[str]]) -> None:
+        self.blacklist = [str(c).strip() for c in (companies or []) if str(c).strip()]
+        self._blacklist_set = {
+            self._normalize_company_name(company)
+            for company in self.blacklist
+            if self._normalize_company_name(company)
+        }
+
+    def clear_blacklist(self) -> None:
+        self.blacklist = []
+        self._blacklist_set = set()
+
+    def _normalize_company_name(self, value: Optional[str]) -> str:
+        if not value:
+            return ""
+
+        text = str(value).strip().lower()
+        text = unicodedata.normalize("NFKD", text)
+        text = "".join(ch for ch in text if not unicodedata.combining(ch))
+        text = " ".join(text.split())
+        return text
+
+    def _is_blacklisted(self, seed_data: Optional[Dict[str, Any]]) -> bool:
+        if not self._blacklist_set or not seed_data:
+            return False
+
+        company_name = (
+                seed_data.get("company")
+                or seed_data.get("company_name")
+                or ""
+        )
+
+        normalized_company = self._normalize_company_name(company_name)
+        return normalized_company in self._blacklist_set
 
     def _sleep(self, seconds: float) -> None:
         if seconds and seconds > 0:
@@ -113,10 +152,6 @@ class BatchEnrichmentService:
             job_urn: str,
             seed_data: Optional[Dict[str, Any]] = None,
     ) -> JobPost:
-        """
-        Enrich one job with retry/backoff logic.
-        seed_data is used as a safe fallback if enrichment partially or fully fails.
-        """
         job_id = str(job_urn).split(":")[-1] if ":" in str(job_urn) else str(job_urn)
         self._current_job_id = job_id
 
@@ -130,6 +165,33 @@ class BatchEnrichmentService:
 
         if seed_data:
             base_job_dict.update(seed_data)
+
+        # SKIP EARLY IF BLACKLISTED
+        if self._is_blacklisted(base_job_dict):
+            _log(
+                f"🚫 Skipping enrichment for blacklisted company "
+                f"'{base_job_dict.get('company')}' on job {job_id}"
+            )
+
+            base_job_dict.update({
+                "blacklisted": True,
+                "enrichment_skipped": True,
+                "enrichment_skip_reason": "company_blacklist",
+                "description_full": None,
+                "notification": None,
+                "premium_component_found": False,
+                "applicants_total": None,
+                "applicants_last_24h": None,
+                "seniority_distribution": [],
+                "education_distribution": [],
+                "premium_title": None,
+                "premium_description": None,
+                "learn_more_url": None,
+                "data_sdui_components": [],
+            })
+
+            self._current_job_id = None
+            return JobPost.from_dict(base_job_dict)
 
         try:
             details = self._with_backoff(
@@ -173,6 +235,8 @@ class BatchEnrichmentService:
             app_tot = base_job_dict.get("applicants_total")
             if isinstance(app_tot, int) and app_tot > 0:
                 base_job_dict["applicants"] = app_tot
+
+            base_job_dict["blacklisted"] = False
 
             return JobPost.from_dict(base_job_dict)
 

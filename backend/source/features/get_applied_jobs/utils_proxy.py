@@ -60,6 +60,10 @@ class JobPost:
     education_distribution: List[Dict[str, Any]] = field(default_factory=list)
     premium_component_found: bool = False
 
+    blacklisted: bool = False
+    enrichment_skipped: bool = False
+    enrichment_skip_reason: Optional[str] = None
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "JobPost":
         valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
