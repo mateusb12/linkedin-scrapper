@@ -992,15 +992,17 @@ const JobListingView = ({
                           />
                         </button>
 
-                        <button
-                          type="button"
-                          onClick={onClearCache}
-                          aria-label="Clear cache"
-                          title="Clear cache"
-                          className="flex h-8 w-8 items-center justify-center rounded-md border border-red-500/30 bg-red-500/10 text-red-400 transition hover:border-red-500/50 hover:bg-red-500/20 hover:text-red-300"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        {cacheTimestamp && (
+                          <button
+                            type="button"
+                            onClick={onClearCache}
+                            aria-label="Clear cache"
+                            title="Clear cache"
+                            className="flex h-8 w-8 items-center justify-center rounded-md border border-red-500/30 bg-red-500/10 text-red-400 transition hover:border-red-500/50 hover:bg-red-500/20 hover:text-red-300"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     </div>
 

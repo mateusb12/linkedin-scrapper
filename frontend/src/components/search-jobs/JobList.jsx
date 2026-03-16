@@ -12,6 +12,7 @@ import {
 } from "./joblistUtils.js";
 
 import JobListingView from "./JobListingView.jsx";
+import { useToast } from "../toast/Toast.jsx";
 
 const APPLICANTS_LIMIT_CACHE_KEY = "negative_applicants_limit_v1";
 const POSITIVE_KEYWORDS_CACHE_KEY = "positive_keywords_v1";
@@ -82,6 +83,7 @@ const MainJobListing = () => {
   const [jobs, setJobs] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const toast = useToast();
 
   const [progressData, setProgressData] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -233,6 +235,10 @@ const MainJobListing = () => {
         setLoadedFromCache(false);
       } catch (error) {
         console.error("Failed to load GraphQL jobs:", error);
+
+        const message = error?.message || "Failed to load jobs from backend.";
+
+        toast.error(message);
 
         const cached = readJobsCache();
 

@@ -380,6 +380,7 @@ export async function streamGraphqlJobs(params = {}, onProgress) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
+  let streamError = null;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -388,31 +389,51 @@ export async function streamGraphqlJobs(params = {}, onProgress) {
     buffer += decoder.decode(value, { stream: true });
 
     const parts = buffer.split("\n\n");
-
     buffer = parts.pop() || "";
 
     for (const part of parts) {
-      if (part.startsWith("data: ")) {
-        const jsonStr = part.replace(/^data:\s*/, "").trim();
-        if (!jsonStr) continue;
+      if (!part.startsWith("data: ")) continue;
 
-        try {
-          const parsed = JSON.parse(jsonStr);
+      const jsonStr = part.replace(/^data:\s*/, "").trim();
+      if (!jsonStr) continue;
 
-          if (parsed.type === "progress" && onProgress) {
-            onProgress(parsed);
-          } else if (parsed.type === "result") {
-            const responseModel = GraphqlJobsResponseModel.fromAPI(parsed.data);
-            return responseModel.jobs;
-          } else if (parsed.type === "error") {
-            throw new Error(parsed.error);
-          }
-        } catch (e) {
-          console.error("Error parsing SSE chunk:", e, part);
+      let parsed;
+
+      try {
+        parsed = JSON.parse(jsonStr);
+      } catch (error) {
+        console.error("Error parsing SSE chunk:", error, part);
+        continue;
+      }
+
+      if (parsed.type === "progress") {
+        if (onProgress) {
+          onProgress(parsed);
         }
+        continue;
+      }
+
+      if (parsed.type === "result") {
+        const responseModel = GraphqlJobsResponseModel.fromAPI(parsed.data);
+        return responseModel.jobs;
+      }
+
+      if (parsed.type === "error") {
+        streamError = new Error(parsed.error || "Backend stream failed.");
+        break;
       }
     }
+
+    if (streamError) {
+      break;
+    }
   }
+
+  if (streamError) {
+    throw streamError;
+  }
+
+  throw new Error("Job stream ended without a result.");
 }
 
 export async function getGraphqlJobs(params = {}) {
