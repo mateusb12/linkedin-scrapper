@@ -14,7 +14,26 @@ First, analyze my full resume in depth.
 Only after fully understanding my skills, technologies, seniority, and experience,
 evaluate the jobs listed below.
 
-Use ONLY the criteria below to evaluate each job:
+Before scoring, apply this quick filter:
+
+=== NON-TRADITIONAL SWE FILTER ===
+If a job is mainly about:
+- evaluating, ranking, labeling, annotating, prompting, or correcting AI/model outputs
+- creating training data, rubrics, reference answers, or feedback for model improvement
+- vague online task work that does not involve building or owning software systems
+
+and is NOT mainly about:
+- building, maintaining, deploying, debugging, scaling, or owning software systems in production
+
+then classify it as:
+NON_TRADITIONAL_SWE
+
+Jobs classified as NON_TRADITIONAL_SWE must:
+- be excluded from the ranking
+- be listed separately with a short reason
+- not receive a final weighted score
+
+Use ONLY the criteria below to evaluate the remaining jobs:
 
 === CRITERIA ===
 1. Technical keyword match (weight 60%)
@@ -33,19 +52,19 @@ Use ONLY the criteria below to evaluate each job:
        senior = low competition
 
 === SCORING ===
-Final score (0–100) = 
+Final score (0–100) =
 (keywords * 0.60) + (seniority * 0.25) + (competition * 0.15)
 
 Each criterion must also be scored individually (0–100 before weighting).
 
 === OUTPUT ===
-1. Table listing all jobs:
+1. First, list all jobs classified as NON_TRADITIONAL_SWE with a short reason.
+2. Then provide a table listing only the remaining jobs:
    - job title
    - final score
    - individual criterion scores
    - short justification
-2. Ranking of jobs from highest to lowest score.
-3. Output MUST be plain text only, no markdown.
+3. Ranking of the remaining jobs from highest to lowest score.
 
 Wait for me to send the jobs and my resume.
 `,
@@ -56,7 +75,26 @@ Primeiro, analise o meu currículo COMPLETO em profundidade.
 Somente depois de entender minhas habilidades, tecnologias, senioridade e experiência,
 avalie as vagas listadas abaixo.
 
-Use APENAS os critérios abaixo para avaliar cada vaga:
+Antes de pontuar, aplique este filtro rápido:
+
+=== FILTRO DE VAGAS NÃO TRADICIONAIS DE SWE ===
+Se a vaga for principalmente sobre:
+- avaliar, ranquear, rotular, anotar, criar prompts ou corrigir respostas de IA/modelos
+- criar training data, rubricas, respostas de referência ou feedback para melhorar modelos
+- trabalho vago de tarefas online sem construção ou ownership de sistemas de software
+
+e NÃO for principalmente sobre:
+- construir, manter, publicar, debugar, escalar ou ser responsável por sistemas de software em produção
+
+então classifique a vaga como:
+NON_TRADITIONAL_SWE
+
+Vagas classificadas como NON_TRADITIONAL_SWE devem:
+- ser excluídas do ranking
+- ser listadas separadamente com uma razão curta
+- não receber score final ponderado
+
+Use APENAS os critérios abaixo para avaliar as vagas restantes:
 
 === CRITÉRIOS ===
 1. Match técnico por keywords (peso 60%)
@@ -75,19 +113,19 @@ Use APENAS os critérios abaixo para avaliar cada vaga:
        sênior = baixa
 
 === PONTUAÇÃO ===
-Score final (0–100) = 
+Score final (0–100) =
 (keywords * 0.60) + (senioridade * 0.25) + (concorrencia * 0.15)
 
 Cada critério também deve ter nota individual (0–100 antes do peso).
 
 === SAÍDA ===
-1. Tabela com todas as vagas:
+1. Primeiro, liste todas as vagas classificadas como NON_TRADITIONAL_SWE com uma razão curta.
+2. Depois, forneça uma tabela contendo apenas as vagas restantes:
    - título da vaga
    - score final
    - notas por critério
    - justificativa curta
-2. Ranking das vagas da maior para a menor.
-3. Saída obrigatoriamente em texto plano (sem markdown).
+3. Ranking das vagas restantes da maior para a menor.
 
 Aguarde eu enviar as vagas e meu currículo.
 `,
