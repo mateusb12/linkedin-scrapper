@@ -68,6 +68,11 @@ class NonRetryableEnrichmentError(EnrichmentError):
     pass
 
 
+class AuthExpiredError(NonRetryableEnrichmentError):
+    """Raised when LinkedIn rejects the request due to an expired/invalid session."""
+    pass
+
+
 class LinkedInJobEnricher:
     """
     Takes a job_urn as input and returns an enriched JobPost.
@@ -155,6 +160,7 @@ class LinkedInJobEnricher:
                 url,
                 headers={"csrf-token": csrf, "accept": "application/json"},
                 timeout=20,
+                allow_redirects=False,
             )
         except requests.RequestException as e:
             if raise_on_failure:
@@ -164,6 +170,14 @@ class LinkedInJobEnricher:
                 )
             _log(f"❌ fetch_job_details({job_id}) request error: {e}")
             return {"_error": str(e)}
+
+        if resp.status_code in (301, 302):
+            _log(f"🔒 fetch_job_details({job_id}): auth expired (HTTP {resp.status_code})")
+            raise AuthExpiredError(
+                operation=f"fetch_job_details({job_id})",
+                status_code=resp.status_code,
+                message="Session expired — LinkedIn redirected to login",
+            )
 
         if resp.status_code != 200:
             _log(f"⚠️ fetch_job_details({job_id}): HTTP {resp.status_code}")

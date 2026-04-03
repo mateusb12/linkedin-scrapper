@@ -8,6 +8,7 @@ from typing import Any
 from source.features.enrich_jobs.linkedin_http_batch_enricher import (
     BatchEnrichmentService,
 )
+from source.features.enrich_jobs.linkedin_http_job_enricher import AuthExpiredError
 from source.features.search_jobs.curl_voyager_jobs_fetch import (
     DatePosted,
     ExperienceLevel,
@@ -163,6 +164,9 @@ class LinkedInJobsSearchService:
                     yield {"type": "progress", **data}
                 elif event_type == "result":
                     final_jobs_json = data
+                elif event_type == "auth_error":
+                    yield {"type": "auth_error", **data}
+                    return
         else:
             final_jobs_json = parsed_jobs_json
 
@@ -220,7 +224,14 @@ class LinkedInJobsSearchService:
 
         for i in range(0, total, chunk_size):
             chunk = base_jobs[i:i + chunk_size]
-            enriched = self.batch_enricher.enrich_base_jobs(chunk)
+            try:
+                enriched = self.batch_enricher.enrich_base_jobs(chunk)
+            except AuthExpiredError:
+                yield "auth_error", {
+                    "step": "enriching",
+                    "message": "LinkedIn session expired. Please refresh your auth token.",
+                }
+                return
             enriched_job_objects.extend(enriched)
 
             current = min(i + chunk_size, total)

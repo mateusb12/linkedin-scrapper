@@ -22,6 +22,7 @@ from source.features.enrich_jobs.linkedin_http_job_enricher import (
     LinkedInJobEnricher,
     RetryableEnrichmentError,
     NonRetryableEnrichmentError,
+    AuthExpiredError,
 )
 from source.features.get_applied_jobs.utils_proxy import (
     JobPost,
@@ -239,6 +240,9 @@ class BatchEnrichmentService:
             base_job_dict["blacklisted"] = False
 
             return JobPost.from_dict(base_job_dict)
+
+        except AuthExpiredError:
+            raise  # never swallow — caller must abort the loop
 
         except Exception as e:
             if self.return_seed_on_failure:
