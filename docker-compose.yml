@@ -1,9 +1,10 @@
 services:
+
   backend:
     build:
       context: ./backend
       args:
-        INSTALL_DEV: "true"   # 👈 DEV MODE
+        INSTALL_DEV: "true"
     container_name: linkedin-backend-dev
     volumes:
       - ./backend:/app
@@ -12,15 +13,23 @@ services:
       - "5000:5000"
     env_file:
       - ./backend/.env
-    restart: unless-stopped
-    command: poetry run flask run --host=0.0.0.0 --port=5000
+    environment:
+      # Flask
+      - FLASK_APP=app:app
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      - FLASK_RUN_HOST=0.0.0.0
+      - FLASK_RUN_PORT=5000
+
+      # logging instantâneo
+      - PYTHONUNBUFFERED=1
+
+      # necessário para debugger conectar no host (linux)
+      - PYTHONPATH=/app
+    command: poetry run flask run --reload
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    pid: "host"
-    cap_add:
-      - SYS_PTRACE
-    security_opt:
-      - seccomp:unconfined
+    restart: unless-stopped
 
   frontend:
     build:
@@ -34,5 +43,7 @@ services:
       - /app/node_modules
     environment:
       - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
     depends_on:
       - backend
+    restart: unless-stopped

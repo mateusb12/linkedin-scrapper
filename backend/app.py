@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 import traceback
 
@@ -24,7 +25,8 @@ from source.features.search_jobs.job_search_controller import search_jobs_bp
 
 load_dotenv()
 
-start_debugger_monitor()
+if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+    start_debugger_monitor()
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
