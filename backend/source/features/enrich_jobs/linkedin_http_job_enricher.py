@@ -456,12 +456,15 @@ class LinkedInJobEnricher:
             premium_component_found = bool(parsed.get("premium_component_found"))
             applicants_total = parsed.get("applicants_total")
             has_undefined = "$undefined" in r.text
-            has_concrete_metrics = any([
+            has_numeric_applicant_signal = any([
                 applicants_total is not None,
                 parsed.get("applicants_last_24h") is not None,
+            ])
+            has_distribution_signal = any([
                 bool(parsed.get("seniority_distribution")),
                 bool(parsed.get("education_distribution")),
             ])
+            has_concrete_metrics = has_numeric_applicant_signal or has_distribution_signal
 
             if premium_component_found and applicants_total is None:
                 self._log_premium_payload_degraded(
@@ -473,18 +476,14 @@ class LinkedInJobEnricher:
                     reason="premium component shell present but applicants_total was not extracted",
                 )
 
-            if premium_component_found and (has_undefined or not has_concrete_metrics):
+            if premium_component_found and not has_concrete_metrics:
                 self._log_premium_payload_degraded(
                     job_id=job_id,
                     response_text=r.text,
                     response_status=r.status_code,
                     parsed=parsed,
                     marker="[PREMIUM_PAYLOAD_DEGRADED]",
-                    reason=(
-                        "response contains $undefined"
-                        if has_undefined
-                        else "premium component shell present without concrete premium metrics"
-                    ),
+                    reason="premium component shell present without any concrete premium metrics",
                 )
             return parsed
 
