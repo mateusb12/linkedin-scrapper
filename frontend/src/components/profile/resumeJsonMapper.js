@@ -532,7 +532,7 @@ ${renderEducation()}
 
 ${renderLanguages()}
 
-\\color{white}\\tiny ${hiddenKeywords}
+% === HIDDEN ATS KEYWORDS SECTION (dynamically added by the LLM per job) ===
 
 \\end{document}
 `;

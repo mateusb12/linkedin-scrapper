@@ -15,6 +15,12 @@ I am applying for a job and I need you to adapt my resume (in LaTeX format) to f
    using first-person past tense ("implemented", "designed", "orchestrated", etc.)
 3. Give STRONG emphasis to the job's keywords by naturally incorporating them into the bullet points.
 4. Do NOT invent skills or technologies that are not already present in my current resume.
+5. Extract 15-25 of the MOST relevant technical keywords, tools, frameworks, concepts and acronyms from the Job Description that are already covered in my resume (skills, experience, projects, etc.).
+6. At the VERY END of the LaTeX document (immediately before \\end{document}), add this exact line (replacing any previous hidden keywords line if it exists):
+
+\\color{white}\\tiny{KEYWORD1, KEYWORD2, KEYWORD3, ...}
+
+Use only commas, no extra spaces at the end, no quotes, no extra text or comments. This is for ATS optimization.
 
 === JOB DESCRIPTION ===
 {{JOB_DESCRIPTION}}
@@ -34,6 +40,12 @@ Estou me candidatando a uma vaga e preciso que você adapte meu currículo (em L
    usando primeira pessoa do passado ("implementei", "orquestrei", "desenvolvi", etc.)
 3. Dê MUITA ÊNFASE às keywords da vaga, incorporando-as naturalmente nos bullet points.
 4. NÃO invente tecnologias ou habilidades que não existam no meu currículo atual.
+5. Extraia 15-25 das palavras-chave técnicas, ferramentas, frameworks, conceitos e siglas MAIS relevantes da Descrição da Vaga que já estão presentes no meu currículo (habilidades, experiência ou projetos).
+6. No FINAL do documento LaTeX (imediatamente antes de \\end{document}), adicione exatamente esta linha (substituindo qualquer linha de keywords ocultas anterior, se existir):
+
+\\color{white}\\tiny{PALAVRA1, PALAVRA2, PALAVRA3, ...}
+
+Use apenas vírgulas, sem espaços extras no final, sem aspas e sem nenhum texto ou comentário extra. Isso é para otimização de ATS.
 
 === DESCRIÇÃO DA VAGA ===
 {{JOB_DESCRIPTION}}
