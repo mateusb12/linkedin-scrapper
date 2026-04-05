@@ -87,6 +87,8 @@ class LinkedInJobEnricher:
         self.debug = debug
         self.client = LinkedInClient("SavedJobs", slim_mode=slim_mode)
         self.premium_parser = PremiumParser()
+        self.premium_config_name = "PremiumInsights"
+        self.premium_config_id: Optional[int] = None
 
         from database.database_connection import get_db_session
         from models.fetch_models import FetchCurl
@@ -104,6 +106,7 @@ class LinkedInJobEnricher:
             self.premium_body = ""
             rec_prem = db.query(FetchCurl).filter(FetchCurl.name == "PremiumInsights").first()
             if rec_prem:
+                self.premium_config_id = rec_prem.id
                 self.premium_url = rec_prem.base_url
                 self.premium_method = rec_prem.method
                 self.premium_body = rec_prem.body
@@ -146,6 +149,31 @@ class LinkedInJobEnricher:
             operation=operation,
             status_code=status_code,
             message=snippet,
+        )
+
+    def _preview_text(self, text: str, max_chars: int = 160) -> str:
+        return re.sub(r"\s+", " ", (text or "").strip())[:max_chars]
+
+    def _log_premium_payload_degraded(
+            self,
+            *,
+            job_id: str,
+            response_text: str,
+            response_status: int,
+            parsed: Dict[str, Any],
+            marker: str,
+            reason: str,
+    ) -> None:
+        _log(
+            f"{marker} job_id={job_id} "
+            f"fetch_config={self.premium_config_name}:{self.premium_config_id} "
+            f"status={response_status} "
+            f"premium_component_found={parsed.get('premium_component_found')} "
+            f"has_undefined={'$undefined' in response_text} "
+            f"applicants_total_extracted={parsed.get('applicants_total') is not None} "
+            f"reason={reason} "
+            f"preview={repr(self._preview_text(response_text))} "
+            f"hint='premium payload degraded; stale li_at or stale auth cookie bundle is suspected'"
         )
 
     def fetch_job_details(self, job_id: str, raise_on_failure: bool = False) -> Dict[str, Any]:
@@ -420,10 +448,44 @@ class LinkedInJobEnricher:
 
             if r.text.lstrip()[:20].lower().startswith(("<!doctype", "<html")):
                 _log(f"[PREMIUM_WARN] fetch_premium_insights({job_id}): HTTP 200 but response is HTML — likely auth redirect")
+
+            # LinkedIn can return HTTP 200 plus the premium component shell while silently
+            # degrading the actual metrics payload when auth context is stale.
             parsed = self.premium_parser.parse(r.text)
-            if parsed.get("premium_component_found") and parsed.get("applicants_total") is None:
-                _log(f"[PREMIUM_METADATA_MISSING] job_id={job_id}, response_len={len(r.text)}, "
-                     f"has_undefined={'$undefined' in r.text}, preview={repr(r.text[:120])}")
+
+            premium_component_found = bool(parsed.get("premium_component_found"))
+            applicants_total = parsed.get("applicants_total")
+            has_undefined = "$undefined" in r.text
+            has_concrete_metrics = any([
+                applicants_total is not None,
+                parsed.get("applicants_last_24h") is not None,
+                bool(parsed.get("seniority_distribution")),
+                bool(parsed.get("education_distribution")),
+            ])
+
+            if premium_component_found and applicants_total is None:
+                self._log_premium_payload_degraded(
+                    job_id=job_id,
+                    response_text=r.text,
+                    response_status=r.status_code,
+                    parsed=parsed,
+                    marker="[PREMIUM_METADATA_MISSING]",
+                    reason="premium component shell present but applicants_total was not extracted",
+                )
+
+            if premium_component_found and (has_undefined or not has_concrete_metrics):
+                self._log_premium_payload_degraded(
+                    job_id=job_id,
+                    response_text=r.text,
+                    response_status=r.status_code,
+                    parsed=parsed,
+                    marker="[PREMIUM_PAYLOAD_DEGRADED]",
+                    reason=(
+                        "response contains $undefined"
+                        if has_undefined
+                        else "premium component shell present without concrete premium metrics"
+                    ),
+                )
             return parsed
 
         except (RetryableEnrichmentError, NonRetryableEnrichmentError):
@@ -434,7 +496,11 @@ class LinkedInJobEnricher:
                     operation=f"fetch_premium_insights({job_id})",
                     message=str(e),
                 )
-            _log(f"⚠️ fetch_premium_insights({job_id}) error: {e}")
+            _log(
+                f"[PREMIUM_REQUEST_EXCEPTION] function=fetch_premium_insights "
+                f"job_id={job_id} fetch_config={self.premium_config_name}:{self.premium_config_id} "
+                f"error={e}"
+            )
             return empty
 
     def fetch_notifications_for_job(
