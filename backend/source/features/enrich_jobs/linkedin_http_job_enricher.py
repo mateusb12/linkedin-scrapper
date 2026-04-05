@@ -420,7 +420,11 @@ class LinkedInJobEnricher:
 
             if r.text.lstrip()[:20].lower().startswith(("<!doctype", "<html")):
                 _log(f"[PREMIUM_WARN] fetch_premium_insights({job_id}): HTTP 200 but response is HTML — likely auth redirect")
-            return self.premium_parser.parse(r.text)
+            parsed = self.premium_parser.parse(r.text)
+            if parsed.get("premium_component_found") and parsed.get("applicants_total") is None:
+                _log(f"[PREMIUM_METADATA_MISSING] job_id={job_id}, response_len={len(r.text)}, "
+                     f"has_undefined={'$undefined' in r.text}, preview={repr(r.text[:120])}")
+            return parsed
 
         except (RetryableEnrichmentError, NonRetryableEnrichmentError):
             raise
