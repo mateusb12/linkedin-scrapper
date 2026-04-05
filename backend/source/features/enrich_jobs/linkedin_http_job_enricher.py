@@ -378,6 +378,8 @@ class LinkedInJobEnricher:
 
         try:
             if not PREMIUM_ENABLED or not self.premium_url:
+                _log(f"[PREMIUM_SKIP] fetch_premium_insights({job_id}): skipped — "
+                     f"PREMIUM_ENABLED={PREMIUM_ENABLED}, url_configured={bool(self.premium_url)}")
                 return empty
 
             body = re.sub(
@@ -416,6 +418,8 @@ class LinkedInJobEnricher:
                     )
                 raise RuntimeError(f"HTTP {r.status_code}")
 
+            if r.text.lstrip()[:20].lower().startswith(("<!doctype", "<html")):
+                _log(f"[PREMIUM_WARN] fetch_premium_insights({job_id}): HTTP 200 but response is HTML — likely auth redirect")
             return self.premium_parser.parse(r.text)
 
         except (RetryableEnrichmentError, NonRetryableEnrichmentError):

@@ -181,8 +181,6 @@ def parse_linkedin_stream(raw_text: str) -> list:
     Parse LinkedIn's RSC (React Server Components) stream format.
     Format: ID:DATA where DATA can be JSON, array, or React refs ($L..., I[...], etc.)
     """
-    print(f"\n[DEBUG] parse_linkedin_stream input: {len(raw_text)} chars")
-    # print(f"[DEBUG] First 300 chars: {raw_text[:300]}")
     parsed_items = []
     for line in raw_text.split("\n"):
         if not line.strip():
@@ -210,7 +208,6 @@ def parse_linkedin_stream(raw_text: str) -> list:
                     pass
         except Exception:
             continue
-    print(f"[DEBUG] parse_linkedin_stream returning: {len(parsed_items)} items")
     return parsed_items
 
 
@@ -439,6 +436,8 @@ class PremiumParser:
                     applicants_last_24h = v
                     continue
 
+        if applicants_total is None and applicants_last_24h is None and tokens:
+            print(f"[PREMIUM_SCHEMA_WARN] _match_applicant_patterns: no applicant count extracted from {len(tokens)} tokens. Sample: {tokens[:6]}")
         return applicants_total, applicants_last_24h
 
     def _collect_text_tokens(self, items: List[Any]) -> List[str]:
