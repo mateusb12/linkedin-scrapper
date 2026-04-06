@@ -6,15 +6,13 @@ from email.header import decode_header
 from email.utils import parsedate_to_datetime
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import jsonify, request
 from sqlalchemy import desc
 
 from database.database_connection import get_db_session
 from models.user_models import Profile
 from models.email_models import Email
 from models.job_models import Job, Company
-
-gmail_bp = Blueprint("gmail", __name__, url_prefix="/emails")
 
 JOB_KEYWORDS = [
     "application",
@@ -481,7 +479,6 @@ def _perform_gmail_sync(session, profile, target_label):
 # Endpoints
 # ---------------------------------------------------
 
-@gmail_bp.route("/sync", methods=["POST"])
 def sync_emails_endpoint():
     session = get_db_session()
 
@@ -527,7 +524,6 @@ def sync_emails_endpoint():
         session.close()
 
 
-@gmail_bp.route("/reconcile-backlog", methods=["POST"])
 def reconcile_backlog():
     session = get_db_session()
 
@@ -557,7 +553,6 @@ def reconcile_backlog():
         session.close()
 
 
-@gmail_bp.route("/", methods=["GET"])
 def get_stored_emails():
     session = get_db_session()
 

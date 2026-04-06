@@ -15,12 +15,12 @@ from source.features.get_applied_jobs.applied_jobs_controller import job_tracker
 from flasgger import Swagger
 
 from source.features.get_applied_jobs.services_router import services_bp
-from source.features.gmail_service.gmail_controller import gmail_bp
+from source.features.gmail_service.gmail_router import gmail_bp
 from source.features.profile.profile_router import profile_bp
-from source.features.job_population.job_controller import job_data_bp
+from source.features.job_population.job_router import job_data_bp
 from source.features.resume.resume_router import resume_bp
 from source.features.fetch_curl import fetch_curl_bp
-from source.features.job_population.population_controller import population_bp
+from source.features.job_population.population_router import population_bp
 from database.database_connection import create_db_and_tables
 from source.features.search_jobs.job_search_router import search_jobs_bp
 

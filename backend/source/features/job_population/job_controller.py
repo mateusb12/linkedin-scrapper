@@ -1,6 +1,6 @@
 import json
 
-from flask import Blueprint, jsonify, request, stream_with_context, Response
+from flask import jsonify, request, stream_with_context, Response
 
 from source.features.job_population.core_instances import embedding_calculator
 from models import Job
@@ -8,9 +8,6 @@ from services.model_orchestrator import LLMOrchestrator, AllLLMsFailed
 from source.services.experience_extractor import extract_years_experience
 from source.utils.metric_utils import JobConsoleProgress
 from source.features.job_population.job_repository import JobRepository
-
-job_data_bp = Blueprint("jobs", __name__, url_prefix="/jobs")
-
 
 # --- SHARED HELPER FUNCTIONS ---
 
@@ -42,8 +39,6 @@ def _job_to_dict_with_status(job: Job) -> dict:
 # --- END SHARED HELPER FUNCTIONS ---
 
 
-@job_data_bp.route("/", methods=["GET"])
-@job_data_bp.route("/all", methods=["GET"])
 def get_all_jobs():
     """Retrieves all jobs and adds a 'status' field to each."""
     repo = JobRepository()
@@ -58,7 +53,6 @@ def get_all_jobs():
         repo.close()
 
 
-@job_data_bp.route("/keywords-stream", methods=["GET"])
 def insert_extra_fields_stream():
     """
     Processes incomplete jobs and streams progress updates. This version ensures
@@ -172,7 +166,6 @@ def insert_extra_fields_stream():
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 
-@job_data_bp.route("/<string:urn>", methods=["PATCH"])
 def update_job(urn):
     repo = JobRepository()
     try:
@@ -194,7 +187,6 @@ def update_job(urn):
         repo.close()
 
 
-@job_data_bp.route("/<string:urn>/disable", methods=["PATCH"])
 def mark_job_as_disabled(urn):
     repo = JobRepository()
     try:
@@ -212,7 +204,6 @@ def mark_job_as_disabled(urn):
         repo.close()
 
 
-@job_data_bp.route("/<string:urn>/mark_applied", methods=["PATCH"])
 def mark_job_as_applied(urn):
     repo = JobRepository()
     try:
@@ -230,7 +221,6 @@ def mark_job_as_applied(urn):
         repo.close()
 
 
-@job_data_bp.route("/match-score", methods=["POST"])
 def compute_match_score():
     try:
         data = request.get_json() or {}
