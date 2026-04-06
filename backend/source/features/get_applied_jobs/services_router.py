@@ -27,7 +27,7 @@ services_bp = Blueprint("services", __name__, url_prefix="/services")
 @services_bp.route("/applied", methods=["GET"])
 def get_applied_jobs_route():
     """
-    List applied jobs from the local database.
+    Queries the local SQLite database and returns the stored list of applied jobs.
     ---
     tags:
       - Job Tracker (Database)
@@ -91,7 +91,8 @@ def get_applied_jobs_route():
 @services_bp.route("/applied-live", methods=["GET"])
 def get_applied_live_route():
     """
-    Proxy: fetch applied jobs from LinkedIn, return directly. No DB.
+    Acts as a live proxy to LinkedIn's internal API for applied jobs.
+    It authenticates with your stored cookies and returns exactly what LinkedIn sends back, with zero DB writes.
     ---
     tags:
       - Job Tracker (Live Proxy)
@@ -148,7 +149,8 @@ def get_applied_live_route():
 @services_bp.route("/saved-live", methods=["GET"])
 def get_saved_live_route():
     """
-    Proxy: fetch saved jobs from LinkedIn, return directly. No DB.
+    Acts as a live proxy to LinkedIn's internal API for saved jobs.
+    It authenticates with your stored cookies and returns exactly what LinkedIn sends back, with zero DB writes.
     ---
     tags:
       - Job Tracker (Live Proxy)
@@ -203,7 +205,7 @@ def get_saved_live_route():
 @services_bp.route("/debug-job", methods=["GET"])
 def debug_job_route():
     """
-    Debug proxy: hit LinkedIn for a SINGLE job, return fully enriched job.
+    Deep-dive diagnostic endpoint that scrapes and enriches 100% of the available data for a single job posting.
     ---
     tags:
       - Job Tracker (Live Proxy)
@@ -316,7 +318,7 @@ def debug_job_route():
 @services_bp.route("/sync-applied", methods=["POST"])
 def sync_applied_jobs_route():
     """
-    Incremental sync (page 1, ~10 jobs).
+    Fetches the most recent page of applied jobs from LinkedIn, enriches missing details, and upserts them into the database.
     ---
     tags:
       - Job Tracker (Synchronization)
@@ -345,7 +347,8 @@ def sync_applied_jobs_route():
 @services_bp.route("/sync-applied-backfill-stream", methods=["GET"])
 def sync_applied_backfill_stream_route():
     """
-    Stream backfill sync via SSE (Server-Sent Events).
+    Streams historical database population via Server-Sent Events (SSE) to prevent browser timeouts.
+    Pages through your entire LinkedIn application history up to a specified cutoff date.
     ---
     tags:
       - Job Tracker (Synchronization)
@@ -367,7 +370,8 @@ def sync_applied_backfill_stream_route():
 @services_bp.route("/sync-applied-smart", methods=["POST"])
 def sync_applied_smart_route():
     """
-    Smart sync: diff LinkedIn vs DB, enrich + save only new jobs.
+    Performs a differential sync by comparing recent LinkedIn applications against the local database.
+    Fetches, enriches, and saves only the truly new jobs to minimize API calls.
     ---
     tags:
       - Job Tracker (Synchronization)
