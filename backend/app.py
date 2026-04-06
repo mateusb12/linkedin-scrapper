@@ -12,6 +12,7 @@ from debugger import start_debugger_monitor
 from source.core.http_colorizer import HttpColorFilter
 from source.features.friends_connections.connections_controller import connections_bp
 from source.features.get_applied_jobs.applied_jobs_controller import job_tracker_bp
+from flasgger import Swagger
 
 from source.features.get_applied_jobs.services_controller import services_bp
 from source.features.gmail_service.gmail_controller import gmail_bp
@@ -29,6 +30,7 @@ if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
     start_debugger_monitor()
 
 app = Flask(__name__)
+Swagger(app)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 app.config["PROPAGATE_EXCEPTIONS"] = True
@@ -77,9 +79,19 @@ app.register_blueprint(job_tracker_bp)
 app.register_blueprint(search_jobs_bp)
 
 
-@app.route('/')
+@app.route("/")
 def home():
-    return "Hello, Flask!"
+    """
+    Hello world endpoint
+    ---
+    tags:
+      - Health
+
+    responses:
+      200:
+        description: returns hello world
+    """
+    return {"message": "Hello, Flask!"}
 
 
 @app.errorhandler(BadRequest)

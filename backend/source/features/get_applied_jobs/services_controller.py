@@ -615,45 +615,6 @@ def get_linkedin_applied_jobs_raw():
     it automatically adjusts headers (page instance, referer, metadata)
     to match the selected card type so LinkedIn does not silently fall
     back to another feed.
-
-    ------------------------------------------------------------------
-    Query Parameters
-    ------------------------------------------------------------------
-
-    start : int (default = 0)
-        Pagination offset used by LinkedIn.
-        - start=0   → first page
-        - start=10  → second page (LinkedIn uses page size = 10)
-
-    pagination : str (default = "1")
-        Controls which pages are fetched.
-        - "1"       → first page only
-        - "2"       → second page only
-        - "all"     → fetch all pages until empty
-
-    card_type : str (default = "applied")
-        Determines which "My Jobs" tab is fetched.
-
-        Allowed values (case-insensitive):
-
-        - "applied"      → APPLIED
-        - "saved"        → SAVED
-        - "in_progress"  → IN_PROGRESS
-        - "archived"     → ARCHIVED
-
-        These values map 1:1 with LinkedIn's internal `cardType`
-        GraphQL query parameter.
-
-    debug : bool (default = false)
-        When true, logs the **exact curl commands** executed downstream
-        (Voyager + SDUI) and returns them in the response.
-
-    enrich : bool (default = true)
-        When true, fetches full job descriptions via the SDUI/RSC endpoint.
-
-    trace : bool (default = false)
-        When true, returns low-level SDUI fetch diagnostics
-        (status codes, payload sizes).
     """
 
     try:

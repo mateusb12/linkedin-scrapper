@@ -25,6 +25,7 @@ ruff = "^0.15.2"
 astor = "^0.8.1"
 libcst = "^1.8.6"
 browser-cookie3 = "^0.20.1"
+flasgger = "^0.9.7.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=9.0.2,<10.0.0"
