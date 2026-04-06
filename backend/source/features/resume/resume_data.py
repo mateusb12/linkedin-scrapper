@@ -1,11 +1,9 @@
-from flask import Blueprint, request, jsonify
+from flask import request, jsonify
 from database.database_connection import get_db_session
 from models import Resume
 from models.user_models import Profile
 from services.job_prompts import build_tailor_resume_prompt
 from services.model_orchestrator import LLMOrchestrator
-
-resume_bp = Blueprint("resumes", __name__, url_prefix="/resumes")
 
 def extract_resume_data(data):
     """Helper to extract data from the specific JSON template structure"""
@@ -27,7 +25,6 @@ def extract_resume_data(data):
         "profile_id": data.get("profile_id")
     }
 
-@resume_bp.route("/", methods=["POST"])
 def create_resume():
     session = get_db_session()
     try:
@@ -48,7 +45,6 @@ def create_resume():
         session.close()
 
 
-@resume_bp.route("/<int:resume_id>", methods=["GET"])
 def get_resume(resume_id):
     session = get_db_session()
     try:
@@ -66,7 +62,6 @@ def get_resume(resume_id):
         session.close()
 
 
-@resume_bp.route("/", methods=["GET"])
 def get_all_resumes():
     session = get_db_session()
     try:
@@ -82,7 +77,6 @@ def get_all_resumes():
         session.close()
 
 
-@resume_bp.route("/<int:resume_id>", methods=["PUT"])
 def update_resume(resume_id):
     session = get_db_session()
     try:
@@ -107,7 +101,6 @@ def update_resume(resume_id):
         session.close()
 
 
-@resume_bp.route("/<int:resume_id>", methods=["DELETE"])
 def delete_resume(resume_id):
     session = get_db_session()
     try:
@@ -128,7 +121,6 @@ def delete_resume(resume_id):
         session.close()
 
 
-@resume_bp.route("/tailor", methods=["POST"])
 def tailor_resume_endpoint():
     data = request.get_json()
 

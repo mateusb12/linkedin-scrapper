@@ -4,15 +4,10 @@ import smtplib
 import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from flask import Blueprint, request, jsonify
+from flask import request, jsonify
 from database.database_connection import get_db_session
 from models.user_models import Profile
 
-profile_bp = Blueprint("profiles", __name__, url_prefix="/profiles")
-
-# --- CRUD Operations ---
-
-@profile_bp.route("/", methods=["POST"])
 def create_profile():
     session = get_db_session()
     try:
@@ -45,7 +40,6 @@ def create_profile():
         session.close()
 
 
-@profile_bp.route("/", methods=["GET"])
 def get_all_profiles():
     session = get_db_session()
     try:
@@ -57,7 +51,6 @@ def get_all_profiles():
         session.close()
 
 
-@profile_bp.route("/<int:profile_id>", methods=["GET"])
 def get_profile(profile_id):
     session = get_db_session()
     try:
@@ -71,7 +64,6 @@ def get_profile(profile_id):
         session.close()
 
 
-@profile_bp.route("/<int:profile_id>", methods=["PUT"])
 def update_profile(profile_id):
     session = get_db_session()
     try:
@@ -101,7 +93,6 @@ def update_profile(profile_id):
         session.close()
 
 
-@profile_bp.route("/<int:profile_id>", methods=["DELETE"])
 def delete_profile(profile_id):
     session = get_db_session()
     try:
@@ -119,9 +110,6 @@ def delete_profile(profile_id):
         session.close()
 
 
-# --- Special Features ---
-
-@profile_bp.route("/<int:profile_id>/smtp-password", methods=["PATCH"])
 def update_smtp_password(profile_id):
     session = get_db_session()
     try:
@@ -146,7 +134,6 @@ def update_smtp_password(profile_id):
         session.close()
 
 
-@profile_bp.route("/<int:profile_id>/test-smtp", methods=["POST"])
 def test_smtp_connection(profile_id):
     """
     Tries to send a test email to the user's own email address 

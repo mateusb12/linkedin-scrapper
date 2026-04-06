@@ -12,14 +12,11 @@ import traceback
 from enum import Enum
 from typing import Any
 
-from flask import Blueprint, jsonify, request, Response
+from flask import jsonify, request, Response
 
 from source.features.search_jobs.curl_voyager_jobs_fetch import JobSearchTuning, WorkType, JobType, ExperienceLevel, \
     DatePosted, SearchOrigin, SortBy
 from source.features.search_jobs.job_search_service import LinkedInJobsSearchService
-
-search_jobs_bp = Blueprint("search_jobs", __name__, url_prefix="/search-jobs")
-
 
 # ══════════════════════════════════════════════════════════════
 # Helpers — request parsing only
@@ -208,7 +205,6 @@ def _get_search_params() -> dict[str, Any]:
 # LINKEDIN-ONLY endpoints (LinkedInJobsSearchService) — zero DB writes
 # ══════════════════════════════════════════════════════════════
 
-@search_jobs_bp.route("/live", methods=["GET", "POST"])
 def search_jobs_live():
     """
     Proxy/orchestrator:
@@ -240,7 +236,6 @@ def search_jobs_live():
         }), 500
 
 
-@search_jobs_bp.route("/live/stream", methods=["GET", "POST"])
 def search_jobs_live_stream():
     """
     Endpoint SSE (Server-Sent Events) para acompanhamento em tempo real
@@ -273,7 +268,6 @@ def search_jobs_live_stream():
     return response
 
 
-@search_jobs_bp.route("/debug-live", methods=["GET", "POST"])
 def search_jobs_debug_live():
     """
     Same orchestration flow as /live, but includes traceback on failure.
@@ -307,7 +301,6 @@ def search_jobs_debug_live():
         }), 500
 
 
-@search_jobs_bp.route("/options", methods=["GET"])
 def search_jobs_options():
     """Expose allowed enum values for frontend filters."""
     try:
