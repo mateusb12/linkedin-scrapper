@@ -13,7 +13,7 @@ import traceback
 from dataclasses import asdict
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request, Response, stream_with_context
+from flask import jsonify, request, Response, stream_with_context
 
 from source.features.enrich_jobs.linkedin_http_batch_enricher import BatchEnrichmentService
 from source.features.enrich_jobs.linkedin_http_job_enricher import LinkedInJobEnricher
@@ -26,16 +26,7 @@ from source.features.get_applied_jobs.applied_jobs_livestream_sync_service impor
 from source.features.get_applied_jobs.linkedin_http_proxy import LinkedInProxy
 from source.features.jobs.job_repository import JobRepository
 
-job_tracker_bp = Blueprint("job_tracker", __name__, url_prefix="/job-tracker")
-
-
-# ══════════════════════════════════════════════════════════════
-# DB-ONLY endpoints (JobRepository)
-# ══════════════════════════════════════════════════════════════
-
-@job_tracker_bp.route("/applied", methods=["GET"])
 def get_applied_jobs():
-    """List applied jobs from the local database."""
     try:
         jobs = JobRepository.get_applied_jobs()
         return jsonify({
@@ -45,14 +36,7 @@ def get_applied_jobs():
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
-
-# ══════════════════════════════════════════════════════════════
-# LINKEDIN-ONLY endpoints (LinkedInProxy) — zero DB writes
-# ══════════════════════════════════════════════════════════════
-
-@job_tracker_bp.route("/applied-live", methods=["GET"])
 def get_applied_live():
-    """Proxy: fetch applied jobs from LinkedIn, return directly. No DB."""
     try:
         proxy = LinkedInProxy(debug=False, slim_mode=True)
         result = proxy.fetch_jobs_listing(stage="applied")
@@ -63,10 +47,7 @@ def get_applied_live():
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
-
-@job_tracker_bp.route("/saved-live", methods=["GET"])
 def get_saved_live():
-    """Proxy: fetch saved jobs from LinkedIn, return directly. No DB."""
     try:
         proxy = LinkedInProxy(debug=True, slim_mode=True)
         result = proxy.fetch_jobs_listing(stage="saved")
@@ -77,13 +58,7 @@ def get_saved_live():
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
-
-@job_tracker_bp.route("/debug-job", methods=["GET"])
 def debug_job():
-    """
-    Debug proxy: hit LinkedIn for a SINGLE job, return fully enriched job.
-    Zero DB writes.
-    """
     try:
         job_id = request.args.get("id")
         urn = request.args.get("urn")
@@ -136,14 +111,7 @@ def debug_job():
             "traceback": traceback.format_exc(),
         }), 500
 
-
-# ══════════════════════════════════════════════════════════════
-# SYNC endpoints (JobSyncService — LinkedIn + DB)
-# ══════════════════════════════════════════════════════════════
-
-@job_tracker_bp.route("/sync-applied", methods=["POST"])
 def sync_applied_jobs():
-    """Incremental sync (page 1, ~10 jobs)."""
     try:
         result = AppliedJobsIncrementalSync.sync()
         return jsonify({
@@ -155,8 +123,6 @@ def sync_applied_jobs():
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
-
-@job_tracker_bp.route("/sync-applied-backfill-stream", methods=["GET"])
 def sync_applied_backfill_stream():
     from_param = request.args.get("from")
 
@@ -181,12 +147,7 @@ def sync_applied_backfill_stream():
     return response
 
 
-import traceback
-
-
-@job_tracker_bp.route("/sync-applied-smart", methods=["POST"])
 def sync_applied_smart():
-    """Smart sync: diff LinkedIn vs DB, enrich + save only new jobs."""
     try:
         service = JobSyncService(debug=True, slim_mode=True)
         result = service.sync_smart()

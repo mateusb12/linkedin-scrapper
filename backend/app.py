@@ -10,8 +10,8 @@ from flask_cors import CORS
 
 from debugger import start_debugger_monitor
 from source.core.http_colorizer import HttpColorFilter
-from source.features.friends_connections.connections_controller import connections_bp
-from source.features.get_applied_jobs.applied_jobs_controller import job_tracker_bp
+from source.features.friends_connections.connections_router import connections_bp
+from source.features.get_applied_jobs.job_tracker_router import job_tracker_bp
 from flasgger import Swagger
 
 from source.features.get_applied_jobs.services_router import services_bp

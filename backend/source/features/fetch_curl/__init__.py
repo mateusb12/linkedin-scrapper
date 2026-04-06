@@ -1,1 +1,1 @@
-from .fetch_controller import fetch_curl_bp
+from .fetch_router import fetch_curl_bp

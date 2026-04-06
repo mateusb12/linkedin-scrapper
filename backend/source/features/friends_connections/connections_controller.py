@@ -1,6 +1,6 @@
 import re
 
-from flask import Blueprint, jsonify, Response, stream_with_context, request
+from flask import jsonify, Response, stream_with_context, request
 import json
 
 from database.database_connection import get_db_session
@@ -8,12 +8,7 @@ from models.connection_models import LinkedInConnection
 from source.features.friends_connections.fetch_connections import LinkedInConnectionsFetcher
 from source.features.friends_connections.fetch_single_profile import ProfileEnrichmentService
 
-connections_bp = Blueprint("connections", __name__, url_prefix="/connections")
-
-
-@connections_bp.route("/", methods=["GET"])
 def get_connections():
-    """Retorna os dados do banco para preencher a tela inicialmente."""
     db = get_db_session()
     try:
         conns = db.query(LinkedInConnection).order_by(LinkedInConnection.name.asc()).all()
@@ -21,11 +16,7 @@ def get_connections():
     finally:
         db.close()
 
-
-@connections_bp.route("/sync", methods=["GET"])
 def sync_connections_stream():
-    """Endpoint Server-Sent Events (SSE) orquestrador inteligente."""
-
     def generate():
         db = get_db_session()
         try:
@@ -49,8 +40,6 @@ def sync_connections_stream():
 
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
-
-@connections_bp.route("/reset-one", methods=["POST"])
 def reset_one():
     from flask import request
     db = get_db_session()
@@ -88,14 +77,7 @@ def reset_one():
     finally:
         db.close()
 
-
-@connections_bp.route("/reset-bugged", methods=["POST"])
 def reset_bugged_profiles():
-    """
-    RESET ALL:
-    Reseta todos os perfis, limpando dados enriquecidos (about, experiências, etc)
-    e marcando is_fully_scraped = False, igual ao UPDATE que você roda no sqlite3.
-    """
     db = get_db_session()
     try:
         # Faz o UPDATE em todas as linhas da tabela linkedin_connections
@@ -130,10 +112,7 @@ def reset_bugged_profiles():
     finally:
         db.close()
 
-
-@connections_bp.route("/refresh-profile", methods=["POST"])
 def refresh_profile():
-    """Força o scrape síncrono de APENAS UM perfil por ID ou Nome"""
     data = request.get_json()
     search_id = data.get("id")
     search_name = data.get("name")
