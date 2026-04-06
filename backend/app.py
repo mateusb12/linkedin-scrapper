@@ -14,7 +14,7 @@ from source.features.friends_connections.connections_controller import connectio
 from source.features.get_applied_jobs.applied_jobs_controller import job_tracker_bp
 from flasgger import Swagger
 
-from source.features.get_applied_jobs.services_controller import services_bp
+from source.features.get_applied_jobs.services_router import services_bp
 from source.features.gmail_service.gmail_controller import gmail_bp
 from source.features.profile.profile_controller import profile_bp
 from source.features.job_population.job_controller import job_data_bp

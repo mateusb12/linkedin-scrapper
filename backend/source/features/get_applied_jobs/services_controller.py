@@ -5,7 +5,7 @@ import math
 import re
 import traceback
 from datetime import timezone, datetime, timedelta
-from flask import Blueprint, jsonify, request
+from flask import jsonify, request
 from dateutil.parser import parse as parse_datetime
 from sqlalchemy import or_, func
 
@@ -19,8 +19,6 @@ from source.features.get_applied_jobs.legacy_code.fetch_linkedin_applied_jobs im
 from source.features.job_population.population_service import PopulationService
 from source.features.profile.fetch_linkedin_profile_experiences import fetch_linkedin_profile_experiences
 from source.services.experience_extractor import extract_years_experience
-
-services_bp = Blueprint("services", __name__, url_prefix="/services")
 
 
 def normalize_huntr_job(job: dict) -> dict:
@@ -91,7 +89,6 @@ def apply_timezone_fix(job_dict):
     return job_dict
 
 
-@services_bp.route("/applied-jobs", methods=["GET"])
 def get_all_applied_jobs():
     """
     Fetches job applications.
@@ -179,7 +176,6 @@ def get_all_applied_jobs():
         repo.close()
 
 
-@services_bp.route("/sync-status", methods=["POST"])
 def sync_application_status():
     """
     Cross-references 'Job fails' emails with Jobs table to update status to 'Refused'.
@@ -241,19 +237,16 @@ def sync_application_status():
         session.close()
 
 
-@services_bp.route("/huntr", methods=["GET"])
 def get_huntr_jobs():
     jobs: list[dict] = get_huntr_jobs_data()
     return jsonify(jobs), 200
 
 
-@services_bp.route("/linkedin", methods=["GET"])
 def get_linkedin_jobs():
     jobs: list[dict] = fetch_all_linkedin_jobs()
     return jsonify(jobs), 200
 
 
-@services_bp.route("/sql", methods=["GET"])
 def get_sql_jobs():
     repo = JobRepository()
     try:
@@ -263,7 +256,6 @@ def get_sql_jobs():
         repo.close()
 
 
-@services_bp.route("/cookies", methods=["GET", "PUT"])
 def manage_cookies():
     session = get_db_session()
 
@@ -314,7 +306,6 @@ def manage_cookies():
     return jsonify({"error": "Method not allowed"}), 405
 
 
-@services_bp.route("/insights", methods=["GET"])
 def get_dashboard_insights():
     """
     Returns high-level metrics including new granular statuses:
@@ -476,7 +467,6 @@ def get_dashboard_insights():
         session.close()
 
 
-@services_bp.route('/reconcile', methods=['POST'])
 def reconcile_endpoints():
     """
     Triggers the SQL-to-SQL cross-check between Emails and Jobs.
@@ -488,7 +478,6 @@ def reconcile_endpoints():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@services_bp.route("/debug-applied-jobs", methods=["GET"])
 def debug_applied_jobs_payload():
     """
     DEBUG endpoint to inspect the raw LinkedIn payload and understand
@@ -602,7 +591,6 @@ def debug_applied_jobs_payload():
         }), 500
 
 
-@services_bp.route("/linkedin-applied-jobs/raw", methods=["GET"])
 def get_linkedin_applied_jobs_raw():
     """
     PURE LinkedIn "My Jobs" raw endpoint.
@@ -644,7 +632,6 @@ def get_linkedin_applied_jobs_raw():
         }), 500
 
 
-@services_bp.route("/profile/experiences", methods=["GET"])
 def get_profile_experiences():
     """
     Fetches raw experience data from a LinkedIn Profile.
