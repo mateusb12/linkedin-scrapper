@@ -5,7 +5,7 @@ import traceback
 
 from werkzeug.exceptions import BadRequest
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, redirect
 from flask_cors import CORS
 
 from debugger import start_debugger_monitor
@@ -44,6 +44,18 @@ logging.basicConfig(
     stream=sys.stdout,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
+
+
+@app.route("/docs")
+@app.route("/docs/")
+def docs_redirect():
+    return redirect("/apidocs/", code=302)
+
+
+@app.route("/json")
+@app.route("/json/")
+def json_redirect():
+    return redirect("/apispec_1.json", code=302)
 
 
 class IgnoreStartingConnectionLogs(logging.Filter):
