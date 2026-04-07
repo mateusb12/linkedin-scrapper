@@ -17,7 +17,11 @@ if project_root not in sys.path:
 
 from database.database_connection import get_db_session
 from models.fetch_models import FetchCurl
-from source.features.fetch_curl.linkedin_http_client import LinkedInClient, LinkedInRequest
+from source.features.fetch_curl.linkedin_http_client import (
+    LinkedInClient,
+    LinkedInRequest,
+    perform_linkedin_request,
+)
 
 
 # =============================================================================
@@ -41,7 +45,8 @@ class RawStringRequest(LinkedInRequest):
     def execute(self, session, timeout=15):
         merged_headers = session.headers.copy()
         merged_headers.update(self._headers)
-        return session.request(
+        return perform_linkedin_request(
+            session,
             method=self.method,
             url=self.url,
             headers=merged_headers,
@@ -217,7 +222,16 @@ class VoyagerJobsLiteFetcher:
 
             return json.loads(clean_text)
 
+        except ImportError:
+            raise
         except Exception as exc:
+            try:
+                from source.features.enrich_jobs.linkedin_http_job_enricher import AuthExpiredError
+            except ImportError:
+                AuthExpiredError = None
+
+            if AuthExpiredError and isinstance(exc, AuthExpiredError):
+                raise
             raise RuntimeError(f"Failed to fetch JobCardsLite data: {exc}") from exc
 
     # -------------------------------------------------------------------------

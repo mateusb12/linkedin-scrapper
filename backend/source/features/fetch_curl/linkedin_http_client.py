@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import sys
 import requests
@@ -8,6 +9,58 @@ from typing import Any, Optional, Tuple
 from urllib.parse import quote
 
 from source.core.debug_mode import is_debug
+
+logger = logging.getLogger(__name__)
+
+REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+AUTH_REDIRECT_MARKERS = ("/login", "/checkpoint", "/challenge", "/authwall")
+
+
+def _build_auth_expired_error(status_code: int, location: str) -> RuntimeError:
+    from source.features.enrich_jobs.linkedin_http_job_enricher import AuthExpiredError
+
+    return AuthExpiredError(
+        operation="linkedin_http_request",
+        status_code=status_code,
+        message=(
+            "LinkedIn session expired or invalid "
+            f"(redirected to {location or 'an auth wall'}). "
+            "Please refresh li_at and JSESSIONID cookies."
+        ),
+    )
+
+
+def perform_linkedin_request(
+        session: requests.Session,
+        *,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+        timeout: int = 15,
+        json_body: Any = None,
+        data: bytes | None = None,
+) -> requests.Response:
+    response = session.request(
+        method=method,
+        url=url,
+        headers=headers,
+        json=json_body,
+        data=data,
+        timeout=timeout,
+        allow_redirects=False,
+    )
+
+    if response.status_code in REDIRECT_STATUSES:
+        location = response.headers.get("location", "")
+        logger.warning("LinkedIn redirect detected -> %s", location or "<missing>")
+
+        normalized_location = location.lower()
+        if any(marker in normalized_location for marker in AUTH_REDIRECT_MARKERS):
+            raise _build_auth_expired_error(response.status_code, location)
+
+        raise RuntimeError(f"Unexpected redirect from LinkedIn API: {location or '<missing>'}")
+
+    return response
 
 # --- Add project root to path ---
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -60,11 +113,12 @@ class LinkedInRequest(ABC):
             print("BODY:", self._body)
             print("=" * 80)
 
-        response = session.request(
+        response = perform_linkedin_request(
+            session,
             method=self.method,
             url=self.url,
             headers=merged_headers,
-            json=self._body,
+            json_body=self._body,
             timeout=timeout,
         )
 
