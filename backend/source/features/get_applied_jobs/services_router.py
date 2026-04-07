@@ -15,6 +15,7 @@ from source.features.get_applied_jobs.applied_jobs_controller import (
     sync_applied_backfill_stream,
     sync_applied_smart
 )
+from source.features.get_applied_jobs.services_controller import get_profile_experiences
 
 # Blueprint creation
 services_bp = Blueprint("services", __name__, url_prefix="/services")
@@ -391,3 +392,28 @@ def sync_applied_smart_route():
         description: Error during smart synchronization.
     """
     return sync_applied_smart()
+
+
+@services_bp.route("/profile/experiences", methods=["GET"])
+def get_profile_experiences_route():
+    """
+    Fetches raw experience data from a LinkedIn profile.
+    ---
+    tags:
+      - Profile (Live Proxy)
+    parameters:
+      - name: urn
+        in: query
+        required: true
+        type: string
+      - name: vanity
+        in: query
+        required: true
+        type: string
+      - name: locale
+        in: query
+        required: false
+        type: string
+        default: en-US
+    """
+    return get_profile_experiences()
