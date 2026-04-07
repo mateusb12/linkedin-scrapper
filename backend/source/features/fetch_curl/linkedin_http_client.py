@@ -41,6 +41,12 @@ def perform_linkedin_request(
         data: bytes | None = None,
         config_name: str | None = None,
 ) -> requests.Response:
+    config_name = config_name or getattr(
+        session,
+        "_linkedin_config_name",
+        "unknown"
+    )
+
     response = session.request(
         method=method,
         url=url,
@@ -51,52 +57,62 @@ def perform_linkedin_request(
         allow_redirects=False,
     )
 
-    config_name = config_name or getattr(
-        session,
-        "_linkedin_config_name",
-        "unknown"
-    )
+    if response.status_code == 200:
+        return response
 
-    location = response.headers.get("location", "")
+    # ==============================
+    # DEBUG ONLY ON ERROR
+    # ==============================
 
-    # qualquer coisa diferente de 200 vira erro explicativo
-    if response.status_code != 200:
+    location = response.headers.get("location")
 
-        base_msg = (
-            f"LinkedIn request failed "
-            f"(config='{config_name}', status={response.status_code}). "
-        )
+    print("\n--- LINKEDIN REQUEST FAILED ---")
 
-        # redirects geralmente significam cookie expirado
-        if response.status_code in REDIRECT_STATUSES:
+    print("config:", config_name)
+    print("status:", response.status_code)
 
-            logger.warning(
-                "LinkedIn redirect detected [config=%s] -> %s",
-                config_name,
-                location or "<missing>",
-            )
+    print("\nurl:")
+    print(url)
 
-            normalized_location = location.lower()
+    print("\nlocation:")
+    print(location)
 
-            if any(marker in normalized_location for marker in AUTH_REDIRECT_MARKERS):
-                raise _build_auth_expired_error(
-                    response.status_code,
-                    location
-                )
+    print("\nheaders sent:")
+    for k, v in headers.items():
+        print(f"{k}: {v}")
 
-            raise RuntimeError(
-                base_msg +
-                f"Unexpected redirect to {location or '<missing>'}. "
-                "Likely cause: expired li_at / JSESSIONID cookies in DB FetchCurl config."
+    print("\nsession cookies:")
+    print(session.cookies.get_dict())
+
+    print("\ncsrf-token:")
+    print(headers.get("csrf-token"))
+
+    print("\nresponse headers:")
+    for k, v in response.headers.items():
+        print(f"{k}: {v}")
+
+    print("\nresponse preview:")
+    print(response.text[:800])
+
+    print("--- END DEBUG ---\n")
+
+    # ==============================
+
+    if response.status_code in REDIRECT_STATUSES:
+
+        if location and any(m in location.lower() for m in AUTH_REDIRECT_MARKERS):
+            raise _build_auth_expired_error(
+                response.status_code,
+                location
             )
 
         raise RuntimeError(
-            base_msg +
-            f"Unexpected redirect to {location or '<missing>'}. "
-            f"Fix: update FetchCurl entry 'JobCardsLite' with fresh browser curl."
+            f"linkedin redirect {response.status_code} -> {location}"
         )
 
-    return response
+    raise RuntimeError(
+        f"linkedin request failed status={response.status_code}"
+    )
 
 
 # --- Add project root to path ---
