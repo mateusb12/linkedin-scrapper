@@ -39,6 +39,7 @@ def perform_linkedin_request(
         timeout: int = 15,
         json_body: Any = None,
         data: bytes | None = None,
+        config_name: str | None = None,
 ) -> requests.Response:
     response = session.request(
         method=method,
@@ -50,17 +51,53 @@ def perform_linkedin_request(
         allow_redirects=False,
     )
 
-    if response.status_code in REDIRECT_STATUSES:
-        location = response.headers.get("location", "")
-        logger.warning("LinkedIn redirect detected -> %s", location or "<missing>")
+    config_name = config_name or getattr(
+        session,
+        "_linkedin_config_name",
+        "unknown"
+    )
 
-        normalized_location = location.lower()
-        if any(marker in normalized_location for marker in AUTH_REDIRECT_MARKERS):
-            raise _build_auth_expired_error(response.status_code, location)
+    location = response.headers.get("location", "")
 
-        raise RuntimeError(f"Unexpected redirect from LinkedIn API: {location or '<missing>'}")
+    # qualquer coisa diferente de 200 vira erro explicativo
+    if response.status_code != 200:
+
+        base_msg = (
+            f"LinkedIn request failed "
+            f"(config='{config_name}', status={response.status_code}). "
+        )
+
+        # redirects geralmente significam cookie expirado
+        if response.status_code in REDIRECT_STATUSES:
+
+            logger.warning(
+                "LinkedIn redirect detected [config=%s] -> %s",
+                config_name,
+                location or "<missing>",
+            )
+
+            normalized_location = location.lower()
+
+            if any(marker in normalized_location for marker in AUTH_REDIRECT_MARKERS):
+                raise _build_auth_expired_error(
+                    response.status_code,
+                    location
+                )
+
+            raise RuntimeError(
+                base_msg +
+                f"Unexpected redirect to {location or '<missing>'}. "
+                "Likely cause: expired li_at / JSESSIONID cookies in DB FetchCurl config."
+            )
+
+        raise RuntimeError(
+            base_msg +
+            f"Unexpected redirect to {location or '<missing>'}. "
+            f"Fix: update FetchCurl entry 'JobCardsLite' with fresh browser curl."
+        )
 
     return response
+
 
 # --- Add project root to path ---
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -120,6 +157,7 @@ class LinkedInRequest(ABC):
             headers=merged_headers,
             json_body=self._body,
             timeout=timeout,
+            config_name=getattr(session, "_linkedin_config_name", None),
         )
 
         if self.debug:
@@ -158,6 +196,7 @@ class LinkedInClient:
         self.config_name = config_name
         self.slim_mode = slim_mode
         self.session = requests.Session()
+        self.session._linkedin_config_name = config_name
         self.config = self._load_config()
         self.csrf_token = None
 
