@@ -3,7 +3,8 @@ import re
 import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Any, Dict, Tuple
+from pprint import pformat
+from typing import List, Optional, Any, Dict, Tuple, Iterable
 
 from source.features.fetch_curl.linkedin_http_client import (
     LinkedInClient,
@@ -64,6 +65,37 @@ TECHNICAL_TOKENS = {
 
 def normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip())
+
+
+def preview_text(text: str, limit: int = 140) -> str:
+    t = normalize_text(text)
+    if len(t) <= limit:
+        return t
+    return t[:limit] + "..."
+
+
+def debug_print(debug: bool, message: str):
+    if debug:
+        print(message)
+
+
+def debug_block(debug: bool, title: str, payload: Any):
+    if not debug:
+        return
+    print(f"\n[TRACE] {title}")
+    if isinstance(payload, str):
+        print(payload)
+    else:
+        print(pformat(payload, width=120, compact=False))
+
+
+def write_trace_json(trace_rows: Any, filename: str = "experience_trace.json"):
+    dump_path = Path(__file__).resolve().parent / "debug" / filename
+    dump_path.parent.mkdir(parents=True, exist_ok=True)
+    dump_path.write_text(
+        json.dumps(trace_rows, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
 
 
 def encode_urn_only(raw_urn: str) -> str:
@@ -423,6 +455,80 @@ class Experience:
         }
 
 
+@dataclass
+class ExperienceCardRecord:
+    component_key: str
+    position_id: str
+    title: str
+    company_name: str
+    employment_type: str
+    location: str
+    work_type: str
+    start_date: str
+    end_date: str
+    duration: str
+    local_stream: List[str] = field(default_factory=list)
+    debug: Dict[str, Any] = field(default_factory=dict)
+
+    def to_trace_dict(self) -> Dict[str, Any]:
+        return {
+            "component_key": self.component_key,
+            "position_id": self.position_id,
+            "title": self.title,
+            "company_name": self.company_name,
+            "employment_type": self.employment_type,
+            "location": self.location,
+            "work_type": self.work_type,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "duration": self.duration,
+            "debug": self.debug,
+        }
+
+
+@dataclass
+class DescriptionBlockRecord:
+    binding_key: str
+    expansion_key: str
+    text: str
+    component_key: str
+    position_id: str
+    association_id: str
+    debug: Dict[str, Any] = field(default_factory=dict)
+
+    def to_trace_dict(self) -> Dict[str, Any]:
+        return {
+            "binding_key": self.binding_key,
+            "expansion_key": self.expansion_key,
+            "component_key": self.component_key,
+            "position_id": self.position_id,
+            "association_id": self.association_id,
+            "text_preview": preview_text(self.text, 320),
+            "debug": self.debug,
+        }
+
+
+@dataclass
+class FlightRecord:
+    label: str
+    kind: str
+    value: Any
+
+
+def make_serializable_payload(parsed_data: Dict[str, Any]) -> Dict[str, Any]:
+    serializable = dict(parsed_data)
+    flight_records = serializable.get("flight_records")
+    if isinstance(flight_records, dict):
+        serializable["flight_records"] = {
+            label: {
+                "kind": record.kind,
+                "value_type": type(record.value).__name__,
+            }
+            for label, record in flight_records.items()
+        }
+    return serializable
+
+
 def write_debug_stream_dump(stream: List[str]):
     dump_path = Path(__file__).resolve().parent / "debug" / "stream_dump.txt"
     dump_path.parent.mkdir(parents=True, exist_ok=True)
@@ -430,6 +536,449 @@ def write_debug_stream_dump(stream: List[str]):
     with open(dump_path, "w", encoding="utf-8") as f:
         for idx, s in enumerate(stream):
             f.write(f"{idx}: {s}\n")
+
+
+def walk_nodes(data: Any) -> Iterable[Any]:
+    yield data
+
+    if isinstance(data, dict):
+        for value in data.values():
+            yield from walk_nodes(value)
+    elif isinstance(data, list):
+        for item in data:
+            yield from walk_nodes(item)
+
+
+def iter_dicts(data: Any) -> Iterable[Dict[str, Any]]:
+    for node in walk_nodes(data):
+        if isinstance(node, dict):
+            yield node
+
+
+def first_non_empty(*values: Any) -> str:
+    for value in values:
+        normalized = normalize_text(str(value)) if value is not None else ""
+        if normalized:
+            return normalized
+    return ""
+
+
+def extract_strings_from_children(children: Any) -> List[str]:
+    result: List[str] = []
+
+    if isinstance(children, str):
+        normalized = normalize_text(children)
+        if normalized:
+            result.append(normalized)
+        return result
+
+    if isinstance(children, list):
+        for item in children:
+            result.extend(extract_strings_from_children(item))
+
+    return result
+
+
+def find_component_dicts(top_level_item: Any) -> List[Dict[str, Any]]:
+    seen: set[int] = set()
+    matches: List[Dict[str, Any]] = []
+
+    for node in iter_dicts(top_level_item):
+        component_key = first_non_empty(node.get("componentKey"), node.get("componentkey"))
+        if not component_key:
+            continue
+        node_id = id(node)
+        if node_id in seen:
+            continue
+        seen.add(node_id)
+        matches.append(node)
+
+    return matches
+
+
+def collect_structural_entries(data: Any) -> List[Dict[str, Any]]:
+    entries: List[Dict[str, Any]] = []
+    seen_anchors: set[int] = set()
+    seen_cards: set[str] = set()
+    seen_descriptions: set[Tuple[str, str]] = set()
+
+    def visit(node: Any):
+        if isinstance(node, dict):
+            component_key = first_non_empty(node.get("componentKey"), node.get("componentkey"))
+            if component_key == "profileExperienceDetails_top_anchor":
+                node_id = id(node)
+                if node_id not in seen_anchors:
+                    seen_anchors.add(node_id)
+                    entries.append({"type": "anchor", "node": node, "component_key": component_key})
+
+            elif component_key.startswith("entity-collection-item"):
+                if component_key not in seen_cards:
+                    seen_cards.add(component_key)
+                    entries.append({"type": "card", "node": node, "component_key": component_key})
+
+            text_props = node.get("textProps")
+            binding_key = node.get("bindingKey")
+            if isinstance(text_props, dict) and isinstance(binding_key, dict):
+                binding_value = first_non_empty(binding_key.get("value"))
+                expansion_key = first_non_empty(node.get("expansionKey"))
+                description_key = (binding_value, expansion_key)
+                if any(description_key) and description_key not in seen_descriptions:
+                    seen_descriptions.add(description_key)
+                    entries.append({"type": "description", "node": node, "component_key": component_key})
+
+            for value in node.values():
+                visit(value)
+
+        elif isinstance(node, list):
+            for item in node:
+                visit(item)
+
+    visit(data)
+    return entries
+
+
+def find_first_key_value(data: Any, key: str) -> str:
+    for node in iter_dicts(data):
+        value = node.get(key)
+        if isinstance(value, (str, int)):
+            normalized = normalize_text(str(value))
+            if normalized:
+                return normalized
+    return ""
+
+
+def collect_payload_values(data: Any, payload_key: str) -> List[str]:
+    values: List[str] = []
+    seen: set[str] = set()
+
+    for node in iter_dicts(data):
+        payload = node.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        value = payload.get(payload_key)
+        if value is None:
+            continue
+        normalized = normalize_text(str(value))
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        values.append(normalized)
+
+    return values
+
+
+def parse_text_flight_record(content: str) -> str:
+    if "," not in content:
+        return content[1:]
+    _, text = content.split(",", 1)
+    return text
+
+
+def parse_sdui_stream_to_dict(raw_text: str) -> dict:
+    included_items = []
+    flight_records: Dict[str, FlightRecord] = {}
+    raw_bytes = raw_text.encode("utf-8")
+    idx = 0
+    text_len = len(raw_bytes)
+
+    while idx < text_len:
+        if raw_bytes[idx:idx + 1] in {b"\n", b"\r"}:
+            idx += 1
+            continue
+
+        colon_idx = raw_bytes.find(b":", idx)
+        if colon_idx == -1:
+            break
+
+        label = raw_bytes[idx:colon_idx].decode("utf-8", errors="replace").strip()
+        if not label:
+            idx = colon_idx + 1
+            continue
+
+        payload_start = colon_idx + 1
+        if payload_start >= text_len:
+            break
+
+        record_type = raw_bytes[payload_start:payload_start + 1]
+
+        if record_type == b"T":
+            comma_idx = raw_bytes.find(b",", payload_start)
+            if comma_idx == -1:
+                break
+            hex_length = raw_bytes[payload_start + 1:comma_idx].decode("ascii", errors="ignore")
+            try:
+                content_length = int(hex_length, 16)
+            except ValueError:
+                content_length = 0
+            content_start = comma_idx + 1
+            content_end = min(text_len, content_start + content_length)
+            value = raw_bytes[content_start:content_end].decode("utf-8", errors="replace")
+            flight_records[label] = FlightRecord(label=label, kind="text", value=value)
+            idx = content_end
+            continue
+
+        newline_idx = raw_bytes.find(b"\n", payload_start)
+        if newline_idx == -1:
+            payload_text = raw_bytes[payload_start:].decode("utf-8", errors="replace").strip()
+            idx = text_len
+        else:
+            payload_text = raw_bytes[payload_start:newline_idx].decode("utf-8", errors="replace").strip()
+            idx = newline_idx + 1
+
+        if not payload_text:
+            continue
+
+        if payload_text.startswith("I"):
+            flight_records[label] = FlightRecord(label=label, kind="import", value=payload_text)
+            continue
+
+        try:
+            parsed = json.loads(payload_text)
+        except json.JSONDecodeError:
+            flight_records[label] = FlightRecord(label=label, kind="raw", value=payload_text)
+            continue
+
+        if isinstance(parsed, (list, dict)):
+            included_items.append(parsed)
+
+        flight_records[label] = FlightRecord(label=label, kind="json", value=parsed)
+
+    return {"data": {}, "included": included_items, "flight_records": flight_records}
+
+
+def resolve_flight_ref_token(token: str, flight_records: Dict[str, FlightRecord]) -> Any:
+    if not isinstance(token, str) or not token.startswith("$"):
+        return token
+
+    if token in {"$undefined", "$null"}:
+        return None
+
+    if token.startswith("$L"):
+        label = token[2:]
+    else:
+        label = token[1:]
+
+    record = flight_records.get(label)
+    if not record:
+        return None
+
+    return record.value
+
+
+def resolve_text_children(children: Any, flight_records: Dict[str, FlightRecord]) -> List[str]:
+    result: List[str] = []
+
+    if isinstance(children, str):
+        if children.startswith("$"):
+            resolved = resolve_flight_ref_token(children, flight_records)
+            if isinstance(resolved, str):
+                normalized = normalize_text(resolved)
+                if normalized:
+                    result.append(normalized)
+            elif resolved is not None:
+                result.extend(resolve_text_children(resolved, flight_records))
+            return result
+
+        normalized = normalize_text(children)
+        if normalized:
+            result.append(normalized)
+        return result
+
+    if isinstance(children, list):
+        for item in children:
+            result.extend(resolve_text_children(item, flight_records))
+
+    return result
+
+
+def classify_resolved_component(resolved: Any, flight_records: Dict[str, FlightRecord]) -> str:
+    if resolved is None:
+        return "missing"
+
+    if isinstance(resolved, str):
+        return "text"
+
+    if isinstance(resolved, list) and len(resolved) >= 4 and isinstance(resolved[3], dict):
+        props = resolved[3]
+
+        text_props = props.get("textProps")
+        if isinstance(text_props, dict):
+            text_preview = " ".join(resolve_text_children(text_props.get("children"), flight_records))
+            if text_preview and looks_like_description(text_preview):
+                return "description_block"
+            return "text_block"
+
+        if props.get("componentkey") or props.get("componentKey"):
+            component_key = first_non_empty(props.get("componentkey"), props.get("componentKey"))
+            if component_key == "004febd4-7234-43de-8d61-dca439f3d521":
+                return "media_button"
+
+        if props.get("children") == []:
+            return "empty_spacer"
+
+        if find_first_key_value(props, "associationId"):
+            return "skills_block"
+
+        if "helped me get this job" in json.dumps(props, ensure_ascii=False).lower():
+            return "promo_block"
+
+        if "Portfolio" in json.dumps(props, ensure_ascii=False):
+            return "portfolio_block"
+
+        if "imageId" in json.dumps(props, ensure_ascii=False):
+            return "media_block"
+
+        return "component"
+
+    if isinstance(resolved, dict):
+        dumped = json.dumps(resolved, ensure_ascii=False)
+        if "helped me get this job" in dumped.lower():
+            return "promo_block"
+        if "Portfolio" in dumped:
+            return "portfolio_block"
+        return "object"
+
+    return "unknown"
+
+
+def collect_card_reference_details(card_node: Any, flight_records: Dict[str, FlightRecord]) -> List[Dict[str, Any]]:
+    refs: List[Dict[str, Any]] = []
+    seen_labels: set[str] = set()
+
+    def visit(node: Any, path: str):
+        if isinstance(node, str):
+            if node.startswith("$L"):
+                label = node[2:]
+                if label in seen_labels:
+                    return
+                seen_labels.add(label)
+                record = flight_records.get(label)
+                resolved = record.value if record else None
+                component_type = classify_resolved_component(resolved, flight_records)
+                text_preview = ""
+
+                if component_type in {"description_block", "text_block"} and isinstance(resolved, list) and len(resolved) >= 4:
+                    text_props = resolved[3].get("textProps", {})
+                    text_preview = preview_text(
+                        " ".join(resolve_text_children(text_props.get("children"), flight_records)),
+                        280
+                    )
+
+                refs.append({
+                    "label": label,
+                    "ref": node,
+                    "path": path,
+                    "record_kind": record.kind if record else "missing",
+                    "component_type": component_type,
+                    "text_preview": text_preview,
+                })
+            return
+
+        if isinstance(node, list):
+            for idx, item in enumerate(node):
+                visit(item, f"{path}[{idx}]")
+        elif isinstance(node, dict):
+            for key, value in node.items():
+                visit(value, f"{path}.{key}")
+
+    visit(card_node, "card")
+    return refs
+
+
+def extract_text_component_records(top_level_item: Any) -> List[DescriptionBlockRecord]:
+    records: List[DescriptionBlockRecord] = []
+    seen_keys: set[Tuple[str, str, str]] = set()
+
+    for node in iter_dicts(top_level_item):
+        text_props = node.get("textProps")
+        binding_key = node.get("bindingKey")
+        if not isinstance(text_props, dict) or not isinstance(binding_key, dict):
+            continue
+
+        children = extract_strings_from_children(text_props.get("children"))
+        text = "\n\n".join(children).strip()
+        if not text or not looks_like_description(text):
+            continue
+
+        binding_value = first_non_empty(binding_key.get("value"))
+        expansion_key = first_non_empty(node.get("expansionKey"))
+        key = (binding_value, expansion_key, text)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+
+        records.append(
+            DescriptionBlockRecord(
+                binding_key=binding_value,
+                expansion_key=expansion_key,
+                text=text,
+                component_key=first_non_empty(node.get("componentKey"), node.get("componentkey")),
+                position_id=find_first_key_value(node, "positionId"),
+                association_id=find_first_key_value(node, "associationId"),
+                debug={
+                    "text_children_count": len(children),
+                    "top_level_item_kind": type(top_level_item).__name__,
+                },
+            )
+        )
+
+    return records
+
+
+def parse_experience_card_component(component: Dict[str, Any]) -> Optional[ExperienceCardRecord]:
+    raw_texts: List[str] = []
+    flatten_values(component, raw_texts)
+    local_stream = clean_text_list(raw_texts)
+
+    anchors: List[Tuple[int, Dict[str, str]]] = []
+    for idx, text in enumerate(local_stream):
+        parsed_date = parse_date_row(text)
+        if parsed_date:
+            anchors.append((idx, parsed_date))
+
+    if not anchors:
+        return None
+
+    date_idx, date_info = anchors[0]
+    header_candidates = collect_header_candidates(local_stream, date_idx, window=5)
+    resolved = resolve_title_company_from_candidates(header_candidates)
+    if not resolved:
+        return None
+
+    location, work_type, _ = extract_location_after_date(local_stream, date_idx)
+
+    position_ids = collect_payload_values(component, "positionId")
+    association_ids = collect_payload_values(component, "associationId")
+
+    return ExperienceCardRecord(
+        component_key=first_non_empty(component.get("componentKey"), component.get("componentkey")),
+        position_id=position_ids[0] if position_ids else "",
+        title=resolved["title"],
+        company_name=resolved["company_name"],
+        employment_type=resolved["employment_type"],
+        location=location,
+        work_type=work_type,
+        start_date=date_info["start"],
+        end_date=date_info["end"],
+        duration=date_info["duration"],
+        local_stream=local_stream,
+        debug={
+            "date_anchor": {
+                "stream_idx": date_idx,
+                "raw": local_stream[date_idx],
+                "start": date_info["start"],
+                "end": date_info["end"],
+                "duration": date_info["duration"],
+            },
+            "header_candidates": [{"idx": idx, "text": text} for idx, text in header_candidates],
+            "resolved_header": resolved,
+            "association_ids": association_ids,
+            "local_stream_preview": [
+                {"idx": idx, "text": text}
+                for idx, text in enumerate(local_stream[:20])
+            ],
+        },
+    )
 
 
 def collect_header_candidates(stream: List[str], date_idx: int, window: int = 5) -> List[Tuple[int, str]]:
@@ -586,9 +1135,11 @@ def extract_description(
         start_idx: int,
         end_idx: int,
         title: str,
-        company_name: str
+        company_name: str,
+        debug: bool = False,
 ) -> str:
     description_parts: List[str] = []
+    accepted_candidates: List[Dict[str, Any]] = []
 
     skip_values = {
         normalize_text(title),
@@ -612,6 +1163,12 @@ def extract_description(
             continue
 
         text_segment = dedupe_repeated_tail(text_segment)
+
+        accepted_candidates.append({
+            "idx": j,
+            "preview": preview_text(text_segment, 180),
+        })
+
         append_description_part(description_parts, text_segment)
 
     deduped_parts: List[str] = []
@@ -623,6 +1180,17 @@ def extract_description(
             continue
         seen.add(normalized)
         deduped_parts.append(part)
+
+    if debug:
+        debug_block(
+            True,
+            f"DESCRIPTION CANDIDATES for {title} @ {company_name}",
+            accepted_candidates
+        )
+        debug_print(
+            True,
+            f"[TRACE] FINAL INLINE DESCRIPTION: {preview_text(' '.join(deduped_parts), 240)}"
+        )
 
     return "\n\n".join(deduped_parts).strip()
 
@@ -797,19 +1365,8 @@ def merge_experience_lists(experiences: List[Experience]) -> List[Experience]:
 
 
 def parse_experiences_from_stream(json_data: dict, debug: bool = False) -> List[Experience]:
-    """
-    Strategy:
-    1. Flatten all JSON text into a linear stream
-    2. Find date anchors
-    3. For each date anchor, inspect a small backward window to infer title/company
-    4. Extract optional location and description
-    5. Validate with dataclass
-    6. Merge duplicates
-    """
-
     raw_texts: List[str] = []
     flatten_values(json_data, raw_texts)
-
     stream = clean_text_list(raw_texts)
 
     if debug:
@@ -822,112 +1379,171 @@ def parse_experiences_from_stream(json_data: dict, debug: bool = False) -> List[
         if parsed_date:
             anchors.append((idx, parsed_date))
 
+    debug_block(
+        debug,
+        "DATE ANCHORS",
+        [
+            {
+                "stream_idx": idx,
+                "raw": stream[idx],
+                "start": parsed["start"],
+                "end": parsed["end"],
+                "duration": parsed["duration"],
+            }
+            for idx, parsed in anchors
+        ]
+    )
+
     details_anchor_indices = [
         idx for idx, text in enumerate(stream)
         if normalize_text(text) == "profileExperienceDetails_top_anchor"
     ]
-    later_detail_slots = (
-        extract_description_slots_after_anchor(stream, details_anchor_indices[1])
-        if len(details_anchor_indices) > 1
-        else []
+
+    debug_block(
+        debug,
+        "DETAIL ANCHOR INDICES",
+        details_anchor_indices
+    )
+    entries = collect_structural_entries(json_data.get("included", []))
+    flight_records: Dict[str, FlightRecord] = json_data.get("flight_records", {})
+    section_index = 0
+    card_records: List[ExperienceCardRecord] = []
+    description_records: List[DescriptionBlockRecord] = []
+    card_reference_map: Dict[str, List[Dict[str, Any]]] = {}
+
+    for entry_index, entry in enumerate(entries):
+        item = entry["node"]
+        entry_type = entry["type"]
+
+        if entry_type == "anchor":
+            section_index += 1
+            continue
+
+        if section_index == 1 and entry_type == "card":
+            card_record = parse_experience_card_component(item)
+            if not card_record:
+                continue
+            card_record.debug["entry_index"] = entry_index
+            card_refs = collect_card_reference_details(item, flight_records)
+            card_record.debug["flight_refs"] = card_refs
+            card_reference_map[card_record.component_key] = card_refs
+            card_records.append(card_record)
+
+    debug_block(
+        debug,
+        "PARSED CARD RECORDS",
+        [record.to_trace_dict() for record in card_records]
     )
 
     results: List[Experience] = []
+    join_decisions: List[Dict[str, Any]] = []
 
-    for i, (date_idx, date_info) in enumerate(anchors):
-        header_candidates = collect_header_candidates(stream, date_idx, window=5)
-        resolved = resolve_title_company_from_candidates(header_candidates)
+    for card in card_records:
+        matched_description: Optional[DescriptionBlockRecord] = None
+        join_key = ""
+        join_source = "unmatched"
+        card_refs = card_reference_map.get(card.component_key, [])
+        description_candidates: List[DescriptionBlockRecord] = []
 
-        if not resolved:
-            if debug:
-                print(f"[DEBUG] Skipping anchor at {date_idx}: could not resolve title/company")
-            continue
-
-        title = resolved["title"]
-        company_name = resolved["company_name"]
-        employment_type = resolved["employment_type"]
-
-        location, work_type, desc_start_idx = extract_location_after_date(stream, date_idx)
-        next_anchor_idx_before_boundary = anchors[i + 1][0] if i + 1 < len(anchors) else len(stream)
-        next_anchor_idx = find_description_section_boundary(
-            stream,
-            desc_start_idx,
-            next_anchor_idx_before_boundary
-        )
-
-        full_description = extract_description(
-            stream=stream,
-            start_idx=desc_start_idx,
-            end_idx=next_anchor_idx,
-            title=title,
-            company_name=company_name
-        )
-
-        if not full_description and next_anchor_idx < next_anchor_idx_before_boundary:
-            full_description = extract_last_description_after_boundary(
-                stream=stream,
-                start_idx=next_anchor_idx + 1,
-                end_idx=next_anchor_idx_before_boundary,
-                title=title,
-                company_name=company_name,
+        for ref in card_refs:
+            if ref["component_type"] != "description_block":
+                continue
+            record = flight_records.get(ref["label"])
+            if not record or not isinstance(record.value, list) or len(record.value) < 4:
+                continue
+            props = record.value[3]
+            text_props = props.get("textProps", {})
+            text = "\n\n".join(resolve_text_children(text_props.get("children"), flight_records)).strip()
+            if not text:
+                continue
+            description_candidates.append(
+                DescriptionBlockRecord(
+                    binding_key=first_non_empty(find_first_key_value(props.get("bindingKey"), "value")),
+                    expansion_key=first_non_empty(props.get("expansionKey")),
+                    text=text,
+                    component_key=card.component_key,
+                    position_id=card.position_id,
+                    association_id="",
+                    debug={
+                        "source_ref": ref["ref"],
+                        "source_label": ref["label"],
+                        "source_path": ref["path"],
+                    },
+                )
             )
 
-        if not full_description and i < len(later_detail_slots):
-            full_description = later_detail_slots[i]
+        if len(description_candidates) == 1:
+            matched_description = description_candidates[0]
+            join_key = matched_description.debug["source_label"]
+            join_source = "card_ref"
+            description_records.append(matched_description)
+
+        join_decisions.append({
+            "component_key": card.component_key,
+            "position_id": card.position_id,
+            "title": card.title,
+            "company_name": card.company_name,
+            "card_refs": card_refs,
+            "description_candidate_labels": [candidate.debug["source_label"] for candidate in description_candidates],
+            "matched": bool(matched_description),
+            "join_source": join_source,
+            "join_key": join_key,
+            "description_binding_key": matched_description.binding_key if matched_description else "",
+            "description_expansion_key": matched_description.expansion_key if matched_description else "",
+            "description_preview": preview_text(matched_description.text, 260) if matched_description else "",
+            "reason": (
+                "matched using explicit structural identifier"
+                if matched_description
+                else "no shared structural identifier between card and description block"
+            ),
+        })
 
         try:
-            exp = Experience(
-                title=title,
-                company_name=company_name,
-                employment_type=employment_type,
-                location=location,
-                work_type=work_type,
-                start_date=date_info["start"],
-                end_date=date_info["end"],
-                duration=date_info["duration"],
-                description=full_description,
-                skills=[]
+            results.append(
+                Experience(
+                    title=card.title,
+                    company_name=card.company_name,
+                    employment_type=card.employment_type,
+                    location=card.location,
+                    work_type=card.work_type,
+                    start_date=card.start_date,
+                    end_date=card.end_date,
+                    duration=card.duration,
+                    description=matched_description.text if matched_description else "",
+                    skills=[]
+                )
             )
-            results.append(exp)
-
         except ValueError as e:
             if debug:
-                print(f"[DEBUG] Invalid experience skipped at anchor {date_idx}: {e}")
-            continue
+                print(f"[DEBUG] Invalid structured experience skipped ({card.component_key}): {e}")
+
+    debug_block(debug, "FINAL JOIN DECISIONS", join_decisions)
+    debug_block(
+        debug,
+        "PARSED DESCRIPTION BLOCK RECORDS",
+        [record.to_trace_dict() for record in description_records]
+    )
+
+    if debug:
+        write_trace_json({
+            "stream_size": len(stream),
+            "date_anchors": [
+                {
+                    "stream_idx": idx,
+                    "raw": stream[idx],
+                    "start": parsed["start"],
+                    "end": parsed["end"],
+                    "duration": parsed["duration"],
+                }
+                for idx, parsed in anchors
+            ],
+            "detail_anchor_indices": details_anchor_indices,
+            "card_records": [record.to_trace_dict() for record in card_records],
+            "description_block_records": [record.to_trace_dict() for record in description_records],
+            "join_decisions": join_decisions,
+        })
 
     return merge_experience_lists(results)
-
-
-def parse_sdui_stream_to_dict(raw_text: str) -> dict:
-    included_items = []
-    lines = raw_text.split("\n")
-
-    for line in lines:
-        if not line.strip():
-            continue
-
-        if ":" not in line:
-            continue
-
-        _, json_part = line.split(":", 1)
-
-        try:
-            parsed = json.loads(json_part)
-
-            if isinstance(parsed, list):
-                included_items.append(parsed)
-
-                for item in parsed:
-                    if isinstance(item, dict):
-                        included_items.append(item)
-
-            elif isinstance(parsed, dict):
-                included_items.append(parsed)
-
-        except json.JSONDecodeError:
-            continue
-
-    return {"data": {}, "included": included_items}
 
 
 def extract_vanity_from_referer(referer: str) -> Optional[str]:
@@ -944,7 +1560,9 @@ def fetch_linkedin_profile_experiences(
         locale: str = "en-US",
         start: int = 0,
         count: int = 10,
-        debug: bool = True
+        debug: bool = True,
+        dump_raw_payload: bool = False,
+        include_raw_in_result: bool = False,
 ):
     if debug:
         print(f"=== Fetch LinkedIn Experiences via SDUI (Stream Parser) [Locale: {locale}] ===")
@@ -1047,25 +1665,30 @@ def fetch_linkedin_profile_experiences(
         else:
             parsed_data = response.json()
 
-        if debug:
+        if debug and dump_raw_payload:
             dump_dir = Path(__file__).resolve().parent / "debug"
             dump_dir.mkdir(parents=True, exist_ok=True)
             dump_path = dump_dir / "linkedin_sdui_dump.json"
             dump_path.write_text(
-                json.dumps(parsed_data, indent=2, ensure_ascii=False),
+                json.dumps(make_serializable_payload(parsed_data), indent=2, ensure_ascii=False),
                 encoding="utf-8"
             )
+            print(f"[DEBUG] Raw payload dumped to: {dump_path}")
 
         experiences_list = parse_experiences_from_stream(parsed_data, debug=debug)
         experiences_dicts = [exp.to_dict() for exp in experiences_list]
 
         if debug:
             print(f"✅ Stream Parser encontrou {len(experiences_dicts)} experiências.")
+            print(
+                f"[DEBUG] Trace file saved to: "
+                f"{Path(__file__).resolve().parent / 'debug' / 'experience_trace.json'}"
+            )
 
         return {
             "ok": True,
             "experiences": experiences_dicts,
-            "raw": parsed_data if debug else None
+            "raw": make_serializable_payload(parsed_data) if include_raw_in_result else None
         }
 
     except Exception as e:
@@ -1073,9 +1696,6 @@ def fetch_linkedin_profile_experiences(
 
 
 if __name__ == "__main__":
-    import json
-    from pathlib import Path
-
     profile_urn = "urn:li:fsd_profile:ACoAAD016UkBWKGUUWKD7WdA2pTCzevPYoF-xnE"
     vanity = "mateus-bessa-m"
     locale = "en-US"
@@ -1086,7 +1706,9 @@ if __name__ == "__main__":
         locale=locale,
         start=0,
         count=10,
-        debug=True
+        debug=True,
+        dump_raw_payload=False,
+        include_raw_in_result=False,
     )
 
     debug_dir = Path(__file__).resolve().parent / "debug"
