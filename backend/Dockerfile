@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     ripgrep \
+    jq \
     && rm -rf /var/lib/apt/lists/*
 
 # ===============================

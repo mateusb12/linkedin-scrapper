@@ -1,4 +1,3 @@
-
 import json
 import re
 import urllib.parse
@@ -10,7 +9,6 @@ from source.features.fetch_curl.linkedin_http_client import (
     LinkedInClient,
     SduiPaginationRequest
 )
-
 
 EMPLOYMENT_TYPE_TOKENS = {
     "full-time",
@@ -62,7 +60,6 @@ TECHNICAL_TOKENS = {
     "start", "1x", "more", "fillavailable",
     "experience",
 }
-
 
 
 def normalize_text(text: str) -> str:
@@ -377,7 +374,6 @@ def is_valid_company_name(text: str) -> bool:
     return True
 
 
-
 @dataclass
 class Experience:
     title: str
@@ -425,7 +421,6 @@ class Experience:
             "description": self.description,
             "skills": self.skills
         }
-
 
 
 def write_debug_stream_dump(stream: List[str]):
@@ -676,6 +671,45 @@ def find_description_section_boundary(stream: List[str], start_idx: int, end_idx
     return end_idx
 
 
+def extract_description_slots_after_anchor(stream: List[str], anchor_idx: int) -> List[str]:
+    """
+    The later details section stores one logical description slot per experience.
+    Each slot ends after two repeated `stringValue` markers. When a description is
+    missing in the raw payload, the slot is still present but contains no text.
+    """
+    slots: List[str] = []
+    description_parts: List[str] = []
+    string_value_count = 0
+
+    for j in range(anchor_idx + 1, len(stream)):
+        text_segment = normalize_text(stream[j])
+
+        if not text_segment:
+            continue
+
+        if text_segment == "stringValue":
+            string_value_count += 1
+            if string_value_count == 2:
+                slots.append(description_parts[-1] if description_parts else "")
+                description_parts = []
+                string_value_count = 0
+            continue
+
+        if is_garbage(text_segment):
+            continue
+        if parse_date_row(text_segment):
+            continue
+        if is_location_like(text_segment):
+            continue
+        if not looks_like_description(text_segment):
+            continue
+
+        text_segment = dedupe_repeated_tail(text_segment)
+        append_description_part(description_parts, text_segment)
+
+    return slots
+
+
 def same_experience(a: Experience, b: Experience) -> bool:
     if a.start_date != b.start_date:
         return False
@@ -762,7 +796,6 @@ def merge_experience_lists(experiences: List[Experience]) -> List[Experience]:
     return merged
 
 
-
 def parse_experiences_from_stream(json_data: dict, debug: bool = False) -> List[Experience]:
     """
     Strategy:
@@ -788,6 +821,16 @@ def parse_experiences_from_stream(json_data: dict, debug: bool = False) -> List[
         parsed_date = parse_date_row(text)
         if parsed_date:
             anchors.append((idx, parsed_date))
+
+    details_anchor_indices = [
+        idx for idx, text in enumerate(stream)
+        if normalize_text(text) == "profileExperienceDetails_top_anchor"
+    ]
+    later_detail_slots = (
+        extract_description_slots_after_anchor(stream, details_anchor_indices[1])
+        if len(details_anchor_indices) > 1
+        else []
+    )
 
     results: List[Experience] = []
 
@@ -829,6 +872,9 @@ def parse_experiences_from_stream(json_data: dict, debug: bool = False) -> List[
                 company_name=company_name,
             )
 
+        if not full_description and i < len(later_detail_slots):
+            full_description = later_detail_slots[i]
+
         try:
             exp = Experience(
                 title=title,
@@ -850,7 +896,6 @@ def parse_experiences_from_stream(json_data: dict, debug: bool = False) -> List[
             continue
 
     return merge_experience_lists(results)
-
 
 
 def parse_sdui_stream_to_dict(raw_text: str) -> dict:
@@ -891,7 +936,6 @@ def extract_vanity_from_referer(referer: str) -> Optional[str]:
 
     match = re.search(r"/in/([^/]+)/", referer)
     return match.group(1) if match else None
-
 
 
 def fetch_linkedin_profile_experiences(
@@ -1030,6 +1074,7 @@ def fetch_linkedin_profile_experiences(
 
 if __name__ == "__main__":
     import json
+    from pathlib import Path
 
     profile_urn = "urn:li:fsd_profile:ACoAAD016UkBWKGUUWKD7WdA2pTCzevPYoF-xnE"
     vanity = "mateus-bessa-m"
@@ -1044,6 +1089,16 @@ if __name__ == "__main__":
         debug=True
     )
 
+    debug_dir = Path(__file__).resolve().parent / "debug"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+
+    result_path = debug_dir / "linkedin_experiences_result.json"
+    result_path.write_text(
+        json.dumps(result, indent=2, ensure_ascii=False),
+        encoding="utf-8"
+    )
+
     print("\n===== RESULT =====\n")
-    result_to_print = {k: v for k, v in result.items() if k != "raw"}
-    print(json.dumps(result_to_print, indent=2, ensure_ascii=False))
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+    print(f"\nSaved full result to: {result_path}")
