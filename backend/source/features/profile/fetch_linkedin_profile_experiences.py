@@ -159,8 +159,21 @@ def is_garbage(text: str) -> bool:
     if re.match(r"https?://", lowered):
         return True
 
+    if lowered.startswith("/in/") or lowered.startswith("/jobs/") or lowered.startswith("/company/"):
+        return True
+
+    if "/details/experience/edit/forms/" in lowered:
+        return True
+
+    if "/overlay/" in lowered and "skill-associations-details" in lowered:
+        return True
+
     if "licdn.com" in lowered:
         return True
+
+    if t.startswith("{") and t.endswith("}"):
+        if "\"semanticId\"" in t or "\"key\"" in t:
+            return True
 
     if re.search(r"\d+_\d+\/", t):
         return True
@@ -619,6 +632,50 @@ def extract_description(
     return "\n\n".join(deduped_parts).strip()
 
 
+def extract_last_description_after_boundary(
+        stream: List[str],
+        start_idx: int,
+        end_idx: int,
+        title: str,
+        company_name: str
+) -> str:
+    description_parts: List[str] = []
+
+    skip_values = {
+        normalize_text(title),
+        normalize_text(company_name),
+    }
+
+    for j in range(start_idx, min(end_idx, len(stream))):
+        text_segment = normalize_text(stream[j])
+
+        if not text_segment:
+            continue
+        if text_segment in skip_values:
+            continue
+        if is_garbage(text_segment):
+            continue
+        if parse_date_row(text_segment):
+            continue
+        if is_location_like(text_segment):
+            continue
+        if not looks_like_description(text_segment):
+            continue
+
+        text_segment = dedupe_repeated_tail(text_segment)
+        append_description_part(description_parts, text_segment)
+
+    return description_parts[-1] if description_parts else ""
+
+
+def find_description_section_boundary(stream: List[str], start_idx: int, end_idx: int) -> int:
+    for idx in range(start_idx, min(end_idx, len(stream))):
+        if normalize_text(stream[idx]) == "profileExperienceDetails_top_anchor":
+            return idx
+
+    return end_idx
+
+
 def same_experience(a: Experience, b: Experience) -> bool:
     if a.start_date != b.start_date:
         return False
@@ -748,7 +805,12 @@ def parse_experiences_from_stream(json_data: dict, debug: bool = False) -> List[
         employment_type = resolved["employment_type"]
 
         location, work_type, desc_start_idx = extract_location_after_date(stream, date_idx)
-        next_anchor_idx = anchors[i + 1][0] if i + 1 < len(anchors) else len(stream)
+        next_anchor_idx_before_boundary = anchors[i + 1][0] if i + 1 < len(anchors) else len(stream)
+        next_anchor_idx = find_description_section_boundary(
+            stream,
+            desc_start_idx,
+            next_anchor_idx_before_boundary
+        )
 
         full_description = extract_description(
             stream=stream,
@@ -757,6 +819,15 @@ def parse_experiences_from_stream(json_data: dict, debug: bool = False) -> List[
             title=title,
             company_name=company_name
         )
+
+        if not full_description and next_anchor_idx < next_anchor_idx_before_boundary:
+            full_description = extract_last_description_after_boundary(
+                stream=stream,
+                start_idx=next_anchor_idx + 1,
+                end_idx=next_anchor_idx_before_boundary,
+                title=title,
+                company_name=company_name,
+            )
 
         try:
             exp = Experience(
