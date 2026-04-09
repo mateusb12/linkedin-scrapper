@@ -114,9 +114,17 @@ def handle_bad_request(e):
 
 @app.errorhandler(Exception)
 def handle_all_exceptions(e):
+    # let Flask handle HTTP errors normally (404, 405, etc)
+    if isinstance(e, HTTPException):
+        return e
+
     print("\n🔥🔥🔥 UNCAUGHT EXCEPTION 🔥🔥🔥")
     traceback.print_exc()
-    return {"error": str(e)}, 500
+
+    return {
+        "error": str(e),
+        "type": type(e).__name__,
+    }, 500
 
 
 if __name__ == '__main__':

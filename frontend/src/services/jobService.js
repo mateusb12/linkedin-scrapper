@@ -65,7 +65,7 @@ export const fetchAppliedJobs = async ({
   startDate,
   skipSync,
 } = {}) => {
-  let url = `${API_BASE}/services/applied-jobs`;
+  let url = `${API_BASE}/services/applied`;
 
   const params = [];
   if (page) params.push(`page=${page}`);
