@@ -18,6 +18,7 @@ from source.features.fetch_curl.linkedin_http_client import LinkedInClient
 from source.features.get_applied_jobs.utils_proxy import (
     JobPost,
     JobServiceResponse,
+    LinkedInAppliedJobsEmptyError,
     RawStringRequest,
     ms_to_iso,
     parse_linkedin_stream,
@@ -84,6 +85,14 @@ class LinkedInProxy:
         candidates = []
         for item in stream_items:
             candidates.extend(find_job_objects_recursive(item))
+        raw_job_ids = extract_job_ids_from_stream(response.text)
+
+        if response.status_code == 200 and not raw_job_ids and not candidates:
+            _log(
+                "⚠️ POSSIBLE STALE LINKEDIN AUTH: "
+                "stage=applied, HTTP 200, zero regex IDs, zero JSON candidates"
+            )
+            raise LinkedInAppliedJobsEmptyError()
 
         results = []
         global_seen_ids = set()
@@ -181,6 +190,13 @@ class LinkedInProxy:
 
             json_job_ids = {str(job.get("jobId")) for job in page_candidates if job.get("jobId")}
             _log(f"   📊 JSON found {len(json_job_ids)} structured jobs")
+
+            if stage == "applied" and response.status_code == 200 and not raw_job_ids and not page_candidates:
+                _log(
+                    "⚠️ POSSIBLE STALE LINKEDIN AUTH: "
+                    "stage=applied, HTTP 200, zero regex IDs, zero JSON candidates"
+                )
+                raise LinkedInAppliedJobsEmptyError()
 
             # ═══ Step 5: MERGE - Decide which approach to use ═══
             new_unique = 0

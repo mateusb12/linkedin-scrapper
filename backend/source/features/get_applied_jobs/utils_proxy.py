@@ -81,6 +81,19 @@ class JobServiceResponse:
         return asdict(self)
 
 
+class LinkedInAppliedJobsEmptyError(Exception):
+    """Raised when LinkedIn returns HTTP 200 for applied jobs but nothing extractable."""
+
+    status_code = 502
+    default_message = (
+        "LinkedIn returned no extractable applied jobs. "
+        "SavedJobs curl config or cookies may be stale."
+    )
+
+    def __init__(self, message=None):
+        super().__init__(message or self.default_message)
+
+
 @dataclass
 class NotificationEvent:
     """Represents a notification event from LinkedIn."""

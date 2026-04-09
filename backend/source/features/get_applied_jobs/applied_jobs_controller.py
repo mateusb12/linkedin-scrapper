@@ -24,7 +24,15 @@ from source.features.get_applied_jobs.applied_jobs_livestream_sync_service impor
     AppliedJobsIncrementalSync,
 )
 from source.features.get_applied_jobs.linkedin_http_proxy import LinkedInProxy
+from source.features.get_applied_jobs.utils_proxy import LinkedInAppliedJobsEmptyError
 from source.features.jobs.job_repository import JobRepository
+
+
+def _build_linkedin_upstream_error_response(exc: LinkedInAppliedJobsEmptyError):
+    return jsonify({
+        "status": "error",
+        "error": str(exc),
+    }), exc.status_code
 
 def get_applied_jobs():
     try:
@@ -44,6 +52,8 @@ def get_applied_live():
             "status": "success",
             "data": result.to_dict(),
         }), 200
+    except LinkedInAppliedJobsEmptyError as exc:
+        return _build_linkedin_upstream_error_response(exc)
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
@@ -153,6 +163,8 @@ def sync_applied_smart():
         result = service.sync_smart()
         return jsonify(result), 200
 
+    except LinkedInAppliedJobsEmptyError as exc:
+        return _build_linkedin_upstream_error_response(exc)
     except Exception as e:
         print("\n❌ SYNC ERROR")
         traceback.print_exc()

@@ -3,7 +3,7 @@ import os
 import sys
 import traceback
 
-from werkzeug.exceptions import BadRequest
+from werkzeug.exceptions import BadRequest, HTTPException
 from dotenv import load_dotenv
 from flask import Flask, redirect
 from flask_cors import CORS
