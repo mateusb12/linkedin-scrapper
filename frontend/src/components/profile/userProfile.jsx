@@ -52,10 +52,104 @@ function convertDate(str) {
   }
 }
 
+const normalizeCompareValue = (value) =>
+  String(value ?? "").trim().toLowerCase();
+
+const normalizeCompareArray = (value) =>
+  (Array.isArray(value) ? value : [])
+    .map((item) => normalizeCompareValue(item))
+    .filter(Boolean);
+
+const areArraysEqual = (a = [], b = []) =>
+  JSON.stringify(normalizeCompareArray(a)) ===
+  JSON.stringify(normalizeCompareArray(b));
+
+const getExperienceFingerprint = (exp = {}) =>
+  [
+    normalizeCompareValue(exp.company),
+    normalizeCompareValue(exp.role),
+    normalizeCompareValue(exp.start_date),
+  ].join("::");
+
+const hasExperienceChanged = (before = {}, after = {}) => {
+  return (
+    normalizeCompareValue(before.company) !==
+      normalizeCompareValue(after.company) ||
+    normalizeCompareValue(before.role) !== normalizeCompareValue(after.role) ||
+    normalizeCompareValue(before.location) !==
+      normalizeCompareValue(after.location) ||
+    normalizeCompareValue(before.start_date) !==
+      normalizeCompareValue(after.start_date) ||
+    normalizeCompareValue(before.end_date) !==
+      normalizeCompareValue(after.end_date) ||
+    !areArraysEqual(before.highlights, after.highlights) ||
+    !areArraysEqual(before.stack, after.stack)
+  );
+};
+
+const buildExperienceImportPreview = (
+  currentExperience = [],
+  importedExperience = [],
+) => {
+  const usedIndexes = new Set();
+
+  const items = importedExperience.map((after, importIndex) => {
+    let matchedIndex = currentExperience.findIndex(
+      (before, idx) =>
+        !usedIndexes.has(idx) &&
+        getExperienceFingerprint(before) === getExperienceFingerprint(after),
+    );
+
+    if (matchedIndex === -1) {
+      matchedIndex = currentExperience.findIndex(
+        (before, idx) =>
+          !usedIndexes.has(idx) &&
+          normalizeCompareValue(before.company) ===
+            normalizeCompareValue(after.company) &&
+          normalizeCompareValue(before.role) ===
+            normalizeCompareValue(after.role),
+      );
+    }
+
+    const before = matchedIndex >= 0 ? currentExperience[matchedIndex] : null;
+
+    if (matchedIndex >= 0) {
+      usedIndexes.add(matchedIndex);
+    }
+
+    return {
+      id: after.id || `import-${importIndex}`,
+      before,
+      after,
+      status: before
+        ? hasExperienceChanged(before, after)
+          ? "changed"
+          : "unchanged"
+        : "new",
+      accepted: true,
+    };
+  });
+
+  currentExperience.forEach((before, idx) => {
+    if (usedIndexes.has(idx)) return;
+
+    items.push({
+      id: before.id || `missing-${idx}`,
+      before,
+      after: null,
+      status: "missing_in_import",
+      accepted: true,
+    });
+  });
+
+  return items;
+};
+
 const UserProfile = () => {
   const [profile, setProfile] = useState({});
   const [resumes, setResumes] = useState([]);
   const [selectedResumeId, setSelectedResumeId] = useState(null);
+  const [experienceImportPreview, setExperienceImportPreview] = useState(null);
 
   const [showFullPreview, setShowFullPreview] = useState(false);
 
@@ -66,6 +160,7 @@ const UserProfile = () => {
 
   const handleResumeChange = (e) => {
     const value = e.target.value;
+    setExperienceImportPreview(null);
 
     if (value === "create_copy") {
       const current = resumes.find((r) => r.id === selectedResumeId);
@@ -104,11 +199,13 @@ const UserProfile = () => {
       stack: extractTechStack(exp.description || ""),
     }));
 
-    setResumes((prev) =>
-      prev.map((r) =>
-        r.id === selectedResume.id ? { ...r, experience: mapped } : r,
+    setExperienceImportPreview({
+      resumeId: selectedResume.id,
+      items: buildExperienceImportPreview(
+        selectedResume.experience || [],
+        mapped,
       ),
-    );
+    });
   };
 
   useEffect(() => {
@@ -230,6 +327,64 @@ const UserProfile = () => {
     }
   };
 
+  const handleToggleExperienceImportItem = (itemId) => {
+    setExperienceImportPreview((prev) => {
+      if (!prev) return prev;
+
+      return {
+        ...prev,
+        items: prev.items.map((item) =>
+          item.id === itemId
+            ? { ...item, accepted: !(item.accepted !== false) }
+            : item,
+        ),
+      };
+    });
+  };
+
+  const handleApplyExperienceImport = () => {
+    if (
+      !selectedResume ||
+      !experienceImportPreview ||
+      experienceImportPreview.resumeId !== selectedResume.id
+    ) {
+      return;
+    }
+
+    const nextExperience = experienceImportPreview.items.flatMap((item) => {
+      const isAccepted = item.accepted !== false;
+
+      if (item.status === "missing_in_import") {
+        return isAccepted && item.before ? [{ ...item.before }] : [];
+      }
+
+      if (isAccepted) {
+        if (item.after) return [{ ...item.after }];
+        if (item.before) return [{ ...item.before }];
+        return [];
+      }
+
+      if (item.before) {
+        return [{ ...item.before }];
+      }
+
+      return [];
+    });
+
+    setResumes((prev) =>
+      prev.map((r) =>
+        r.id === selectedResume.id ? { ...r, experience: nextExperience } : r,
+      ),
+    );
+
+    setExperienceImportPreview(null);
+    alert("Imported version applied to the Resume Editor! ✅");
+  };
+
+  const handleDiscardExperienceImport = () => {
+    setExperienceImportPreview(null);
+  };
+
   const handleToggleFullPreview = () => {
     setShowFullPreview(true);
   };
@@ -290,6 +445,10 @@ const UserProfile = () => {
           onDelete={handleDeleteResume}
           onToggleFullPreview={handleToggleFullPreview}
           handleResumeChange={handleResumeChange}
+          experienceImportPreview={experienceImportPreview}
+          onApplyExperienceImport={handleApplyExperienceImport}
+          onDiscardExperienceImport={handleDiscardExperienceImport}
+          onToggleExperienceImportItem={handleToggleExperienceImportItem}
         />
 
         <ResumeContextBuilder

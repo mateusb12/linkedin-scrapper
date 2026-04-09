@@ -211,7 +211,9 @@ const LinkedinExperiences = () => {
             }
             if (typeof window.importLinkedinExperienceHook === "function") {
               window.importLinkedinExperienceHook(fullData);
-              alert("Experiências importadas para o Resume Editor! 🎉");
+              alert(
+                "Diff preview created in the Resume Editor. Review the before/after fields before applying. ✅",
+              );
             } else {
               alert("O Resume Editor não está pronto para receber importação.");
             }
@@ -222,7 +224,7 @@ const LinkedinExperiences = () => {
                      transition-all"
         >
           <Briefcase size={16} />
-          Importar para Resume Editor
+          Preview Import Diff in Resume Editor
         </button>
 
         <div className="flex items-center bg-gray-900/50 p-1 rounded-lg border border-gray-700">

@@ -207,6 +207,108 @@ const DynamicInputSection = ({ title, items, setItems, placeholder }) => {
   );
 };
 
+const normalizePreviewValue = (value) => String(value ?? "").trim();
+
+const normalizePreviewArray = (value) =>
+  (Array.isArray(value) ? value : [])
+    .map((item) => normalizePreviewValue(item))
+    .filter(Boolean);
+
+const didPreviewFieldChange = (before, after, field) => {
+  if (field === "highlights" || field === "stack") {
+    return (
+      JSON.stringify(normalizePreviewArray(before?.[field])) !==
+      JSON.stringify(normalizePreviewArray(after?.[field]))
+    );
+  }
+
+  return (
+    normalizePreviewValue(before?.[field]) !==
+    normalizePreviewValue(after?.[field])
+  );
+};
+
+const formatPreviewValue = (value, multiline = false) => {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "—";
+    return value.join(multiline ? "\n" : ", ");
+  }
+
+  const text = String(value ?? "").trim();
+  return text || "—";
+};
+
+const importStatusMeta = {
+  changed: {
+    label: "Changed",
+    classes: "bg-amber-900/40 text-amber-300 border border-amber-700/40",
+  },
+  new: {
+    label: "New",
+    classes: "bg-emerald-900/40 text-emerald-300 border border-emerald-700/40",
+  },
+  unchanged: {
+    label: "Unchanged",
+    classes: "bg-gray-800 text-gray-300 border border-gray-600",
+  },
+  missing_in_import: {
+    label: "Missing in import",
+    classes: "bg-rose-900/40 text-rose-300 border border-rose-700/40",
+  },
+};
+
+const ReadOnlyDiffField = ({
+  label,
+  beforeValue,
+  afterValue,
+  multiline = false,
+  changed = false,
+}) => {
+  const fieldClasses = `${inputClasses} ${
+    changed ? "border-amber-500 bg-amber-950/20 text-amber-50" : "opacity-80"
+  } cursor-default`;
+
+  return (
+    <div>
+      <label className={styleguide.label}>{label}</label>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 font-bold">
+            Before
+          </div>
+          {multiline ? (
+            <textarea
+              readOnly
+              rows="4"
+              value={beforeValue}
+              className={fieldClasses}
+            />
+          ) : (
+            <input readOnly value={beforeValue} className={fieldClasses} />
+          )}
+        </div>
+
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1 font-bold">
+            After import
+          </div>
+          {multiline ? (
+            <textarea
+              readOnly
+              rows="4"
+              value={afterValue}
+              className={fieldClasses}
+            />
+          ) : (
+            <input readOnly value={afterValue} className={fieldClasses} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ResumeEditor = ({
   resumes,
   selectedResumeId,
@@ -216,8 +318,30 @@ const ResumeEditor = ({
   onDelete,
   onToggleFullPreview,
   handleResumeChange,
+  experienceImportPreview,
+  onApplyExperienceImport,
+  onDiscardExperienceImport,
+  onToggleExperienceImportItem,
 }) => {
   const selectedResume = resumes.find((r) => r.id === selectedResumeId);
+
+  const activeImportPreview =
+    experienceImportPreview?.resumeId === selectedResume?.id
+      ? experienceImportPreview
+      : null;
+
+  const previewStats = (activeImportPreview?.items || []).reduce(
+    (acc, item) => {
+      acc[item.status] = (acc[item.status] || 0) + 1;
+      return acc;
+    },
+    {
+      changed: 0,
+      new: 0,
+      unchanged: 0,
+      missing_in_import: 0,
+    },
+  );
 
   if (!resumes || resumes.length === 0)
     return (
@@ -603,6 +727,195 @@ const ResumeEditor = ({
                 + Add Role
               </button>
             </div>
+            {activeImportPreview && (
+              <div className="mb-6 rounded-lg border border-amber-700/40 bg-amber-950/20 p-5">
+                <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-5">
+                  <div>
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-amber-200">
+                      LinkedIn import diff preview
+                    </h4>
+                    <p className="text-sm text-gray-300 mt-1">
+                      Review the current resume experience against the imported
+                      LinkedIn version before replacing the editor content.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                    <span className="px-2 py-1 rounded border border-amber-700/40 bg-amber-900/30 text-amber-200">
+                      Changed: {previewStats.changed}
+                    </span>
+                    <span className="px-2 py-1 rounded border border-emerald-700/40 bg-emerald-900/30 text-emerald-200">
+                      New: {previewStats.new}
+                    </span>
+                    <span className="px-2 py-1 rounded border border-gray-600 bg-gray-800 text-gray-300">
+                      Unchanged: {previewStats.unchanged}
+                    </span>
+                    <span className="px-2 py-1 rounded border border-rose-700/40 bg-rose-900/30 text-rose-200">
+                      Missing in import: {previewStats.missing_in_import}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row justify-end gap-3 mb-5">
+                  <button
+                    type="button"
+                    onClick={onDiscardExperienceImport}
+                    className="border border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700 font-semibold py-2 px-4 rounded-md transition"
+                  >
+                    Discard Preview
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onApplyExperienceImport}
+                    className="border border-emerald-700 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-4 rounded-md transition"
+                  >
+                    Apply Imported Version
+                  </button>
+                </div>
+
+                <div className="space-y-5">
+                  {activeImportPreview.items.map((item, index) => {
+                    const before = item.before || {};
+                    const after = item.after || {};
+                    const statusMeta =
+                      importStatusMeta[item.status] || importStatusMeta.unchanged;
+
+                    const titleRole = after.role || before.role || "Untitled role";
+                    const titleCompany =
+                      after.company || before.company || "Unknown company";
+                    const isAccepted = item.accepted !== false;
+
+                    const decisionText =
+                      item.status === "new"
+                        ? isAccepted
+                          ? "This new imported item will be added when you apply."
+                          : "This new imported item will be ignored."
+                        : item.status === "changed"
+                          ? isAccepted
+                            ? "The imported version will replace the current one."
+                            : "The current version will be kept."
+                          : item.status === "missing_in_import"
+                            ? isAccepted
+                              ? "This current-only item will be kept."
+                              : "This current-only item will be removed when you apply."
+                            : "No differences detected for this item.";
+
+                    return (
+                      <div
+                        key={item.id || index}
+                        className="rounded-lg border border-gray-700 bg-gray-900/40 p-4"
+                      >
+                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
+                          <div>
+                            <h5 className="text-base font-bold text-white">
+                              {titleRole} — {titleCompany}
+                            </h5>
+                            <p className="text-xs text-gray-400">
+                              Review field-by-field differences below
+                            </p>
+                            <p
+                              className={`text-xs mt-1 ${
+                                isAccepted ? "text-emerald-300" : "text-gray-500"
+                              }`}
+                            >
+                              {decisionText}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`inline-flex w-fit px-2.5 py-1 rounded text-xs font-bold uppercase tracking-wider ${statusMeta.classes}`}
+                            >
+                              {statusMeta.label}
+                            </span>
+
+                            {item.status !== "unchanged" && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onToggleExperienceImportItem(item.id)
+                                }
+                                className={`px-3 py-1 rounded text-xs font-bold border transition ${
+                                  isAccepted
+                                    ? "border-red-700/50 bg-red-900/30 text-red-300 hover:bg-red-900/50"
+                                    : "border-emerald-700/50 bg-emerald-900/30 text-emerald-300 hover:bg-emerald-900/50"
+                                }`}
+                              >
+                                {item.status === "new"
+                                  ? isAccepted
+                                    ? "Skip this item"
+                                    : "Include this item"
+                                  : item.status === "missing_in_import"
+                                    ? isAccepted
+                                      ? "Remove current item"
+                                      : "Keep current item"
+                                    : isAccepted
+                                      ? "Keep current version"
+                                      : "Use imported version"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <ReadOnlyDiffField
+                            label="Company"
+                            beforeValue={formatPreviewValue(before.company)}
+                            afterValue={formatPreviewValue(after.company)}
+                            changed={didPreviewFieldChange(before, after, "company")}
+                          />
+
+                          <ReadOnlyDiffField
+                            label="Role"
+                            beforeValue={formatPreviewValue(before.role)}
+                            afterValue={formatPreviewValue(after.role)}
+                            changed={didPreviewFieldChange(before, after, "role")}
+                          />
+
+                          <ReadOnlyDiffField
+                            label="Location"
+                            beforeValue={formatPreviewValue(before.location)}
+                            afterValue={formatPreviewValue(after.location)}
+                            changed={didPreviewFieldChange(before, after, "location")}
+                          />
+
+                          <ReadOnlyDiffField
+                            label="Start Date"
+                            beforeValue={formatPreviewValue(before.start_date)}
+                            afterValue={formatPreviewValue(after.start_date)}
+                            changed={didPreviewFieldChange(before, after, "start_date")}
+                          />
+
+                          <ReadOnlyDiffField
+                            label="End Date"
+                            beforeValue={formatPreviewValue(before.end_date)}
+                            afterValue={formatPreviewValue(after.end_date)}
+                            changed={didPreviewFieldChange(before, after, "end_date")}
+                          />
+
+                          <ReadOnlyDiffField
+                            label="Highlights"
+                            beforeValue={formatPreviewValue(before.highlights, true)}
+                            afterValue={formatPreviewValue(after.highlights, true)}
+                            multiline
+                            changed={didPreviewFieldChange(before, after, "highlights")}
+                          />
+
+                          <ReadOnlyDiffField
+                            label="Tech Stack"
+                            beforeValue={formatPreviewValue(before.stack)}
+                            afterValue={formatPreviewValue(after.stack)}
+                            changed={didPreviewFieldChange(before, after, "stack")}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-4">
               {(selectedResume.experience || []).map((exp, index) => (
                 <div
