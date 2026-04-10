@@ -2,8 +2,8 @@ from flask import request, jsonify
 from database.database_connection import get_db_session
 from models import Resume
 from models.user_models import Profile
-from services.job_prompts import build_tailor_resume_prompt
-from services.model_orchestrator import LLMOrchestrator
+from source.integrations.llm.prompts.job_prompts import build_tailor_resume_prompt
+from source.integrations.llm.model_orchestrator import LLMOrchestrator
 
 def extract_resume_data(data):
     """Helper to extract data from the specific JSON template structure"""

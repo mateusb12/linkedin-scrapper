@@ -5,8 +5,8 @@ import re
 import requests
 from dotenv import load_dotenv
 
-from services.base_llm_service import BaseLLMService
-from services.job_prompts import build_tailor_resume_prompt, build_expand_job_prompt
+from source.integrations.llm.base_llm_service import BaseLLMService
+from source.integrations.llm.prompts.job_prompts import build_tailor_resume_prompt, build_expand_job_prompt
 
 
 # ── Constants ────────────────────────────────────────────────────────────

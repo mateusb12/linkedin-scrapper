@@ -4,7 +4,7 @@ from flask import jsonify, request, stream_with_context, Response
 
 from source.features.job_population.core_instances import embedding_calculator
 from models import Job
-from services.model_orchestrator import LLMOrchestrator, AllLLMsFailed
+from source.integrations.llm.model_orchestrator import LLMOrchestrator, AllLLMsFailed
 from source.services.experience_extractor import extract_years_experience
 from source.utils.metric_utils import JobConsoleProgress
 from source.features.job_population.job_repository import JobRepository

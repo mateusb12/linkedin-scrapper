@@ -2,10 +2,10 @@ from collections import defaultdict, deque
 
 import requests
 
-from services.llms.chatgpt_service import ChatGPTService
-from services.llms.deepseek_service import DeepSeekService
-from services.llms.gemini_service import GeminiService
-from services.llms.openrouter_service import OpenRouterService
+from source.integrations.llm.providers.chatgpt_service import ChatGPTService
+from source.integrations.llm.providers.deepseek_service import DeepSeekService
+from source.integrations.llm.providers.gemini_service import GeminiService
+from source.integrations.llm.providers.openrouter_service import OpenRouterService
 
 
 class AllLLMsFailed(RuntimeError):

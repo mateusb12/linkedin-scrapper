@@ -1,17 +1,25 @@
 import pytest
+import importlib
+import importlib.util
+from pathlib import Path
 from unittest.mock import patch
 
 # --- Module Imports for Robust Patching ---
 # We import the specific instances or classes used in the controllers
 from source.features.job_population import core_instances
-from services.model_orchestrator import LLMOrchestrator
+from source.integrations.llm.model_orchestrator import LLMOrchestrator
 
 
 @pytest.fixture
 def client():
-    from app import app
-    app.config['TESTING'] = True
-    with app.test_client() as client:
+    app_path = Path(__file__).resolve().parents[1] / "app.py"
+    spec = importlib.util.spec_from_file_location("backend_app_module", app_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    flask_app = module.app
+    flask_app.config['TESTING'] = True
+    with flask_app.test_client() as client:
         yield client
 
 

@@ -4,9 +4,9 @@ import re
 
 from dotenv import load_dotenv
 
-from services.base_llm_service import BaseLLMService
+from source.integrations.llm.base_llm_service import BaseLLMService
 from services.constants.job_description_example import JOB_DESCRIPTION
-from services.job_prompts import build_expand_job_prompt, build_tailor_resume_prompt
+from source.integrations.llm.prompts.job_prompts import build_expand_job_prompt, build_tailor_resume_prompt
 
 def sanitize_json_string(text: str) -> str:
     """
