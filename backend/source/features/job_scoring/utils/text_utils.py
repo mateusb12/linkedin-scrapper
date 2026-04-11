@@ -10,6 +10,7 @@ import numpy as np
 
 NON_ALNUM_RE = re.compile(r"[^a-z0-9+#.\s]+")
 SPACE_RE = re.compile(r"\s+")
+CLAUSE_SPLIT_RE = re.compile(r"[\n\r.;:!?]+")
 
 
 def normalize_text(value: str | None) -> str:
@@ -52,9 +53,22 @@ def count_phrase_matches(text: str, phrases: Iterable[str]) -> list[str]:
     matches: list[str] = []
     for phrase in phrases:
         normalized_phrase = normalize_text(phrase)
-        if normalized_phrase and normalized_phrase in normalized:
+        if normalized_phrase and _phrase_pattern(normalized_phrase).search(normalized):
             matches.append(phrase)
     return matches
+
+
+def count_phrase_occurrences(text: str, phrases: Iterable[str]) -> dict[str, int]:
+    normalized = normalize_text(text)
+    occurrences: dict[str, int] = {}
+    for phrase in phrases:
+        normalized_phrase = normalize_text(phrase)
+        if not normalized_phrase:
+            continue
+        matches = _phrase_pattern(normalized_phrase).findall(normalized)
+        if matches:
+            occurrences[phrase] = len(matches)
+    return occurrences
 
 
 def tokens_near_each_other(
@@ -88,6 +102,17 @@ def best_fuzzy_overlap(text: str, phrases: Iterable[str]) -> tuple[float, str | 
             best_score = overlap
             best_phrase = phrase
     return best_score, best_phrase
+
+
+def split_text_clauses(value: str | None) -> list[str]:
+    if not value:
+        return []
+    clauses: list[str] = []
+    for chunk in CLAUSE_SPLIT_RE.split(value):
+        normalized_chunk = normalize_text(chunk)
+        if normalized_chunk:
+            clauses.append(normalized_chunk)
+    return clauses
 
 
 def extract_evidence_snippets(
@@ -152,3 +177,8 @@ def cosine_similarity(left: np.ndarray, right: np.ndarray) -> float:
         return 0.0
     return float(np.dot(left, right) / (left_norm * right_norm))
 
+
+def _phrase_pattern(normalized_phrase: str) -> re.Pattern[str]:
+    parts = [re.escape(part) for part in normalized_phrase.split() if part]
+    pattern = r"\b" + r"\s+".join(parts) + r"\b"
+    return re.compile(pattern)
