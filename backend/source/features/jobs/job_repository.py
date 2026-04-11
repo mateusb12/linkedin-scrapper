@@ -136,6 +136,39 @@ class JobRepository:
         finally:
             db.close()
 
+    @staticmethod
+    def get_jobs_for_scoring(
+        *,
+        has_applied: bool | None = None,
+        work_remote_allowed: bool | None = None,
+        company_urn: str | None = None,
+        application_status: str | None = None,
+        limit: int | None = None,
+    ) -> List[Job]:
+        db = get_db_session()
+
+        try:
+            query = (
+                db.query(Job)
+                .filter(Job.disabled.is_(False))
+                .order_by(Job.updated_at.desc(), Job.created_at.desc(), Job.urn.desc())
+            )
+
+            if has_applied is not None:
+                query = query.filter(Job.has_applied.is_(has_applied))
+            if work_remote_allowed is not None:
+                query = query.filter(Job.work_remote_allowed.is_(work_remote_allowed))
+            if company_urn:
+                query = query.filter(Job.company_urn == company_urn)
+            if application_status:
+                query = query.filter(Job.application_status == application_status)
+            if limit is not None:
+                query = query.limit(limit)
+
+            return query.all()
+        finally:
+            db.close()
+
     # ──────────────────────────────────────────
     # Write operations
     # ──────────────────────────────────────────

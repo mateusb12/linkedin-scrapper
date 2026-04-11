@@ -1,76 +1,137 @@
 # Job Scoring
 
-Feature local para ranquear vagas do SQLite com três abordagens:
+Feature pronta para uso no backend, com `hybrid_scorer` como caminho oficial.
 
-- `rules_scorer`: regras explícitas, pesos e penalidades.
-- `hybrid_scorer`: regras + normalização + sinônimos + fuzzy/contexto.
-- `embeddings_scorer`: embeddings locais por hashing + regras explícitas.
+O fluxo público da feature é:
+
+`input HTTP -> request schema -> JobScoringService -> HybridScorer -> response explicável`
+
+`rules_scorer`, `embeddings_scorer`, benchmark e scripts comparativos continuam no repositório apenas como artefatos internos/experimentais. Eles não fazem parte da API pública.
 
 ## Estrutura
 
-- `config/`: pesos, preferências e âncoras semânticas.
-- `repository/`: leitura isolada do SQLite.
-- `scorers/`: interface comum e implementações.
-- `evaluation/`: benchmark, comparação e export.
-- `scripts/`: entrypoints executáveis.
-- `outputs/`: artefatos gerados.
+- `job_scoring_router.py`: rotas Flask e Swagger.
+- `job_scoring_controller.py`: camada HTTP fina, parsing e tratamento de erro.
+- `schemas.py`: validação de payload.
+- `mappers.py`: adaptação request/domain/response.
+- `job_scoring_service.py`: fachada de aplicação da feature.
+- `scorers/hybrid_scorer.py`: motor oficial de scoring.
+- `source/features/jobs/job_repository.py`: fonte oficial de acesso a `jobs` para o endpoint de ranking local.
+- `evaluation/`, `scripts/`, `outputs/`: legado de benchmark e experimentação.
 
-## Como executar
+## Endpoints oficiais
+
+Base path: `/job-scoring`
+
+### `POST /job-scoring/score`
+
+Avalia uma vaga individual.
+
+Exemplo:
+
+```json
+{
+  "id": "job-1",
+  "title": "Senior Backend Engineer (Python)",
+  "description_full": "Build backend APIs in Python with FastAPI, PostgreSQL, Docker and AWS.",
+  "qualifications": ["Python", "FastAPI", "PostgreSQL", "Docker"]
+}
+```
+
+Resposta:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "job-1",
+    "external_id": null,
+    "urn": "job-1",
+    "title": "Senior Backend Engineer (Python)",
+    "total_score": 79.0,
+    "category_scores": {
+      "python_primary": 52.0,
+      "databases": 10.0,
+      "cloud_devops": 11.0,
+      "benefits": 0.0,
+      "penalties": 0.0
+    },
+    "archetype": "backend_python_pure",
+    "matched_keywords": {
+      "python_primary": ["python", "fastapi"],
+      "databases": ["postgresql"],
+      "cloud_devops": ["docker", "aws"],
+      "benefits": [],
+      "penalties": []
+    },
+    "bonus_reasons": ["Python aparece junto de framework/testes do stack desejado."],
+    "penalty_reasons": [],
+    "evidence": ["Build backend APIs in Python with FastAPI, PostgreSQL, Docker and AWS."],
+    "suspicious": false,
+    "suspicious_reasons": [],
+    "metadata": {
+      "archetype": "backend_python_pure"
+    }
+  }
+}
+```
+
+### `POST /job-scoring/rank`
+
+Recebe uma lista de vagas, aplica o `hybrid_scorer`, ordena do maior para o menor e preserva `id`/`external_id`.
+
+```json
+{
+  "items": [
+    {
+      "id": "job-1",
+      "title": "Senior Backend Engineer (Python)",
+      "description_full": "Build backend APIs in Python with FastAPI, PostgreSQL, Docker and AWS."
+    },
+    {
+      "id": "job-2",
+      "title": "Frontend Engineer",
+      "description_full": "Own React and TypeScript interfaces."
+    }
+  ]
+}
+```
+
+### `POST /job-scoring/rank-descriptions`
+
+Atalho para payloads com apenas `title` e `description`.
+
+### `POST /job-scoring/rank-db`
+
+Secundário. Lê vagas do SQLite local, aplica o `hybrid_scorer` e permite filtros:
+
+- `has_applied`
+- `work_remote_allowed`
+- `company_urn`
+- `application_status`
+- `limit`
+
+## Como testar
 
 Dentro do container `linkedin-backend-dev`:
 
 ```bash
-docker exec linkedin-backend-dev python -m source.features.job_scoring.scripts.run_rules_scorer
-docker exec linkedin-backend-dev python -m source.features.job_scoring.scripts.run_hybrid_scorer
-docker exec linkedin-backend-dev python -m source.features.job_scoring.scripts.run_embeddings_scorer
-docker exec linkedin-backend-dev python -m source.features.job_scoring.scripts.run_benchmark
-docker exec linkedin-backend-dev python -m source.features.job_scoring.scripts.compare_approaches
-docker exec linkedin-backend-dev python -m source.features.job_scoring.scripts.export_top_results --scorer embeddings --top-k 10
+docker exec linkedin-backend-dev pytest tests/test_job_scoring_feature.py tests/test_job_scoring_service.py tests/test_job_scoring_api.py
 ```
 
-Opções úteis:
+Exemplo com `curl`:
 
 ```bash
-docker exec linkedin-backend-dev python -m source.features.job_scoring.scripts.run_benchmark --limit 20
-docker exec linkedin-backend-dev python -m source.features.job_scoring.scripts.run_benchmark --output-dir /app/source/features/job_scoring/outputs
+curl -X POST http://localhost:5000/job-scoring/score \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "Senior Backend Engineer (Python)",
+    "description_full": "Build backend APIs in Python with FastAPI, PostgreSQL, Docker and AWS."
+  }'
 ```
 
-## Como cada abordagem funciona
+## Observações
 
-### `rules_scorer`
-
-- Usa match explícito em `title`, `description_full`, `description_snippet`, `qualifications`, `keywords`, `programming_languages`, `premium_title` e `premium_description`.
-- Dá mais peso para Python central no backend.
-- Penaliza vagas com Python periférico em IA/data e vagas com stack principal fora do alvo.
-- Retorna subscore por categoria e explicabilidade textual.
-
-### `hybrid_scorer`
-
-- Mantém a base de regras.
-- Adiciona normalização, sinônimos canônicos, overlap fuzzy e proximidade contextual.
-- Distingue melhor frases equivalentes e reduz dependência de match literal.
-
-### `embeddings_scorer`
-
-- Gera vetores locais via hashing determinístico de tokens e bigramas.
-- Compara a vaga com textos âncora positivos e negativos do perfil.
-- Combina score semântico local com o `rules_scorer`.
-- Não usa API externa nem modelo remoto.
-
-## Artefatos gerados
-
-- `rules_scorer.json` / `.csv`
-- `hybrid_scorer.json` / `.csv`
-- `embeddings_scorer.json` / `.csv`
-- `*_top_10.json`
-- `*_bottom_10.json`
-- `*_suspicious.json`
-- `approach_comparison.csv`
-- `benchmark_summary.md`
-
-## Limitações atuais
-
-- O scorer semântico é leve e local; não substitui embeddings pré-treinados.
-- O corpus atual está pequeno, então os pesos ainda dependem de inspeção manual.
-- Benefícios raramente aparecem em detalhe nas vagas do banco atual.
-
+- O scorer oficial da API é sempre `hybrid_scorer`.
+- A resposta é auditável: score total, subscores, archetype, evidências, bônus, penalidades e `suspicious_reasons`.
+- Benchmarks e scorers alternativos não devem ser tratados como fluxo principal do produto.
