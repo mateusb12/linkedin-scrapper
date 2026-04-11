@@ -1,0 +1,2 @@
+"""Configuration for job scoring."""
+
