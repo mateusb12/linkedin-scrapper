@@ -32,6 +32,12 @@ import {
   buildJobInsights,
 } from "./joblistUtils.jsx";
 
+const formatScoreLabel = (label) =>
+  label
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+
 const InfoCard = ({ icon: Icon, label, value }) => (
   <div className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-800/70 px-4 py-3">
     <Icon size={18} className="shrink-0 text-slate-400" />
@@ -53,7 +59,7 @@ const Placeholder = ({ text = "None specified." }) => (
   </div>
 );
 
-const JobListingJobDetails = ({ job }) => {
+const JobListingJobDetails = ({ job, maxPythonScore = 0 }) => {
   if (!job) {
     return (
       <div className="flex h-full items-center justify-center text-slate-400">
@@ -68,6 +74,29 @@ const JobListingJobDetails = ({ job }) => {
     job.description_full ||
     job.description_snippet ||
     null;
+  const pythonScore =
+    typeof job.pythonScore === "number" && Number.isFinite(job.pythonScore)
+      ? job.pythonScore
+      : null;
+  const normalizedPythonScore =
+    pythonScore != null && maxPythonScore > 0
+      ? Math.max(0, Math.min((pythonScore / maxPythonScore) * 100, 100))
+      : 0;
+  const categoryScores = Object.entries(job.aiCategoryScores || {}).filter(
+    ([, value]) => typeof value === "number" && Number.isFinite(value),
+  );
+  const matchedKeywordGroups = Object.entries(job.aiMatchedKeywords || {}).filter(
+    ([, keywords]) => Array.isArray(keywords) && keywords.length > 0,
+  );
+  const hasScoreReasoning =
+    Boolean(job.aiArchetype) ||
+    Boolean(job.aiSignals?.length) ||
+    Boolean(job.aiSuspiciousReasons?.length) ||
+    Boolean(job.aiBonusReasons?.length) ||
+    Boolean(job.aiPenaltyReasons?.length) ||
+    Boolean(job.aiEvidence?.length) ||
+    categoryScores.length > 0 ||
+    matchedKeywordGroups.length > 0;
 
   return (
     <div className="h-full overflow-y-auto px-6 py-7 md:px-8">
@@ -180,6 +209,163 @@ const JobListingJobDetails = ({ job }) => {
               </span>
             </p>
           )}
+
+          <section className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+                  Python Score
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Relative to the strongest Python match in the current filtered
+                  list
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-semibold text-indigo-300">
+                  {pythonScore != null ? Math.round(pythonScore) : "Not scored"}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {maxPythonScore > 0
+                    ? `${Math.round(normalizedPythonScore)}% of current max`
+                    : "No scored jobs in current filter"}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-800">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-sky-400 transition-all duration-300"
+                style={{ width: `${normalizedPythonScore}%` }}
+              />
+            </div>
+
+            {hasScoreReasoning && (
+              <details className="mt-4 rounded-xl border border-slate-800 bg-slate-950/50">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-slate-200 marker:content-none">
+                  <span>Why this score?</span>
+                  <ChevronRight
+                    size={16}
+                    className="shrink-0 text-slate-500"
+                  />
+                </summary>
+
+                <div className="space-y-4 border-t border-slate-800 px-4 py-4 text-sm text-slate-300">
+                  {job.aiArchetype && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Archetype
+                      </p>
+                      <p className="mt-1 text-slate-200">{job.aiArchetype}</p>
+                    </div>
+                  )}
+
+                  {categoryScores.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Category Scores
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {categoryScores.map(([label, value]) => (
+                          <span
+                            key={label}
+                            className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-200"
+                          >
+                            {formatScoreLabel(label)}: {Math.round(value)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {matchedKeywordGroups.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Matched Keywords
+                      </p>
+                      <div className="mt-2 space-y-2">
+                        {matchedKeywordGroups.map(([group, keywords]) => (
+                          <div key={group}>
+                            <p className="text-xs text-slate-500">
+                              {formatScoreLabel(group)}
+                            </p>
+                            <p className="mt-1 text-slate-200">
+                              {keywords.join(", ")}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {job.aiBonusReasons?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-400">
+                        Positive Signals
+                      </p>
+                      <ul className="mt-2 space-y-1 text-slate-200">
+                        {job.aiBonusReasons.map((reason, index) => (
+                          <li key={`${reason}-${index}`}>{reason}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {job.aiPenaltyReasons?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-400">
+                        Penalties
+                      </p>
+                      <ul className="mt-2 space-y-1 text-slate-200">
+                        {job.aiPenaltyReasons.map((reason, index) => (
+                          <li key={`${reason}-${index}`}>{reason}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {job.aiSuspiciousReasons?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-red-400">
+                        Suspicious Signals
+                      </p>
+                      <ul className="mt-2 space-y-1 text-slate-200">
+                        {job.aiSuspiciousReasons.map((reason, index) => (
+                          <li key={`${reason}-${index}`}>{reason}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {job.aiSignals?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-sky-400">
+                        Archetype Signals
+                      </p>
+                      <ul className="mt-2 space-y-1 text-slate-200">
+                        {job.aiSignals.map((signal, index) => (
+                          <li key={`${signal}-${index}`}>{signal}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {job.aiEvidence?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Evidence
+                      </p>
+                      <ul className="mt-2 space-y-1 text-slate-200">
+                        {job.aiEvidence.map((evidenceItem, index) => (
+                          <li key={`${evidenceItem}-${index}`}>{evidenceItem}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </details>
+            )}
+          </section>
         </div>
       </div>
 
@@ -250,7 +436,9 @@ const JobListingJobDetails = ({ job }) => {
           icon={Code2}
           label="Python Score"
           value={
-            job.pythonScore != null ? String(Math.round(job.pythonScore)) : "Not scored"
+            job.pythonScore != null
+              ? String(Math.round(job.pythonScore))
+              : "Not scored"
           }
         />
       </div>

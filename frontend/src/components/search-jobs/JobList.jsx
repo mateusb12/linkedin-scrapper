@@ -314,11 +314,16 @@ const MainJobListing = () => {
             aiScore: score.total_score ?? 0,
             pythonScore: score.total_score ?? 0,
             pythonSignalScore: score.category_scores?.python_primary ?? 0,
+            aiCategoryScores: score.category_scores || null,
             aiArchetype:
               score.archetype ||
               score.metadata?.archetype ||
               null,
             aiSignals: score.metadata?.archetype_signals || null,
+            aiMatchedKeywords: score.matched_keywords || null,
+            aiBonusReasons: score.bonus_reasons || [],
+            aiPenaltyReasons: score.penalty_reasons || [],
+            aiEvidence: score.evidence || [],
             aiSuspicious: Boolean(score.suspicious),
             aiSuspiciousReasons: score.suspicious_reasons || [],
           };
@@ -609,6 +614,18 @@ const MainJobListing = () => {
     return filteredJobs.filter((job) => job.isNegativeMatch).length;
   }, [filteredJobs]);
 
+  const maxPythonScoreInFilteredJobs = useMemo(() => {
+    const scoredJobs = filteredJobs.filter(
+      (job) => typeof job.pythonScore === "number" && Number.isFinite(job.pythonScore),
+    );
+
+    if (scoredJobs.length === 0) {
+      return 0;
+    }
+
+    return Math.max(...scoredJobs.map((job) => job.pythonScore));
+  }, [filteredJobs]);
+
   useEffect(() => {
     if (!filteredJobs.length) {
       setSelectedJobId(null);
@@ -728,7 +745,10 @@ const MainJobListing = () => {
         />
 
         <main className="flex-1 bg-[#0d1728]">
-          <JobListingJobDetails job={selectedJob} />
+          <JobListingJobDetails
+            job={selectedJob}
+            maxPythonScore={maxPythonScoreInFilteredJobs}
+          />
         </main>
       </div>
     </div>
