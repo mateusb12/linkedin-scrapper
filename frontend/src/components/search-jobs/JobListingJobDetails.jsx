@@ -102,6 +102,16 @@ const JobListingJobDetails = ({ job }) => {
               matchedKeywords={job.matchedPositiveKeywords}
             />
 
+            {job.pythonScore != null && (
+              <InsightBadge
+                icon={Code2}
+                className="border-indigo-500/30 bg-indigo-500/10 text-indigo-300"
+                title="Python backend score from AI scorer"
+              >
+                Python Score: {Math.round(job.pythonScore)}
+              </InsightBadge>
+            )}
+
             {job.verified && <Badge tone="green">Verified</Badge>}
             {job.reposted && <Badge tone="amber">Reposted</Badge>}
 
@@ -233,8 +243,15 @@ const JobListingJobDetails = ({ job }) => {
         />
         <InfoCard
           icon={Sparkles}
-          label="Score"
+          label="Keyword Score"
           value={String(job.positiveScore || 0)}
+        />
+        <InfoCard
+          icon={Code2}
+          label="Python Score"
+          value={
+            job.pythonScore != null ? String(Math.round(job.pythonScore)) : "Not scored"
+          }
         />
       </div>
 
@@ -250,6 +267,16 @@ const JobListingJobDetails = ({ job }) => {
               score={job.positiveScore}
               matchedKeywords={job.matchedPositiveKeywords}
             />
+
+            {job.pythonScore != null && (
+              <InsightBadge
+                icon={Code2}
+                className="border-indigo-500/30 bg-indigo-500/10 text-indigo-300"
+                title="Python backend score from AI scorer"
+              >
+                Python Score: {Math.round(job.pythonScore)}
+              </InsightBadge>
+            )}
 
             {insights.seniority && (
               <InsightBadge

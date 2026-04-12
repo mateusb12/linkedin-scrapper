@@ -314,7 +314,7 @@ export const ScoreBadge = ({ score = 0, matchedKeywords = [] }) => {
       className={getScoreStyle(score)}
       title={title}
     >
-      Score {score}
+      Keyword Score {score}
     </InsightBadge>
   );
 };

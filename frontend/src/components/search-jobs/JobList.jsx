@@ -22,6 +22,7 @@ import {
 import JobListingSidebar from "./JobListingSidebar.jsx";
 import JobListingJobDetails from "./JobListingJobDetails.jsx";
 import { useToast } from "../toast/Toast.jsx";
+import { scoreJobsBatch } from "../../services/jobService";
 
 const APPLICANTS_LIMIT_CACHE_KEY = "negative_applicants_limit_v1";
 const POSITIVE_KEYWORDS_CACHE_KEY = "positive_keywords_v1";
@@ -301,9 +302,30 @@ const MainJobListing = () => {
           },
         );
 
-        const cachedAt = writeJobsCache(data);
+        const scoreMap = await scoreJobsBatch(data);
 
-        applyJobs(data);
+        const enrichedJobs = data.map((job) => {
+          const score = scoreMap.get(String(job.id));
+
+          if (!score) return job;
+
+          return {
+            ...job,
+            aiScore: score.total_score ?? 0,
+            pythonScore: score.category_scores?.python_primary ?? 0,
+            aiArchetype:
+              score.archetype ||
+              score.metadata?.archetype ||
+              null,
+            aiSignals: score.metadata?.archetype_signals || null,
+            aiSuspicious: Boolean(score.suspicious),
+            aiSuspiciousReasons: score.suspicious_reasons || [],
+          };
+        });
+
+        const cachedAt = writeJobsCache(enrichedJobs);
+
+        applyJobs(enrichedJobs);
         setCacheTimestamp(cachedAt);
         setLoadedFromCache(false);
       } catch (error) {
@@ -514,8 +536,28 @@ const MainJobListing = () => {
         );
       }
 
-      if (sortBy === "score") {
+      if (sortBy === "keywordScore" || sortBy === "score") {
         const scoreDiff = (b.positiveScore || 0) - (a.positiveScore || 0);
+
+        if (scoreDiff !== 0) {
+          return scoreDiff;
+        }
+
+        return a.title.localeCompare(b.title);
+      }
+
+      if (sortBy === "pythonScore") {
+        const scoreDiff = (b.pythonScore || 0) - (a.pythonScore || 0);
+
+        if (scoreDiff !== 0) {
+          return scoreDiff;
+        }
+
+        return a.title.localeCompare(b.title);
+      }
+
+      if (sortBy === "aiScore") {
+        const scoreDiff = (b.aiScore || 0) - (a.aiScore || 0);
 
         if (scoreDiff !== 0) {
           return scoreDiff;

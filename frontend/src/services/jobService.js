@@ -158,3 +158,47 @@ export const fetchProfileExperiences = async ({
 
   return handleResponse(response, "Failed to fetch profile experiences");
 };
+
+export const scoreJobsBatch = async (jobs) => {
+  if (!Array.isArray(jobs) || jobs.length === 0) {
+    return new Map();
+  }
+
+  const payload = {
+    items: jobs.map((job) => ({
+      id: job.id,
+      title: job.title,
+      description_full: job.description_full || job.description_snippet || "",
+      description_snippet: job.description_snippet || "",
+      keywords: Array.isArray(job.keywords) ? job.keywords : [],
+    })),
+  };
+
+  const response = await fetch(`${API_BASE}/job-scoring/rank`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await handleResponse(response, "Failed to batch score jobs");
+
+  const items = Array.isArray(json?.items)
+    ? json.items
+    : Array.isArray(json?.data?.items)
+      ? json.data.items
+      : Array.isArray(json?.data)
+        ? json.data
+        : [];
+
+  const map = new Map();
+
+  items.forEach((item) => {
+    const key = item.external_id ?? item.id ?? item.urn;
+    if (key != null) {
+      map.set(String(key), item);
+    }
+  });
+
+  return map;
+};
+
