@@ -102,6 +102,15 @@ class RulesScorer(BaseJobScorer):
             )
 
         ai_matches = count_phrase_matches(combined_text, profile.ai_secondary_terms)
+        ai_evaluation_matches = count_phrase_matches(
+            combined_text, profile.ai_evaluation_terms
+        )
+        contractor_style_matches = count_phrase_matches(
+            combined_text, profile.contractor_style_terms
+        )
+        engineering_ownership_matches = count_phrase_matches(
+            combined_text, profile.engineering_ownership_terms
+        )
         non_target_matches = count_phrase_matches(combined_text, profile.non_target_terms)
         mixed_stack_matches = count_phrase_matches(combined_text, profile.mixed_stack_terms)
         platform_matches = count_phrase_matches(combined_text, profile.platform_terms)
@@ -111,6 +120,17 @@ class RulesScorer(BaseJobScorer):
             explanation.penalty_reasons.append(
                 "Python parece secundário para IA/data/automação."
             )
+        if ai_evaluation_matches:
+            ai_eval_penalty = min(14.0, 3.0 * len(ai_evaluation_matches))
+            if contractor_style_matches:
+                ai_eval_penalty += min(4.0, 1.5 * len(contractor_style_matches))
+            if engineering_ownership_matches:
+                ai_eval_penalty -= min(5.0, 1.0 * len(engineering_ownership_matches))
+            if ai_eval_penalty > 0:
+                category_scores["penalties"] += min(16.0, ai_eval_penalty)
+                explanation.penalty_reasons.append(
+                    "Python aparece em trabalho de avaliação/treino de IA, não em ownership de software."
+                )
 
         if mixed_stack_matches:
             category_scores["penalties"] += min(9.0, 2.5 * len(mixed_stack_matches))
@@ -154,7 +174,14 @@ class RulesScorer(BaseJobScorer):
             "databases": db_matches[:8],
             "cloud_devops": devops_matches[:8],
             "benefits": benefit_matches[:8],
-            "penalties": (ai_matches + non_target_matches + mixed_stack_matches + platform_matches)[:8],
+            "penalties": (
+                ai_matches
+                + ai_evaluation_matches
+                + contractor_style_matches
+                + non_target_matches
+                + mixed_stack_matches
+                + platform_matches
+            )[:10],
         }
         evidence_terms = python_matches + db_matches + devops_matches + benefit_matches
         explanation.evidence = extract_evidence_snippets(

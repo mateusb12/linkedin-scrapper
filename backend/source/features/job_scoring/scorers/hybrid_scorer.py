@@ -58,6 +58,7 @@ HIGH_MISMATCH_ARCHETYPES = {
     "fullstack_python",
     "data_platform_python",
     "ai_or_llm_python",
+    "ai_training_or_evaluation_python",
     "platform_or_internal_systems_python",
 }
 
@@ -69,7 +70,10 @@ class ArchetypeAssessment:
     frontend_core: float
     data_platform_core: float
     ai_core: float
+    ai_evaluation_core: float
     platform_core: float
+    engineering_ownership: float
+    contractor_style: float
     adjacent_frontend: float
     adjacent_data: float
     adjacent_ai: float
@@ -161,6 +165,17 @@ class HybridScorer(BaseJobScorer):
             explanation.bonus_reasons.append(
                 "Heurística estrutural indica backend Python puro."
             )
+        elif (
+            assessment.archetype == "ai_or_llm_python"
+            and self._has_strong_ai_backend_ownership(
+                backend_core=assessment.backend_core,
+                engineering_ownership=assessment.engineering_ownership,
+            )
+        ):
+            category_scores["python_primary"] += 8.0
+            explanation.bonus_reasons.append(
+                "Contexto de LLM aparece sobre uma função ainda ancorada em ownership backend."
+            )
         elif assessment.archetype == "backend_python_with_minor_cross_functional_signals":
             category_scores["python_primary"] += 8.0
             explanation.bonus_reasons.append(
@@ -248,7 +263,10 @@ class HybridScorer(BaseJobScorer):
                     "frontend_core": round(assessment.frontend_core, 2),
                     "data_platform_core": round(assessment.data_platform_core, 2),
                     "ai_core": round(assessment.ai_core, 2),
+                    "ai_evaluation_core": round(assessment.ai_evaluation_core, 2),
                     "platform_core": round(assessment.platform_core, 2),
+                    "engineering_ownership": round(assessment.engineering_ownership, 2),
+                    "contractor_style": round(assessment.contractor_style, 2),
                     "adjacent_frontend": round(assessment.adjacent_frontend, 2),
                     "adjacent_data": round(assessment.adjacent_data, 2),
                     "adjacent_ai": round(assessment.adjacent_ai, 2),
@@ -332,6 +350,39 @@ class HybridScorer(BaseJobScorer):
         )
         ai_core = max(0.0, ai_core - (1.1 * adjacent_ai))
 
+        ai_evaluation_core = self._weighted_match_score(
+            normalized_parts,
+            profile.ai_evaluation_terms,
+        )
+        ai_evaluation_core += 2.4 * self._contextual_clause_hits(
+            clauses,
+            primary_terms=profile.ai_evaluation_terms,
+            secondary_terms=(
+                profile.ai_evaluation_support_terms + profile.contractor_style_terms
+            ),
+            adjacent_terms=profile.adjacent_context_terms,
+        )
+
+        contractor_style = self._weighted_match_score(
+            normalized_parts,
+            profile.contractor_style_terms,
+        )
+
+        engineering_ownership = self._weighted_match_score(
+            normalized_parts,
+            profile.engineering_ownership_terms,
+        )
+        engineering_ownership += 2.0 * self._contextual_clause_hits(
+            clauses,
+            primary_terms=profile.engineering_ownership_terms,
+            secondary_terms=(
+                profile.backend_context_terms
+                + profile.responsibility_verbs
+                + ("production", "services", "systems", "architecture")
+            ),
+            adjacent_terms=profile.adjacent_context_terms,
+        )
+
         platform_core = self._weighted_match_score(
             normalized_parts,
             profile.platform_terms,
@@ -345,15 +396,55 @@ class HybridScorer(BaseJobScorer):
             data_platform_core += 9.0
         if count_phrase_matches(title_text, profile.ai_core_terms):
             ai_core += 8.0
+        if count_phrase_matches(title_text, profile.ai_evaluation_terms):
+            ai_evaluation_core += 9.0
         if count_phrase_matches(title_text, profile.platform_terms):
             platform_core += 7.0
 
-        backend_dominance = backend_core - max(frontend_core, data_platform_core, ai_core, platform_core)
+        strong_ai_backend_ownership = self._has_strong_ai_backend_ownership(
+            backend_core=backend_core,
+            engineering_ownership=engineering_ownership,
+        )
+        backend_dominance = backend_core - max(
+            frontend_core,
+            data_platform_core,
+            ai_core,
+            ai_evaluation_core,
+            platform_core,
+        )
         reasons: list[str] = []
         structural_penalty = 0.0
 
-        if backend_core >= 15.0 and backend_dominance >= 4.0:
+        if (
+            backend_core >= 15.0
+            and backend_dominance >= 4.0
+            and ai_evaluation_core < max(10.0, backend_core * 0.45)
+        ):
             archetype = "backend_python_pure"
+        elif (
+            ai_evaluation_core + (0.35 * contractor_style)
+            >= max(12.0, backend_core * 0.68)
+            and engineering_ownership
+            <= max(10.0, ai_evaluation_core * 0.78)
+        ):
+            archetype = "ai_training_or_evaluation_python"
+            structural_penalty = min(
+                20.0,
+                max(
+                    9.0,
+                    8.0
+                    + (ai_evaluation_core * 0.42)
+                    + min(4.0, contractor_style * 0.25)
+                    - min(4.0, engineering_ownership * 0.2),
+                ),
+            )
+            reasons.append(
+                "Responsabilidades centrais parecem avaliar/treinar respostas de IA, não construir sistemas backend."
+            )
+            if contractor_style >= 4.0:
+                reasons.append(
+                    "Linguagem de contractor/task-based reforça trabalho de avaliação, não ownership de produto."
+                )
         elif frontend_core >= max(14.0, backend_core * 0.72):
             archetype = "fullstack_python"
             structural_penalty = min(18.0, 7.0 + (frontend_core * 0.45))
@@ -364,13 +455,21 @@ class HybridScorer(BaseJobScorer):
             reasons.append("Sinais estruturais de data/platform dominam o escopo.")
         elif ai_core >= max(12.0, backend_core * 0.65):
             archetype = "ai_or_llm_python"
-            structural_penalty = min(15.0, 6.0 + (ai_core * 0.4))
-            reasons.append("Sinais estruturais de IA/LLM parecem centrais na função.")
+            if strong_ai_backend_ownership:
+                structural_penalty = min(4.0, max(0.0, 1.5 + max(0.0, ai_core - backend_core) * 0.18))
+                reasons.append("LLM aparece como domínio do produto, mas com ownership backend forte.")
+            else:
+                structural_penalty = min(15.0, 6.0 + (ai_core * 0.4))
+                reasons.append("Sinais estruturais de IA/LLM parecem centrais na função.")
         elif platform_core >= max(10.0, backend_core * 0.7):
             archetype = "platform_or_internal_systems_python"
             structural_penalty = min(14.0, 5.5 + (platform_core * 0.45))
             reasons.append("Escopo parece mais plataforma/sistemas internos do que backend puro.")
-        elif backend_core >= 14.0 and backend_dominance >= 0.0:
+        elif (
+            backend_core >= 14.0
+            and backend_dominance >= 0.0
+            and ai_evaluation_core < max(10.0, backend_core * 0.55)
+        ):
             archetype = "backend_python_with_minor_cross_functional_signals"
         else:
             archetype = "generic_python"
@@ -384,7 +483,10 @@ class HybridScorer(BaseJobScorer):
             frontend_core=frontend_core,
             data_platform_core=data_platform_core,
             ai_core=ai_core,
+            ai_evaluation_core=ai_evaluation_core,
             platform_core=platform_core,
+            engineering_ownership=engineering_ownership,
+            contractor_style=contractor_style,
             adjacent_frontend=adjacent_frontend,
             adjacent_data=adjacent_data,
             adjacent_ai=adjacent_ai,
@@ -448,18 +550,37 @@ class HybridScorer(BaseJobScorer):
                 hits += 1.0
         return hits
 
+    @staticmethod
+    def _has_strong_ai_backend_ownership(
+        *,
+        backend_core: float,
+        engineering_ownership: float,
+    ) -> bool:
+        return engineering_ownership >= 10.0 and (
+            backend_core >= 13.0
+            or (backend_core + engineering_ownership) >= 23.0
+        )
+
     def mark_suspicious(self, result: ScoreResult) -> ScoreResult:
         result = super().mark_suspicious(result)
-        if result.total_score < self.config.suspicious_score_threshold:
-            return result
 
         archetype = result.metadata.get("archetype")
         structural_penalty = float(result.metadata.get("structural_penalty", 0.0))
         archetype_signals = result.metadata.get("archetype_signals", {})
+        backend_core = float(archetype_signals.get("backend_core", 0.0))
         frontend_core = float(archetype_signals.get("frontend_core", 0.0))
         data_core = float(archetype_signals.get("data_platform_core", 0.0))
+        ai_evaluation_core = float(archetype_signals.get("ai_evaluation_core", 0.0))
+        engineering_ownership = float(archetype_signals.get("engineering_ownership", 0.0))
+        strong_ai_backend_ownership = (
+            archetype == "ai_or_llm_python"
+            and self._has_strong_ai_backend_ownership(
+                backend_core=backend_core,
+                engineering_ownership=engineering_ownership,
+            )
+        )
 
-        if archetype in HIGH_MISMATCH_ARCHETYPES:
+        if archetype in HIGH_MISMATCH_ARCHETYPES and not strong_ai_backend_ownership:
             result.suspicious = True
             result.suspicious_reasons.append(
                 f"score alto para archetype {archetype}"
@@ -478,6 +599,16 @@ class HybridScorer(BaseJobScorer):
             result.suspicious = True
             result.suspicious_reasons.append(
                 "score alto com sinais fortes de data/platform"
+            )
+        if archetype == "ai_training_or_evaluation_python":
+            result.suspicious = True
+            result.suspicious_reasons.append(
+                "vaga usa Python mais para avaliação/treino de IA do que para engenharia backend"
+            )
+        if ai_evaluation_core >= 12.0 and engineering_ownership < 10.0:
+            result.suspicious = True
+            result.suspicious_reasons.append(
+                "sinais fortes de AI evaluation labor com pouco ownership de engenharia"
             )
         if result.suspicious_reasons:
             result.suspicious_reasons = list(dict.fromkeys(result.suspicious_reasons))

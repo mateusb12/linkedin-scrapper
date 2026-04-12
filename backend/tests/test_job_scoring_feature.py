@@ -130,3 +130,133 @@ def test_hybrid_treats_collaboration_and_differentials_as_adjacent_context() -> 
     }
     assert result.total_score >= 65
     assert result.category_scores["penalties"] < 10
+
+
+def test_hybrid_penalizes_ai_training_evaluation_contractor_pattern() -> None:
+    scorer = HybridScorer()
+    ai_eval_job = build_job(
+        urn="ai-eval",
+        title="Back-End Python Developer - Remote",
+        description_full=(
+            "Create and answer computer science and programming-related questions to train AI models. "
+            "Review, analyze, and evaluate AI-generated code for accuracy, efficiency, and best practices. "
+            "Provide clear, constructive, and structured feedback to improve AI responses in Spanish and English. "
+            "This is an asynchronous, project-based independent contractor role with flexible hours, "
+            "5 to 40 hours per week, hourly compensation and weekly payout."
+        ),
+        qualifications=["Python", "Code review", "English", "Spanish"],
+        responsibilities=[
+            "Train AI models with human feedback on code and programming questions.",
+            "Review model responses and explain technical concepts clearly.",
+        ],
+        keywords=["python", "ai", "feedback"],
+    )
+
+    result = scorer.score_job(ai_eval_job)
+
+    assert result.metadata["archetype"] == "ai_training_or_evaluation_python"
+    assert result.total_score <= 45
+    assert result.suspicious is True
+    assert any(
+        "avaliar/treinar respostas de IA" in reason
+        or "avaliação/treino de IA" in reason
+        for reason in result.explanation.penalty_reasons
+    )
+    assert "vaga usa Python mais para avaliação/treino de IA do que para engenharia backend" in result.suspicious_reasons
+
+
+def test_hybrid_preserves_legit_ai_backend_engineering_role() -> None:
+    scorer = HybridScorer()
+    job = build_job(
+        urn="ai-backend",
+        title="Senior AI Platform Backend Engineer",
+        description_full=(
+            "Build backend services and APIs for model-serving and inference workloads. "
+            "Design and maintain Python microservices, deployment pipelines, observability, "
+            "production support, database design and cloud infrastructure for AI products. "
+            "Own reliability, scalability, CI/CD, monitoring and incident response."
+        ),
+        qualifications=[
+            "Python",
+            "FastAPI",
+            "Docker",
+            "Kubernetes",
+            "AWS",
+            "PostgreSQL",
+        ],
+        responsibilities=[
+            "Build and operate production systems for inference APIs and evaluation tooling.",
+            "Maintain service ownership, on-call support and roadmap execution for backend services.",
+        ],
+        keywords=["backend", "apis", "microservices", "ai products"],
+    )
+
+    result = scorer.score_job(job)
+
+    assert result.metadata["archetype"] in {
+        "backend_python_pure",
+        "backend_python_with_minor_cross_functional_signals",
+    }
+    assert result.total_score >= 65
+    assert result.category_scores["penalties"] < 10
+
+
+def test_pure_backend_python_stays_above_ai_evaluation_job() -> None:
+    scorer = HybridScorer()
+    backend_job = build_job(
+        urn="backend-core",
+        title="Senior Backend Python Engineer",
+        description_full=(
+            "Build and maintain backend APIs and services in Python with FastAPI, pytest, PostgreSQL, "
+            "Redis, Docker and AWS. Own production systems, service reliability, observability, "
+            "database design, deployments and incident response."
+        ),
+        qualifications=["Python", "FastAPI", "Pytest", "PostgreSQL", "Docker", "AWS"],
+        responsibilities=[
+            "Design and implement APIs and microservices.",
+            "Operate production systems and support feature delivery.",
+        ],
+        keywords=["backend", "api", "microservices", "reliability"],
+    )
+    ai_eval_job = build_job(
+        urn="ai-eval-2",
+        title="Back-End Python Developer - Remote",
+        description_full=(
+            "Answer programming-related questions to train AI models and review AI-generated code. "
+            "Provide structured feedback to improve AI responses in a project-based contractor setup "
+            "with flexible hours and weekly payout."
+        ),
+        qualifications=["Python"],
+        responsibilities=["Evaluate model responses and grade coding answers."],
+        keywords=["python", "ai"],
+    )
+
+    backend_result = scorer.score_job(backend_job)
+    ai_eval_result = scorer.score_job(ai_eval_job)
+
+    assert backend_result.total_score > ai_eval_result.total_score
+    assert backend_result.metadata["archetype"] in {
+        "backend_python_pure",
+        "backend_python_with_minor_cross_functional_signals",
+    }
+    assert ai_eval_result.metadata["archetype"] == "ai_training_or_evaluation_python"
+
+
+def test_hybrid_preserves_llm_backend_engineering_with_strong_ownership() -> None:
+    scorer = HybridScorer()
+    job = build_job(
+        urn="llm-platform",
+        title="Backend Engineer - LLM Platform",
+        description_full=(
+            "Build APIs and microservices in Python to serve LLM inference workloads. "
+            "Design scalable systems for model serving, evaluation pipelines, logging, and observability."
+        ),
+        qualifications=["Python"],
+    )
+
+    result = scorer.score_job(job)
+
+    assert result.metadata["archetype"] == "ai_or_llm_python"
+    assert 55 <= result.total_score <= 75
+    assert result.suspicious is False
+    assert result.metadata["structural_penalty"] <= 4.0

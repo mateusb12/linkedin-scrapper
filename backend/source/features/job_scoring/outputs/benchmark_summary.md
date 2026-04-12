@@ -5,7 +5,7 @@
 
 ## rules_scorer
 
-- Média de score em vagas aplicadas: 45.55
+- Média de score em vagas aplicadas: 45.49
 
 ### Top 10
 
@@ -69,11 +69,20 @@
 
 ### Casos suspeitos
 
-- Nenhum caso suspeito pelo heurístico atual.
+- 43.40 | Fullstack Developer (Python, React) | score alto para archetype fullstack_python; score alto apesar de penalidades estruturais relevantes; score alto com sinais fortes de fullstack/frontend
+- 38.52 | Python Developer - Odoo | score alto para archetype platform_or_internal_systems_python; score alto apesar de penalidades estruturais relevantes
+- 38.50 | Fullstack Engineer (Python & React.js) | score alto para archetype fullstack_python; score alto apesar de penalidades estruturais relevantes; score alto com sinais fortes de fullstack/frontend
+- 37.13 | Desenvolvedor Fusll Stack Python Pleno | score alto para archetype fullstack_python; score alto apesar de penalidades estruturais relevantes; score alto com sinais fortes de fullstack/frontend
+- 32.90 | Fullstack Engineer (Python / React) - LATAM | score alto para archetype fullstack_python; score alto apesar de penalidades estruturais relevantes; score alto com sinais fortes de fullstack/frontend
+- 32.10 | Fullstack Developer – Node / Python + React/Vue | score alto para archetype fullstack_python; score alto apesar de penalidades estruturais relevantes; score alto com sinais fortes de fullstack/frontend
+- 31.00 | Senior Full Stack Engineer (Python/React) | score alto para archetype fullstack_python; score alto apesar de penalidades estruturais relevantes; score alto com sinais fortes de fullstack/frontend
+- 30.00 | Junior Data Platform Engineer | English Fluent | Remote  | score alto para archetype data_platform_python; score alto apesar de penalidades estruturais relevantes; score alto com sinais fortes de data/platform
+- 25.91 | SR. Desenvolvedor Fullstack Python | score alto para archetype fullstack_python; score alto apesar de penalidades estruturais relevantes; score alto com sinais fortes de fullstack/frontend
+- 24.90 | Junior/Mid Fullstack Engineer | score alto para archetype fullstack_python; score alto apesar de penalidades estruturais relevantes; score alto com sinais fortes de fullstack/frontend
 
 ## embeddings_scorer
 
-- Média de score em vagas aplicadas: 23.62
+- Média de score em vagas aplicadas: 23.58
 
 ### Top 10
 
