@@ -315,6 +315,7 @@ const MainJobListing = () => {
             pythonScore: score.total_score ?? 0,
             pythonSignalScore: score.category_scores?.python_primary ?? 0,
             aiCategoryScores: score.category_scores || null,
+            aiScoreBreakdown: score.score_breakdown || null,
             aiArchetype:
               score.archetype ||
               score.metadata?.archetype ||

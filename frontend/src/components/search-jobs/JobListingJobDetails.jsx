@@ -38,6 +38,69 @@ const formatScoreLabel = (label) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 
+const formatSignedPoints = (value) => {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) return null;
+
+  const rounded =
+    Math.abs(numericValue % 1) < Number.EPSILON
+      ? Math.round(numericValue)
+      : numericValue.toFixed(2);
+
+  return `${numericValue >= 0 ? "+" : ""}${rounded}`;
+};
+
+const getShortSource = (value) => {
+  if (!value) return null;
+
+  const trimmed = String(value).trim().replace(/\s+/g, " ");
+
+  if (trimmed.length <= 120) return trimmed;
+
+  return `${trimmed.slice(0, 117)}...`;
+};
+
+const BreakdownList = ({ items = [], tone }) => {
+  if (!items.length) {
+    return <Placeholder text="None." />;
+  }
+
+  const toneClasses =
+    tone === "positive"
+      ? "border-emerald-500/20 bg-emerald-500/5"
+      : "border-amber-500/20 bg-amber-500/5";
+  const pointsClasses =
+    tone === "positive" ? "text-emerald-300" : "text-amber-300";
+
+  return (
+    <ul className="mt-2 space-y-2">
+      {items.map((item, index) => {
+        const label = item?.label || "Unnamed signal";
+        const points = formatSignedPoints(item?.points);
+        const source = getShortSource(item?.source);
+
+        return (
+          <li
+            key={`${label}-${item?.source || "no-source"}-${index}`}
+            className={`rounded-xl border px-3 py-2 ${toneClasses}`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <p className="font-medium text-slate-100">{label}</p>
+              {points && (
+                <span className={`shrink-0 font-semibold ${pointsClasses}`}>
+                  {points}
+                </span>
+              )}
+            </div>
+            {source && <p className="mt-1 text-xs text-slate-400">{source}</p>}
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
+
 const InfoCard = ({ icon: Icon, label, value }) => (
   <div className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-800/70 px-4 py-3">
     <Icon size={18} className="shrink-0 text-slate-400" />
@@ -82,14 +145,30 @@ const JobListingJobDetails = ({ job, maxPythonScore = 0 }) => {
     pythonScore != null && maxPythonScore > 0
       ? Math.max(0, Math.min((pythonScore / maxPythonScore) * 100, 100))
       : 0;
-  const categoryScores = Object.entries(job.aiCategoryScores || {}).filter(
-    ([, value]) => typeof value === "number" && Number.isFinite(value),
-  );
+  const scoreBreakdown = job.aiScoreBreakdown || null;
+  const breakdownPositive = Array.isArray(scoreBreakdown?.positive)
+    ? scoreBreakdown.positive
+    : [];
+  const breakdownNegative = Array.isArray(scoreBreakdown?.negative)
+    ? scoreBreakdown.negative
+    : [];
+  const categoryScores = Object.entries(
+    scoreBreakdown?.category_totals || job.aiCategoryScores || {},
+  ).filter(([, value]) => typeof value === "number" && Number.isFinite(value));
+  const finalScore =
+    typeof scoreBreakdown?.final_score === "number" &&
+    Number.isFinite(scoreBreakdown.final_score)
+      ? scoreBreakdown.final_score
+      : typeof job.aiScore === "number" && Number.isFinite(job.aiScore)
+        ? job.aiScore
+        : pythonScore;
   const matchedKeywordGroups = Object.entries(job.aiMatchedKeywords || {}).filter(
     ([, keywords]) => Array.isArray(keywords) && keywords.length > 0,
   );
   const hasScoreReasoning =
+    Boolean(scoreBreakdown) ||
     Boolean(job.aiArchetype) ||
+    typeof job.aiSuspicious === "boolean" ||
     Boolean(job.aiSignals?.length) ||
     Boolean(job.aiSuspiciousReasons?.length) ||
     Boolean(job.aiBonusReasons?.length) ||
@@ -260,10 +339,35 @@ const JobListingJobDetails = ({ job, maxPythonScore = 0 }) => {
                     </div>
                   )}
 
+                  {finalScore != null && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Final Score
+                      </p>
+                      <p className="mt-1 text-slate-200">
+                        {Math.round(finalScore * 100) / 100}
+                      </p>
+                    </div>
+                  )}
+
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-400">
+                      Positive Signals
+                    </p>
+                    <BreakdownList items={breakdownPositive} tone="positive" />
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-400">
+                      Negative Signals
+                    </p>
+                    <BreakdownList items={breakdownNegative} tone="negative" />
+                  </div>
+
                   {categoryScores.length > 0 && (
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Category Scores
+                        Category Totals
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {categoryScores.map(([label, value]) => (
@@ -271,10 +375,36 @@ const JobListingJobDetails = ({ job, maxPythonScore = 0 }) => {
                             key={label}
                             className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-200"
                           >
-                            {formatScoreLabel(label)}: {Math.round(value)}
+                            {formatScoreLabel(label)}: {Math.round(value * 100) / 100}
                           </span>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Suspicious
+                    </p>
+                    <p
+                      className={`mt-1 ${
+                        job.aiSuspicious ? "text-red-300" : "text-slate-200"
+                      }`}
+                    >
+                      {job.aiSuspicious ? "Yes" : "No"}
+                    </p>
+                  </div>
+
+                  {job.aiSuspiciousReasons?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-red-400">
+                        Suspicious Reasons
+                      </p>
+                      <ul className="mt-2 space-y-1 text-slate-200">
+                        {job.aiSuspiciousReasons.map((reason, index) => (
+                          <li key={`${reason}-${index}`}>{reason}</li>
+                        ))}
+                      </ul>
                     </div>
                   )}
 
@@ -298,7 +428,7 @@ const JobListingJobDetails = ({ job, maxPythonScore = 0 }) => {
                     </div>
                   )}
 
-                  {job.aiBonusReasons?.length > 0 && (
+                  {job.aiBonusReasons?.length > 0 && breakdownPositive.length === 0 && (
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wide text-emerald-400">
                         Positive Signals
@@ -311,26 +441,14 @@ const JobListingJobDetails = ({ job, maxPythonScore = 0 }) => {
                     </div>
                   )}
 
-                  {job.aiPenaltyReasons?.length > 0 && (
+                  {job.aiPenaltyReasons?.length > 0 &&
+                    breakdownNegative.length === 0 && (
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wide text-amber-400">
                         Penalties
                       </p>
                       <ul className="mt-2 space-y-1 text-slate-200">
                         {job.aiPenaltyReasons.map((reason, index) => (
-                          <li key={`${reason}-${index}`}>{reason}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {job.aiSuspiciousReasons?.length > 0 && (
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-red-400">
-                        Suspicious Signals
-                      </p>
-                      <ul className="mt-2 space-y-1 text-slate-200">
-                        {job.aiSuspiciousReasons.map((reason, index) => (
                           <li key={`${reason}-${index}`}>{reason}</li>
                         ))}
                       </ul>
