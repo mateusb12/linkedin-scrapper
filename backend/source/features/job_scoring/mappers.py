@@ -62,6 +62,7 @@ def score_result_to_payload(
             key: round(value, 2)
             for key, value in result.category_scores.items()
         },
+        "score_breakdown": result.score_breakdown.to_dict(),
         "archetype": result.metadata.get("archetype"),
         "matched_keywords": result.explanation.matched_keywords,
         "bonus_reasons": result.explanation.bonus_reasons,

@@ -6,7 +6,12 @@ from source.features.job_scoring.config.preferences import (
     DEFAULT_JOB_SCORING_CONFIG,
     JobScoringConfig,
 )
-from source.features.job_scoring.domain import JobPosting, ScoreExplanation, ScoreResult
+from source.features.job_scoring.domain import (
+    JobPosting,
+    ScoreBreakdown,
+    ScoreExplanation,
+    ScoreResult,
+)
 
 
 class BaseJobScorer(ABC):
@@ -40,6 +45,7 @@ class BaseJobScorer(ABC):
         job: JobPosting,
         category_scores: dict[str, float],
         explanation: ScoreExplanation,
+        score_breakdown: ScoreBreakdown | None = None,
         metadata: dict | None = None,
     ) -> ScoreResult:
         total_score = sum(
@@ -57,7 +63,14 @@ class BaseJobScorer(ABC):
                 for key, value in category_scores.items()
             },
             explanation=explanation,
+            score_breakdown=score_breakdown
+            or ScoreBreakdown(
+                category_totals={
+                    key: max(0.0, min(100.0, value))
+                    for key, value in category_scores.items()
+                },
+                final_score=total_score,
+            ),
             metadata=metadata or {},
         )
         return self.mark_suspicious(result)
-

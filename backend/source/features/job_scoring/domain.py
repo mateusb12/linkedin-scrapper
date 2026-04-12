@@ -59,12 +59,46 @@ class ScoreExplanation:
 
 
 @dataclass(slots=True)
+class ScoreBreakdownItem:
+    label: str
+    points: float
+    source: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "label": self.label,
+            "points": round(self.points, 2),
+            "source": self.source,
+        }
+
+
+@dataclass(slots=True)
+class ScoreBreakdown:
+    positive: list[ScoreBreakdownItem] = field(default_factory=list)
+    negative: list[ScoreBreakdownItem] = field(default_factory=list)
+    category_totals: dict[str, float] = field(default_factory=dict)
+    final_score: float = 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "positive": [item.to_dict() for item in self.positive],
+            "negative": [item.to_dict() for item in self.negative],
+            "category_totals": {
+                key: round(value, 2)
+                for key, value in self.category_totals.items()
+            },
+            "final_score": round(self.final_score, 2),
+        }
+
+
+@dataclass(slots=True)
 class ScoreResult:
     scorer_name: str
     job: JobPosting
     total_score: float
     category_scores: dict[str, float]
     explanation: ScoreExplanation
+    score_breakdown: ScoreBreakdown = field(default_factory=ScoreBreakdown)
     suspicious: bool = False
     suspicious_reasons: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -80,6 +114,7 @@ class ScoreResult:
                 for key, value in self.category_scores.items()
             },
             "explanation": self.explanation.to_dict(),
+            "score_breakdown": self.score_breakdown.to_dict(),
             "suspicious": self.suspicious,
             "suspicious_reasons": self.suspicious_reasons,
             "metadata": self.metadata,

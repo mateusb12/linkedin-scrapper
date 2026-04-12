@@ -157,6 +157,9 @@ def test_hybrid_penalizes_ai_training_evaluation_contractor_pattern() -> None:
     assert result.metadata["archetype"] == "ai_training_or_evaluation_python"
     assert result.total_score <= 45
     assert result.suspicious is True
+    negative_labels = {item.label for item in result.score_breakdown.negative}
+    assert "AI evaluation labor penalty" in negative_labels
+    assert "Contractor/task-based penalty" in negative_labels
     assert any(
         "avaliar/treinar respostas de IA" in reason
         or "avaliação/treino de IA" in reason
@@ -199,6 +202,8 @@ def test_hybrid_preserves_legit_ai_backend_engineering_role() -> None:
     }
     assert result.total_score >= 65
     assert result.category_scores["penalties"] < 10
+    positive_labels = {item.label for item in result.score_breakdown.positive}
+    assert "Backend ownership boost" in positive_labels or "Backend core preserved" in positive_labels
 
 
 def test_pure_backend_python_stays_above_ai_evaluation_job() -> None:
@@ -260,3 +265,49 @@ def test_hybrid_preserves_llm_backend_engineering_with_strong_ownership() -> Non
     assert 55 <= result.total_score <= 75
     assert result.suspicious is False
     assert result.metadata["structural_penalty"] <= 4.0
+    positive_labels = {item.label for item in result.score_breakdown.positive}
+    negative_labels = {item.label for item in result.score_breakdown.negative}
+    assert "LLM backend ownership boost" in positive_labels
+    assert "AI/LLM context penalty" in negative_labels
+
+
+def test_hybrid_score_breakdown_is_structured_for_pure_backend_job() -> None:
+    scorer = HybridScorer()
+    job = build_job(
+        urn="backend-breakdown",
+        title="Senior Backend Python Engineer",
+        description_full=(
+            "Build backend APIs and services in Python with FastAPI, pytest, PostgreSQL, "
+            "Redis, Docker and AWS. Own production systems, observability and reliability."
+        ),
+        qualifications=["Python", "FastAPI", "Pytest", "PostgreSQL", "Docker", "AWS"],
+    )
+
+    result = scorer.score_job(job)
+
+    positive_labels = {item.label for item in result.score_breakdown.positive}
+    assert "Python core match" in positive_labels
+    assert "Backend title signal" in positive_labels
+    assert "Database stack boost" in positive_labels
+    assert "Cloud/DevOps stack boost" in positive_labels
+    assert result.score_breakdown.final_score == result.total_score
+
+
+def test_hybrid_score_breakdown_marks_fullstack_penalty() -> None:
+    scorer = HybridScorer()
+    job = build_job(
+        urn="fullstack-breakdown",
+        title="Fullstack Developer (Python, React)",
+        description_full=(
+            "Build and evolve frontend systems using React, Next.js and TypeScript. "
+            "Design and ship Python backends with FastAPI."
+        ),
+        qualifications=["Python", "FastAPI", "React", "Next.js", "TypeScript"],
+        programming_languages=["Python", "TypeScript"],
+    )
+
+    result = scorer.score_job(job)
+
+    negative_labels = {item.label for item in result.score_breakdown.negative}
+    assert "Fullstack/frontend penalty" in negative_labels
+    assert "Frontend dominance penalty" in negative_labels
