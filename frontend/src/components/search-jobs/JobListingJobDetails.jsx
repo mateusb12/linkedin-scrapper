@@ -106,7 +106,7 @@ const JobListingJobDetails = ({ job }) => {
               <InsightBadge
                 icon={Code2}
                 className="border-indigo-500/30 bg-indigo-500/10 text-indigo-300"
-                title="Python backend score from AI scorer"
+                title="Calibrated Python match score from AI scorer"
               >
                 Python Score: {Math.round(job.pythonScore)}
               </InsightBadge>
@@ -272,7 +272,7 @@ const JobListingJobDetails = ({ job }) => {
               <InsightBadge
                 icon={Code2}
                 className="border-indigo-500/30 bg-indigo-500/10 text-indigo-300"
-                title="Python backend score from AI scorer"
+                title="Calibrated Python match score from AI scorer"
               >
                 Python Score: {Math.round(job.pythonScore)}
               </InsightBadge>

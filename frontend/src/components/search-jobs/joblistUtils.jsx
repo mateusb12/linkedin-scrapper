@@ -12,7 +12,7 @@ import {
   getTechBadgeStyle,
 } from "../tracking/utils/jobUtils.js";
 
-export const JOBS_CACHE_KEY = "graphql_jobs_cache_v1";
+export const JOBS_CACHE_KEY = "graphql_jobs_cache_v2";
 export const NEGATIVE_KEYWORDS_CACHE_KEY = "negative_keywords_v1";
 export const NEGATIVE_COMPANIES_CACHE_KEY = "negative_companies_v1";
 

@@ -312,7 +312,8 @@ const MainJobListing = () => {
           return {
             ...job,
             aiScore: score.total_score ?? 0,
-            pythonScore: score.category_scores?.python_primary ?? 0,
+            pythonScore: score.total_score ?? 0,
+            pythonSignalScore: score.category_scores?.python_primary ?? 0,
             aiArchetype:
               score.archetype ||
               score.metadata?.archetype ||
