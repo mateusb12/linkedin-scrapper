@@ -193,12 +193,17 @@ export const scoreJobsBatch = async (jobs) => {
   const map = new Map();
 
   items.forEach((item) => {
-    const key = item.external_id ?? item.id ?? item.urn;
+    const normalizedItem =
+      item && typeof item === "object" && item.data && typeof item.data === "object"
+        ? { ...item.data, ...item }
+        : item;
+    const key =
+      normalizedItem.external_id ?? normalizedItem.id ?? normalizedItem.urn;
+
     if (key != null) {
-      map.set(String(key), item);
+      map.set(String(key), normalizedItem);
     }
   });
 
   return map;
 };
-
