@@ -12,15 +12,46 @@ I am applying for a job and I need you to adapt my resume (in LaTeX format) to f
 2. Rewrite ONLY:
    - the summary (if present)
    - the experience bullet points
-   using first-person past tense ("implemented", "designed", "orchestrated", etc.)
+   using first-person past tense ("implemented", "designed", "modeled", "architected", etc.)
 3. Give STRONG emphasis to the job's keywords by naturally incorporating them into the bullet points.
 4. Do NOT invent skills or technologies that are not already present in my current resume.
 5. Extract 15-25 of the MOST relevant technical keywords, tools, frameworks, concepts and acronyms from the Job Description that are already covered in my resume (skills, experience, projects, etc.).
-6. At the VERY END of the LaTeX document (immediately before \\end{document}), add this exact line (replacing any previous hidden keywords line if it exists):
+
+=== WRITING QUALITY RULES ===
+
+Improve writing quality using these guidelines:
+
+- Use natural technical English commonly found in real resumes
+- Avoid literal translations or awkward phrasing
+- Keep bullet points concise (max ~30 words)
+- Avoid repeating phrases like "full stack", "in production", "based on" excessively
+- Start bullet points with strong action verbs such as:
+  designed, implemented, modeled, architected, refactored, optimized, integrated, orchestrated, improved, automated, built
+- Prefer concise phrasing:
+  "using" instead of "based on"
+  "cloud storage" instead of "storage in cloud environment"
+  "mobile app" instead of "mobile frontend application"
+- Remove redundancy while preserving technical depth
+- Emphasize technical impact when possible:
+  reliability, scalability, observability, resilience, maintainability, performance
+- Maintain consistent terminology across the resume
+- Avoid sentences that sound AI-generated or translated literally
+- Avoid repeating combinations such as:
+  "full stack" + "based on" + "in production" in the same bullet
+
+Ideal bullet structure:
+[action verb] + [what was built] + [technologies] + [technical impact]
+
+Example:
+"Designed multi-step approval workflow with RBAC and validation layers, improving traceability and system security."
+
+=== ATS HIDDEN KEYWORDS ===
+
+At the VERY END of the LaTeX document (immediately before \\end{document}), add this exact line (replacing any previous hidden keywords line if it exists):
 
 \\color{white}\\tiny{KEYWORD1, KEYWORD2, KEYWORD3, ...}
 
-Use only commas, no extra spaces at the end, no quotes, no extra text or comments. This is for ATS optimization.
+Use only commas, no trailing spaces, no quotes, no extra commentary.
 
 === JOB DESCRIPTION ===
 {{JOB_DESCRIPTION}}
@@ -37,15 +68,46 @@ Estou me candidatando a uma vaga e preciso que você adapte meu currículo (em L
 2. Reescreva APENAS:
    - o resumo (se existir)
    - os bullet points de experiência
-   usando primeira pessoa do passado ("implementei", "orquestrei", "desenvolvi", etc.)
+   usando primeira pessoa do passado ("implementei", "projetei", "modelei", "estruturei", etc.)
 3. Dê MUITA ÊNFASE às keywords da vaga, incorporando-as naturalmente nos bullet points.
 4. NÃO invente tecnologias ou habilidades que não existam no meu currículo atual.
-5. Extraia 15-25 das palavras-chave técnicas, ferramentas, frameworks, conceitos e siglas MAIS relevantes da Descrição da Vaga que já estão presentes no meu currículo (habilidades, experiência ou projetos).
-6. No FINAL do documento LaTeX (imediatamente antes de \\end{document}), adicione exatamente esta linha (substituindo qualquer linha de keywords ocultas anterior, se existir):
+5. Extraia 15-25 das palavras-chave técnicas MAIS relevantes da Descrição da Vaga que já estão presentes no meu currículo (habilidades, experiência ou projetos).
+
+=== WRITING QUALITY RULES ===
+
+Melhore a qualidade do texto aplicando estas diretrizes:
+
+- Use português técnico natural (evite traduções literais do inglês)
+- Prefira frases diretas e objetivas (máx. ~30 palavras por bullet)
+- Evite repetição excessiva de termos como "full stack", "em produção", "baseado em"
+- Use verbos fortes no início das frases:
+  projetei, modelei, estruturei, implementei, refatorei, mantive, evoluí, integrei, otimizei, desenvolvi, construí
+- Prefira linguagem comum em currículos técnicos brasileiros:
+  "na nuvem" em vez de "em cloud"
+  "com Raspberry Pi" em vez de "baseado em Raspberry Pi"
+  "aplicação mobile" em vez de "mobile frontend"
+  "armazenamento na nuvem" em vez de "cloud storage"
+- Remova redundâncias sem perder densidade técnica
+- Destaque impacto técnico quando possível:
+  confiabilidade, escalabilidade, observabilidade, resiliência, manutenção, performance
+- Mantenha consistência de terminologia ao longo do documento
+- Evite frases que soem traduzidas literalmente do inglês
+- Evite repetir simultaneamente:
+  "full stack" + "baseado em" + "em produção" no mesmo bullet
+
+Estrutura ideal de bullet:
+[verbo forte] + [o que foi feito] + [tecnologias] + [impacto técnico]
+
+Exemplo:
+"Modelei workflow de aprovação multi-etapas com RBAC e validação de dados, aumentando a rastreabilidade e segurança do sistema."
+
+=== KEYWORDS OCULTAS (ATS) ===
+
+No FINAL do documento LaTeX (imediatamente antes de \\end{document}), adicione exatamente esta linha (substituindo qualquer linha de keywords ocultas anterior, se existir):
 
 \\color{white}\\tiny{PALAVRA1, PALAVRA2, PALAVRA3, ...}
 
-Use apenas vírgulas, sem espaços extras no final, sem aspas e sem nenhum texto ou comentário extra. Isso é para otimização de ATS.
+Use apenas vírgulas, sem espaços extras no final, sem aspas e sem nenhum texto ou comentário extra.
 
 === DESCRIÇÃO DA VAGA ===
 {{JOB_DESCRIPTION}}
