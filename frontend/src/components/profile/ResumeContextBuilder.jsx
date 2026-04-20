@@ -45,14 +45,6 @@ Ideal bullet structure:
 Example:
 "Designed multi-step approval workflow with RBAC and validation layers, improving traceability and system security."
 
-=== ATS HIDDEN KEYWORDS ===
-
-At the VERY END of the LaTeX document (immediately before \\end{document}), add this exact line (replacing any previous hidden keywords line if it exists):
-
-\\color{white}\\tiny{KEYWORD1, KEYWORD2, KEYWORD3, ...}
-
-Use only commas, no trailing spaces, no quotes, no extra commentary.
-
 === JOB DESCRIPTION ===
 {{JOB_DESCRIPTION}}
 
@@ -101,20 +93,54 @@ Estrutura ideal de bullet:
 Exemplo:
 "Modelei workflow de aprovação multi-etapas com RBAC e validação de dados, aumentando a rastreabilidade e segurança do sistema."
 
-=== KEYWORDS OCULTAS (ATS) ===
-
-No FINAL do documento LaTeX (imediatamente antes de \\end{document}), adicione exatamente esta linha (substituindo qualquer linha de keywords ocultas anterior, se existir):
-
-\\color{white}\\tiny{PALAVRA1, PALAVRA2, PALAVRA3, ...}
-
-Use apenas vírgulas, sem espaços extras no final, sem aspas e sem nenhum texto ou comentário extra.
-
 === DESCRIÇÃO DA VAGA ===
 {{JOB_DESCRIPTION}}
 
 === MEU CURRÍCULO ATUAL (LATEX) ===
 {{RESUME_CONTENT}}
 `,
+};
+
+const ATS_HIDDEN_KEYWORD_SECTIONS = {
+  en: `=== ATS HIDDEN KEYWORDS ===
+
+At the VERY END of the LaTeX document (immediately before \\end{document}), add this exact line (replacing any previous hidden keywords line if it exists):
+
+\\color{white}\\tiny{KEYWORD1, KEYWORD2, KEYWORD3, ...}
+
+Use only commas, no trailing spaces, no quotes, no extra commentary.`,
+
+  pt: `=== KEYWORDS OCULTAS (ATS) ===
+
+No FINAL do documento LaTeX (imediatamente antes de \\end{document}), adicione exatamente esta linha (substituindo qualquer linha de keywords ocultas anterior, se existir):
+
+\\color{white}\\tiny{PALAVRA1, PALAVRA2, PALAVRA3, ...}
+
+Use apenas vírgulas, sem espaços extras no final, sem aspas e sem nenhum texto ou comentário extra.`,
+};
+
+const JOB_DESCRIPTION_HEADERS = {
+  en: "=== JOB DESCRIPTION ===",
+  pt: "=== DESCRIÇÃO DA VAGA ===",
+};
+
+const injectAtsHiddenKeywordsSection = (template, langKey, enabled) => {
+  if (!enabled) return template;
+
+  const section =
+    ATS_HIDDEN_KEYWORD_SECTIONS[langKey] || ATS_HIDDEN_KEYWORD_SECTIONS.en;
+  const header = JOB_DESCRIPTION_HEADERS[langKey] || JOB_DESCRIPTION_HEADERS.en;
+
+  if (template.includes(section)) return template;
+
+  const headerIndex = template.indexOf(header);
+  if (headerIndex === -1) {
+    return `${template.trimEnd()}\n\n${section}`;
+  }
+
+  return `${template.slice(0, headerIndex).trimEnd()}\n\n${section}\n\n${template
+    .slice(headerIndex)
+    .trimStart()}`;
 };
 
 export const getResumeFlag = (resume) => {
@@ -202,11 +228,16 @@ const ResumeContextBuilder = ({
   resumes,
   selectedResumeId,
   handleResumeChange,
+  defaultIncludeAtsHiddenKeywords = false,
 }) => {
+  const langKey = getResumeLangKey(resume);
   const [format, setFormat] = useState("latex");
   const [resumeContent, setResumeContent] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [promptTemplate, setPromptTemplate] = useState("");
+  const [includeAtsHiddenKeywords, setIncludeAtsHiddenKeywords] = useState(
+    defaultIncludeAtsHiddenKeywords,
+  );
   const [copied, setCopied] = useState(false);
 
   const [resumeCopied, setResumeCopied] = useState(false);
@@ -218,17 +249,24 @@ const ResumeContextBuilder = ({
       const jsonPayload = denormalizeResume(resume);
       setResumeContent(JSON.stringify(jsonPayload, null, 2));
     } else {
-      const latexContent = generateLatex(resume);
+      const latexContent = generateLatex(resume, {
+        includeAtsHiddenKeywords,
+      });
       setResumeContent(latexContent);
     }
-  }, [resume, format]);
+  }, [resume, format, includeAtsHiddenKeywords]);
 
   useEffect(() => {
-    const langKey = getResumeLangKey(resume);
     setPromptTemplate(PROMPT_TEMPLATES[langKey]);
-  }, [resume?.id]);
+  }, [resume?.id, langKey]);
 
-  const finalOutput = promptTemplate
+  const finalPromptTemplate = injectAtsHiddenKeywordsSection(
+    promptTemplate,
+    langKey,
+    includeAtsHiddenKeywords,
+  );
+
+  const finalOutput = finalPromptTemplate
     .replace(
       "{{JOB_DESCRIPTION}}",
       jobDescription || "[PASTE JOB DESCRIPTION HERE]",
@@ -288,6 +326,16 @@ const ResumeContextBuilder = ({
               selectedResumeId={selectedResumeId}
               handleResumeChange={handleResumeChange}
             />
+
+            <label className="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-3 py-1.5 text-xs font-bold text-gray-300 shadow-sm">
+              <input
+                type="checkbox"
+                checked={includeAtsHiddenKeywords}
+                onChange={(e) => setIncludeAtsHiddenKeywords(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-600 bg-gray-950 text-purple-500 focus:ring-purple-500"
+              />
+              ATS Hidden Keywords
+            </label>
           </div>
 
           <button
