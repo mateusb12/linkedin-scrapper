@@ -159,28 +159,88 @@ export const fetchProfileExperiences = async ({
   return handleResponse(response, "Failed to fetch profile experiences");
 };
 
+const hasNonEmptyString = (value) =>
+  typeof value === "string" && value.trim().length > 0;
+
+const hasNonEmptyArray = (value) =>
+  Array.isArray(value) &&
+  value.some((item) => typeof item === "string" && item.trim().length > 0);
+
+export const isJobScoreable = (job) => {
+  if (!job || typeof job !== "object") return false;
+
+  return (
+    hasNonEmptyString(job.description_full) ||
+    hasNonEmptyString(job.description_snippet) ||
+    hasNonEmptyString(job.premium_title) ||
+    hasNonEmptyString(job.premium_description) ||
+    hasNonEmptyArray(job.qualifications) ||
+    hasNonEmptyArray(job.responsibilities) ||
+    hasNonEmptyArray(job.programming_languages) ||
+    hasNonEmptyArray(job.keywords)
+  );
+};
+
 export const scoreJobsBatch = async (jobs) => {
   if (!Array.isArray(jobs) || jobs.length === 0) {
     return new Map();
   }
 
+  const scoreableJobs = jobs.filter(isJobScoreable);
+  const skippedCount = jobs.length - scoreableJobs.length;
+
+  if (skippedCount > 0) {
+    console.debug(
+      `Skipped ${skippedCount} job${skippedCount === 1 ? "" : "s"} without descriptive fields from AI scoring.`,
+    );
+  }
+
+  if (scoreableJobs.length === 0) {
+    return new Map();
+  }
+
   const payload = {
-    items: jobs.map((job) => ({
+    items: scoreableJobs.map((job) => ({
       id: job.id,
       title: job.title,
       description_full: job.description_full || job.description_snippet || "",
       description_snippet: job.description_snippet || "",
       keywords: Array.isArray(job.keywords) ? job.keywords : [],
+      qualifications: Array.isArray(job.qualifications)
+        ? job.qualifications
+        : [],
+      responsibilities: Array.isArray(job.responsibilities)
+        ? job.responsibilities
+        : [],
+      programming_languages: Array.isArray(job.programming_languages)
+        ? job.programming_languages
+        : [],
+      premium_title: job.premium_title || "",
+      premium_description: job.premium_description || "",
     })),
   };
 
-  const response = await fetch(`${API_BASE}/job-scoring/rank`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  let json;
 
-  const json = await handleResponse(response, "Failed to batch score jobs");
+  try {
+    const response = await fetch(`${API_BASE}/job-scoring/rank`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    json = await handleResponse(response, "Failed to batch score jobs");
+  } catch (error) {
+    console.warn(
+      "Failed to score jobs. Rendering fetched jobs without AI scores.",
+      {
+        error,
+        scoreableCount: scoreableJobs.length,
+        skippedCount,
+      },
+    );
+    return new Map();
+  }
 
   const items = Array.isArray(json?.items)
     ? json.items
@@ -194,7 +254,10 @@ export const scoreJobsBatch = async (jobs) => {
 
   items.forEach((item) => {
     const normalizedItem =
-      item && typeof item === "object" && item.data && typeof item.data === "object"
+      item &&
+      typeof item === "object" &&
+      item.data &&
+      typeof item.data === "object"
         ? { ...item.data, ...item }
         : item;
     const key =
