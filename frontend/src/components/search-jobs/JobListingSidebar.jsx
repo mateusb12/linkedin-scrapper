@@ -19,6 +19,7 @@ import {
   Repeat2,
   X,
   Building2,
+  MapPin,
 } from "lucide-react";
 
 import { formatShortDateTime } from "../../utils/dateUtils.js";
@@ -633,7 +634,7 @@ const JobListingSidebar = ({
 
   const {
     searchTerm,
-    workplaceType,
+    excludedWorkplaceTypes,
     verificationFilter,
     repostedFilter,
     sourceFilter,
@@ -652,7 +653,7 @@ const JobListingSidebar = ({
   } = filtersState;
 
   const {
-    workplaceOptions,
+    workplaceExclusionOptions,
     sourceOptions,
     companyOptions,
     maxPossibleApplicants,
@@ -663,7 +664,7 @@ const JobListingSidebar = ({
     onConfirmFetch,
     onClearCache,
     setSearchTerm,
-    setWorkplaceType,
+    toggleExcludedWorkplaceType,
     setVerificationFilter,
     setRepostedFilter,
     setSourceFilter,
@@ -702,7 +703,6 @@ const JobListingSidebar = ({
   };
 
   const activeGeneralFiltersCount = [
-    workplaceType !== "All",
     verificationFilter !== "All",
     repostedFilter !== "All",
     sourceFilter !== "All",
@@ -825,18 +825,6 @@ const JobListingSidebar = ({
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <FilterSelect
-                    value={workplaceType}
-                    onChange={(event) => setWorkplaceType(event.target.value)}
-                  >
-                    <option value="All">All Workplaces</option>
-                    {workplaceOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </FilterSelect>
-
                   <FilterSelect
                     value={verificationFilter}
                     onChange={(event) =>
@@ -1161,6 +1149,44 @@ const JobListingSidebar = ({
                   <div className="mt-1 flex justify-between text-[10px] text-slate-500">
                     <span>0</span>
                     <span>{maxPossibleApplicants} (Max)</span>
+                  </div>
+                </div>
+
+                <div
+                  className={`mt-2 ${
+                    negativeKeywords.length > 0 ||
+                    negativeCompanies.length > 0 ||
+                    maxApplicantsLimit !== Number.MAX_SAFE_INTEGER
+                      ? "border-t border-slate-700/50 pt-3"
+                      : ""
+                  }`}
+                >
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+                      <MapPin size={14} className="text-slate-400" />
+                      Workplace Type Exclusion
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2">
+                    {workplaceExclusionOptions.map((option) => (
+                      <label
+                        key={option.value}
+                        className="flex cursor-pointer items-center gap-2 rounded-md border border-slate-700 bg-slate-900/50 px-2 py-2 text-xs font-medium text-slate-200 transition hover:border-red-500/50 hover:bg-slate-800"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={excludedWorkplaceTypes.includes(
+                            option.value,
+                          )}
+                          onChange={() =>
+                            toggleExcludedWorkplaceType(option.value)
+                          }
+                          className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-900 accent-red-500"
+                        />
+                        <span>{option.label}</span>
+                      </label>
+                    ))}
                   </div>
                 </div>
               </div>

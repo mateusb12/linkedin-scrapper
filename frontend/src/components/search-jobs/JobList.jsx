@@ -18,6 +18,10 @@ import {
   readNegativeCompaniesCache,
   writeNegativeCompaniesCache,
 } from "./joblistUtils.jsx";
+import {
+  WORKPLACE_EXCLUSION_OPTIONS,
+  getJobWorkplaceType,
+} from "./workplaceNegativeFilters.js";
 
 import JobListingSidebar from "./JobListingSidebar.jsx";
 import JobListingJobDetails from "./JobListingJobDetails.jsx";
@@ -124,7 +128,7 @@ const MainJobListing = () => {
   });
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [workplaceType, setWorkplaceType] = useState("All");
+  const [excludedWorkplaceTypes, setExcludedWorkplaceTypes] = useState([]);
   const [verificationFilter, setVerificationFilter] = useState("All");
   const [repostedFilter, setRepostedFilter] = useState("All");
   const [sourceFilter, setSourceFilter] = useState("All");
@@ -316,10 +320,7 @@ const MainJobListing = () => {
             pythonSignalScore: score.category_scores?.python_primary ?? 0,
             aiCategoryScores: score.category_scores || null,
             aiScoreBreakdown: score.score_breakdown || null,
-            aiArchetype:
-              score.archetype ||
-              score.metadata?.archetype ||
-              null,
+            aiArchetype: score.archetype || score.metadata?.archetype || null,
             aiSignals: score.metadata?.archetype_signals || null,
             aiMatchedKeywords: score.matched_keywords || null,
             aiBonusReasons: score.bonus_reasons || [],
@@ -413,10 +414,6 @@ const MainJobListing = () => {
     localStorage.setItem(APPLICANTS_LIMIT_CACHE_KEY, newValue.toString());
   };
 
-  const workplaceOptions = useMemo(() => {
-    return buildUniqueOptions(jobs, (job) => job.workplace_type);
-  }, [jobs]);
-
   const sourceOptions = useMemo(() => {
     return buildUniqueOptions(
       jobs,
@@ -429,7 +426,7 @@ const MainJobListing = () => {
     return buildUniqueOptions(jobs, (job) => job.company?.name);
   }, [jobs]);
 
-  const filteredJobs = useMemo(() => {
+  const filteredJobsState = useMemo(() => {
     let result = jobs.map((job) => {
       const haystack = buildKeywordHaystack(job);
 
@@ -505,8 +502,15 @@ const MainJobListing = () => {
       });
     }
 
-    if (workplaceType !== "All") {
-      result = result.filter((job) => job.workplace_type === workplaceType);
+    if (excludedWorkplaceTypes.length > 0) {
+      result = result.filter((job) => {
+        const jobWorkplaceType = getJobWorkplaceType(job);
+
+        return (
+          jobWorkplaceType === null ||
+          !excludedWorkplaceTypes.includes(jobWorkplaceType)
+        );
+      });
     }
 
     if (verificationFilter === "Verified") {
@@ -524,6 +528,11 @@ const MainJobListing = () => {
     if (sourceFilter !== "All") {
       result = result.filter((job) => job.source_key === sourceFilter);
     }
+
+    const negativeMatchCount = result.filter(
+      (job) => job.isNegativeMatch,
+    ).length;
+    result = result.filter((job) => !job.isNegativeMatch);
 
     result.sort((a, b) => {
       if (a.isNegativeMatch !== b.isNegativeMatch) {
@@ -595,11 +604,14 @@ const MainJobListing = () => {
       return 0;
     });
 
-    return result;
+    return {
+      filteredJobs: result,
+      negativeMatchCount,
+    };
   }, [
     jobs,
     searchTerm,
-    workplaceType,
+    excludedWorkplaceTypes,
     verificationFilter,
     repostedFilter,
     sourceFilter,
@@ -611,13 +623,22 @@ const MainJobListing = () => {
     maxApplicantsLimit,
   ]);
 
-  const negativeMatchCount = useMemo(() => {
-    return filteredJobs.filter((job) => job.isNegativeMatch).length;
-  }, [filteredJobs]);
+  const { filteredJobs, negativeMatchCount } = filteredJobsState;
+
+  const handleToggleExcludedWorkplaceType = (workplaceType) => {
+    setExcludedWorkplaceTypes((current) => {
+      if (current.includes(workplaceType)) {
+        return current.filter((item) => item !== workplaceType);
+      }
+
+      return [...current, workplaceType];
+    });
+  };
 
   const maxPythonScoreInFilteredJobs = useMemo(() => {
     const scoredJobs = filteredJobs.filter(
-      (job) => typeof job.pythonScore === "number" && Number.isFinite(job.pythonScore),
+      (job) =>
+        typeof job.pythonScore === "number" && Number.isFinite(job.pythonScore),
     );
 
     if (scoredJobs.length === 0) {
@@ -646,6 +667,7 @@ const MainJobListing = () => {
   const negativeFiltersCount =
     (negativeKeywords.length > 0 ? 1 : 0) +
     (negativeCompanies.length > 0 ? 1 : 0) +
+    (excludedWorkplaceTypes.length > 0 ? 1 : 0) +
     (maxApplicantsLimit !== Number.MAX_SAFE_INTEGER ? 1 : 0);
 
   const positiveFiltersCount = positiveKeywords.length > 0 ? 1 : 0;
@@ -665,7 +687,7 @@ const MainJobListing = () => {
 
   const filtersState = {
     searchTerm,
-    workplaceType,
+    excludedWorkplaceTypes,
     verificationFilter,
     repostedFilter,
     sourceFilter,
@@ -684,7 +706,7 @@ const MainJobListing = () => {
   };
 
   const filterOptions = {
-    workplaceOptions,
+    workplaceExclusionOptions: WORKPLACE_EXCLUSION_OPTIONS,
     sourceOptions,
     companyOptions,
     maxPossibleApplicants,
@@ -695,7 +717,7 @@ const MainJobListing = () => {
     onConfirmFetch: handleConfirmFetch,
     onClearCache: handleClearCache,
     setSearchTerm,
-    setWorkplaceType,
+    toggleExcludedWorkplaceType: handleToggleExcludedWorkplaceType,
     setVerificationFilter,
     setRepostedFilter,
     setSourceFilter,
