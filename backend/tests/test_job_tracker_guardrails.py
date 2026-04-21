@@ -8,7 +8,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from app import app
 from source.features.get_applied_jobs.linkedin_http_proxy import LinkedInProxy
-from source.features.get_applied_jobs.utils_proxy import LinkedInAppliedJobsEmptyError
+from source.features.get_applied_jobs.utils_proxy import JobPost, LinkedInAppliedJobsEmptyError
 
 
 @pytest.fixture
@@ -54,6 +54,23 @@ def test_fetch_jobs_listing_allows_legitimate_empty_saved_result():
     assert result.stage == "saved"
     assert result.count == 0
     assert result.jobs == []
+
+
+def test_fetch_jobs_listing_saved_falls_back_to_regex_when_json_candidates_are_action_payloads():
+    proxy = _build_proxy(
+        '1:{"jobId":"4361386726","currentJobStage":"SeekerJobStage_SAVED"}'
+    )
+    proxy.batch_enricher.enrich_base_jobs.side_effect = lambda base_jobs: [
+        JobPost.from_dict(base_job) for base_job in base_jobs
+    ]
+
+    result = proxy.fetch_jobs_listing(stage="saved")
+
+    assert result.stage == "saved"
+    assert result.count == 1
+    assert result.jobs[0].job_id == "4361386726"
+    assert result.jobs[0].job_url == "https://www.linkedin.com/jobs/view/4361386726/"
+    proxy.batch_enricher.enrich_base_jobs.assert_called_once()
 
 
 def test_applied_live_returns_explicit_error_json_for_degraded_payload(client):

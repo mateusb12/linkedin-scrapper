@@ -190,6 +190,10 @@ class LinkedInProxy:
 
             json_job_ids = {str(job.get("jobId")) for job in page_candidates if job.get("jobId")}
             _log(f"   📊 JSON found {len(json_job_ids)} structured jobs")
+            _log(
+                f"   🔎 Parsed sample: "
+                f"{self._summarize_job_candidate(page_candidates[0] if page_candidates else None)}"
+            )
 
             if stage == "applied" and response.status_code == 200 and not raw_job_ids and not page_candidates:
                 _log(
@@ -200,10 +204,35 @@ class LinkedInProxy:
 
             # ═══ Step 5: MERGE - Decide which approach to use ═══
             new_unique = 0
+            dedupe_entered = 0
+            rejected_missing_id = 0
+            rejected_missing_shape = 0
+            rejected_duplicate = 0
+            rejected_transform = 0
+            rejected_samples = []
+
+            def record_reject(reason: str, job: Optional[dict] = None, job_id: Optional[str] = None):
+                nonlocal rejected_missing_id, rejected_missing_shape, rejected_duplicate, rejected_transform
+                if reason == "missing_job_id":
+                    rejected_missing_id += 1
+                elif reason == "missing_title_and_company":
+                    rejected_missing_shape += 1
+                elif reason == "duplicate_job_id":
+                    rejected_duplicate += 1
+                elif reason == "base_job_transform_failed":
+                    rejected_transform += 1
+
+                if len(rejected_samples) < 3:
+                    rejected_samples.append({
+                        "reason": reason,
+                        "job_id": job_id or (str(job.get("jobId")) if isinstance(job, dict) and job.get("jobId") else None),
+                        "shape": self._summarize_job_candidate(job),
+                    })
 
             if raw_job_ids and not page_candidates:
                 _log(f"   ✅ Using regex IDs (JSON parsing missed them)")
                 for job_id in sorted(raw_job_ids):
+                    dedupe_entered += 1
                     if job_id not in global_seen_ids:
                         global_seen_ids.add(job_id)
                         base_job = {
@@ -217,12 +246,15 @@ class LinkedInProxy:
                         all_base_jobs.append(base_job)
                         new_unique += 1
                         _log(f"   ✓ Job {job_id}")
+                    else:
+                        record_reject("duplicate_job_id", job_id=job_id)
 
             elif page_candidates:
                 _log(f"   ✅ Using JSON-parsed structured jobs")
                 for job in page_candidates:
                     jid = job.get("jobId")
                     if not jid:
+                        record_reject("missing_job_id", job)
                         continue
                     jid = str(jid)
 
@@ -233,18 +265,62 @@ class LinkedInProxy:
                             or (isinstance(job.get("companyDetails"), dict) and job["companyDetails"].get("company"))
                     )
                     if not has_title and not has_company:
+                        record_reject("missing_title_and_company", job, jid)
                         continue
 
+                    dedupe_entered += 1
                     if jid not in global_seen_ids:
                         global_seen_ids.add(jid)
-                        base_job = self._build_base_job(job)
+                        try:
+                            base_job = self._build_base_job(job)
+                        except Exception as exc:
+                            global_seen_ids.remove(jid)
+                            record_reject("base_job_transform_failed", job, jid)
+                            _log(f"   ⚠️ Base transform failed for job {jid}: {exc}")
+                            continue
                         all_base_jobs.append(base_job)
                         new_unique += 1
                         _log(f"   ✓ {base_job['title']} at {base_job['company']} ({base_job['job_id']})")
+                    else:
+                        record_reject("duplicate_job_id", job, jid)
+
+                if stage == "saved" and new_unique == 0 and raw_job_ids:
+                    _log(
+                        "   ⚠️ JSON candidates produced 0 base jobs; "
+                        "falling back to regex job IDs for saved jobs"
+                    )
+                    for job_id in sorted(raw_job_ids):
+                        dedupe_entered += 1
+                        if job_id in global_seen_ids:
+                            record_reject("duplicate_job_id", job_id=job_id)
+                            continue
+                        global_seen_ids.add(job_id)
+                        base_job = {
+                            "job_id": job_id,
+                            "title": "Loading...",
+                            "company": "Loading...",
+                            "location": "Unknown",
+                            "job_url": f"https://www.linkedin.com/jobs/view/{job_id}/",
+                            "posted_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                        all_base_jobs.append(base_job)
+                        new_unique += 1
+                        _log(f"   ✓ Job {job_id} via saved regex fallback")
 
             else:
                 _log(f"   ⚠️ No jobs found (regex: {len(raw_job_ids)}, JSON: {len(page_candidates)})")
 
+            _log(
+                "   🔎 Dedupe/transform counts: "
+                f"entering_dedupe={dedupe_entered}, "
+                f"rejected_missing_id={rejected_missing_id}, "
+                f"rejected_missing_title_company={rejected_missing_shape}, "
+                f"rejected_duplicate={rejected_duplicate}, "
+                f"rejected_transform={rejected_transform}, "
+                f"accepted={new_unique}"
+            )
+            if rejected_samples:
+                _log(f"   🔎 Rejected samples: {rejected_samples}")
             _log(f"   → New unique: {new_unique}")
 
             if not is_pagination:
@@ -268,6 +344,30 @@ class LinkedInProxy:
             job_objects = [JobPost.from_dict(base) for base in all_base_jobs]
 
         return JobServiceResponse(count=len(job_objects), stage=stage, jobs=job_objects)
+
+    def _summarize_job_candidate(self, job: Optional[dict]) -> dict:
+        if not isinstance(job, dict):
+            return {}
+
+        company_details = job.get("companyDetails")
+        company_detail_keys = (
+            sorted(company_details.keys())[:8]
+            if isinstance(company_details, dict)
+            else None
+        )
+
+        return {
+            "keys": sorted(job.keys())[:16],
+            "jobId": job.get("jobId"),
+            "jobId_type": type(job.get("jobId")).__name__ if job.get("jobId") is not None else None,
+            "has_title": bool(job.get("title") or job.get("jobTitle")),
+            "has_company": bool(
+                job.get("companyName")
+                or job.get("company")
+                or (isinstance(company_details, dict) and company_details.get("company"))
+            ),
+            "companyDetails_keys": company_detail_keys,
+        }
 
     def resolve_job_id(self, query: str, limit: int = 30) -> Optional[str]:
         """
