@@ -39,6 +39,89 @@ const formatScoreLabel = (label) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 
+const ARCHETYPE_DISPLAY = {
+  backend_python_pure: {
+    label: "Pure Python Backend",
+    emoji: "🐍",
+    className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
+  },
+  backend_python_with_minor_cross_functional_signals: {
+    label: "Backend Python",
+    emoji: "🧩",
+    className: "border-teal-500/30 bg-teal-500/10 text-teal-200",
+  },
+  backend_python_fullstack: {
+    label: "Python Full-Stack",
+    emoji: "🧱",
+    className: "border-violet-500/30 bg-violet-500/10 text-violet-200",
+  },
+  fullstack_python: {
+    label: "Python Full-Stack",
+    emoji: "🧱",
+    className: "border-violet-500/30 bg-violet-500/10 text-violet-200",
+  },
+  generic_python: {
+    label: "Generic Python",
+    emoji: "⚙️",
+    className: "border-slate-500/30 bg-slate-500/10 text-slate-200",
+  },
+  data_platform_python: {
+    label: "Data Platform Python",
+    emoji: "🗄️",
+    className: "border-sky-500/30 bg-sky-500/10 text-sky-200",
+  },
+  devops_python: {
+    label: "DevOps Python",
+    emoji: "🚀",
+    className: "border-cyan-500/30 bg-cyan-500/10 text-cyan-200",
+  },
+  qa_python: {
+    label: "QA Python",
+    emoji: "✅",
+    className: "border-lime-500/30 bg-lime-500/10 text-lime-200",
+  },
+  ml_python: {
+    label: "ML Python",
+    emoji: "🧠",
+    className: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-200",
+  },
+  ai_eval_python: {
+    label: "AI Evaluation Python",
+    emoji: "🔎",
+    className: "border-amber-500/30 bg-amber-500/10 text-amber-200",
+  },
+  ai_training_or_evaluation_python: {
+    label: "AI Training or Evaluation Python",
+    emoji: "🔎",
+    className: "border-amber-500/30 bg-amber-500/10 text-amber-200",
+  },
+  ai_or_llm_python: {
+    label: "AI/LLM Python",
+    emoji: "✨",
+    className: "border-purple-500/30 bg-purple-500/10 text-purple-200",
+  },
+  platform_or_internal_systems_python: {
+    label: "Platform/Internal Systems Python",
+    emoji: "🏗️",
+    className: "border-orange-500/30 bg-orange-500/10 text-orange-200",
+  },
+};
+
+const getArchetypeDisplay = (archetype) => {
+  if (!archetype) return null;
+
+  const key = String(archetype).trim();
+  if (!key) return null;
+
+  return (
+    ARCHETYPE_DISPLAY[key] || {
+      label: formatScoreLabel(key),
+      emoji: "🏷️",
+      className: "border-slate-600 bg-slate-800/80 text-slate-200",
+    }
+  );
+};
+
 const formatSignedPoints = (value) => {
   const numericValue = Number(value);
 
@@ -171,6 +254,7 @@ const JobListingJobDetails = ({
   const matchedKeywordGroups = Object.entries(job.aiMatchedKeywords || {}).filter(
     ([, keywords]) => Array.isArray(keywords) && keywords.length > 0,
   );
+  const archetypeDisplay = getArchetypeDisplay(job.aiArchetype);
   const hasScoreReasoning =
     Boolean(scoreBreakdown) ||
     Boolean(job.aiArchetype) ||
@@ -276,6 +360,20 @@ const JobListingJobDetails = ({
               </InsightBadge>
             )}
           </div>
+
+          {archetypeDisplay && (
+            <div className="mt-3">
+              <span
+                className={`inline-flex max-w-full items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)] ${archetypeDisplay.className}`}
+                title={`Job archetype: ${archetypeDisplay.label}`}
+              >
+                <span aria-hidden="true" className="text-base leading-none">
+                  {archetypeDisplay.emoji}
+                </span>
+                <span className="truncate">{archetypeDisplay.label}</span>
+              </span>
+            </div>
+          )}
 
           {job.matchedPositiveKeywords?.length > 0 && (
             <p className="mt-3 text-sm text-slate-400">
