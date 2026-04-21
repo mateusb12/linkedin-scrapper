@@ -20,6 +20,7 @@ import {
   X,
   Building2,
   MapPin,
+  BookmarkCheck,
 } from "lucide-react";
 
 import { formatShortDateTime } from "../../utils/dateUtils.js";
@@ -464,10 +465,14 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
   const selectedClasses = isSelected
     ? job.isNegativeMatch
       ? "border-red-500/70 bg-red-950/40 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.14)] opacity-100"
-      : "border-sky-400/70 bg-sky-950/40 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.14)]"
+      : job.isSaved
+        ? "border-emerald-400/70 bg-emerald-950/30 shadow-[inset_0_0_0_1px_rgba(52,211,153,0.16)]"
+        : "border-sky-400/70 bg-sky-950/40 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.14)]"
     : job.isNegativeMatch
       ? "border-red-900/30 bg-red-950/10 hover:border-red-800/40 hover:bg-red-900/20 opacity-60 hover:opacity-100"
-      : "border-slate-800 bg-[#0a1728] hover:border-slate-700 hover:bg-slate-800/40";
+      : job.isSaved
+        ? "border-emerald-500/40 bg-emerald-950/15 hover:border-emerald-400/60 hover:bg-emerald-950/25"
+        : "border-slate-800 bg-[#0a1728] hover:border-slate-700 hover:bg-slate-800/40";
 
   return (
     <button
@@ -505,6 +510,14 @@ const JobListItem = ({ job, isSelected, onSelect }) => {
             </div>
 
             <div className="flex shrink-0 items-center gap-1.5">
+              {job.isSaved && (
+                <BookmarkCheck
+                  size={16}
+                  className="text-emerald-300"
+                  title="Saved job"
+                />
+              )}
+
               {job.isNegativeMatch && (
                 <XCircle
                   size={16}
@@ -624,6 +637,7 @@ const JobListingSidebar = ({
   const {
     filteredJobs,
     negativeMatchCount,
+    savedJobsCount,
     selectedJobId,
     loading,
     progressData,
@@ -1218,6 +1232,10 @@ const JobListingSidebar = ({
                   ({negativeMatchCount} filtered)
                 </span>
               )}
+
+              <span className="text-xs font-semibold text-emerald-300">
+                ({savedJobsCount} saved)
+              </span>
             </div>
           </div>
         </div>

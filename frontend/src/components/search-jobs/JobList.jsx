@@ -31,8 +31,33 @@ import { scoreJobsBatch } from "../../services/jobService";
 const APPLICANTS_LIMIT_CACHE_KEY = "negative_applicants_limit_v1";
 const POSITIVE_KEYWORDS_CACHE_KEY = "positive_keywords_v1";
 const MUST_HAVE_KEYWORDS_CACHE_KEY = "must_have_keywords_v1";
+const SAVED_JOBS_CACHE_KEY = "saved_jobs_v1";
 
 const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const getJobIdentity = (job) => {
+  if (!job) return null;
+
+  return String(job.job_id || job.id || job.job_url || "");
+};
+
+const readSavedJobsCache = () => {
+  try {
+    const cached = localStorage.getItem(SAVED_JOBS_CACHE_KEY);
+    const parsed = cached ? JSON.parse(cached) : [];
+    return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeSavedJobsCache = (jobIds) => {
+  try {
+    localStorage.setItem(SAVED_JOBS_CACHE_KEY, JSON.stringify(jobIds));
+  } catch (error) {
+    console.error("Failed to write saved jobs cache:", error);
+  }
+};
 
 const readPositiveKeywordsCache = () => {
   try {
@@ -96,6 +121,9 @@ const buildKeywordHaystack = (job) => {
 const MainJobListing = () => {
   const [jobs, setJobs] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState(null);
+  const [savedJobIds, setSavedJobIds] = useState(() =>
+    new Set(readSavedJobsCache()),
+  );
   const [loading, setLoading] = useState(true);
   const toast = useToast();
 
@@ -414,6 +442,25 @@ const MainJobListing = () => {
     localStorage.setItem(APPLICANTS_LIMIT_CACHE_KEY, newValue.toString());
   };
 
+  const handleToggleSavedJob = useCallback((job) => {
+    const jobIdentity = getJobIdentity(job);
+
+    if (!jobIdentity) return;
+
+    setSavedJobIds((current) => {
+      const updated = new Set(current);
+
+      if (updated.has(jobIdentity)) {
+        updated.delete(jobIdentity);
+      } else {
+        updated.add(jobIdentity);
+      }
+
+      writeSavedJobsCache([...updated]);
+      return updated;
+    });
+  }, []);
+
   const sourceOptions = useMemo(() => {
     return buildUniqueOptions(
       jobs,
@@ -470,6 +517,7 @@ const MainJobListing = () => {
       return {
         ...job,
         isNegativeMatch,
+        isSaved: savedJobIds.has(getJobIdentity(job)),
         positiveScore: matchedPositiveKeywords.length,
         matchedPositiveKeywords,
         missingMustHaveKeywords,
@@ -621,9 +669,14 @@ const MainJobListing = () => {
     positiveKeywords,
     mustHaveKeywords,
     maxApplicantsLimit,
+    savedJobIds,
   ]);
 
   const { filteredJobs, negativeMatchCount } = filteredJobsState;
+  const savedJobsCount = useMemo(
+    () => filteredJobs.filter((job) => job.isSaved).length,
+    [filteredJobs],
+  );
 
   const handleToggleExcludedWorkplaceType = (workplaceType) => {
     setExcludedWorkplaceTypes((current) => {
@@ -676,6 +729,7 @@ const MainJobListing = () => {
   const jobsState = {
     filteredJobs,
     negativeMatchCount,
+    savedJobsCount,
     selectedJobId,
     selectedJob,
     loading,
@@ -733,6 +787,7 @@ const MainJobListing = () => {
     addMustHaveKeyword: handleAddMustHaveKeyword,
     removeMustHaveKeyword: handleRemoveMustHaveKeyword,
     onApplicantsLimitChange: handleApplicantsLimitChange,
+    onToggleSavedJob: handleToggleSavedJob,
   };
 
   const fetchModalState = {
@@ -771,6 +826,8 @@ const MainJobListing = () => {
           <JobListingJobDetails
             job={selectedJob}
             maxPythonScore={maxPythonScoreInFilteredJobs}
+            isSaved={Boolean(selectedJob?.isSaved)}
+            onToggleSaved={handleToggleSavedJob}
           />
         </main>
       </div>

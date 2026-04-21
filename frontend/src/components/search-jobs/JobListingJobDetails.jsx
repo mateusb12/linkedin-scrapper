@@ -11,6 +11,7 @@ import {
   Code2,
   ChevronRight,
   XCircle,
+  BookmarkCheck,
 } from "lucide-react";
 
 import {
@@ -122,7 +123,12 @@ const Placeholder = ({ text = "None specified." }) => (
   </div>
 );
 
-const JobListingJobDetails = ({ job, maxPythonScore = 0 }) => {
+const JobListingJobDetails = ({
+  job,
+  maxPythonScore = 0,
+  isSaved = false,
+  onToggleSaved,
+}) => {
   if (!job) {
     return (
       <div className="flex h-full items-center justify-center text-slate-400">
@@ -488,6 +494,27 @@ const JobListingJobDetails = ({ job, maxPythonScore = 0 }) => {
       </div>
 
       <div className="mb-8 flex flex-wrap gap-3">
+        <label
+          className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border px-4 py-3 font-semibold transition ${
+            isSaved
+              ? "border-emerald-400/60 bg-emerald-500/15 text-emerald-200 shadow-[inset_0_0_0_1px_rgba(52,211,153,0.12)] hover:bg-emerald-500/20"
+              : "border-slate-700 bg-slate-800 text-slate-200 hover:border-emerald-500/40 hover:bg-slate-700"
+          }`}
+          title={isSaved ? "Saved job" : "Mark job as saved"}
+        >
+          <input
+            type="checkbox"
+            checked={isSaved}
+            onChange={() => onToggleSaved?.(job)}
+            className="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-emerald-500 focus:ring-emerald-500/40 focus:ring-offset-slate-900"
+          />
+          <BookmarkCheck
+            size={16}
+            className={isSaved ? "text-emerald-300" : "text-slate-400"}
+          />
+          <span>{isSaved ? "Saved" : "Save"}</span>
+        </label>
+
         <a
           href={job.job_url}
           target="_blank"
