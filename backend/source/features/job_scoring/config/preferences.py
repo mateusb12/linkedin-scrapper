@@ -9,7 +9,11 @@ class ScoreWeights:
     databases: float = 18.0
     cloud_devops: float = 16.0
     benefits: float = 6.0
-    penalties: float = 20.0
+    penalties: float = 45.0
+    data_engineering_title_penalty: float = 18.0
+    data_engineering_cluster_base_penalty: float = 12.0
+    data_engineering_cluster_signal_penalty: float = 2.5
+    data_engineering_cluster_penalty_cap: float = 24.0
 
     @property
     def positive_total(self) -> float:
@@ -137,6 +141,9 @@ class TextProfile:
     data_platform_terms: tuple[str, ...] = (
         "data engineer",
         "data engineering",
+        "engenheiro de dados",
+        "engenheira de dados",
+        "engenharia de dados",
         "data platform",
         "analytics engineer",
         "platform engineer",
@@ -155,6 +162,57 @@ class TextProfile:
         "external integrations",
         "integrations",
         "large volumes of data",
+    )
+    data_engineering_title_terms: tuple[str, ...] = (
+        "data engineer",
+        "data engineering",
+        "data platform",
+        "data platform engineer",
+        "data platform engineering",
+        "engenheiro de dados",
+        "engenheira de dados",
+        "engenharia de dados",
+        "plataforma de dados",
+        "analytics engineer",
+        "engenheiro analytics",
+        "engenheira analytics",
+    )
+    data_engineering_domain_terms: tuple[str, ...] = (
+        "data engineer",
+        "data engineering",
+        "engenheiro de dados",
+        "engenheira de dados",
+        "engenharia de dados",
+        "analytics engineer",
+        "pipeline de dados",
+        "pipelines de dados",
+        "data pipeline",
+        "data pipelines",
+        "etl",
+        "elt",
+        "data lake",
+        "data warehouse",
+        "spark",
+        "pyspark",
+        "airflow",
+        "dbt",
+        "bigquery",
+        "glue",
+        "aws glue",
+        "cloud composer",
+        "processamento distribuido",
+        "distributed processing",
+        "qualidade de dados",
+        "data quality",
+        "orquestracao",
+        "orchestration",
+        "grandes volumes de dados",
+        "large volumes of data",
+        "queries complexas",
+        "complex queries",
+        "monitoria de pipelines",
+        "pipeline monitoring",
+        "monitoring pipelines",
     )
     ai_core_terms: tuple[str, ...] = (
         "llm",

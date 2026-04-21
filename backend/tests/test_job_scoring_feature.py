@@ -109,6 +109,104 @@ def test_hybrid_prefers_backend_pure_over_fullstack_and_data_platform() -> None:
     assert data_result.category_scores["penalties"] > pure_result.category_scores["penalties"]
 
 
+def test_hybrid_strongly_penalizes_data_engineering_python_cluster() -> None:
+    scorer = HybridScorer()
+    job = build_job(
+        urn="data-engineering-cluster",
+        title="Engenheiro de Dados - Pleno",
+        description_full=(
+            "Atuar com pipelines de dados, ETL e ELT usando Python, Spark e PySpark. "
+            "Construir Data Lake e Data Warehouse com Airflow, dbt, BigQuery, Glue "
+            "e Cloud Composer. Garantir qualidade de dados, monitoria de pipelines, "
+            "processamento distribuido, grandes volumes de dados e queries complexas. "
+            "Usamos Docker, PostgreSQL, Git e CI/CD."
+        ),
+        qualifications=[
+            "Python",
+            "Spark",
+            "PySpark",
+            "Airflow",
+            "dbt",
+            "BigQuery",
+            "Docker",
+            "PostgreSQL",
+            "Git",
+            "CI/CD",
+        ],
+        keywords=["data engineering", "etl", "data lake", "data warehouse"],
+        programming_languages=["Python"],
+    )
+
+    result = scorer.score_job(job)
+
+    assert result.metadata["archetype"] == "data_platform_python"
+    assert result.metadata["raw_python_match_score"] > result.total_score
+    assert result.metadata["domain_penalty"] >= 35
+    assert result.metadata["final_python_dev_score"] == result.total_score
+    assert result.total_score <= 30
+    negative_labels = {item.label for item in result.score_breakdown.negative}
+    assert "Data engineering title penalty" in negative_labels
+    assert "Data engineering cluster penalty" in negative_labels
+    assert result.category_scores["penalties"] >= 40
+
+
+def test_hybrid_penalizes_data_platform_title_with_backend_side_signals() -> None:
+    scorer = HybridScorer()
+    job = build_job(
+        urn="data-platform-side-backend",
+        title="Junior Data Platform Engineer",
+        description_full=(
+            "Develop and maintain data ingestion connectors and data pipelines for "
+            "collection, normalization and processing at global scale. Work with "
+            "large volumes of data, monitor pipelines and troubleshoot incidents. "
+            "Enhance back-end microservices using Python, FastAPI, PostgreSQL, Docker "
+            "and CI/CD."
+        ),
+        qualifications=["Python", "FastAPI", "PostgreSQL", "Docker", "CI/CD"],
+        keywords=["data platform", "data pipelines", "large volumes of data"],
+        programming_languages=["Python"],
+    )
+
+    result = scorer.score_job(job)
+
+    assert result.metadata["archetype"] == "data_platform_python"
+    assert result.total_score <= 15
+    negative_labels = {item.label for item in result.score_breakdown.negative}
+    assert "Data engineering title penalty" in negative_labels
+    assert "Data engineering cluster penalty" in negative_labels
+
+
+def test_hybrid_preserves_backend_python_with_single_airflow_side_signal() -> None:
+    scorer = HybridScorer()
+    job = build_job(
+        urn="backend-airflow-side-signal",
+        title="Senior Backend Python Engineer",
+        description_full=(
+            "Build and maintain backend APIs and services in Python with FastAPI, "
+            "pytest, PostgreSQL, Redis, Docker and AWS. Own production reliability, "
+            "database design, CI/CD and observability. Occasionally integrate with "
+            "Airflow jobs owned by the data team."
+        ),
+        qualifications=["Python", "FastAPI", "Pytest", "PostgreSQL", "Docker", "AWS"],
+        responsibilities=[
+            "Design and implement APIs and microservices.",
+            "Operate production systems and support feature delivery.",
+        ],
+        keywords=["backend", "api", "microservices", "airflow"],
+    )
+
+    result = scorer.score_job(job)
+
+    assert result.metadata["archetype"] in {
+        "backend_python_pure",
+        "backend_python_with_minor_cross_functional_signals",
+    }
+    assert result.total_score >= 65
+    assert "Data engineering cluster penalty" not in {
+        item.label for item in result.score_breakdown.negative
+    }
+
+
 def test_hybrid_treats_collaboration_and_differentials_as_adjacent_context() -> None:
     scorer = HybridScorer()
     job = build_job(

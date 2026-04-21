@@ -83,6 +83,8 @@ class ArchetypeAssessment:
     adjacent_frontend: float
     adjacent_data: float
     adjacent_ai: float
+    data_engineering_title_matches: list[str]
+    data_engineering_domain_matches: list[str]
     structural_penalty: float
     structural_breakdown: list[ScoreBreakdownItem]
     reasons: list[str]
@@ -387,6 +389,17 @@ class HybridScorer(BaseJobScorer):
             "benefits": benefit_matches[:8],
             "penalties": (mixed_stack_matches + ai_matches + platform_matches + non_target_matches)[:10],
         }
+        data_engineering_penalty_matches = (
+            assessment.data_engineering_title_matches
+            + assessment.data_engineering_domain_matches
+        )
+        if data_engineering_penalty_matches:
+            explanation.matched_keywords["penalties"] = list(
+                dict.fromkeys(
+                    explanation.matched_keywords["penalties"]
+                    + data_engineering_penalty_matches
+                )
+            )[:12]
         explanation.evidence = extract_evidence_snippets(combined_text, evidence_terms[:10])
         explanation.bonus_reasons = list(dict.fromkeys(explanation.bonus_reasons))
         explanation.penalty_reasons = list(dict.fromkeys(explanation.penalty_reasons))
@@ -402,6 +415,15 @@ class HybridScorer(BaseJobScorer):
                 sum(score for key, score in category_scores.items() if key != "penalties")
                 - category_scores.get("penalties", 0.0),
             ),
+        )
+        raw_python_match_score = max(
+            0.0,
+            min(100.0, sum(item.points for item in score_breakdown.positive)),
+        )
+        domain_penalty = sum(
+            abs(item.points)
+            for item in score_breakdown.negative
+            if "penalty" in item.label.lower()
         )
 
         return self.build_result(
@@ -425,6 +447,9 @@ class HybridScorer(BaseJobScorer):
                     "adjacent_ai": round(assessment.adjacent_ai, 2),
                 },
                 "structural_penalty": round(assessment.structural_penalty, 2),
+                "raw_python_match_score": round(raw_python_match_score, 2),
+                "domain_penalty": round(domain_penalty, 2),
+                "final_python_dev_score": round(score_breakdown.final_score, 2),
                 "fuzzy_python_overlap": round(fuzzy_python, 3),
                 "fuzzy_db_overlap": round(fuzzy_db, 3),
                 "fuzzy_devops_overlap": round(fuzzy_devops, 3),
@@ -471,17 +496,17 @@ class HybridScorer(BaseJobScorer):
 
         data_platform_core = self._weighted_match_score(
             normalized_parts,
-            profile.data_platform_terms,
+            profile.data_platform_terms + profile.data_engineering_domain_terms,
         )
         data_platform_core += 2.2 * self._contextual_clause_hits(
             clauses,
-            primary_terms=profile.data_platform_terms,
+            primary_terms=profile.data_platform_terms + profile.data_engineering_domain_terms,
             secondary_terms=profile.responsibility_verbs + ("scale", "reliability", "observability"),
             adjacent_terms=profile.adjacent_context_terms,
         )
         adjacent_data = self._adjacent_clause_hits(
             clauses,
-            target_terms=profile.data_platform_terms,
+            target_terms=profile.data_platform_terms + profile.data_engineering_domain_terms,
             adjacent_terms=profile.adjacent_context_terms,
         )
         data_platform_core = max(0.0, data_platform_core - (0.8 * adjacent_data))
@@ -545,8 +570,18 @@ class HybridScorer(BaseJobScorer):
             frontend_core += 8.0
         if count_phrase_matches(title_text, profile.frontend_core_terms):
             frontend_core += 4.0
+        data_engineering_title_matches = count_phrase_matches(
+            title_text,
+            profile.data_engineering_title_terms,
+        )
+        data_engineering_domain_matches = count_phrase_matches(
+            " ".join(normalized_parts.values()),
+            profile.data_engineering_domain_terms,
+        )
         if count_phrase_matches(title_text, profile.data_platform_terms):
             data_platform_core += 9.0
+        if data_engineering_title_matches:
+            data_platform_core += 14.0
         if count_phrase_matches(title_text, profile.ai_core_terms):
             ai_core += 8.0
         if count_phrase_matches(title_text, profile.ai_evaluation_terms):
@@ -634,6 +669,77 @@ class HybridScorer(BaseJobScorer):
                 reasons.append(
                     "Linguagem de contractor/task-based reforça trabalho de avaliação, não ownership de produto."
                 )
+        elif (
+            data_engineering_title_matches
+            or data_platform_core >= max(14.0, backend_core * 0.72)
+        ):
+            archetype = "data_platform_python"
+            cluster_signal_count = len(data_engineering_domain_matches)
+            cluster_penalty = 0.0
+            title_penalty = (
+                self.config.weights.data_engineering_title_penalty
+                if data_engineering_title_matches
+                else 0.0
+            )
+            if cluster_signal_count >= 3 or (
+                title_penalty > 0 and cluster_signal_count >= 2
+            ):
+                cluster_penalty = min(
+                    self.config.weights.data_engineering_cluster_penalty_cap,
+                    self.config.weights.data_engineering_cluster_base_penalty
+                    + (
+                        self.config.weights.data_engineering_cluster_signal_penalty
+                        * (cluster_signal_count - 3)
+                    ),
+                )
+            dominance_penalty = min(
+                12.0,
+                max(0.0, 4.0 + max(0.0, data_platform_core - backend_core) * 0.28),
+            )
+            structural_penalty = min(
+                self.config.weights.penalties,
+                title_penalty + cluster_penalty + dominance_penalty,
+            )
+            if title_penalty > 0:
+                structural_breakdown.append(
+                    ScoreBreakdownItem(
+                        label="Data engineering title penalty",
+                        points=-title_penalty,
+                        source=(
+                            "Title clearly indicates Data Engineering "
+                            f"({', '.join(data_engineering_title_matches[:4])})."
+                        ),
+                    )
+                )
+            if cluster_penalty > 0:
+                structural_breakdown.append(
+                    ScoreBreakdownItem(
+                        label="Data engineering cluster penalty",
+                        points=-cluster_penalty,
+                        source=(
+                            "Multiple Data Engineering signals appeared together "
+                            f"({', '.join(data_engineering_domain_matches[:8])})."
+                        ),
+                    )
+                )
+            if dominance_penalty > 0:
+                structural_breakdown.append(
+                    ScoreBreakdownItem(
+                        label="Data/platform dominance penalty",
+                        points=-dominance_penalty,
+                        source=(
+                            "Data/platform core remained high relative to backend "
+                            f"(data_platform_core={data_platform_core:.2f}, backend_core={backend_core:.2f})."
+                        ),
+                    )
+                )
+            reasons.append("Sinais estruturais de Data Engineering/Data Platform dominam o escopo.")
+            if data_engineering_title_matches:
+                reasons.append("Título indica Data Engineering, não desenvolvimento backend Python tradicional.")
+            if cluster_penalty > 0:
+                reasons.append(
+                    "Cluster de ETL/pipelines/lake/warehouse/orquestração reduz fortemente o score Python dev."
+                )
         elif frontend_core >= max(14.0, backend_core * 0.72):
             archetype = "fullstack_python"
             structural_penalty = min(18.0, 7.0 + (frontend_core * 0.45))
@@ -657,29 +763,6 @@ class HybridScorer(BaseJobScorer):
                     )
                 )
             reasons.append("Sinais estruturais de fullstack/frontend dominam o escopo.")
-        elif data_platform_core >= max(14.0, backend_core * 0.72):
-            archetype = "data_platform_python"
-            structural_penalty = min(17.0, 6.5 + (data_platform_core * 0.42))
-            data_penalty = max(0.0, structural_penalty - 6.5)
-            structural_breakdown.append(
-                ScoreBreakdownItem(
-                    label="Platform/data penalty",
-                    points=-6.5,
-                    source="Data/platform archetype triggered a structural mismatch base penalty.",
-                )
-            )
-            if data_penalty > 0:
-                structural_breakdown.append(
-                    ScoreBreakdownItem(
-                        label="Data/platform dominance penalty",
-                        points=-data_penalty,
-                        source=(
-                            "Data/platform core remained high relative to backend "
-                            f"(data_platform_core={data_platform_core:.2f}, backend_core={backend_core:.2f})."
-                        ),
-                    )
-                )
-            reasons.append("Sinais estruturais de data/platform dominam o escopo.")
         elif ai_core >= max(12.0, backend_core * 0.65):
             archetype = "ai_or_llm_python"
             if strong_ai_backend_ownership:
@@ -767,6 +850,8 @@ class HybridScorer(BaseJobScorer):
             adjacent_frontend=adjacent_frontend,
             adjacent_data=adjacent_data,
             adjacent_ai=adjacent_ai,
+            data_engineering_title_matches=data_engineering_title_matches,
+            data_engineering_domain_matches=data_engineering_domain_matches,
             structural_penalty=structural_penalty,
             structural_breakdown=structural_breakdown,
             reasons=reasons,
