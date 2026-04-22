@@ -51,19 +51,22 @@ Use ONLY the criteria below to evaluate the remaining jobs:
        mid-level = medium
        senior = low competition
 
-=== SCORING ===
-Final score (0–100) =
-(keywords * 0.60) + (seniority * 0.25) + (competition * 0.15)
+=== SCORING RULES ===
+- All scores MUST be integers (0–100). No decimals allowed.
+- If any calculation results in a decimal, ROUND to the nearest integer.
+- Each criterion must be scored individually as an integer.
+- Final score must also be an integer.
 
-Each criterion must also be scored individually (0–100 before weighting).
+Final score (0–100) =
+ROUND((keywords * 0.60) + (seniority * 0.25) + (competition * 0.15))
 
 === OUTPUT ===
 1. First, list all jobs classified as NON_TRADITIONAL_SWE with a short reason.
 2. Then provide a table listing only the remaining jobs:
    - job title
-   - final score
-   - individual criterion scores
-   - short justification
+   - final score (integer)
+   - individual criterion scores (integers)
+   - short justification (must start with the score in brackets, e.g. "[86] This is a strong match because...")
 3. Ranking of the remaining jobs from highest to lowest score.
 
 Wait for me to send the jobs and my resume.
@@ -112,19 +115,22 @@ Use APENAS os critérios abaixo para avaliar as vagas restantes:
        pleno = média
        sênior = baixa
 
-=== PONTUAÇÃO ===
-Score final (0–100) =
-(keywords * 0.60) + (senioridade * 0.25) + (concorrencia * 0.15)
+=== REGRAS DE PONTUAÇÃO ===
+- Todos os scores DEVEM ser inteiros (0–100). Não use valores quebrados.
+- Se qualquer cálculo gerar decimal, ARREDONDE para o inteiro mais próximo.
+- Cada critério deve ter nota inteira.
+- O score final também deve ser inteiro.
 
-Cada critério também deve ter nota individual (0–100 antes do peso).
+Score final (0–100) =
+ROUND((keywords * 0.60) + (senioridade * 0.25) + (concorrencia * 0.15))
 
 === SAÍDA ===
 1. Primeiro, liste todas as vagas classificadas como NON_TRADITIONAL_SWE com uma razão curta.
 2. Depois, forneça uma tabela contendo apenas as vagas restantes:
    - título da vaga
-   - score final
-   - notas por critério
-   - justificativa curta
+   - score final (inteiro)
+   - notas por critério (inteiros)
+   - justificativa curta (DEVE começar com o score entre colchetes, ex: "[86] Essa é uma vaga muito boa porque...")
 3. Ranking das vagas restantes da maior para a menor.
 
 Aguarde eu enviar as vagas e meu currículo.
