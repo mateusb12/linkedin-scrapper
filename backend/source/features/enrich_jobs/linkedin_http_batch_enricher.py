@@ -56,6 +56,7 @@ class BatchEnrichmentService:
         self.return_seed_on_failure = return_seed_on_failure
 
         self._current_job_id: Optional[str] = None
+        self.last_failure_context: Dict[str, Any] = {}
 
         self.blacklist: list[str] = []
         self._blacklist_set: set[str] = set()
@@ -112,6 +113,31 @@ class BatchEnrichmentService:
             return {}
         return {k: v for k, v in data.items() if not k.startswith("_")}
 
+    def _config_for_operation(self, label: str) -> str:
+        if label == "fetch_job_details":
+            return "SavedJobs"
+        if label == "fetch_premium_insights":
+            return "PremiumInsights"
+        if label == "fetch_notifications_for_job":
+            return "Notifications"
+        if label == "fetch_company_details":
+            return "SavedJobs"
+        return "unknown"
+
+    def _record_failure_context(self, label: str, exc: Exception) -> None:
+        status_code = getattr(exc, "status_code", None)
+        operation = getattr(exc, "operation", label)
+        message = str(exc)
+        failed_config = self._config_for_operation(label)
+        self.last_failure_context = {
+            "operation": operation,
+            "job_id": self._current_job_id,
+            "status_code": status_code,
+            "failed_config": failed_config,
+            "message": message,
+            "action": f"Refresh the '{failed_config}' LinkedIn curl/config.",
+        }
+
     def _with_backoff(
             self,
             label: str,
@@ -122,6 +148,10 @@ class BatchEnrichmentService:
         for attempt in range(1, self.max_attempts + 1):
             try:
                 return fn()
+
+            except AuthExpiredError as e:
+                self._record_failure_context(label, e)
+                raise
 
             except NonRetryableEnrichmentError:
                 raise

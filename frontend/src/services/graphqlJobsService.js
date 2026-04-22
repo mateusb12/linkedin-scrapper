@@ -381,6 +381,37 @@ export async function streamGraphqlJobs(params = {}, onProgress) {
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
   let streamError = null;
+  let lastEventType = null;
+
+  const buildStreamError = (parsed) => {
+    const parts = [];
+
+    if (parsed.message || parsed.error) {
+      parts.push(parsed.message || parsed.error);
+    }
+
+    if (parsed.failed_config) {
+      parts.push(`Update LinkedIn config: ${parsed.failed_config}.`);
+    }
+
+    if (parsed.operation) {
+      parts.push(`Failed operation: ${parsed.operation}.`);
+    }
+
+    if (parsed.job_id) {
+      parts.push(`Job ID: ${parsed.job_id}.`);
+    }
+
+    if (parsed.status_code) {
+      parts.push(`HTTP status: ${parsed.status_code}.`);
+    }
+
+    if (parsed.action) {
+      parts.push(parsed.action);
+    }
+
+    return new Error(parts.join(" ") || "Backend stream failed.");
+  };
 
   while (true) {
     const { done, value } = await reader.read();
@@ -406,6 +437,8 @@ export async function streamGraphqlJobs(params = {}, onProgress) {
         continue;
       }
 
+      lastEventType = parsed.type || "unknown";
+
       if (parsed.type === "progress") {
         if (onProgress) {
           onProgress(parsed);
@@ -418,8 +451,13 @@ export async function streamGraphqlJobs(params = {}, onProgress) {
         return responseModel.jobs;
       }
 
+      if (parsed.type === "auth_error") {
+        streamError = buildStreamError(parsed);
+        break;
+      }
+
       if (parsed.type === "error") {
-        streamError = new Error(parsed.error || "Backend stream failed.");
+        streamError = buildStreamError(parsed);
         break;
       }
     }
@@ -433,7 +471,11 @@ export async function streamGraphqlJobs(params = {}, onProgress) {
     throw streamError;
   }
 
-  throw new Error("Job stream ended without a result.");
+  throw new Error(
+    `Job stream ended without a result. Last event type: ${
+      lastEventType || "none"
+    }.`,
+  );
 }
 
 export async function getGraphqlJobs(params = {}) {

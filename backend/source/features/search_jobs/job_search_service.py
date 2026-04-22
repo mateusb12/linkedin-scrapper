@@ -226,10 +226,32 @@ class LinkedInJobsSearchService:
             chunk = base_jobs[i:i + chunk_size]
             try:
                 enriched = self.batch_enricher.enrich_base_jobs(chunk)
-            except AuthExpiredError:
+            except AuthExpiredError as exc:
+                context = self.batch_enricher.last_failure_context or {}
+                failed_config = context.get("failed_config") or "SavedJobs"
+                operation = context.get("operation") or "LinkedIn enrichment"
+                job_id = context.get("job_id")
+                status_code = context.get("status_code")
+                action = context.get("action") or f"Refresh the '{failed_config}' LinkedIn curl/config."
+                detail_parts = [
+                    f"{operation} failed",
+                    f"config={failed_config}",
+                ]
+                if job_id:
+                    detail_parts.append(f"job_id={job_id}")
+                if status_code:
+                    detail_parts.append(f"HTTP {status_code}")
+                detail_parts.append(action)
                 yield "auth_error", {
                     "step": "enriching",
-                    "message": "LinkedIn session expired. Please refresh your auth token.",
+                    "code": "LINKEDIN_AUTH_EXPIRED",
+                    "failed_config": failed_config,
+                    "operation": operation,
+                    "job_id": job_id,
+                    "status_code": status_code,
+                    "action": action,
+                    "message": ". ".join(detail_parts),
+                    "error": str(exc),
                 }
                 return
             enriched_job_objects.extend(enriched)
