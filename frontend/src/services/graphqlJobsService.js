@@ -410,7 +410,10 @@ export async function streamGraphqlJobs(params = {}, onProgress) {
       parts.push(parsed.action);
     }
 
-    return new Error(parts.join(" ") || "Backend stream failed.");
+    const error = new Error(parts.join(" ") || "Backend stream failed.");
+    error.code = parsed.code || parsed.type || "BACKEND_STREAM_ERROR";
+    error.details = parsed;
+    return error;
   };
 
   while (true) {
@@ -452,6 +455,11 @@ export async function streamGraphqlJobs(params = {}, onProgress) {
       }
 
       if (parsed.type === "auth_error") {
+        streamError = buildStreamError(parsed);
+        break;
+      }
+
+      if (parsed.type === "enrichment_error") {
         streamError = buildStreamError(parsed);
         break;
       }

@@ -9,6 +9,7 @@ from source.features.enrich_jobs.linkedin_http_batch_enricher import (
     BatchEnrichmentService,
 )
 from source.features.enrich_jobs.linkedin_http_job_enricher import AuthExpiredError
+from source.features.enrich_jobs.linkedin_http_job_enricher import InvalidPremiumApplicantsError
 from source.features.search_jobs.curl_voyager_jobs_fetch import (
     DatePosted,
     ExperienceLevel,
@@ -114,6 +115,10 @@ class LinkedInJobsSearchService:
         ):
             if event.get("type") == "result":
                 result = event.get("data", {})
+            elif event.get("type") in {"auth_error", "enrichment_error"}:
+                raise RuntimeError(
+                    event.get("message") or event.get("error") or "Job search failed."
+                )
 
         return result
 
@@ -166,6 +171,9 @@ class LinkedInJobsSearchService:
                     final_jobs_json = data
                 elif event_type == "auth_error":
                     yield {"type": "auth_error", **data}
+                    return
+                elif event_type == "enrichment_error":
+                    yield {"type": "enrichment_error", **data}
                     return
         else:
             final_jobs_json = parsed_jobs_json
@@ -251,6 +259,38 @@ class LinkedInJobsSearchService:
                     "status_code": status_code,
                     "action": action,
                     "message": ". ".join(detail_parts),
+                    "error": str(exc),
+                }
+                return
+            except InvalidPremiumApplicantsError as exc:
+                context = self.batch_enricher.last_failure_context or {}
+                failed_config = context.get("failed_config") or context.get("config_name") or "PremiumInsights"
+                operation = context.get("operation") or "fetch_premium_insights"
+                job_id = context.get("job_id")
+                action = context.get("action") or f"Refresh the '{failed_config}' LinkedIn curl/config."
+                message = (
+                    "Enrichment failed: applicants data came back invalid "
+                    f"({context.get('raw_applicants_value')!r}) during {operation}. "
+                    f"The LinkedIn premium details config '{failed_config}' may be expired, invalid, or stale. "
+                    "The pipeline was interrupted intentionally to avoid returning misleading 0 applicants data."
+                )
+                yield "enrichment_error", {
+                    "step": "enriching",
+                    "code": "PREMIUM_APPLICANTS_ENRICHMENT_FAILED",
+                    "failed_config": failed_config,
+                    "config_name": context.get("config_name"),
+                    "config_id": context.get("config_id"),
+                    "operation": operation,
+                    "job_id": job_id,
+                    "title": context.get("title"),
+                    "company": context.get("company"),
+                    "source": context.get("source"),
+                    "provider": context.get("provider"),
+                    "raw_applicants_value": context.get("raw_applicants_value"),
+                    "normalized_applicants_value": context.get("normalized_applicants_value"),
+                    "reason": context.get("reason"),
+                    "action": action,
+                    "message": message,
                     "error": str(exc),
                 }
                 return

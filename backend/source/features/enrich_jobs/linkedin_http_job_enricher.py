@@ -18,6 +18,7 @@ BatchEnrichmentService.
 import json
 import re
 import sys
+import html
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional
 from dataclasses import asdict
@@ -70,6 +71,11 @@ class NonRetryableEnrichmentError(EnrichmentError):
 
 class AuthExpiredError(NonRetryableEnrichmentError):
     """Raised when LinkedIn rejects the request due to an expired/invalid session."""
+    pass
+
+
+class InvalidPremiumApplicantsError(NonRetryableEnrichmentError):
+    """Raised when premium enrichment returns an invalid applicant count."""
     pass
 
 
@@ -153,6 +159,19 @@ class LinkedInJobEnricher:
 
     def _preview_text(self, text: str, max_chars: int = 160) -> str:
         return re.sub(r"\s+", " ", (text or "").strip())[:max_chars]
+
+    def _detect_premium_low_data_state(self, text: str) -> Optional[str]:
+        normalized = html.unescape(text or "")
+        normalized = normalized.replace("\\u2019", "'").replace("’", "'")
+        normalized = re.sub(r"\s+", " ", normalized).lower()
+
+        if "we're waiting on more data" in normalized:
+            return "We're waiting on more data..."
+
+        if "once there are 3 or more applicants" in normalized:
+            return "Once there are 3 or more applicants for this job..."
+
+        return None
 
     def _log_premium_payload_degraded(
             self,
@@ -449,9 +468,20 @@ class LinkedInJobEnricher:
             if r.text.lstrip()[:20].lower().startswith(("<!doctype", "<html")):
                 _log(f"[PREMIUM_WARN] fetch_premium_insights({job_id}): HTTP 200 but response is HTML — likely auth redirect")
 
+            premium_low_data_message = self._detect_premium_low_data_state(r.text)
+
             # LinkedIn can return HTTP 200 plus the premium component shell while silently
             # degrading the actual metrics payload when auth context is stale.
             parsed = self.premium_parser.parse(r.text)
+
+            if premium_low_data_message:
+                parsed["applicants_total"] = -1
+                parsed["premium_low_data_state"] = True
+                parsed["premium_low_data_message"] = premium_low_data_message
+                _log(
+                    f"[PREMIUM_LOW_DATA] fetch_premium_insights({job_id}): "
+                    f"{premium_low_data_message}"
+                )
 
             premium_component_found = bool(parsed.get("premium_component_found"))
             applicants_total = parsed.get("applicants_total")

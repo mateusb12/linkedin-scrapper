@@ -23,6 +23,7 @@ from source.features.enrich_jobs.linkedin_http_job_enricher import (
     RetryableEnrichmentError,
     NonRetryableEnrichmentError,
     AuthExpiredError,
+    InvalidPremiumApplicantsError,
 )
 from source.features.get_applied_jobs.utils_proxy import (
     JobPost,
@@ -137,6 +138,20 @@ class BatchEnrichmentService:
             "message": message,
             "action": f"Refresh the '{failed_config}' LinkedIn curl/config.",
         }
+        for attr in (
+                "title",
+                "company",
+                "source",
+                "provider",
+                "raw_applicants_value",
+                "normalized_applicants_value",
+                "config_id",
+                "config_name",
+                "reason",
+        ):
+            value = getattr(exc, attr, None)
+            if value is not None:
+                self.last_failure_context[attr] = value
 
     def _with_backoff(
             self,
@@ -150,6 +165,10 @@ class BatchEnrichmentService:
                 return fn()
 
             except AuthExpiredError as e:
+                self._record_failure_context(label, e)
+                raise
+
+            except InvalidPremiumApplicantsError as e:
                 self._record_failure_context(label, e)
                 raise
 
@@ -236,6 +255,7 @@ class BatchEnrichmentService:
                 "fetch_premium_insights",
                 lambda: self.single.fetch_premium_insights(job_id, raise_on_failure=True),
             )
+            self._validate_premium_applicants(job_id, base_job_dict, premium)
             base_job_dict.update(self._strip_private_keys(premium))
             self._sleep(self.per_request_delay_seconds)
 
@@ -274,6 +294,9 @@ class BatchEnrichmentService:
         except AuthExpiredError:
             raise  # never swallow — caller must abort the loop
 
+        except InvalidPremiumApplicantsError:
+            raise
+
         except Exception as e:
             if self.return_seed_on_failure:
                 _log(f"⚠️ Returning seed data for job {job_id} after enrichment failure: {e}")
@@ -292,3 +315,67 @@ class BatchEnrichmentService:
             self.enrich_job(base_job["job_id"], seed_data=base_job)
             for base_job in base_jobs
         ]
+
+    def _validate_premium_applicants(
+            self,
+            job_id: str,
+            base_job_dict: Dict[str, Any],
+            premium: Dict[str, Any],
+    ) -> None:
+        raw_applicants = premium.get("applicants_total") if isinstance(premium, dict) else None
+        premium_low_data_state = bool(
+            isinstance(premium, dict) and premium.get("premium_low_data_state")
+        )
+
+        if raw_applicants == -1:
+            return
+
+        if raw_applicants == 0 and premium_low_data_state:
+            return
+
+        invalid = raw_applicants in (None, 0)
+
+        if not invalid:
+            return
+
+        config_name = self.single.premium_config_name
+        config_id = self.single.premium_config_id
+        reason = (
+            "premium details enrichment returned no valid applicants_total; "
+            "aborting to avoid exposing a misleading 0 applicants value"
+        )
+        _log(
+            "[ENRICHMENT_ABORT] "
+            f"stage=fetch_premium_insights "
+            f"source=linkedin "
+            f"provider=premiumApplicantInsights "
+            f"job_id={job_id} "
+            f"external_job_id={job_id} "
+            f"title={repr(base_job_dict.get('title'))} "
+            f"company={repr(base_job_dict.get('company'))} "
+            f"raw_applicants_value={repr(raw_applicants)} "
+            f"normalized_applicants_value=0 "
+            f"config={config_name}:{config_id} "
+            f"reason={reason}"
+        )
+
+        exc = InvalidPremiumApplicantsError(
+            operation=f"fetch_premium_insights({job_id})",
+            message=(
+                "Premium details enrichment failed: applicants data came back invalid "
+                f"({raw_applicants!r}) from config {config_name}:{config_id}. "
+                "The PremiumInsights curl/config may be expired, invalid, or stale. "
+                "The stream was interrupted intentionally to avoid misleading data."
+            ),
+        )
+        exc.job_id = job_id
+        exc.title = base_job_dict.get("title")
+        exc.company = base_job_dict.get("company")
+        exc.source = "linkedin"
+        exc.provider = "premiumApplicantInsights"
+        exc.raw_applicants_value = raw_applicants
+        exc.normalized_applicants_value = 0
+        exc.config_id = config_id
+        exc.config_name = config_name
+        exc.reason = reason
+        raise exc

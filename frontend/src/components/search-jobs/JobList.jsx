@@ -121,8 +121,8 @@ const buildKeywordHaystack = (job) => {
 const MainJobListing = () => {
   const [jobs, setJobs] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState(null);
-  const [savedJobIds, setSavedJobIds] = useState(() =>
-    new Set(readSavedJobsCache()),
+  const [savedJobIds, setSavedJobIds] = useState(
+    () => new Set(readSavedJobsCache()),
   );
   const [loading, setLoading] = useState(true);
   const toast = useToast();
@@ -368,12 +368,15 @@ const MainJobListing = () => {
         console.error("Failed to load GraphQL jobs:", error);
 
         const message = error?.message || "Failed to load jobs from backend.";
+        const isBackendEnrichmentError =
+          error?.code === "PREMIUM_APPLICANTS_ENRICHMENT_FAILED" ||
+          error?.details?.type === "enrichment_error";
 
         toast.error(message);
 
         const cached = readJobsCache();
 
-        if (cached?.jobs) {
+        if (cached?.jobs && !isBackendEnrichmentError) {
           applyJobs(cached.jobs);
           setCacheTimestamp(cached.cachedAt || null);
           setLoadedFromCache(true);
@@ -382,6 +385,8 @@ const MainJobListing = () => {
           );
         } else {
           applyJobs([]);
+          setCacheTimestamp(null);
+          setLoadedFromCache(false);
           setErrorMessage(
             error?.message || "Failed to load jobs from backend.",
           );
