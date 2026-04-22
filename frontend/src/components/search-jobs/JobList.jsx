@@ -514,7 +514,10 @@ const MainJobListing = () => {
       }
 
       if (!isNegativeMatch && maxApplicantsLimit !== Number.MAX_SAFE_INTEGER) {
-        if ((job.applicants_total || 0) > maxApplicantsLimit) {
+        if (
+          job.applicants_total != null &&
+          job.applicants_total > maxApplicantsLimit
+        ) {
           isNegativeMatch = true;
         }
       }
@@ -644,7 +647,13 @@ const MainJobListing = () => {
       }
 
       if (sortBy === "applicants") {
-        return (a.applicants_total || 0) - (b.applicants_total || 0);
+        const getApplicantsSortValue = (job) => {
+          if (job.premium_low_data_state) return Number.POSITIVE_INFINITY;
+          if (job.applicants_total == null) return Number.POSITIVE_INFINITY;
+          return job.applicants_total;
+        };
+
+        return getApplicantsSortValue(a) - getApplicantsSortValue(b);
       }
 
       if (sortBy === "recent") {

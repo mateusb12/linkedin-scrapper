@@ -146,6 +146,8 @@ class GraphqlJobModel {
   applicants_total;
   applicants_last_24h;
   applicants_velocity_24h;
+  premium_low_data_state;
+  premium_low_data_message;
   posted_at;
   expire_at;
   created_at;
@@ -194,6 +196,15 @@ class GraphqlJobModel {
     const locationText =
       apiData.location_text || apiData.location || "Not specified";
     const sourceKey = apiData.source_key || apiData.content_source || "";
+    const rawApplicantsTotal = toNumberOrNull(
+      apiData.applicants_total ?? apiData.applicants,
+    );
+    const rawApplicants = toNumberOrNull(
+      apiData.applicants ?? apiData.applicants_total,
+    );
+    const premiumLowDataState =
+      Boolean(apiData.premium_low_data_state) || rawApplicantsTotal === -1;
+    const premiumLowDataMessage = apiData.premium_low_data_message || null;
 
     const verified =
       apiData.verified ??
@@ -249,14 +260,12 @@ class GraphqlJobModel {
         descriptionSnippet || descriptionFull || "",
       ),
 
-      applicants: toNumberOrNull(
-        apiData.applicants ?? apiData.applicants_total,
-      ),
-      applicants_total: toNumberOrNull(
-        apiData.applicants_total ?? apiData.applicants,
-      ),
+      applicants: premiumLowDataState ? null : rawApplicants,
+      applicants_total: premiumLowDataState ? null : rawApplicantsTotal,
       applicants_last_24h: toNumberOrNull(apiData.applicants_last_24h),
       applicants_velocity_24h: toNumberOrNull(apiData.applicants_velocity_24h),
+      premium_low_data_state: premiumLowDataState,
+      premium_low_data_message: premiumLowDataMessage,
 
       posted_at: apiData.posted_at || null,
       expire_at: apiData.expire_at || null,

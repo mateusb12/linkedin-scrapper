@@ -266,6 +266,12 @@ const JobListingJobDetails = ({
     Boolean(job.aiEvidence?.length) ||
     categoryScores.length > 0 ||
     matchedKeywordGroups.length > 0;
+  const applicantsLabel = job?.premium_low_data_state
+    ? "< 3 applicants"
+    : formatApplicantsLabel(job?.applicants_total);
+  const applicantsHelpText =
+    job?.premium_low_data_message ||
+    "Not enough applicants yet to show full premium insights.";
 
   return (
     <div className="h-full overflow-y-auto px-6 py-7 md:px-8">
@@ -324,12 +330,17 @@ const JobListingJobDetails = ({
               {getPostedBadgeText(job.posted_at)}
             </InsightBadge>
 
-            {job.applicants_total != null && (
+            {(job.applicants_total != null || job.premium_low_data_state) && (
               <InsightBadge
                 icon={Users}
-                className={getCompetitionStyle(job.applicants_total)}
+                className={
+                  job.premium_low_data_state
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                    : getCompetitionStyle(job.applicants_total)
+                }
+                title={job.premium_low_data_state ? applicantsHelpText : undefined}
               >
-                {formatApplicantsLabel(job.applicants_total)}
+                {applicantsLabel}
               </InsightBadge>
             )}
 
@@ -663,7 +674,7 @@ const JobListingJobDetails = ({
         <InfoCard
           icon={Users}
           label="Applicants"
-          value={formatApplicantsLabel(job.applicants_total)}
+          value={applicantsLabel}
         />
         <InfoCard
           icon={ShieldCheck}
@@ -736,12 +747,17 @@ const JobListingJobDetails = ({
               </InsightBadge>
             )}
 
-            {job.applicants_total != null && (
+            {(job.applicants_total != null || job.premium_low_data_state) && (
               <InsightBadge
                 icon={Users}
-                className={getCompetitionStyle(job.applicants_total)}
+                className={
+                  job.premium_low_data_state
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                    : getCompetitionStyle(job.applicants_total)
+                }
+                title={job.premium_low_data_state ? applicantsHelpText : undefined}
               >
-                Competition: {formatApplicantsLabel(job.applicants_total)}
+                Competition: {applicantsLabel}
               </InsightBadge>
             )}
 
