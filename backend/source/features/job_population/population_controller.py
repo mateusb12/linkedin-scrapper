@@ -13,7 +13,13 @@ def fetch_page_endpoint(page_number: int):
         result = PopulationService.fetch_and_save_page(page_number)
         return jsonify(result), 200
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({
+            "success": False,
+            "page": page_number,
+            "step": "controller",
+            "error": "Unhandled fetch-page controller error",
+            "details": str(e),
+        }), 500
 
 def backfill_descriptions_stream():
     """

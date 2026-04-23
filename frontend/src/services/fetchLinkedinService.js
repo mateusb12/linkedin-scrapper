@@ -35,6 +35,15 @@ export async function fetchJobsByPageRange(
   onProgress,
   onLog,
 ) {
+  const formatBackendError = (page, data = {}) => {
+    const step = data.step ? ` at ${data.step}` : "";
+    const curl = data.curl ? ` [${data.curl}]` : "";
+    const status = data.status ? ` status=${data.status}` : "";
+    const message = data.error || data.message || "Unknown error";
+    const details = data.details ? ` (${data.details})` : "";
+    return `❌ Page ${page} failed${step}${curl}${status}: ${message}${details}`;
+  };
+
   const totalPagesToFetch = endPage - startPage + 1;
   let successfulFetches = 0;
   let allData = [];
@@ -48,6 +57,7 @@ export async function fetchJobsByPageRange(
       if (res.data.success) {
         const count = res.data.count || 0;
         const totalFound = res.data.total_found || 0;
+        const enrichment = res.data.enrichment;
 
         if (count > 0) {
           onLog?.(
@@ -61,17 +71,29 @@ export async function fetchJobsByPageRange(
           onLog?.(`⚠️ Page ${i}: No jobs found on this page.`);
         }
 
+        if (enrichment?.missing_count > 0) {
+          const sample = enrichment.missing_ids_sample?.length
+            ? ` sample=${enrichment.missing_ids_sample.join(", ")}`
+            : "";
+          onLog?.(
+            `⚠️ Page ${i}: enrichment partial requested=${enrichment.requested} received=${enrichment.received} missing=${enrichment.missing_count}${sample}`,
+          );
+        }
+
+        if (res.data.warning) {
+          onLog?.(`⚠️ Page ${i}: ${res.data.warning}`);
+        }
+
         successfulFetches++;
       } else {
-        const msg = res.data.message || res.data.error || "Unknown error";
-        onLog?.(`❌ Page ${i} Error: ${msg}`);
+        onLog?.(formatBackendError(i, res.data));
       }
     } catch (err) {
-      const errorMessage =
-        err.response?.data?.description ||
-        err.response?.data?.error ||
-        err.message;
-      onLog?.(`❌ Failed to fetch page ${i}: ${errorMessage}`);
+      onLog?.(
+        err.response?.data
+          ? formatBackendError(i, err.response.data)
+          : `❌ Failed to fetch page ${i}: ${err.message}`,
+      );
 
       const isNetworkError =
         !err.response ||

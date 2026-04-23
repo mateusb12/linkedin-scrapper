@@ -139,22 +139,115 @@ class FetchService:
         return math.ceil(total_jobs / count)
 
     @staticmethod
-    def execute_fetch_page_raw(page_number: int) -> Optional[Dict]:
+    def execute_fetch_page_raw(page_number: int, with_meta: bool = False) -> Optional[Dict]:
         """Returns RAW JSON for population service."""
         db = get_db_session()
         try:
             record = db.query(FetchCurl).filter(FetchCurl.name == "Pagination").first()
             if not record:
+                if with_meta:
+                    return {
+                        "success": False,
+                        "page": page_number,
+                        "curl": "Pagination",
+                        "error_type": "config_missing",
+                        "error": "Pagination cURL not configured.",
+                        "details": "No FetchCurl record named 'Pagination' was found.",
+                    }
                 raise ValueError("Pagination cURL not configured.")
 
             url, headers = record.construct_request(page_number=page_number)
 
             print(f"🚀 [Raw Fetch] Page {page_number}...")
             response = requests.get(url, headers=headers, timeout=15)
-            response.raise_for_status()
-            return response.json()
+            if response.status_code != 200:
+                body_excerpt = (response.text or "")[:250]
+                error = f"LinkedIn pagination request returned HTTP {response.status_code}"
+                error_type = "http_error"
+                if response.status_code in (401, 403):
+                    error = "Forbidden - likely expired cookie"
+                    error_type = "auth_error"
+                elif response.status_code == 429:
+                    error = "Rate limited by LinkedIn"
+                    error_type = "rate_limit"
+
+                if with_meta:
+                    return {
+                        "success": False,
+                        "page": page_number,
+                        "curl": "Pagination",
+                        "status": response.status_code,
+                        "error_type": error_type,
+                        "error": error,
+                        "details": error if not body_excerpt else f"{error}. Response excerpt: {body_excerpt}",
+                    }
+                return None
+
+            try:
+                payload = response.json()
+            except ValueError:
+                if with_meta:
+                    content_type = response.headers.get("Content-Type", "unknown")
+                    body_excerpt = (response.text or "")[:250]
+                    return {
+                        "success": False,
+                        "page": page_number,
+                        "curl": "Pagination",
+                        "status": response.status_code,
+                        "error_type": "malformed_response",
+                        "error": "LinkedIn pagination response was not valid JSON",
+                        "details": f"Content-Type: {content_type}. Response excerpt: {body_excerpt}",
+                    }
+                return None
+
+            if with_meta:
+                return {
+                    "success": True,
+                    "page": page_number,
+                    "curl": "Pagination",
+                    "status": response.status_code,
+                    "data": payload,
+                }
+
+            return payload
+        except requests.Timeout as e:
+            print(f"❌ [FetchService] Raw Fetch timeout: {e}")
+            if with_meta:
+                return {
+                    "success": False,
+                    "page": page_number,
+                    "curl": "Pagination",
+                    "error_type": "timeout",
+                    "error": "LinkedIn pagination request timed out",
+                    "details": str(e),
+                }
+            return None
+        except requests.RequestException as e:
+            print(f"❌ [FetchService] Raw Fetch request failed: {e}")
+            if with_meta:
+                response = getattr(e, "response", None)
+                status = response.status_code if response is not None else None
+                return {
+                    "success": False,
+                    "page": page_number,
+                    "curl": "Pagination",
+                    "status": status,
+                    "error_type": "network_error",
+                    "error": "LinkedIn pagination network request failed",
+                    "details": str(e),
+                }
+            return None
         except Exception as e:
             print(f"❌ [FetchService] Raw Fetch failed: {e}")
+            if with_meta:
+                return {
+                    "success": False,
+                    "page": page_number,
+                    "curl": "Pagination",
+                    "error_type": "unexpected_error",
+                    "error": "Unexpected pagination fetch failure",
+                    "details": str(e),
+                }
             return None
         finally:
             db.close()

@@ -3,7 +3,7 @@ import time
 import json
 import traceback
 from datetime import datetime, timedelta
-from typing import Dict, Any, Generator
+from typing import Dict, Any, Generator, List, Optional
 from dateutil import parser as date_parser
 
 from sqlalchemy import or_
@@ -17,6 +17,102 @@ from source.features.fetch_curl.linkedin_http_client import get_linkedin_fetch_a
 from database.database_connection import get_db_session
 
 class PopulationService:
+    ENRICHMENT_MISSING_SAMPLE_SIZE = 5
+
+    @staticmethod
+    def _build_error_response(
+        *,
+        page_number: int,
+        step: str,
+        error: str,
+        details: Optional[str] = None,
+        **extra: Any,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "success": False,
+            "page": page_number,
+            "step": step,
+            "error": error,
+        }
+        if details:
+            payload["details"] = details
+        payload.update({key: value for key, value in extra.items() if value is not None})
+        return payload
+
+    @staticmethod
+    def _build_enrichment_summary(job_ids: List[str], enriched_results: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+        missing_ids = [job_id for job_id in job_ids if job_id not in enriched_results]
+        summary: Dict[str, Any] = {
+            "requested": len(job_ids),
+            "received": len(enriched_results),
+            "missing_count": len(missing_ids),
+        }
+        if missing_ids:
+            summary["missing_ids_sample"] = missing_ids[:PopulationService.ENRICHMENT_MISSING_SAMPLE_SIZE]
+            summary["degraded"] = True
+        return summary
+
+    @staticmethod
+    def _inspect_pagination_payload(raw_data: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(raw_data, dict):
+            return {
+                "ok": False,
+                "error": "Unexpected LinkedIn payload type",
+                "details": f"Expected dict, got {type(raw_data).__name__}",
+            }
+
+        outer_data = raw_data.get("data")
+        if not isinstance(outer_data, dict):
+            return {
+                "ok": False,
+                "error": "Unexpected LinkedIn payload shape",
+                "details": "Missing top-level 'data' object",
+            }
+
+        inner_data = outer_data.get("data")
+        if not isinstance(inner_data, dict):
+            return {
+                "ok": False,
+                "error": "Unexpected LinkedIn payload shape",
+                "details": "Missing nested 'data.data' object",
+            }
+
+        collection = inner_data.get("jobsDashJobCardsByJobCollections")
+        if not isinstance(collection, dict):
+            return {
+                "ok": False,
+                "error": "Unexpected LinkedIn payload shape",
+                "details": "Missing 'data.data.jobsDashJobCardsByJobCollections'",
+            }
+
+        paging = collection.get("paging") or {}
+        elements = collection.get("elements")
+        included = raw_data.get("included")
+
+        if included is not None and not isinstance(included, list):
+            return {
+                "ok": False,
+                "error": "Unexpected LinkedIn payload shape",
+                "details": "Top-level 'included' field is not a list",
+            }
+
+        total = paging.get("total", 0) if isinstance(paging, dict) else 0
+        start = paging.get("start", 0) if isinstance(paging, dict) else 0
+        count = paging.get("count", 0) if isinstance(paging, dict) else 0
+
+        is_empty_page = total == 0
+        if isinstance(elements, list) and len(elements) == 0:
+            is_empty_page = True
+        elif total and count and start >= total:
+            is_empty_page = True
+
+        return {
+            "ok": True,
+            "paging": {"total": total, "start": start, "count": count},
+            "elements_count": len(elements) if isinstance(elements, list) else None,
+            "included_count": len(included) if isinstance(included, list) else 0,
+            "is_empty_page": is_empty_page,
+        }
 
     @staticmethod
     def get_total_pages() -> int:
@@ -35,84 +131,229 @@ class PopulationService:
     @staticmethod
     def fetch_and_save_page(page_number: int) -> Dict[str, Any]:
         print(f"\n[Population] ================= START PAGE {page_number} =================")
-
-        # 1. FETCH PAGINATION (Lightweight)
-        print(f"[Population] Step 1: Fetching List for Page {page_number}...")
-        raw_data = FetchService.execute_fetch_page_raw(page_number)
-        if not raw_data:
-            print("[Population] ❌ Network request failed.")
-            return {"success": False, "message": "Network request failed"}
-
-        # 2. PARSE SUMMARIES
-        job_entries = parse_job_entries(raw_data)
-        if not job_entries:
-            print("[Population] ⚠️ No jobs found in parsed entries.")
-            return {"success": True, "count": 0, "total_found": 0, "message": "No jobs found"}
-
-        print(f"[Population] Step 2: Parsed {len(job_entries)} raw job entries.")
-
         repo = JobRepository()
         session = repo.session
         saved_count = 0
-
-        # 3. IDENTIFY NEW JOBS
-        new_jobs = []
-        for job in job_entries:
-            if not repo.get_by_urn(job['urn']):
-                new_jobs.append(job)
-
-        # 4. BATCH ENRICHMENT (The Magic Step)
-        if new_jobs:
-            # Extract IDs for the batch call
-            job_ids = [j['job_id'] for j in new_jobs]
-
-            print(f"[Population] Step 4: Batch Enriching {len(job_ids)} IDs...")
-            enriched_results = EnrichmentService.fetch_batch_job_details(job_ids)
-            print(f"[Population] ✅ Batch returned data for {len(enriched_results)} jobs.")
-
-            # 5. MERGE & SAVE
-            for job in new_jobs:
-                job_id = job['job_id']
-
-                # --- Enrichment Merge ---
-                if job_id in enriched_results:
-                    details = enriched_results[job_id]
-                    job.update(details)
-                else:
-                    print(f"   > [⚠️ Missing] No batch details for Job {job_id}. Marking unprocessed.")
-                    job['description_full'] = "No description provided"
-                    job['processed'] = False
-
-                # --- Company Handling ---
-                c_urn = job.get('company_urn')
-                if c_urn:
-                    comp = session.query(Company).filter_by(urn=c_urn).first()
-                    c_name = job.get('company_name', 'Unknown')
-                    c_logo = job.get('company_logo')
-
-                    if not comp:
-                        print(f"     -> Creating NEW Company: {c_name} ({c_urn})")
-                        new_comp = Company(urn=c_urn, name=c_name, logo_url=c_logo)
-                        session.add(new_comp)
-                        session.flush()
-                    else:
-                        if c_logo and not comp.logo_url:
-                            comp.logo_url = c_logo
-                            session.add(comp)
-
-                repo.add_job_by_dict(job)
-                saved_count += 1
-
-        print(f"[Population] Step 5: Committing {saved_count} jobs to database...")
-        repo.commit()
-        repo.close()
-        print(f"[Population] ================= END PAGE {page_number} =================\n")
-
-        return {
-            "success": True,
-            "count": saved_count,
-            "total_found": len(job_entries)
+        enrichment_summary: Dict[str, Any] = {
+            "requested": 0,
+            "received": 0,
+            "missing_count": 0,
         }
+
+        try:
+            # 1. FETCH PAGINATION (Lightweight)
+            print(f"[Population] Step 1: Fetching List for Page {page_number}...")
+            fetch_result = FetchService.execute_fetch_page_raw(page_number, with_meta=True)
+            if not fetch_result or not fetch_result.get("success"):
+                print("[Population] ❌ Pagination fetch failed.")
+                return PopulationService._build_error_response(
+                    page_number=page_number,
+                    step="fetch_pagination",
+                    error=(fetch_result or {}).get("error", "LinkedIn pagination request failed"),
+                    details=(fetch_result or {}).get("details"),
+                    curl=(fetch_result or {}).get("curl", "Pagination"),
+                    status=(fetch_result or {}).get("status"),
+                    error_type=(fetch_result or {}).get("error_type"),
+                )
+
+            raw_data = fetch_result["data"]
+
+            # 2. PARSE SUMMARIES
+            payload_inspection = PopulationService._inspect_pagination_payload(raw_data)
+            if not payload_inspection["ok"]:
+                return PopulationService._build_error_response(
+                    page_number=page_number,
+                    step="parse_job_entries",
+                    error=payload_inspection["error"],
+                    details=payload_inspection["details"],
+                    curl="Pagination",
+                    status=fetch_result.get("status"),
+                )
+
+            try:
+                job_entries = parse_job_entries(raw_data)
+            except Exception as exc:
+                return PopulationService._build_error_response(
+                    page_number=page_number,
+                    step="parse_job_entries",
+                    error="LinkedIn parser raised an exception",
+                    details=str(exc),
+                    curl="Pagination",
+                    status=fetch_result.get("status"),
+                )
+
+            if not job_entries:
+                if payload_inspection["is_empty_page"]:
+                    print("[Population] ⚠️ Legitimate empty page.")
+                    return {
+                        "success": True,
+                        "page": page_number,
+                        "count": 0,
+                        "total_found": 0,
+                        "message": "No jobs found",
+                        "step": "parse_job_entries",
+                        "result_type": "empty_page",
+                        "paging": payload_inspection["paging"],
+                        "enrichment": enrichment_summary,
+                    }
+
+                return PopulationService._build_error_response(
+                    page_number=page_number,
+                    step="parse_job_entries",
+                    error="Parser returned no entries for a non-empty payload",
+                    details=(
+                        "Unexpected LinkedIn payload shape or parser mismatch. "
+                        f"elements_count={payload_inspection.get('elements_count')}, "
+                        f"included_count={payload_inspection.get('included_count')}"
+                    ),
+                    curl="Pagination",
+                    status=fetch_result.get("status"),
+                )
+
+            print(f"[Population] Step 2: Parsed {len(job_entries)} raw job entries.")
+
+            # 3. IDENTIFY NEW JOBS
+            try:
+                new_jobs = []
+                for job in job_entries:
+                    if not repo.get_by_urn(job['urn']):
+                        new_jobs.append(job)
+            except Exception as exc:
+                repo.rollback()
+                return PopulationService._build_error_response(
+                    page_number=page_number,
+                    step="detect_new_jobs",
+                    error="Failed to compare parsed jobs against the database",
+                    details=str(exc),
+                    total_found=len(job_entries),
+                )
+
+            # 4. BATCH ENRICHMENT
+            if new_jobs:
+                job_ids = [j['job_id'] for j in new_jobs]
+
+                print(f"[Population] Step 4: Batch Enriching {len(job_ids)} IDs...")
+                try:
+                    enriched_results = EnrichmentService.fetch_batch_job_details(job_ids)
+                except Exception as exc:
+                    repo.rollback()
+                    return PopulationService._build_error_response(
+                        page_number=page_number,
+                        step="batch_enrichment",
+                        error="Batch enrichment request failed",
+                        details=str(exc),
+                        total_found=len(job_entries),
+                        new_jobs=len(new_jobs),
+                    )
+
+                if not isinstance(enriched_results, dict):
+                    repo.rollback()
+                    return PopulationService._build_error_response(
+                        page_number=page_number,
+                        step="batch_enrichment",
+                        error="Batch enrichment returned an unexpected result",
+                        details=f"Expected dict, got {type(enriched_results).__name__}",
+                        total_found=len(job_entries),
+                        new_jobs=len(new_jobs),
+                    )
+
+                enrichment_summary = PopulationService._build_enrichment_summary(job_ids, enriched_results)
+                if enrichment_summary["missing_count"] > 0:
+                    print(
+                        "[Population] ⚠️ Batch enrichment missing details for "
+                        f"{enrichment_summary['missing_count']} job(s)."
+                    )
+                print(f"[Population] ✅ Batch returned data for {len(enriched_results)} jobs.")
+
+                # 5. MERGE & SAVE
+                for job in new_jobs:
+                    job_id = job['job_id']
+
+                    if job_id in enriched_results:
+                        details = enriched_results[job_id]
+                        job.update(details)
+                    else:
+                        print(f"   > [⚠️ Missing] No batch details for Job {job_id}. Marking unprocessed.")
+                        job['description_full'] = "No description provided"
+                        job['processed'] = False
+
+                    c_urn = job.get('company_urn')
+                    try:
+                        if c_urn:
+                            comp = session.query(Company).filter_by(urn=c_urn).first()
+                            c_name = job.get('company_name', 'Unknown')
+                            c_logo = job.get('company_logo')
+
+                            if not comp:
+                                print(f"     -> Creating NEW Company: {c_name} ({c_urn})")
+                                new_comp = Company(urn=c_urn, name=c_name, logo_url=c_logo)
+                                session.add(new_comp)
+                                session.flush()
+                            else:
+                                if c_logo and not comp.logo_url:
+                                    comp.logo_url = c_logo
+                                    session.add(comp)
+
+                        repo.add_job_by_dict(job)
+                        saved_count += 1
+                    except Exception as exc:
+                        repo.rollback()
+                        return PopulationService._build_error_response(
+                            page_number=page_number,
+                            step="save_jobs",
+                            error="Failed while saving jobs to the database",
+                            details=f"Job ID {job_id}: {exc}",
+                            total_found=len(job_entries),
+                            count=saved_count,
+                            enrichment=enrichment_summary,
+                        )
+
+            print(f"[Population] Step 5: Committing {saved_count} jobs to database...")
+            try:
+                repo.commit()
+            except Exception as exc:
+                repo.rollback()
+                return PopulationService._build_error_response(
+                    page_number=page_number,
+                    step="commit",
+                    error="Database commit failed",
+                    details=str(exc),
+                    total_found=len(job_entries),
+                    count=saved_count,
+                    enrichment=enrichment_summary,
+                )
+
+            print(f"[Population] ================= END PAGE {page_number} =================\n")
+
+            response: Dict[str, Any] = {
+                "success": True,
+                "page": page_number,
+                "count": saved_count,
+                "total_found": len(job_entries),
+                "new_jobs_detected": len(new_jobs),
+                "enrichment": enrichment_summary,
+            }
+            if saved_count == 0 and len(job_entries) > 0:
+                response["message"] = f"All {len(job_entries)} jobs already in database."
+            if enrichment_summary.get("missing_count", 0) > 0:
+                response["warning"] = (
+                    f"Batch enrichment missing for {enrichment_summary['missing_count']} "
+                    "job(s); saved with fallback data."
+                )
+            return response
+        except Exception as exc:
+            repo.rollback()
+            traceback.print_exc()
+            return PopulationService._build_error_response(
+                page_number=page_number,
+                step="unexpected",
+                error="Unexpected pipeline failure",
+                details=str(exc),
+                count=saved_count,
+                enrichment=enrichment_summary,
+            )
+        finally:
+            repo.close()
 
     @staticmethod
     def stream_description_backfill(time_range: str = 'all_time') -> Generator[str, None, None]:
