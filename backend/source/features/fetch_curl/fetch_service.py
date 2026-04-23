@@ -7,9 +7,60 @@ from typing import Optional, Dict, Any
 from models.fetch_models import FetchCurl
 from database.database_connection import get_db_session
 from source.features.fetch_curl.fetch_parser import parse_jobs_page
+from source.features.job_population.search_spec import PipelineSearchSpec
+from source.features.search_jobs.curl_voyager_jobs_fetch import (
+    JobSearchTuning,
+    VoyagerJobsLiteFetcher,
+)
 
 
 class FetchService:
+    @staticmethod
+    def _build_search_tuning(search_spec: Optional[PipelineSearchSpec]) -> Optional[JobSearchTuning]:
+        if not search_spec or not search_spec.is_active():
+            return None
+
+        return JobSearchTuning(
+            keywords=search_spec.build_linkedin_keywords(),
+            geo_id=search_spec.geo_id,
+            distance=search_spec.distance,
+        )
+
+    @staticmethod
+    def validate_search_reference(with_meta: bool = False) -> Optional[Dict]:
+        try:
+            fetcher = VoyagerJobsLiteFetcher(page=1)
+            payload = fetcher.fetch_raw()
+
+            if with_meta:
+                return {
+                    "success": True,
+                    "page": 1,
+                    "curl": "JobCardsLite",
+                    "status": 200,
+                    "data": payload,
+                }
+
+            return payload
+        except Exception as e:
+            error_message = str(e)
+            if with_meta:
+                error_type = "network_error"
+                if "401" in error_message or "403" in error_message:
+                    error_type = "auth_error"
+                elif "400" in error_message:
+                    error_type = "http_error"
+
+                return {
+                    "success": False,
+                    "page": 1,
+                    "curl": "JobCardsLite",
+                    "error_type": error_type,
+                    "error": "Stored JobCardsLite reference replay failed",
+                    "details": error_message,
+                }
+            return None
+
 
     @staticmethod
     def get_curl_config(name: str) -> Optional[Dict]:
@@ -139,8 +190,19 @@ class FetchService:
         return math.ceil(total_jobs / count)
 
     @staticmethod
-    def execute_fetch_page_raw(page_number: int, with_meta: bool = False) -> Optional[Dict]:
+    def execute_fetch_page_raw(
+        page_number: int,
+        with_meta: bool = False,
+        search_spec: Optional[PipelineSearchSpec] = None,
+    ) -> Optional[Dict]:
         """Returns RAW JSON for population service."""
+        if search_spec and search_spec.is_active():
+            return FetchService._execute_search_page_raw(
+                page_number=page_number,
+                with_meta=with_meta,
+                search_spec=search_spec,
+            )
+
         db = get_db_session()
         try:
             record = db.query(FetchCurl).filter(FetchCurl.name == "Pagination").first()
@@ -251,6 +313,51 @@ class FetchService:
             return None
         finally:
             db.close()
+
+    @staticmethod
+    def _execute_search_page_raw(
+        page_number: int,
+        with_meta: bool = False,
+        search_spec: Optional[PipelineSearchSpec] = None,
+    ) -> Optional[Dict]:
+        try:
+            tuning = FetchService._build_search_tuning(search_spec)
+            fetcher = VoyagerJobsLiteFetcher(
+                page=page_number,
+                count=(search_spec.count if search_spec else None),
+                tuning=tuning,
+            )
+            payload = fetcher.fetch_raw()
+
+            if with_meta:
+                return {
+                    "success": True,
+                    "page": page_number,
+                    "curl": "JobCardsLite",
+                    "status": 200,
+                    "data": payload,
+                }
+
+            return payload
+        except Exception as e:
+            print(f"❌ [FetchService] Search fetch failed: {e}")
+            if with_meta:
+                error_message = str(e)
+                error_type = "network_error"
+                if "401" in error_message or "403" in error_message:
+                    error_type = "auth_error"
+                elif "400" in error_message:
+                    error_type = "http_error"
+
+                return {
+                    "success": False,
+                    "page": page_number,
+                    "curl": "JobCardsLite",
+                    "error_type": error_type,
+                    "error": "LinkedIn search request failed",
+                    "details": error_message,
+                }
+            return None
 
     @staticmethod
     def execute_fetch_graphql(params: Dict[str, str]) -> Optional[Dict]:

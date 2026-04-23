@@ -9,6 +9,7 @@ from source.features.job_population.population_controller import (
     fetch_page_endpoint,
     fetch_range_stream,
     backfill_descriptions_stream,
+    validate_search_mode,
 )
 
 population_bp = Blueprint("job_population", __name__, url_prefix="/pipeline")
@@ -91,6 +92,47 @@ def fetch_page_endpoint_route(page_number: int):
             error: "Network request failed"
     """
     return fetch_page_endpoint(page_number)
+
+
+@population_bp.route('/search-validation', methods=['GET'])
+def search_validation_route():
+    """
+    Replays the stored `JobCardsLite` request and verifies parser compatibility
+    before search-mode pipeline execution.
+    ---
+    tags:
+      - Pipeline
+    parameters:
+      - name: keywords
+        in: query
+        type: string
+        required: false
+      - name: excluded_keywords
+        in: query
+        type: array
+        required: false
+        collectionFormat: multi
+        items:
+          type: string
+      - name: geo_id
+        in: query
+        type: string
+        required: false
+      - name: distance
+        in: query
+        type: number
+        required: false
+      - name: count
+        in: query
+        type: integer
+        required: false
+    responses:
+      200:
+        description: Search-mode validation succeeded or search mode is inactive.
+      409:
+        description: Validation failed; search mode must not proceed.
+    """
+    return validate_search_mode()
 
 
 @population_bp.route('/fetch-range-stream', methods=['GET'])

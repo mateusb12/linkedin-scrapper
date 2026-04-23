@@ -24,9 +24,33 @@ export async function saveIndividualJobCurl(curlString) {
   return axios.put(`${CONFIG_URL}/individual-job-curl`, { curl: curlString });
 }
 
-export async function getTotalPages() {
-  const res = await axios.get(`${PIPELINE_URL}/get-total-pages`);
+export async function getTotalPages(searchSpec = {}) {
+  const query = buildPipelineQuery(null, null, searchSpec);
+  const res = await axios.get(`${PIPELINE_URL}/get-total-pages?${query}`);
   return res.data.total_pages;
+}
+
+function buildPipelineQuery(startPage, endPage, searchSpec = {}) {
+  const params = new URLSearchParams();
+
+  if (startPage != null) params.set("start_page", String(startPage));
+  if (endPage != null) params.set("end_page", String(endPage));
+
+  if (searchSpec.keywords) params.set("keywords", searchSpec.keywords);
+  if (searchSpec.geo_id) params.set("geo_id", searchSpec.geo_id);
+  if (searchSpec.distance != null) {
+    params.set("distance", String(searchSpec.distance));
+  }
+  if (searchSpec.count != null) params.set("count", String(searchSpec.count));
+
+  const excluded = Array.isArray(searchSpec.excluded_keywords)
+    ? searchSpec.excluded_keywords
+    : [];
+  excluded.forEach((keyword) => {
+    if (keyword) params.append("excluded_keywords", keyword);
+  });
+
+  return params.toString();
 }
 
 export async function fetchJobsByPageRange(
@@ -34,11 +58,13 @@ export async function fetchJobsByPageRange(
   endPage,
   onProgress,
   onLog,
+  searchSpec = {},
 ) {
   return new Promise((resolve) => {
     let completed = false;
+    const query = buildPipelineQuery(startPage, endPage, searchSpec);
     const eventSource = new EventSource(
-      `${PIPELINE_URL}/fetch-range-stream?start_page=${startPage}&end_page=${endPage}`,
+      `${PIPELINE_URL}/fetch-range-stream?${query}`,
     );
 
     const finalize = (payload = {}) => {
@@ -157,6 +183,12 @@ export async function fetchJobsByPageRange(
       });
     };
   });
+}
+
+export async function validateSearchPipeline(searchSpec = {}) {
+  const query = buildPipelineQuery(null, null, searchSpec);
+  const res = await axios.get(`${PIPELINE_URL}/search-validation?${query}`);
+  return res.data;
 }
 
 export const startKeywordExtractionStream = (

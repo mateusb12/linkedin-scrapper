@@ -1,12 +1,17 @@
-from typing import List, Dict, Optional
+from typing import List, Dict
 from datetime import datetime
+
+from source.features.search_jobs.curl_voyager_jobs_parse import (
+    parse_linkedin_graphql_response,
+)
 
 def extract_paging_info(data: Dict) -> Dict:
     """Extracts total, start, and count from the raw response."""
     try:
-        # Use safe chaining
         data_block = (data.get('data') or {}).get('data') or {}
         base_path = data_block.get('jobsDashJobCardsByJobCollections') or {}
+        if not base_path and _looks_like_search_payload(data):
+            base_path = data.get("data") or {}
         paging = base_path.get('paging') or {}
         return {
             "total": paging.get('total', 0),
@@ -23,6 +28,9 @@ def parse_job_entries(data: Dict) -> List[Dict]:
     """
     if not data or 'included' not in data:
         return []
+
+    if _looks_like_search_payload(data):
+        return _parse_search_job_entries(data)
 
     included_map = {item['entityUrn']: item for item in data.get('included', []) if 'entityUrn' in item}
     parsed_jobs = []
@@ -95,3 +103,37 @@ def parse_job_entries(data: Dict) -> List[Dict]:
         })
 
     return parsed_jobs
+
+
+def _looks_like_search_payload(data: Dict) -> bool:
+    data_block = data.get("data") or {}
+    return isinstance(data_block, dict) and isinstance(data_block.get("elements"), list)
+
+
+def _parse_search_job_entries(data: Dict) -> List[Dict]:
+    parsed = parse_linkedin_graphql_response(data)
+    jobs: List[Dict] = []
+
+    for card in parsed.jobs:
+        job_id = str(card.job_id or "").strip()
+        if not job_id:
+            continue
+
+        job_urn = card.normalized_job_posting_urn or card.job_posting_urn or f"urn:li:fsd_jobPosting:{job_id}"
+        jobs.append({
+            "urn": job_urn,
+            "job_id": job_id,
+            "title": card.title or card.title_raw_from_job_posting or "Unknown Title",
+            "location": card.location_text or "Unknown Location",
+            "company_urn": card.company_urn,
+            "company_name": card.company_name or "Unknown",
+            "company_logo": card.company_logo_url,
+            "posted_on": None,
+            "description_snippet": card.description_snippet or "",
+            "easy_apply": False,
+            "job_url": f"https://www.linkedin.com/jobs/view/{job_id}/",
+            "description_full": "No description provided",
+            "processed": False,
+        })
+
+    return jobs

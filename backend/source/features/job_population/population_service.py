@@ -12,6 +12,7 @@ from source.features.fetch_curl.fetch_service import FetchService
 from source.features.job_population.job_repository import JobRepository
 from models import Company, Job, Email
 from source.features.job_population.linkedin_parser import parse_job_entries
+from source.features.job_population.search_spec import PipelineSearchSpec
 from source.features.job_population.enrichment_service import EnrichmentService
 from source.features.fetch_curl.linkedin_http_client import get_linkedin_fetch_artefacts
 from database.database_connection import get_db_session
@@ -120,6 +121,7 @@ class PopulationService:
     def stream_fetch_page_range(
         start_page: Optional[int],
         end_page: Optional[int],
+        search_spec: Optional[PipelineSearchSpec] = None,
     ) -> Generator[str, None, None]:
         if start_page is None or end_page is None:
             yield PopulationService._sse_event(
@@ -173,7 +175,38 @@ class PopulationService:
             )
             return
 
-        total_available_pages = PopulationService.get_total_pages()
+        if search_spec and search_spec.is_active():
+            validation = PopulationService.validate_search_mode(search_spec)
+            if not validation.get("success"):
+                yield PopulationService._sse_event(
+                    "pipeline_error",
+                    {
+                        "success": False,
+                        "error": validation.get("error", "Search mode validation failed"),
+                        "details": validation.get("details"),
+                        "fatal": True,
+                        "step": validation.get("step"),
+                        "curl": validation.get("curl"),
+                        "status": validation.get("status"),
+                    },
+                )
+                yield PopulationService._sse_event(
+                    "complete",
+                    {
+                        "success": False,
+                        "start_page": start_page,
+                        "end_page": end_page,
+                        "processed_pages": 0,
+                        "successful_pages": 0,
+                        "failed_pages": 0,
+                        "aborted": True,
+                        "message": "Pipeline aborted",
+                        "abort_reason": validation.get("error", "Search mode validation failed"),
+                    },
+                )
+                return
+
+        total_available_pages = PopulationService.get_total_pages(search_spec=search_spec)
         if total_available_pages > 0 and end_page > total_available_pages:
             yield PopulationService._sse_event(
                 "pipeline_error",
@@ -227,7 +260,10 @@ class PopulationService:
 
                 for attempt in range(1, PopulationService.RANGE_FETCH_MAX_ATTEMPTS + 1):
                     final_attempt = attempt
-                    result = PopulationService.fetch_and_save_page(page_number)
+                    result = PopulationService.fetch_and_save_page(
+                        page_number,
+                        search_spec=search_spec,
+                    )
                     if result.get("success"):
                         break
 
@@ -372,24 +408,32 @@ class PopulationService:
                 "details": "Missing top-level 'data' object",
             }
 
+        source = "Pagination"
+        collection = None
+
         inner_data = outer_data.get("data")
-        if not isinstance(inner_data, dict):
-            return {
-                "ok": False,
-                "error": "Unexpected LinkedIn payload shape",
-                "details": "Missing nested 'data.data' object",
-            }
+        if isinstance(inner_data, dict):
+            collection = inner_data.get("jobsDashJobCardsByJobCollections")
 
-        collection = inner_data.get("jobsDashJobCardsByJobCollections")
-        if not isinstance(collection, dict):
-            return {
-                "ok": False,
-                "error": "Unexpected LinkedIn payload shape",
-                "details": "Missing 'data.data.jobsDashJobCardsByJobCollections'",
-            }
+        if isinstance(collection, dict):
+            paging = collection.get("paging") or {}
+            elements = collection.get("elements")
+        else:
+            # Search payloads come back as data.elements/data.paging instead of data.data...
+            paging = outer_data.get("paging") or {}
+            elements = outer_data.get("elements")
+            source = "JobCardsLite"
 
-        paging = collection.get("paging") or {}
-        elements = collection.get("elements")
+            if not isinstance(elements, list):
+                return {
+                    "ok": False,
+                    "error": "Unexpected LinkedIn payload shape",
+                    "details": (
+                        "Missing legacy 'data.data.jobsDashJobCardsByJobCollections' and "
+                        "search 'data.elements' collections"
+                    ),
+                }
+
         included = raw_data.get("included")
 
         if included is not None and not isinstance(included, list):
@@ -411,6 +455,7 @@ class PopulationService:
 
         return {
             "ok": True,
+            "source": source,
             "paging": {"total": total, "start": start, "count": count},
             "elements_count": len(elements) if isinstance(elements, list) else None,
             "included_count": len(included) if isinstance(included, list) else 0,
@@ -418,12 +463,77 @@ class PopulationService:
         }
 
     @staticmethod
-    def get_total_pages() -> int:
-        data = FetchService.execute_fetch_page_raw(page_number=1)
+    def validate_search_mode(search_spec: Optional[PipelineSearchSpec]) -> Dict[str, Any]:
+        if not search_spec or not search_spec.is_active():
+            return {"success": True, "mode": "legacy"}
+
+        validation = FetchService.validate_search_reference(with_meta=True)
+        if not validation or not validation.get("success"):
+            return {
+                "success": False,
+                "step": "validate_search_reference",
+                "error": (validation or {}).get("error", "Stored JobCardsLite reference replay failed"),
+                "details": (validation or {}).get("details"),
+                "curl": (validation or {}).get("curl", "JobCardsLite"),
+                "status": (validation or {}).get("status"),
+                "error_type": (validation or {}).get("error_type"),
+            }
+
+        raw_data = validation["data"]
+        payload_inspection = PopulationService._inspect_pagination_payload(raw_data)
+        if not payload_inspection["ok"]:
+            return {
+                "success": False,
+                "step": "validate_search_parser",
+                "error": payload_inspection["error"],
+                "details": payload_inspection["details"],
+                "curl": "JobCardsLite",
+                "status": validation.get("status"),
+            }
+
+        try:
+            job_entries = parse_job_entries(raw_data)
+        except Exception as exc:
+            return {
+                "success": False,
+                "step": "validate_search_parser",
+                "error": "LinkedIn parser raised an exception for the JobCardsLite reference payload",
+                "details": str(exc),
+                "curl": "JobCardsLite",
+                "status": validation.get("status"),
+            }
+
+        if not job_entries and not payload_inspection["is_empty_page"]:
+            return {
+                "success": False,
+                "step": "validate_search_parser",
+                "error": "Parser returned no entries for the JobCardsLite reference payload",
+                "details": (
+                    "Search replay succeeded, but the population parser is still incompatible "
+                    "with the validated search payload."
+                ),
+                "curl": "JobCardsLite",
+                "status": validation.get("status"),
+            }
+
+        return {
+            "success": True,
+            "mode": "search",
+            "curl": "JobCardsLite",
+            "paging": payload_inspection["paging"],
+            "parsed_entries": len(job_entries),
+            "result_type": "empty_page" if payload_inspection["is_empty_page"] else "search_ready",
+        }
+
+    @staticmethod
+    def get_total_pages(search_spec: Optional[PipelineSearchSpec] = None) -> int:
+        data = FetchService.execute_fetch_page_raw(page_number=1, search_spec=search_spec)
         if not data: return 0
         try:
-            inner = (data.get('data') or {}).get('data') or {}
-            paging = (inner.get('jobsDashJobCardsByJobCollections') or {}).get('paging') or {}
+            inspection = PopulationService._inspect_pagination_payload(data)
+            if not inspection["ok"]:
+                return 0
+            paging = inspection["paging"]
             total = paging.get('total', 0)
             count = paging.get('count', 25)
             if count == 0: return 0
@@ -432,7 +542,10 @@ class PopulationService:
             return 0
 
     @staticmethod
-    def fetch_and_save_page(page_number: int) -> Dict[str, Any]:
+    def fetch_and_save_page(
+        page_number: int,
+        search_spec: Optional[PipelineSearchSpec] = None,
+    ) -> Dict[str, Any]:
         print(f"\n[Population] ================= START PAGE {page_number} =================")
         repo = JobRepository()
         session = repo.session
@@ -444,9 +557,26 @@ class PopulationService:
         }
 
         try:
+            if search_spec and search_spec.is_active():
+                validation = PopulationService.validate_search_mode(search_spec)
+                if not validation.get("success"):
+                    return PopulationService._build_error_response(
+                        page_number=page_number,
+                        step=validation.get("step", "validate_search_reference"),
+                        error=validation.get("error", "Search mode validation failed"),
+                        details=validation.get("details"),
+                        curl=validation.get("curl", "JobCardsLite"),
+                        status=validation.get("status"),
+                        error_type=validation.get("error_type"),
+                    )
+
             # 1. FETCH PAGINATION (Lightweight)
             print(f"[Population] Step 1: Fetching List for Page {page_number}...")
-            fetch_result = FetchService.execute_fetch_page_raw(page_number, with_meta=True)
+            fetch_result = FetchService.execute_fetch_page_raw(
+                page_number,
+                with_meta=True,
+                search_spec=search_spec,
+            )
             if not fetch_result or not fetch_result.get("success"):
                 print("[Population] ❌ Pagination fetch failed.")
                 return PopulationService._build_error_response(
@@ -469,7 +599,7 @@ class PopulationService:
                     step="parse_job_entries",
                     error=payload_inspection["error"],
                     details=payload_inspection["details"],
-                    curl="Pagination",
+                    curl=fetch_result.get("curl", "Pagination"),
                     status=fetch_result.get("status"),
                 )
 
@@ -481,7 +611,7 @@ class PopulationService:
                     step="parse_job_entries",
                     error="LinkedIn parser raised an exception",
                     details=str(exc),
-                    curl="Pagination",
+                    curl=fetch_result.get("curl", "Pagination"),
                     status=fetch_result.get("status"),
                 )
 
@@ -509,7 +639,7 @@ class PopulationService:
                         f"elements_count={payload_inspection.get('elements_count')}, "
                         f"included_count={payload_inspection.get('included_count')}"
                     ),
-                    curl="Pagination",
+                    curl=fetch_result.get("curl", "Pagination"),
                     status=fetch_result.get("status"),
                 )
 

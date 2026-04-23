@@ -4,6 +4,7 @@ from unittest.mock import patch
 # --- Module Imports for Robust Patching ---
 from source.features.fetch_curl.fetch_service import FetchService
 from source.features.job_population.population_service import PopulationService
+from source.features.job_population.search_spec import PipelineSearchSpec
 
 @pytest.fixture
 def client():
@@ -60,4 +61,7 @@ def test_trigger_fetch_pipeline(client):
         assert response.json['success'] is True
 
         # Verify correct page was requested
-        mock_fetch.assert_called_with(1)
+        mock_fetch.assert_called_once()
+        args, kwargs = mock_fetch.call_args
+        assert args == (1,)
+        assert kwargs["search_spec"] == PipelineSearchSpec()
