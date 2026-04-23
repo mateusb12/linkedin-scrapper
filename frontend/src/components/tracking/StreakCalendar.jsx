@@ -11,7 +11,7 @@ import {
 
 const GOAL_PER_DAY = 10;
 
-const StreakCalendar = ({ dailyStats }) => {
+const StreakCalendar = ({ dailyStats = {} }) => {
   const today = new Date();
 
   const todayUTC = new Date(
@@ -156,7 +156,6 @@ const StreakCalendar = ({ dailyStats }) => {
               </span>
               {content}
 
-              {}
               <div className="absolute opacity-0 group-hover:opacity-100 bottom-full mb-2 bg-gray-900 text-xs px-2 py-1 rounded border border-gray-700 whitespace-nowrap z-20 pointer-events-none transition-opacity shadow-lg">
                 <div className="font-bold text-white mb-0.5">
                   {count} / {GOAL_PER_DAY}
@@ -172,7 +171,6 @@ const StreakCalendar = ({ dailyStats }) => {
         })}
       </div>
 
-      {}
       <div className="flex flex-wrap gap-4 justify-center mt-6 text-xs text-gray-400">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">

@@ -1,5 +1,128 @@
 import { API_BASE, handleResponse } from "./config";
 
+const getAppliedTimestamp = (job) =>
+  job?.appliedAt ||
+  job?.applied_at_brt ||
+  job?.applied_on ||
+  job?.applied_at ||
+  null;
+
+const getCompanyName = (company) => {
+  if (!company) return "Unknown Company";
+  if (typeof company === "string") return company;
+  return company.name || "Unknown Company";
+};
+
+const normalizeAppliedJob = (job) => {
+  if (!job || typeof job !== "object") return job;
+
+  const appliedAt = getAppliedTimestamp(job);
+  const jobUrl = job.jobUrl || job.job_url || job.url || null;
+
+  return {
+    ...job,
+    id: job.id || job.urn || job.job_id,
+    appliedAt,
+    applied_at_brt: job.applied_at_brt || null,
+    applied_on: job.applied_on || null,
+    source:
+      job.source ||
+      (String(jobUrl || "")
+        .toLowerCase()
+        .includes("linkedin")
+        ? "LinkedIn"
+        : "SQL"),
+    url: job.url || jobUrl,
+    jobUrl,
+    companyName: job.companyName || getCompanyName(job.company),
+    description: job.description || job.description_full || "",
+    postedAt:
+      job.postedAt ||
+      job.posted_at ||
+      job.posted_on ||
+      job.listed_at ||
+      job.posted_date_text ||
+      null,
+    applicationStatus:
+      job.applicationStatus || job.application_status || "Waiting",
+    applicantsVelocity:
+      job.applicantsVelocity ||
+      job.applicants_velocity ||
+      job.applicants_velocity_24h ||
+      0,
+    lastEmail: job.lastEmail || job.last_email || null,
+  };
+};
+
+const getAppliedJobsFromResponse = (payload) => {
+  if (Array.isArray(payload?.data?.jobs)) return payload.data.jobs;
+  if (Array.isArray(payload?.jobs)) return payload.jobs;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload)) return payload;
+  return [];
+};
+
+const normalizeAppliedJobsResponse = (payload, { page, limit } = {}) => {
+  const jobs = getAppliedJobsFromResponse(payload).map(normalizeAppliedJob);
+  const total =
+    payload?.data?.count ?? payload?.count ?? payload?.total ?? jobs.length;
+
+  if (page || limit) {
+    const pageNumber = page || payload?.page || 1;
+    const pageSize = limit || payload?.limit || jobs.length || 10;
+    const hasServerPage = Array.isArray(payload?.data) || payload?.page;
+    const pageJobs = hasServerPage
+      ? jobs
+      : jobs.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
+
+    return {
+      ...payload,
+      data: pageJobs,
+      jobs: pageJobs,
+      total,
+      page: pageNumber,
+      limit: pageSize,
+      total_pages:
+        payload?.total_pages || Math.max(1, Math.ceil(total / pageSize)),
+    };
+  }
+
+  if (Array.isArray(payload)) return jobs;
+
+  return {
+    ...payload,
+    data:
+      payload?.data && !Array.isArray(payload.data)
+        ? {
+            ...payload.data,
+            count: total,
+            jobs,
+          }
+        : jobs,
+    count: total,
+    jobs,
+  };
+};
+
+const emptyInsights = {
+  overview: {
+    active: 0,
+    closed: 0,
+    paused: 0,
+    total: 0,
+    unknown: 0,
+  },
+  competition: {
+    low: 0,
+    medium: 0,
+    high: 0,
+    avg_applicants: 0,
+    high_comp_refusal_rate: 0,
+  },
+  competition_raw: [],
+  unavailable: true,
+};
+
 export const fetchAllJobs = async () => {
   const response = await fetch(`${API_BASE}/jobs/all`);
   return handleResponse(response, "Failed to fetch all jobs");
@@ -78,7 +201,11 @@ export const fetchAppliedJobs = async ({
   }
 
   const response = await fetch(url);
-  return handleResponse(response, "Failed to fetch applied jobs");
+  const payload = await handleResponse(
+    response,
+    "Failed to fetch applied jobs",
+  );
+  return normalizeAppliedJobsResponse(payload, { page, limit });
 };
 
 export const fetchJobFailures = async ({ page = 1, limit = 10 }) => {
@@ -89,19 +216,46 @@ export const fetchJobFailures = async ({ page = 1, limit = 10 }) => {
 };
 
 export const syncApplicationStatus = async () => {
-  const response = await fetch(`${API_BASE}/services/sync-status`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
-  });
-  return handleResponse(response, "Failed to sync application status");
+  try {
+    const response = await fetch(`${API_BASE}/services/sync-status`, {
+      method: "POST",
+    });
+
+    if (response.status === 404 || response.status === 405) {
+      console.info(
+        "Application status sync endpoint is unavailable; skipping.",
+      );
+      return { skipped: true, unavailable: true };
+    }
+
+    return handleResponse(response, "Failed to sync application status");
+  } catch (error) {
+    console.info("Application status sync could not run; skipping.", error);
+    return { skipped: true, unavailable: true, error };
+  }
 };
 
 export const fetchDashboardInsights = async (timeRange = "all_time") => {
-  const response = await fetch(
-    `${API_BASE}/services/insights?time_range=${timeRange}`,
-  );
-  return handleResponse(response, "Failed to fetch dashboard insights");
+  try {
+    const response = await fetch(
+      `${API_BASE}/services/insights?time_range=${timeRange}`,
+    );
+
+    if (response.status === 404) {
+      console.info(
+        "Dashboard insights endpoint is unavailable; using empty insights.",
+      );
+      return emptyInsights;
+    }
+
+    return handleResponse(response, "Failed to fetch dashboard insights");
+  } catch (error) {
+    console.info(
+      "Dashboard insights could not be loaded; using empty insights.",
+      error,
+    );
+    return { ...emptyInsights, error };
+  }
 };
 
 export const reconcileJobStatuses = async () => {

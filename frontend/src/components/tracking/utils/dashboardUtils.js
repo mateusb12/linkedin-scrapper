@@ -7,25 +7,101 @@ export const themeColors = {
   textSecondary: "#9ca3af",
 };
 
+const APPLIED_DATE_FIELDS = [
+  "appliedAt",
+  "applied_at_brt",
+  "applied_on",
+  "applied_at",
+];
+
+export const getAppliedDateValue = (job) => {
+  if (!job || typeof job !== "object") return null;
+
+  for (const field of APPLIED_DATE_FIELDS) {
+    const value = job[field];
+    if (value) return value;
+  }
+
+  return null;
+};
+
+const isValidDate = (date) =>
+  date instanceof Date && !Number.isNaN(date.getTime());
+
+const parseAppliedDate = (job) => {
+  const value = getAppliedDateValue(job);
+  if (!value) return null;
+
+  const date = value instanceof Date ? value : new Date(value);
+  return isValidDate(date) ? date : null;
+};
+
+const getLocalYMD = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
+const ymdFromAppliedDate = (job) => {
+  const value = getAppliedDateValue(job);
+
+  if (typeof value === "string") {
+    const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+  }
+
+  const date = parseAppliedDate(job);
+  return date ? getLocalYMD(date) : null;
+};
+
+const dateFromYMD = (ymd) => {
+  const [year, month, day] = ymd.split("-").map(Number);
+  return new Date(year, month - 1, day);
+};
+
+const emptyHistoryData = () => ({
+  barData: {
+    labels: [],
+    datasets: [],
+  },
+  doughnutData: {
+    labels: [],
+    datasets: [
+      {
+        data: [],
+        backgroundColor: [],
+        borderWidth: 0,
+      },
+    ],
+  },
+});
+
+const getISOWeekKey = (ymd) => {
+  const [year, month, day] = ymd.split("-").map(Number);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+};
+
 export const processCurrentFormData = (jobs) => {
   const allDailyCounts = {};
-  const getLocalYMD = (d) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  };
+  const jobList = Array.isArray(jobs) ? jobs : [];
 
-  let minDate = new Date();
-  jobs.forEach((job) => {
-    if (!job.appliedAt) return;
-    const d = new Date(job.appliedAt);
-    if (d < minDate) minDate = d;
-    const k = getLocalYMD(d);
+  let minDate = null;
+  jobList.forEach((job) => {
+    const k = ymdFromAppliedDate(job);
+    if (!k) return;
+
+    const d = dateFromYMD(k);
+    if (!minDate || d < minDate) minDate = d;
     allDailyCounts[k] = (allDailyCounts[k] || 0) + 1;
   });
 
-  const startDate = new Date(minDate);
+  const startDate = minDate ? new Date(minDate) : new Date();
   startDate.setDate(startDate.getDate() - 1);
   const endDate = new Date();
   endDate.setDate(endDate.getDate() + 1);
@@ -114,35 +190,28 @@ export const processCurrentFormData = (jobs) => {
 };
 
 export const processHistoryData = (jobs, timePeriod) => {
-  if (!jobs?.length) return { barData: null, doughnutData: null };
+  if (!jobs?.length) return emptyHistoryData();
   const appsBySource = {};
   const appsPerPeriod = {};
 
   jobs.forEach((job) => {
+    const dateKey = ymdFromAppliedDate(job);
+    if (!dateKey) return;
+
     const source = job.source || "Unknown";
     appsBySource[source] = (appsBySource[source] || 0) + 1;
-    const date = new Date(job.appliedAt);
-    let key = date.toISOString().split("T")[0];
+    let key = dateKey;
 
-    if (timePeriod === "monthly")
-      key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
-    else if (timePeriod === "weekly") {
-      const d = new Date(
-        Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
-      );
-      const dayNum = d.getUTCDay() || 7;
-      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-      const weekNo = Math.ceil(
-        ((d - new Date(Date.UTC(d.getUTCFullYear(), 0, 1))) / 86400000 + 1) / 7,
-      );
-      key = `${d.getUTCFullYear()}-W${weekNo}`;
-    }
+    if (timePeriod === "monthly") key = dateKey.slice(0, 7);
+    else if (timePeriod === "weekly") key = getISOWeekKey(dateKey);
 
     if (!appsPerPeriod[key]) appsPerPeriod[key] = {};
     appsPerPeriod[key][source] = (appsPerPeriod[key][source] || 0) + 1;
   });
 
   const sources = Object.keys(appsBySource);
+  if (sources.length === 0) return emptyHistoryData();
+
   const colors = sources.map((s) => {
     if (s.toLowerCase().includes("linkedin")) return themeColors.linkedin;
     if (s.toLowerCase().includes("huntr")) return themeColors.huntr;

@@ -61,11 +61,35 @@ export const useJobDashboard = () => {
     queryKey: ["dashboardInsights", insightsTimeRange],
     queryFn: () => fetchDashboardInsights(insightsTimeRange),
     refetchOnWindowFocus: true,
+    retry: false,
   });
 
-  const jobs = Array.isArray(allJobsData) ? allJobsData : [];
+  const jobs = useMemo(() => {
+    if (!allJobsData) return [];
 
-  const currentStats = useMemo(() => processCurrentFormData(jobs), [jobs]);
+    if (Array.isArray(allJobsData?.data?.jobs)) {
+      return allJobsData.data.jobs;
+    }
+
+    if (Array.isArray(allJobsData?.jobs)) {
+      return allJobsData.jobs;
+    }
+
+    if (Array.isArray(allJobsData?.data)) {
+      return allJobsData.data;
+    }
+
+    if (Array.isArray(allJobsData)) {
+      return allJobsData;
+    }
+
+    console.warn("Unknown applied jobs API format:", allJobsData);
+    return [];
+  }, [allJobsData]);
+
+  const currentStats = useMemo(() => {
+    return processCurrentFormData(jobs);
+  }, [jobs]);
 
   const historyStats = useMemo(
     () => processHistoryData(jobs, historyPeriod),
@@ -75,15 +99,20 @@ export const useJobDashboard = () => {
   useEffect(() => {
     const initSync = async () => {
       try {
-        console.log("🔄 Auto-syncing application statuses...");
-        await syncApplicationStatus();
+        const result = await syncApplicationStatus();
+        if (!result?.skipped) {
+          await refetchStats();
+        }
         refetchTable();
       } catch (err) {
-        console.error("Auto-sync failed:", err);
+        console.info(
+          "Auto-sync skipped or failed without blocking dashboard.",
+          err,
+        );
       }
     };
     initSync();
-  }, [refetchTable]);
+  }, [refetchStats, refetchTable]);
 
   const handleCrossCheck = async () => {
     setIsSyncing(true);
@@ -133,7 +162,6 @@ export const useJobDashboard = () => {
       failures: failureData,
       insights: insightsData,
     },
-
     loading: {
       stats: isLoadingStats,
       table: isLoadingTable,
@@ -142,7 +170,6 @@ export const useJobDashboard = () => {
       insights: isLoadingInsights,
       syncing: isSyncing,
     },
-
     controls: {
       page,
       setPage,
@@ -153,7 +180,6 @@ export const useJobDashboard = () => {
       insightsTimeRange,
       setInsightsTimeRange,
     },
-
     actions: {
       crossCheck: handleCrossCheck,
       refresh: refreshData,

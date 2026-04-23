@@ -15,7 +15,12 @@ from source.features.get_applied_jobs.applied_jobs_controller import (
     sync_applied_backfill_stream,
     sync_applied_smart
 )
-from source.features.get_applied_jobs.services_controller import get_profile_experiences
+from source.features.get_applied_jobs.services_controller import (
+    get_dashboard_insights,
+    get_profile_experiences,
+    reconcile_endpoints,
+    sync_application_status,
+)
 
 # Blueprint creation
 services_bp = Blueprint("services", __name__, url_prefix="/services")
@@ -392,6 +397,60 @@ def sync_applied_smart_route():
         description: Error during smart synchronization.
     """
     return sync_applied_smart()
+
+
+@services_bp.route("/sync-status", methods=["POST"])
+def sync_application_status_route():
+    """
+    Cross-checks rejection emails against applied jobs and updates application status.
+    ---
+    tags:
+      - Job Tracker (Synchronization)
+    responses:
+      200:
+        description: Status synchronization completed.
+      500:
+        description: Error during status synchronization.
+    """
+    return sync_application_status()
+
+
+@services_bp.route("/insights", methods=["GET"])
+def get_dashboard_insights_route():
+    """
+    Returns dashboard aggregate metrics used by the insights tab.
+    ---
+    tags:
+      - Job Tracker (Insights)
+    parameters:
+      - name: time_range
+        in: query
+        type: string
+        required: false
+        default: all_time
+    responses:
+      200:
+        description: Dashboard insight metrics.
+      500:
+        description: Error while building insights.
+    """
+    return get_dashboard_insights()
+
+
+@services_bp.route("/reconcile", methods=["POST"])
+def reconcile_route():
+    """
+    Runs SQL-to-SQL reconciliation between rejection emails and applied jobs.
+    ---
+    tags:
+      - Job Tracker (Synchronization)
+    responses:
+      200:
+        description: Reconciliation completed.
+      500:
+        description: Error during reconciliation.
+    """
+    return reconcile_endpoints()
 
 
 @services_bp.route("/profile/experiences", methods=["GET"])
