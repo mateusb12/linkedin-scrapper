@@ -37,6 +37,7 @@ export const FetchJobsView = () => {
     const [error, setError] = useState('');
     const [progress, setProgress] = useState(0);
     const [fetchedData, setFetchedData] = useState([]);
+    const [fetchSummary, setFetchSummary] = useState(null);
 
     // --- State for Keyword Extraction ---
     const [isExtracting, setIsExtracting] = useState(false);
@@ -74,6 +75,7 @@ export const FetchJobsView = () => {
         setError('');
         setLog([]);
         setFetchedData([]);
+        setFetchSummary(null);
         setProgress(0);
         const result = await fetchJobsByPageRange(
             startPage,
@@ -82,13 +84,15 @@ export const FetchJobsView = () => {
             (message) => setLog(prev => [...prev, message])
         );
         setFetchedData(result.data);
+        setFetchSummary({
+            successCount: result.successCount,
+            failedCount: result.failedCount || 0,
+            processedPages: result.processedPages || 0,
+            aborted: result.aborted || false,
+        });
         if (result.error) {
             setError("An error occurred. See log for details.");
         }
-        setLog(prev => [
-            ...prev,
-            `--- All tasks complete. Fetched ${result.successCount}/${endPage - startPage + 1} pages successfully. ---`
-        ]);
         setIsFetchingPages(false);
     };
 
@@ -303,6 +307,11 @@ export const FetchJobsView = () => {
                     )}
                     {error &&
                         <p className="mt-4 text-sm text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-md">{error}</p>}
+                    {fetchSummary && !isFetchingPages && (
+                        <p className="mt-4 text-sm text-gray-700 dark:text-gray-300">
+                            Processed {fetchSummary.processedPages} page(s) with {fetchSummary.successCount} success(es) and {fetchSummary.failedCount} failure(s){fetchSummary.aborted ? ' before aborting.' : '.'}
+                        </p>
+                    )}
                     <pre className="mt-4 p-4 bg-gray-900 text-white rounded-lg text-sm font-mono overflow-x-auto h-64">
                         {log.map((entry, i) => <div key={i}>{entry}</div>)}
                     </pre>

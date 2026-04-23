@@ -21,6 +21,14 @@ def fetch_page_endpoint(page_number: int):
             "details": str(e),
         }), 500
 
+def fetch_range_stream():
+    start_page = request.args.get('start_page', type=int)
+    end_page = request.args.get('end_page', type=int)
+    return Response(
+        stream_with_context(PopulationService.stream_fetch_page_range(start_page, end_page)),
+        mimetype='text/event-stream'
+    )
+
 def backfill_descriptions_stream():
     """
     Streams the progress of the enrichment process using SSE.

@@ -7,6 +7,7 @@ from flask import Blueprint
 from source.features.job_population.population_controller import (
     get_total_pages,
     fetch_page_endpoint,
+    fetch_range_stream,
     backfill_descriptions_stream,
 )
 
@@ -90,6 +91,35 @@ def fetch_page_endpoint_route(page_number: int):
             error: "Network request failed"
     """
     return fetch_page_endpoint(page_number)
+
+
+@population_bp.route('/fetch-range-stream', methods=['GET'])
+def fetch_range_stream_route():
+    """
+    Streams page-range fetching progress and results through SSE.
+    ---
+    tags:
+      - Pipeline
+    produces:
+      - text/event-stream
+    parameters:
+      - name: start_page
+        in: query
+        type: integer
+        required: true
+        description: First page to fetch.
+      - name: end_page
+        in: query
+        type: integer
+        required: true
+        description: Last page to fetch.
+    responses:
+      200:
+        description: SSE stream with page progress, retries, errors, and completion.
+      500:
+        description: Runtime errors are emitted as SSE events.
+    """
+    return fetch_range_stream()
 
 
 @population_bp.route('/backfill-descriptions-stream', methods=['GET'])

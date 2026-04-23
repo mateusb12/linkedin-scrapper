@@ -35,87 +35,128 @@ export async function fetchJobsByPageRange(
   onProgress,
   onLog,
 ) {
-  const formatBackendError = (page, data = {}) => {
-    const step = data.step ? ` at ${data.step}` : "";
-    const curl = data.curl ? ` [${data.curl}]` : "";
-    const status = data.status ? ` status=${data.status}` : "";
-    const message = data.error || data.message || "Unknown error";
-    const details = data.details ? ` (${data.details})` : "";
-    return `❌ Page ${page} failed${step}${curl}${status}: ${message}${details}`;
-  };
+  return new Promise((resolve) => {
+    let completed = false;
+    const eventSource = new EventSource(
+      `${PIPELINE_URL}/fetch-range-stream?start_page=${startPage}&end_page=${endPage}`,
+    );
 
-  const totalPagesToFetch = endPage - startPage + 1;
-  let successfulFetches = 0;
-  let allData = [];
+    const finalize = (payload = {}) => {
+      if (completed) return;
+      completed = true;
+      eventSource.close();
+      resolve({
+        data: [],
+        successCount: payload.successful_pages || 0,
+        failedCount: payload.failed_pages || 0,
+        processedPages: payload.processed_pages || 0,
+        aborted: payload.aborted || false,
+        error:
+          payload.success === false
+            ? payload.abort_reason || payload.error || "Pipeline failed"
+            : null,
+      });
+    };
 
-  for (let i = startPage; i <= endPage; i++) {
-    try {
-      onLog?.(`Fetching page ${i}...`);
+    const parseEventData = (event) => {
+      try {
+        return JSON.parse(event.data);
+      } catch {
+        return {};
+      }
+    };
 
-      const res = await axios.get(`${PIPELINE_URL}/fetch-page/${i}`);
+    eventSource.addEventListener("page_start", (event) => {
+      const data = parseEventData(event);
+      onLog?.(data.message || `Fetching page ${data.page}...`);
+    });
 
-      if (res.data.success) {
-        const count = res.data.count || 0;
-        const totalFound = res.data.total_found || 0;
-        const enrichment = res.data.enrichment;
+    eventSource.addEventListener("retry", (event) => {
+      const data = parseEventData(event);
+      const status = data.status ? ` status=${data.status}` : "";
+      const step = data.step ? ` at ${data.step}` : "";
+      onLog?.(
+        `🔁 Page ${data.page}${step}${status}: retry ${data.attempt}/${data.max_attempts} in ${data.delay_seconds}s`,
+      );
+    });
 
-        if (count > 0) {
+    eventSource.addEventListener("warning", (event) => {
+      const data = parseEventData(event);
+      if (data.enrichment) {
+        const enrichment = data.enrichment;
+        const sample = enrichment.missing_ids_sample?.length
+          ? ` sample=${enrichment.missing_ids_sample.join(", ")}`
+          : "";
+        onLog?.(
+          `⚠️ Page ${data.page}: enrichment partial requested=${enrichment.requested} received=${enrichment.received} missing=${enrichment.missing_count}${sample}`,
+        );
+        return;
+      }
+      onLog?.(`⚠️ ${data.message || `Page ${data.page} warning`}`);
+    });
+
+    eventSource.addEventListener("page_result", (event) => {
+      const data = parseEventData(event);
+
+      if (data.success) {
+        const count = data.count || 0;
+        const totalFound = data.total_found || 0;
+        if (data.result_type === "empty_page") {
+          onLog?.(`⚠️ Page ${data.page}: No jobs found on this page.`);
+        } else if (count > 0) {
           onLog?.(
-            `✅ Page ${i}: Saved ${count} new jobs (Found ${totalFound})`,
+            `✅ Page ${data.page}: Saved ${count} new jobs (Found ${totalFound})`,
           );
-        } else if (totalFound > 0 && count === 0) {
+        } else if (totalFound > 0) {
           onLog?.(
-            `⏭️ SKIPPING PAGE ${i} - All ${totalFound} jobs already in database.`,
+            `⏭️ SKIPPING PAGE ${data.page} - All ${totalFound} jobs already in database.`,
           );
         } else {
-          onLog?.(`⚠️ Page ${i}: No jobs found on this page.`);
+          onLog?.(`✅ ${data.message || `Page ${data.page} completed`}`);
         }
-
-        if (enrichment?.missing_count > 0) {
-          const sample = enrichment.missing_ids_sample?.length
-            ? ` sample=${enrichment.missing_ids_sample.join(", ")}`
-            : "";
-          onLog?.(
-            `⚠️ Page ${i}: enrichment partial requested=${enrichment.requested} received=${enrichment.received} missing=${enrichment.missing_count}${sample}`,
-          );
-        }
-
-        if (res.data.warning) {
-          onLog?.(`⚠️ Page ${i}: ${res.data.warning}`);
-        }
-
-        successfulFetches++;
-      } else {
-        onLog?.(formatBackendError(i, res.data));
+        return;
       }
-    } catch (err) {
+
+      const step = data.step ? ` at ${data.step}` : "";
+      const curl = data.curl ? ` [${data.curl}]` : "";
+      const status = data.status ? ` status=${data.status}` : "";
+      const details = data.details ? ` (${data.details})` : "";
+      const fatal = data.fatal ? " [fatal]" : "";
       onLog?.(
-        err.response?.data
-          ? formatBackendError(i, err.response.data)
-          : `❌ Failed to fetch page ${i}: ${err.message}`,
+        `❌ Page ${data.page} failed${step}${curl}${status}${fatal}: ${data.error || data.message || "Unknown error"}${details}`,
       );
+    });
 
-      const isNetworkError =
-        !err.response ||
-        err.code === "ERR_NETWORK" ||
-        err.message === "Network Error";
+    eventSource.addEventListener("progress", (event) => {
+      const data = parseEventData(event);
+      onProgress?.(data);
+    });
 
-      if (isNetworkError) {
-        onLog?.("🛑 Network error detected — aborting remaining requests.");
-        return {
-          data: allData,
-          successCount: successfulFetches,
-          error: "Network error",
-        };
-      }
-    }
+    eventSource.addEventListener("pipeline_error", (event) => {
+      const data = parseEventData(event);
+      onLog?.(`🛑 ${data.message || data.error || "Pipeline error"}`);
+    });
 
-    const pagesFetched = i - startPage + 1;
-    const progress = (pagesFetched / totalPagesToFetch) * 100;
-    onProgress?.({ page: i, progress });
-  }
+    eventSource.addEventListener("complete", (event) => {
+      const data = parseEventData(event);
+      onLog?.(
+        data.success
+          ? `--- ${data.message}. Fetched ${data.successful_pages}/${endPage - startPage + 1} pages successfully. ---`
+          : `--- ${data.message}: ${data.abort_reason || "Unknown reason"}. ---`,
+      );
+      finalize(data);
+    });
 
-  return { data: allData, successCount: successfulFetches };
+    eventSource.onerror = () => {
+      if (completed) return;
+      onLog?.("🛑 Stream connection lost. Check backend and retry.");
+      finalize({
+        success: false,
+        aborted: true,
+        error: "Stream connection lost",
+      });
+    };
+  });
 }
 
 export const startKeywordExtractionStream = (

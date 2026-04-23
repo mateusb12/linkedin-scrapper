@@ -18,6 +18,8 @@ from database.database_connection import get_db_session
 
 class PopulationService:
     ENRICHMENT_MISSING_SAMPLE_SIZE = 5
+    RANGE_FETCH_MAX_ATTEMPTS = 3
+    RANGE_FETCH_RETRY_DELAYS = (1, 2, 4)
 
     @staticmethod
     def _build_error_response(
@@ -51,6 +53,307 @@ class PopulationService:
             summary["missing_ids_sample"] = missing_ids[:PopulationService.ENRICHMENT_MISSING_SAMPLE_SIZE]
             summary["degraded"] = True
         return summary
+
+    @staticmethod
+    def _sse_event(event: str, payload: Dict[str, Any]) -> str:
+        return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
+
+    @staticmethod
+    def _is_retryable_result(result: Dict[str, Any]) -> bool:
+        error_type = result.get("error_type")
+        status = result.get("status")
+
+        if error_type in {"timeout", "network_error", "rate_limit"}:
+            return True
+
+        if isinstance(status, int) and status >= 500:
+            return True
+
+        if result.get("step") == "fetch_pagination" and error_type == "http_error":
+            return True
+
+        return False
+
+    @staticmethod
+    def _is_fatal_result(result: Dict[str, Any]) -> bool:
+        error_type = result.get("error_type")
+        step = result.get("step")
+        status = result.get("status")
+        error = (result.get("error") or "").lower()
+
+        if error_type in {"auth_error", "config_missing", "malformed_response"}:
+            return True
+
+        if isinstance(status, int) and status in {401, 403}:
+            return True
+
+        if step == "parse_job_entries":
+            return True
+
+        if step in {"save_jobs", "commit", "detect_new_jobs"}:
+            return True
+
+        if step == "unexpected":
+            return True
+
+        if "parser mismatch" in error:
+            return True
+
+        return False
+
+    @staticmethod
+    def _format_page_message(page_number: int, result: Dict[str, Any]) -> str:
+        if result.get("success"):
+            total_found = result.get("total_found", 0)
+            count = result.get("count", 0)
+            if result.get("result_type") == "empty_page":
+                return f"Page {page_number} is empty"
+            if count > 0:
+                return f"Page {page_number} processed successfully"
+            if total_found > 0:
+                return f"Page {page_number} had no new jobs to save"
+            return f"Page {page_number} completed"
+
+        return f"Page {page_number} failed"
+
+    @staticmethod
+    def stream_fetch_page_range(
+        start_page: Optional[int],
+        end_page: Optional[int],
+    ) -> Generator[str, None, None]:
+        if start_page is None or end_page is None:
+            yield PopulationService._sse_event(
+                "pipeline_error",
+                {
+                    "success": False,
+                    "error": "Missing required query params",
+                    "details": "Both start_page and end_page are required.",
+                    "fatal": True,
+                },
+            )
+            yield PopulationService._sse_event(
+                "complete",
+                {
+                    "success": False,
+                    "aborted": True,
+                    "processed_pages": 0,
+                    "successful_pages": 0,
+                    "failed_pages": 0,
+                    "message": "Pipeline aborted",
+                    "abort_reason": "Missing required query params",
+                },
+            )
+            return
+
+        if start_page < 1 or end_page < start_page:
+            yield PopulationService._sse_event(
+                "pipeline_error",
+                {
+                    "success": False,
+                    "error": "Invalid page range",
+                    "details": "Expected start_page >= 1 and end_page >= start_page.",
+                    "fatal": True,
+                    "start_page": start_page,
+                    "end_page": end_page,
+                },
+            )
+            yield PopulationService._sse_event(
+                "complete",
+                {
+                    "success": False,
+                    "start_page": start_page,
+                    "end_page": end_page,
+                    "processed_pages": 0,
+                    "successful_pages": 0,
+                    "failed_pages": 0,
+                    "aborted": True,
+                    "message": "Pipeline aborted",
+                    "abort_reason": "Invalid page range",
+                },
+            )
+            return
+
+        total_available_pages = PopulationService.get_total_pages()
+        if total_available_pages > 0 and end_page > total_available_pages:
+            yield PopulationService._sse_event(
+                "pipeline_error",
+                {
+                    "success": False,
+                    "error": "Invalid page range",
+                    "details": f"end_page exceeds available pages ({total_available_pages}).",
+                    "fatal": True,
+                    "start_page": start_page,
+                    "end_page": end_page,
+                    "total_pages": total_available_pages,
+                },
+            )
+            yield PopulationService._sse_event(
+                "complete",
+                {
+                    "success": False,
+                    "start_page": start_page,
+                    "end_page": end_page,
+                    "processed_pages": 0,
+                    "successful_pages": 0,
+                    "failed_pages": 0,
+                    "aborted": True,
+                    "message": "Pipeline aborted",
+                    "abort_reason": f"Requested end_page {end_page} exceeds available pages ({total_available_pages})",
+                },
+            )
+            return
+
+        total_pages = end_page - start_page + 1
+        processed_pages = 0
+        successful_pages = 0
+        failed_pages = 0
+        aborted = False
+        abort_reason: Optional[str] = None
+
+        try:
+            for offset, page_number in enumerate(range(start_page, end_page + 1), start=1):
+                yield PopulationService._sse_event(
+                    "page_start",
+                    {
+                        "page": page_number,
+                        "current": offset,
+                        "total_pages": total_pages,
+                        "message": f"Fetching page {page_number}...",
+                    },
+                )
+
+                result: Dict[str, Any] = {}
+                final_attempt = 1
+
+                for attempt in range(1, PopulationService.RANGE_FETCH_MAX_ATTEMPTS + 1):
+                    final_attempt = attempt
+                    result = PopulationService.fetch_and_save_page(page_number)
+                    if result.get("success"):
+                        break
+
+                    is_retryable = PopulationService._is_retryable_result(result)
+                    has_more_attempts = attempt < PopulationService.RANGE_FETCH_MAX_ATTEMPTS
+                    if not is_retryable or not has_more_attempts:
+                        break
+
+                    delay_seconds = PopulationService.RANGE_FETCH_RETRY_DELAYS[attempt - 1]
+                    yield PopulationService._sse_event(
+                        "retry",
+                        {
+                            "page": page_number,
+                            "attempt": attempt + 1,
+                            "max_attempts": PopulationService.RANGE_FETCH_MAX_ATTEMPTS,
+                            "delay_seconds": delay_seconds,
+                            "step": result.get("step"),
+                            "status": result.get("status"),
+                            "error_type": result.get("error_type"),
+                            "message": f"Retrying page {page_number} after failure",
+                        },
+                    )
+                    time.sleep(delay_seconds)
+
+                page_payload = {
+                    **result,
+                    "page": page_number,
+                    "attempts": final_attempt,
+                    "fatal": False,
+                    "message": PopulationService._format_page_message(page_number, result),
+                }
+
+                if result.get("success"):
+                    successful_pages += 1
+                    if result.get("warning"):
+                        yield PopulationService._sse_event(
+                            "warning",
+                            {
+                                "page": page_number,
+                                "warning": result.get("warning"),
+                                "message": result.get("warning"),
+                            },
+                        )
+                    enrichment = result.get("enrichment") or {}
+                    if enrichment.get("degraded"):
+                        yield PopulationService._sse_event(
+                            "warning",
+                            {
+                                "page": page_number,
+                                "step": "batch_enrichment",
+                                "enrichment": enrichment,
+                                "warning_type": "enrichment_degraded",
+                                "message": (
+                                    f"Page {page_number} enrichment degraded: "
+                                    f"missing {enrichment.get('missing_count', 0)} job(s)"
+                                ),
+                            },
+                        )
+                else:
+                    failed_pages += 1
+                    fatal = PopulationService._is_fatal_result(result)
+                    if result.get("error_type") == "rate_limit" and final_attempt >= PopulationService.RANGE_FETCH_MAX_ATTEMPTS:
+                        fatal = True
+                    page_payload["fatal"] = fatal
+                    if fatal:
+                        aborted = True
+                        abort_reason = (
+                            f"Page {page_number} failed at {result.get('step', 'unknown_step')}: "
+                            f"{result.get('error', 'Unknown error')}"
+                        )
+
+                yield PopulationService._sse_event("page_result", page_payload)
+
+                processed_pages += 1
+                yield PopulationService._sse_event(
+                    "progress",
+                    {
+                        "processed_pages": processed_pages,
+                        "total_pages": total_pages,
+                        "successful_pages": successful_pages,
+                        "failed_pages": failed_pages,
+                        "progress": (processed_pages / total_pages) * 100,
+                    },
+                )
+
+                if aborted:
+                    break
+
+            yield PopulationService._sse_event(
+                "complete",
+                {
+                    "success": not aborted,
+                    "start_page": start_page,
+                    "end_page": end_page,
+                    "processed_pages": processed_pages,
+                    "successful_pages": successful_pages,
+                    "failed_pages": failed_pages,
+                    "aborted": aborted,
+                    "abort_reason": abort_reason,
+                    "message": "Pipeline aborted" if aborted else "Range fetch completed",
+                },
+            )
+        except Exception as exc:
+            yield PopulationService._sse_event(
+                "pipeline_error",
+                {
+                    "success": False,
+                    "fatal": True,
+                    "error": "Unhandled range fetch error",
+                    "details": str(exc),
+                },
+            )
+            yield PopulationService._sse_event(
+                "complete",
+                {
+                    "success": False,
+                    "start_page": start_page,
+                    "end_page": end_page,
+                    "processed_pages": processed_pages,
+                    "successful_pages": successful_pages,
+                    "failed_pages": failed_pages,
+                    "aborted": True,
+                    "abort_reason": str(exc),
+                    "message": "Pipeline aborted",
+                },
+            )
 
     @staticmethod
     def _inspect_pagination_payload(raw_data: Dict[str, Any]) -> Dict[str, Any]:
