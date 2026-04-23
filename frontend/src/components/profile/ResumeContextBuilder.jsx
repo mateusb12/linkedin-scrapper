@@ -5,98 +5,66 @@ import { denormalizeResume, generateLatex } from "./resumeJsonMapper.js";
 
 const PROMPT_TEMPLATES = {
   en: `
-I am applying for a job and I need you to adapt my resume (in LaTeX format) to fit the Job Description provided below.
+I am applying for a job and need you to adapt my resume in LaTeX to the job description below.
 
-=== STRICT INSTRUCTIONS ===
-1. Analyze the Job Description and extract the most relevant technical keywords.
-2. Rewrite ONLY:
+Rules:
+1. Rewrite ONLY:
    - the summary (if present)
    - the experience bullet points
-   using first-person past tense ("implemented", "designed", "modeled", "architected", etc.)
-3. Give STRONG emphasis to the job's keywords by naturally incorporating them into the bullet points.
-4. Do NOT invent skills or technologies that are not already present in my current resume.
-5. Extract 15-25 of the MOST relevant technical keywords, tools, frameworks, concepts and acronyms from the Job Description that are already covered in my resume (skills, experience, projects, etc.).
+2. Keep the EXACT SAME number of bullet points in each job.
+3. Do NOT invent technologies, responsibilities, metrics, tools, results, or scope that are not already in the resume.
+4. Do not infer architecture, scale, system topology, or technical complexity unless it is explicitly supported by the resume. Do not introduce terms such as microservices, distributed systems, event-driven architecture, high-scale systems, or edge components without clear evidence.
+5. Preserve the original technical specificity. Do not replace concrete details with generic claims.
+6. Add job-description keywords ONLY when they naturally match work I actually did.
+7. Keep dates, company names, job titles, skills, education, languages, links, and LaTeX structure unchanged.
+8. Return ONLY the full final LaTeX document.
 
-=== WRITING QUALITY RULES ===
-
-Improve writing quality using these guidelines:
-
+Writing style:
 - Use natural technical English commonly found in real resumes
-- Avoid literal translations or awkward phrasing
-- Keep bullet points concise (max ~30 words)
-- Avoid repeating phrases like "full stack", "in production", "based on" excessively
-- Start bullet points with strong action verbs such as:
-  designed, implemented, modeled, architected, refactored, optimized, integrated, orchestrated, improved, automated, built
-- Prefer concise phrasing:
-  "using" instead of "based on"
-  "cloud storage" instead of "storage in cloud environment"
-  "mobile app" instead of "mobile frontend application"
-- Remove redundancy while preserving technical depth
-- Emphasize technical impact when possible:
-  reliability, scalability, observability, resilience, maintainability, performance
-- Maintain consistent terminology across the resume
-- Avoid sentences that sound AI-generated or translated literally
-- Avoid repeating combinations such as:
-  "full stack" + "based on" + "in production" in the same bullet
+- Prefer natural resume verbs such as: implemented, designed, modeled, refactored, developed, structured, integrated, optimized, maintained
+- Avoid awkward or inflated phrasing such as: "ensured seamless integration", "worked on edge components", "robust distributed environment"
+- Avoid literal translations and over-engineered jargon
+- Prefer direct, concrete, believable bullet points
+- If an original bullet is already stronger and more specific, keep it almost unchanged
 
-Ideal bullet structure:
-[action verb] + [what was built] + [technologies] + [technical impact]
+Also extract 15-25 relevant technical keywords from the job description that are already present in my resume.
 
-Example:
-"Designed multi-step approval workflow with RBAC and validation layers, improving traceability and system security."
-
-=== JOB DESCRIPTION ===
+Job Description:
 {{JOB_DESCRIPTION}}
 
-=== CURRENT RESUME (LATEX) ===
+Current Resume (LaTeX):
 {{RESUME_CONTENT}}
 `,
 
   pt: `
-Estou me candidatando a uma vaga e preciso que você adapte meu currículo (em LaTeX) para se adequar à Descrição da Vaga fornecida abaixo.
+Estou me candidatando a uma vaga e preciso que você adapte meu currículo em LaTeX para a descrição da vaga abaixo.
 
-=== INSTRUÇÕES RÍGIDAS ===
-1. Analise a Descrição da Vaga e extraia as palavras-chave técnicas mais relevantes.
-2. Reescreva APENAS:
+Regras:
+1. Reescreva APENAS:
    - o resumo (se existir)
    - os bullet points de experiência
-   usando primeira pessoa do passado ("implementei", "projetei", "modelei", "estruturei", etc.)
-3. Dê MUITA ÊNFASE às keywords da vaga, incorporando-as naturalmente nos bullet points.
-4. NÃO invente tecnologias ou habilidades que não existam no meu currículo atual.
-5. Extraia 15-25 das palavras-chave técnicas MAIS relevantes da Descrição da Vaga que já estão presentes no meu currículo (habilidades, experiência ou projetos).
+2. Mantenha EXATAMENTE o mesmo número de bullets em cada experiência.
+3. NÃO invente tecnologias, responsabilidades, métricas, ferramentas, resultados ou escopo que não estejam no currículo.
+4. Não extrapole arquitetura, escala, complexidade ou topologia do sistema. Não infira termos como microsserviços, sistema distribuído, arquitetura orientada a eventos, edge/componentes de borda ou alta escala sem evidência explícita no currículo.
+5. Preserve a especificidade técnica original. Não troque detalhes concretos por frases genéricas.
+6. Use palavras-chave da vaga SOMENTE quando elas encaixarem naturalmente no que eu realmente fiz.
+7. Mantenha datas, empresas, cargos, competências, formação, idiomas, links e estrutura LaTeX inalterados.
+8. Retorne APENAS o documento LaTeX completo.
 
-=== WRITING QUALITY RULES ===
+Estilo de escrita:
+- Use português técnico natural de currículo brasileiro
+- Prefira verbos naturais em pt-BR, como: implementei, projetei, modelei, refatorei, desenvolvi, estruturei, integrei, otimizei, fiz manutenção em
+- Evite formulações pouco naturais como: "mantive e desenvolvi", "componentes de borda", "integração perfeitamente fluida"
+- Evite traduções literais ou jargões pouco usados em currículo brasileiro
+- Prefira bullets diretos, concretos e críveis
+- Se um bullet original já estiver mais forte e específico, mantenha-o quase intacto
 
-Melhore a qualidade do texto aplicando estas diretrizes:
+Além disso, extraia 15-25 palavras-chave técnicas relevantes da vaga que já existam no meu currículo.
 
-- Use português técnico natural (evite traduções literais do inglês)
-- Prefira frases diretas e objetivas (máx. ~30 palavras por bullet)
-- Evite repetição excessiva de termos como "full stack", "em produção", "baseado em"
-- Use verbos fortes no início das frases:
-  projetei, modelei, estruturei, implementei, refatorei, mantive, evoluí, integrei, otimizei, desenvolvi, construí
-- Prefira linguagem comum em currículos técnicos brasileiros:
-  "na nuvem" em vez de "em cloud"
-  "com Raspberry Pi" em vez de "baseado em Raspberry Pi"
-  "aplicação mobile" em vez de "mobile frontend"
-  "armazenamento na nuvem" em vez de "cloud storage"
-- Remova redundâncias sem perder densidade técnica
-- Destaque impacto técnico quando possível:
-  confiabilidade, escalabilidade, observabilidade, resiliência, manutenção, performance
-- Mantenha consistência de terminologia ao longo do documento
-- Evite frases que soem traduzidas literalmente do inglês
-- Evite repetir simultaneamente:
-  "full stack" + "baseado em" + "em produção" no mesmo bullet
-
-Estrutura ideal de bullet:
-[verbo forte] + [o que foi feito] + [tecnologias] + [impacto técnico]
-
-Exemplo:
-"Modelei workflow de aprovação multi-etapas com RBAC e validação de dados, aumentando a rastreabilidade e segurança do sistema."
-
-=== DESCRIÇÃO DA VAGA ===
+Descrição da vaga:
 {{JOB_DESCRIPTION}}
 
-=== MEU CURRÍCULO ATUAL (LATEX) ===
+Currículo atual (LaTeX):
 {{RESUME_CONTENT}}
 `,
 };
