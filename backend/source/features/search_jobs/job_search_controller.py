@@ -14,8 +14,18 @@ from typing import Any
 
 from flask import jsonify, request, Response
 
-from source.features.search_jobs.curl_voyager_jobs_fetch import JobSearchTuning, WorkType, JobType, ExperienceLevel, \
-    DatePosted, SearchOrigin, SortBy
+from source.features.job_population.search_spec import normalize_excluded_keywords
+from source.features.search_jobs.curl_voyager_jobs_fetch import (
+    DEFAULT_JOB_CARDS_LITE_DECORATION_ID,
+    DEFAULT_JOB_SEARCH_Q,
+    DatePosted,
+    ExperienceLevel,
+    JobSearchTuning,
+    JobType,
+    SearchOrigin,
+    SortBy,
+    WorkType,
+)
 from source.features.search_jobs.job_search_service import LinkedInJobsSearchService
 
 # ══════════════════════════════════════════════════════════════
@@ -128,43 +138,68 @@ def _parse_enum_list(value: Any, enum_cls: type[Enum], field_name: str) -> list[
     return [_parse_enum(item, enum_cls, field_name) for item in items]
 
 
+def _compose_keywords(keywords: Any, excluded_keywords: Any) -> str | None:
+    base = str(keywords).strip() if keywords is not None else ""
+    excluded = normalize_excluded_keywords(excluded_keywords)
+
+    if not base and not excluded:
+        return None
+
+    parts: list[str] = []
+    if base:
+        parts.append(base)
+
+    for token in excluded:
+        parts.append(f"NOT {token}")
+
+    return " ".join(parts).strip() or None
+
+
 def _build_tuning_from_request() -> JobSearchTuning:
+    keywords = _get_input("keywords")
+    excluded_keywords = _get_input("excluded_keywords", "excludedKeywords")
+
     return JobSearchTuning(
         current_job_id=_get_input("current_job_id", "currentJobId"),
-        keywords=_get_input("keywords"),
+        keywords=_compose_keywords(keywords, excluded_keywords),
         geo_id=_get_input("geo_id", "geoId"),
         distance=_parse_float(_get_input("distance"), "distance"),
 
         sort_by=_parse_enum(_get_input("sort_by", "sortBy"), SortBy, "sort_by"),
         work_types=_parse_enum_list(
-            _get_input("work_types", "workTypes"),
+            _get_input("workplace_type", "workplaceType", "work_types", "workTypes"),
             WorkType,
-            "work_types",
+            "workplace_type",
         ),
         date_posted=_parse_enum(
-            _get_input("date_posted", "datePosted"),
+            _get_input("time_posted_range", "timePostedRange", "date_posted", "datePosted"),
             DatePosted,
-            "date_posted",
+            "time_posted_range",
         ),
         experience_levels=_parse_enum_list(
-            _get_input("experience_levels", "experienceLevels"),
+            _get_input("experience", "experience_levels", "experienceLevels"),
             ExperienceLevel,
-            "experience_levels",
+            "experience",
         ),
         job_types=_parse_enum_list(
-            _get_input("job_types", "jobTypes"),
+            _get_input("job_type", "jobType", "job_types", "jobTypes"),
             JobType,
-            "job_types",
+            "job_type",
         ),
 
         origin=_parse_enum(
-            _get_input("origin"),
+            _get_input("origin", default=SearchOrigin.JOB_SEARCH_PAGE_JOB_FILTER.value),
             SearchOrigin,
             "origin",
-        ) or _get_input("origin"),
+        ) or _get_input("origin", default=SearchOrigin.JOB_SEARCH_PAGE_JOB_FILTER.value),
 
         spell_correction_enabled=_parse_bool(
             _get_input("spell_correction_enabled", "spellCorrectionEnabled"),
+            default=True,
+        ),
+
+        served_event_enabled=_parse_bool(
+            _get_input("served_event_enabled", "servedEventEnabled"),
             default=False,
         ),
 
@@ -190,6 +225,7 @@ def _get_search_params() -> dict[str, Any]:
     """Extrai todos os parâmetros comuns para evitar repetição nos endpoints."""
     return {
         "page": _parse_int(_get_input("page", default=1), "page") or 1,
+        "start": _parse_int(_get_input("start"), "start"),
         "count": _parse_int(_get_input("count"), "count"),
         "debug": _parse_bool(_get_input("debug", default=False), default=False),
         "save_raw_json": _parse_bool(_get_input("save_raw_json", "saveRawJson", default=True), default=True),
@@ -309,10 +345,21 @@ def search_jobs_options():
             "data": {
                 "sort_by": _enum_options(SortBy),
                 "work_types": _enum_options(WorkType),
+                "workplace_type": _enum_options(WorkType),
                 "date_posted": _enum_options(DatePosted),
+                "time_posted_range": _enum_options(DatePosted),
                 "experience_levels": _enum_options(ExperienceLevel),
+                "experience": _enum_options(ExperienceLevel),
                 "job_types": _enum_options(JobType),
+                "job_type": _enum_options(JobType),
                 "origins": _enum_options(SearchOrigin),
+                "defaults": {
+                    "q": DEFAULT_JOB_SEARCH_Q,
+                    "decoration_id": DEFAULT_JOB_CARDS_LITE_DECORATION_ID,
+                    "origin": SearchOrigin.JOB_SEARCH_PAGE_JOB_FILTER.value,
+                    "spell_correction_enabled": True,
+                    "served_event_enabled": False,
+                },
             },
         }), 200
     except Exception as e:

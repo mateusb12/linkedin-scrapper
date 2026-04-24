@@ -90,6 +90,7 @@ class LinkedInJobsSearchService:
     def search_jobs(
             self,
             page: int = 1,
+            start: int | None = None,
             count: int | None = None,
             tuning: JobSearchTuning | None = None,
             debug: bool = False,
@@ -105,6 +106,7 @@ class LinkedInJobsSearchService:
         result = {}
         for event in self.search_jobs_stream(
                 page=page,
+                start=start,
                 count=count,
                 tuning=tuning,
                 debug=debug,
@@ -125,6 +127,7 @@ class LinkedInJobsSearchService:
     def search_jobs_stream(
             self,
             page: int = 1,
+            start: int | None = None,
             count: int | None = None,
             tuning: JobSearchTuning | None = None,
             debug: bool = False,
@@ -141,6 +144,7 @@ class LinkedInJobsSearchService:
 
         raw_payload = fetch_and_save(
             page=page,
+            start=start,
             count=count,
             tuning=tuning,
             debug=debug,

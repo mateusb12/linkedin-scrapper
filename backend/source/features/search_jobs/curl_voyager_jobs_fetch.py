@@ -100,6 +100,12 @@ class SearchOrigin(str, Enum):
     JOB_SEARCH_PAGE_JOB_FILTER = "JOB_SEARCH_PAGE_JOB_FILTER"
 
 
+DEFAULT_JOB_SEARCH_Q = "jobSearch"
+DEFAULT_JOB_CARDS_LITE_DECORATION_ID = (
+    "com.linkedin.voyager.dash.deco.jobs.search.JobSearchCardsCollectionLite-88"
+)
+
+
 # =============================================================================
 # SEARCH TUNING
 # =============================================================================
@@ -119,6 +125,9 @@ class JobSearchTuning:
 
     origin: SearchOrigin | str | None = None
     spell_correction_enabled: bool | None = None
+    served_event_enabled: bool | None = None
+    q: str | None = None
+    decoration_id: str | None = None
 
     # Escape hatch caso você descubra outro filtro do Voyager depois
     # Ex.: {"easyApply": ["true"]} ou {"someNewFilter": ["X", "Y"]}
@@ -136,15 +145,17 @@ class VoyagerJobsLiteFetcher:
     def __init__(
             self,
             page: int = 1,
+            start: int | None = None,
             count: int | None = None,
             tuning: JobSearchTuning | None = None,
             debug: bool = False,
     ):
-        if page < 1:
+        if start is None and page < 1:
             raise ValueError("page must be >= 1")
+        if start is not None and start < 0:
+            raise ValueError("start must be >= 0")
 
         self.debug = debug
-        self.page = page
         self.tuning = tuning or JobSearchTuning()
         self.client = LinkedInClient("JobCardsLite")
 
@@ -164,7 +175,8 @@ class VoyagerJobsLiteFetcher:
 
             detected_count = self._extract_query_param_int(self.original_url, "count", default=7)
             self.count = count if count is not None else detected_count
-            self.start = (self.page - 1) * self.count
+            self.start = start if start is not None else (page - 1) * self.count
+            self.page = (self.start // self.count) + 1 if self.count else page
 
             self.url = self._build_voyager_url(
                 base_url=self.original_url,
@@ -369,7 +381,7 @@ class VoyagerJobsLiteFetcher:
             if key == "query":
                 raw_query_value = value
                 continue
-            if key in {"start", "count"}:
+            if key in {"start", "count", "q", "decorationId", "servedEventEnabled"}:
                 continue
             top_level_params.append((key, value))
 
@@ -427,6 +439,13 @@ class VoyagerJobsLiteFetcher:
             query_fields.pop("selectedFilters", None)
 
         voyager_query_value = cls._render_record(query_fields)
+        q_value = tuning.q or DEFAULT_JOB_SEARCH_Q
+        decoration_id = tuning.decoration_id or DEFAULT_JOB_CARDS_LITE_DECORATION_ID
+        served_event_enabled = (
+            tuning.served_event_enabled
+            if tuning.served_event_enabled is not None
+            else False
+        )
 
         # Monta query string preservando os params originais e substituindo count/query/start
         final_parts: list[str] = []
@@ -435,8 +454,15 @@ class VoyagerJobsLiteFetcher:
                 f"{quote(str(key), safe='')}={quote(str(value), safe='-._~')}"
             )
 
+        final_parts.append(
+            f"decorationId={quote(str(decoration_id), safe='-._~')}"
+        )
         final_parts.append(f"count={count}")
+        final_parts.append(f"q={quote(str(q_value), safe='-._~')}")
         final_parts.append(f"query={voyager_query_value}")
+        final_parts.append(
+            f"servedEventEnabled={cls._serialize_scalar(served_event_enabled)}"
+        )
         final_parts.append(f"start={start}")
 
         final_query_string = "&".join(final_parts)
@@ -512,6 +538,7 @@ class VoyagerJobsLiteFetcher:
 
 def fetch_and_save(
         page: int = 1,
+        start: int | None = None,
         count: int | None = None,
         tuning: JobSearchTuning | None = None,
         debug: bool = False,
@@ -527,6 +554,7 @@ def fetch_and_save(
 
     fetcher = VoyagerJobsLiteFetcher(
         page=page,
+        start=start,
         count=count,
         tuning=tuning,
         debug=debug,
