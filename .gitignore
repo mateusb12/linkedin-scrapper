@@ -46,3 +46,7 @@ repomix-output.md
 /backend/source/features/job_scoring/outputs/*.csv
 __pycache__/
 *.pyc
+/backend/source/features/profile/debug/*.json
+/backend/source/features/profile/debug/*.txt
+**/repomix*.md
+*.codex*
