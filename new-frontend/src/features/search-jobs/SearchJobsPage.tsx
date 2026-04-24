@@ -133,20 +133,11 @@ function Badge({
     )
 }
 
-function ScoreBadge({
-                        score,
-                        keywords,
-                    }: {
-    score: number
-    keywords: string[]
-}) {
+function ScoreBadge({ score }: { score: number }) {
     return (
         <Badge tone={score > 0 ? "emerald" : "slate"}>
-            <Sparkles size={12}/>
+            <Sparkles size={12} />
             Keyword Score {score}
-            {keywords.length > 0 && (
-                <span className="text-slate-300">({keywords.join(", ")})</span>
-            )}
         </Badge>
     )
 }
@@ -436,10 +427,7 @@ function JobListItem({
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-2">
-                        <ScoreBadge
-                            score={job.positiveScore}
-                            keywords={job.matchedPositiveKeywords}
-                        />
+                        <ScoreBadge score={job.positiveScore} />
 
                         <Badge tone="purple">
                             <Code2 size={12}/>
@@ -556,10 +544,7 @@ function JobDetails({
                     <p className="mt-1 text-xs text-slate-500">Job ID: {job.jobId}</p>
 
                     <div className="mt-3 flex flex-wrap gap-2">
-                        <ScoreBadge
-                            score={job.positiveScore}
-                            keywords={job.matchedPositiveKeywords}
-                        />
+                        <ScoreBadge score={job.positiveScore} />
 
                         <Badge tone="purple">
                             <Code2 size={12}/>
