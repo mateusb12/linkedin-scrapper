@@ -134,6 +134,7 @@ const MainJobListing = () => {
 
   const [isFetchModalOpen, setIsFetchModalOpen] = useState(false);
   const [fetchCount, setFetchCount] = useState(10);
+  const [fetchQuery, setFetchQuery] = useState("");
 
   const [negativeKeywords, setNegativeKeywords] = useState([]);
   const [newNegativeKeyword, setNewNegativeKeyword] = useState("");
@@ -161,6 +162,7 @@ const MainJobListing = () => {
   const [repostedFilter, setRepostedFilter] = useState("All");
   const [sourceFilter, setSourceFilter] = useState("All");
   const [sortBy, setSortBy] = useState("relevance");
+  const [showHiddenJobs, setShowHiddenJobs] = useState(false);
 
   const [isDragging, setIsDragging] = useState(false);
   const [leftPanelWidth, setLeftPanelWidth] = useState(37);
@@ -306,7 +308,7 @@ const MainJobListing = () => {
   }, []);
 
   const loadJobs = useCallback(
-    async ({ forceRefresh = false, count = 10 } = {}) => {
+    async ({ forceRefresh = false, count = 10, query = "" } = {}) => {
       setLoading(true);
       setErrorMessage("");
       setProgressData(null);
@@ -324,9 +326,14 @@ const MainJobListing = () => {
       }
 
       try {
+        const trimmedQuery = query.trim();
         const data = await streamGraphqlJobs(
           {
             count,
+            ...(trimmedQuery ? { keywords: trimmedQuery } : {}),
+            excluded_keywords: "Junior",
+            geo_id: "106057199",
+            distance: 25,
             blacklist: negativeCompanies,
           },
           (progressUpdate) => {
@@ -415,8 +422,8 @@ const MainJobListing = () => {
     setLoading(false);
   }, [applyJobs]);
 
-  const handleConfirmFetch = async (count) => {
-    await loadJobs({ forceRefresh: true, count });
+  const handleConfirmFetch = async (count, query) => {
+    await loadJobs({ forceRefresh: true, count, query });
     setProgressData(null);
     setIsFetchModalOpen(false);
   };
@@ -588,7 +595,10 @@ const MainJobListing = () => {
     const negativeMatchCount = result.filter(
       (job) => job.isNegativeMatch,
     ).length;
-    result = result.filter((job) => !job.isNegativeMatch);
+    const visibleJobs = result.filter((job) => !job.isNegativeMatch);
+    const hiddenJobs = result.filter((job) => job.isNegativeMatch);
+
+    result = showHiddenJobs ? [...visibleJobs, ...hiddenJobs] : visibleJobs;
 
     result.sort((a, b) => {
       if (a.isNegativeMatch !== b.isNegativeMatch) {
@@ -678,6 +688,7 @@ const MainJobListing = () => {
     repostedFilter,
     sourceFilter,
     sortBy,
+    showHiddenJobs,
     negativeKeywords,
     negativeCompanies,
     positiveKeywords,
@@ -751,6 +762,7 @@ const MainJobListing = () => {
     errorMessage,
     cacheTimestamp,
     loadedFromCache,
+    showHiddenJobs,
   };
 
   const filtersState = {
@@ -790,6 +802,7 @@ const MainJobListing = () => {
     setRepostedFilter,
     setSourceFilter,
     setSortBy,
+    setShowHiddenJobs,
     setNewNegativeKeyword,
     addNegativeKeyword: handleAddNegativeKeyword,
     removeNegativeKeyword: handleRemoveNegativeKeyword,
@@ -807,11 +820,13 @@ const MainJobListing = () => {
   const fetchModalState = {
     isFetchModalOpen,
     fetchCount,
+    fetchQuery,
   };
 
   const fetchModalActions = {
     setIsFetchModalOpen,
     setFetchCount,
+    setFetchQuery,
   };
 
   return (

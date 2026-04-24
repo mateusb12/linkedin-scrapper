@@ -254,6 +254,8 @@ const FetchJobsModal = ({
   onClose,
   fetchCount,
   setFetchCount,
+  fetchQuery,
+  setFetchQuery,
   onConfirm,
   loading,
   progressData,
@@ -261,7 +263,7 @@ const FetchJobsModal = ({
   if (!isOpen) return null;
 
   const handleIncrement = (amount) => {
-    setFetchCount((prev) => Math.max(1, prev + amount));
+    setFetchCount((prev) => Math.max(10, prev + amount));
   };
 
   return (
@@ -283,9 +285,27 @@ const FetchJobsModal = ({
           )}
         </div>
 
-        <p className="mb-6 text-sm text-slate-400">
+        <p className="mb-4 text-sm text-slate-400">
           How many jobs would you like to fetch from the backend?
         </p>
+
+        <div className="mb-5">
+          <label
+            htmlFor="fetch-jobs-query"
+            className="mb-2 block text-sm font-medium text-slate-200"
+          >
+            Search query
+          </label>
+          <input
+            id="fetch-jobs-query"
+            type="text"
+            value={fetchQuery}
+            onChange={(event) => setFetchQuery(event.target.value)}
+            disabled={loading}
+            placeholder="e.g. React, Python backend, Node.js"
+            className="w-full rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-500 disabled:opacity-60"
+          />
+        </div>
 
         <div className="mb-6 flex flex-col items-center gap-4">
           <div className="flex items-center gap-4 rounded-xl border border-slate-700/50 bg-slate-800/50 p-3">
@@ -351,7 +371,7 @@ const FetchJobsModal = ({
             </button>
 
             <button
-              onClick={() => onConfirm(fetchCount)}
+              onClick={() => onConfirm(fetchCount, fetchQuery)}
               className="flex items-center gap-2 rounded-xl bg-sky-600 px-6 py-2 text-sm font-bold text-white shadow-lg shadow-sky-900/20 transition hover:bg-sky-500"
             >
               <Database size={16} />
@@ -644,6 +664,7 @@ const JobListingSidebar = ({
     errorMessage,
     cacheTimestamp,
     loadedFromCache,
+    showHiddenJobs,
   } = jobsState;
 
   const {
@@ -683,6 +704,7 @@ const JobListingSidebar = ({
     setRepostedFilter,
     setSourceFilter,
     setSortBy,
+    setShowHiddenJobs,
     setNewNegativeKeyword,
     addNegativeKeyword,
     removeNegativeKeyword,
@@ -696,8 +718,9 @@ const JobListingSidebar = ({
     onApplicantsLimitChange,
   } = actions;
 
-  const { isFetchModalOpen, fetchCount } = fetchModalState;
-  const { setIsFetchModalOpen, setFetchCount } = fetchModalActions;
+  const { isFetchModalOpen, fetchCount, fetchQuery } = fetchModalState;
+  const { setIsFetchModalOpen, setFetchCount, setFetchQuery } =
+    fetchModalActions;
 
   const [isGeneralFiltersOpen, setIsGeneralFiltersOpen] = useState(false);
   const [isMustHaveFilterOpen, setIsMustHaveFilterOpen] = useState(false);
@@ -711,8 +734,8 @@ const JobListingSidebar = ({
       ? "amber"
       : "green";
 
-  const handleConfirmFetchAndClose = async (count) => {
-    await onConfirmFetch(count);
+  const handleConfirmFetchAndClose = async (count, query) => {
+    await onConfirmFetch(count, query);
     setIsFetchModalOpen(false);
   };
 
@@ -729,6 +752,8 @@ const JobListingSidebar = ({
         onClose={() => setIsFetchModalOpen(false)}
         fetchCount={fetchCount}
         setFetchCount={setFetchCount}
+        fetchQuery={fetchQuery}
+        setFetchQuery={setFetchQuery}
         onConfirm={handleConfirmFetchAndClose}
         loading={loading}
         progressData={progressData}
@@ -1228,9 +1253,24 @@ const JobListingSidebar = ({
               <span>{filteredJobs.length} results</span>
 
               {negativeMatchCount > 0 && (
-                <span className="text-xs text-red-400">
-                  ({negativeMatchCount} filtered)
-                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowHiddenJobs((prev) => !prev)}
+                  className={`rounded-md border px-2 py-1 text-[11px] font-semibold transition ${
+                    showHiddenJobs
+                      ? "border-red-500/50 bg-red-500/10 text-red-300 hover:bg-red-500/20"
+                      : "border-slate-700 bg-slate-800/60 text-red-400 hover:border-red-500/40 hover:bg-red-500/10"
+                  }`}
+                  title={
+                    showHiddenJobs
+                      ? "Hide jobs matching negative filters"
+                      : "Show jobs matching negative filters"
+                  }
+                >
+                  {showHiddenJobs
+                    ? "Hide filtered"
+                    : `Show filtered (${negativeMatchCount})`}
+                </button>
               )}
 
               <span className="text-xs font-semibold text-emerald-300">

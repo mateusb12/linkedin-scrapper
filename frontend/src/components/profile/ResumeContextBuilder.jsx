@@ -4,30 +4,72 @@ import { X, Copy, Check, Sparkles, Settings } from "lucide-react";
 import { denormalizeResume, generateLatex } from "./resumeJsonMapper.js";
 
 const PROMPT_TEMPLATES = {
-  en: `
+  en: String.raw`
 I am applying for a job and need you to adapt my resume in LaTeX to the job description below.
 
-Rules:
+Operate in PATCH MODE: preserve the original LaTeX document and only edit the allowed text.
+
+Output format:
+1. First, write a brief change summary with 3-6 bullet points.
+2. Then write the complete final LaTeX document.
+3. Use this exact structure:
+
+CHANGE SUMMARY:
+- ...
+
+FINAL LATEX DOCUMENT:
+\documentclass...
+
+4. The LaTeX document must start exactly with \documentclass.
+5. The LaTeX document must end exactly with \end{document}.
+6. Do NOT return a snippet, excerpt, partial section, diff, markdown code fence, or placeholder.
+7. Do NOT use ellipses such as "...", "% unchanged", "% omitted", "[rest unchanged]", or any placeholder.
+8. Do NOT stop after one section. Continue until the full original document has been returned.
+
+Editing rules:
 1. Rewrite ONLY:
-   - the summary (if present)
-   - the experience bullet points
-2. Keep the EXACT SAME number of bullet points in each job.
-3. Do NOT invent technologies, responsibilities, metrics, tools, results, or scope that are not already in the resume.
-4. Do not infer architecture, scale, system topology, or technical complexity unless it is explicitly supported by the resume. Do not introduce terms such as microservices, distributed systems, event-driven architecture, high-scale systems, or edge components without clear evidence.
-5. Preserve the original technical specificity. Do not replace concrete details with generic claims.
-6. Add job-description keywords ONLY when they naturally match work I actually did.
-7. Keep dates, company names, job titles, skills, education, languages, links, and LaTeX structure unchanged.
-8. Return ONLY the full final LaTeX document.
+   - the summary, if present
+   - experience bullet points, except Stack bullets
+2. Do NOT edit:
+   - LaTeX structure, commands, packages, formatting, links, dates, company names, job titles, locations, education, languages, technical skills
+   - any bullet starting with \resumeItem{\textbf{Stack:}
+3. Keep the EXACT SAME number of bullet points in each job.
+4. Do NOT summarize, shorten, merge, split, or simplify bullets.
+5. Preserve all concrete technical details already present in each bullet.
+6. Do NOT remove technologies, tools, frameworks, databases, cloud services, patterns, protocols, or implementation details.
+7. Do NOT invent technologies, responsibilities, metrics, tools, results, architecture, scale, or scope.
+8. Do NOT infer architecture, scale, system topology, or technical complexity unless it is explicitly supported by the resume.
+9. Add job-description keywords ONLY when they naturally match work already explicit in the resume.
+10. If an original bullet is already strong and specific, keep it mostly unchanged.
 
 Writing style:
-- Use natural technical English commonly found in real resumes
-- Prefer natural resume verbs such as: implemented, designed, modeled, refactored, developed, structured, integrated, optimized, maintained
-- Avoid awkward or inflated phrasing such as: "ensured seamless integration", "worked on edge components", "robust distributed environment"
-- Avoid literal translations and over-engineered jargon
-- Prefer direct, concrete, believable bullet points
-- If an original bullet is already stronger and more specific, keep it almost unchanged
+- Use natural technical English commonly found in real software engineering resumes.
+- Prefer concrete verbs such as: implemented, designed, modeled, refactored, developed, structured, integrated, optimized, maintained.
+- Avoid generic or awkward phrases such as: "ensured seamless integration", "worked on edge components", "robust distributed environment", "leveraged", "dynamic solutions".
+- Avoid literal translations and over-engineered jargon.
+- Prefer direct, concrete, believable bullet points.
+- Do not use first person.
 
-Also extract 15-25 relevant technical keywords from the job description that are already present in my resume.
+Change summary rules:
+- Be brief and concrete.
+- Mention only the kinds of changes made.
+- Do NOT list the full keyword extraction.
+- Do NOT invent claims about the resume.
+- Do NOT repeat the whole resume content.
+
+Important:
+The adapted resume must be at least as technically specific as the original.
+Never replace specific details with generic summaries.
+Use relevant technical keywords from the job description only when they already match the resume.
+Do NOT output the keyword list separately.
+
+Before returning, verify:
+- The response has both CHANGE SUMMARY and FINAL LATEX DOCUMENT sections.
+- The LaTeX document starts with \documentclass.
+- The LaTeX document ends with \end{document}.
+- No sections were omitted.
+- No Stack bullets were changed.
+- No non-allowed sections were changed.
 
 Job Description:
 {{JOB_DESCRIPTION}}
@@ -36,30 +78,72 @@ Current Resume (LaTeX):
 {{RESUME_CONTENT}}
 `,
 
-  pt: `
+  pt: String.raw`
 Estou me candidatando a uma vaga e preciso que você adapte meu currículo em LaTeX para a descrição da vaga abaixo.
 
-Regras:
+Trabalhe em MODO PATCH: preserve o documento LaTeX original e edite somente os textos permitidos.
+
+Formato de saída:
+1. Primeiro, escreva um resumo breve das mudanças com 3-6 bullet points.
+2. Depois, escreva o documento LaTeX final completo.
+3. Use exatamente esta estrutura:
+
+RESUMO DAS MUDANÇAS:
+- ...
+
+DOCUMENTO LATEX FINAL:
+\documentclass...
+
+4. O documento LaTeX deve começar exatamente com \documentclass.
+5. O documento LaTeX deve terminar exatamente com \end{document}.
+6. NÃO retorne snippet, trecho parcial, seção isolada, diff, bloco markdown ou placeholder.
+7. NÃO use reticências como "...", "% sem alterações", "% omitido", "[restante igual]" ou qualquer placeholder.
+8. NÃO pare depois de uma seção. Continue até retornar o documento original inteiro.
+
+Regras de edição:
 1. Reescreva APENAS:
-   - o resumo (se existir)
-   - os bullet points de experiência
-2. Mantenha EXATAMENTE o mesmo número de bullets em cada experiência.
-3. NÃO invente tecnologias, responsabilidades, métricas, ferramentas, resultados ou escopo que não estejam no currículo.
-4. Não extrapole arquitetura, escala, complexidade ou topologia do sistema. Não infira termos como microsserviços, sistema distribuído, arquitetura orientada a eventos, edge/componentes de borda ou alta escala sem evidência explícita no currículo.
-5. Preserve a especificidade técnica original. Não troque detalhes concretos por frases genéricas.
-6. Use palavras-chave da vaga SOMENTE quando elas encaixarem naturalmente no que eu realmente fiz.
-7. Mantenha datas, empresas, cargos, competências, formação, idiomas, links e estrutura LaTeX inalterados.
-8. Retorne APENAS o documento LaTeX completo.
+   - o resumo, se existir
+   - os bullet points de experiência, exceto bullets de Stack
+2. NÃO edite:
+   - estrutura LaTeX, comandos, pacotes, formatação, links, datas, nomes de empresas, cargos, locais, formação, idiomas, competências técnicas
+   - qualquer bullet que comece com \resumeItem{\textbf{Stack:}
+3. Mantenha EXATAMENTE o mesmo número de bullet points em cada experiência.
+4. NÃO resuma, encurte, junte, divida ou simplifique bullets.
+5. Preserve todos os detalhes técnicos concretos já presentes em cada bullet.
+6. NÃO remova tecnologias, ferramentas, frameworks, bancos de dados, serviços cloud, padrões, protocolos ou detalhes de implementação.
+7. NÃO invente tecnologias, responsabilidades, métricas, ferramentas, resultados, arquitetura, escala ou escopo.
+8. NÃO extrapole arquitetura, escala, topologia do sistema ou complexidade técnica sem evidência explícita no currículo.
+9. Use palavras-chave da vaga SOMENTE quando elas encaixarem naturalmente em algo já explícito no currículo.
+10. Se um bullet original já estiver forte e específico, mantenha-o quase intacto.
 
 Estilo de escrita:
-- Use português técnico natural de currículo brasileiro
-- Prefira verbos naturais em pt-BR, como: implementei, projetei, modelei, refatorei, desenvolvi, estruturei, integrei, otimizei, fiz manutenção em
-- Evite formulações pouco naturais como: "mantive e desenvolvi", "componentes de borda", "integração perfeitamente fluida"
-- Evite traduções literais ou jargões pouco usados em currículo brasileiro
-- Prefira bullets diretos, concretos e críveis
-- Se um bullet original já estiver mais forte e específico, mantenha-o quase intacto
+- Use português técnico natural de currículo brasileiro.
+- Prefira verbos naturais em pt-BR, como: implementei, projetei, modelei, refatorei, desenvolvi, estruturei, integrei, otimizei, fiz manutenção em.
+- Evite formulações pouco naturais como: "mantive e desenvolvi", "componentes de borda", "integração perfeitamente fluida", "soluções robustas", "alavanquei".
+- Evite traduções literais e jargões pouco usados em currículo brasileiro.
+- Prefira bullets diretos, concretos e críveis.
+- Use primeira pessoa do passado.
 
-Além disso, extraia 15-25 palavras-chave técnicas relevantes da vaga que já existam no meu currículo.
+Regras do resumo das mudanças:
+- Seja breve e concreto.
+- Mencione apenas os tipos de mudanças feitas.
+- NÃO liste a extração completa de palavras-chave.
+- NÃO invente afirmações sobre o currículo.
+- NÃO repita o conteúdo inteiro do currículo.
+
+Importante:
+O currículo adaptado deve ser pelo menos tão específico tecnicamente quanto o original.
+Nunca troque detalhes específicos por resumos genéricos.
+Use palavras-chave técnicas relevantes da vaga somente quando elas já tiverem correspondência no currículo.
+NÃO retorne a lista de palavras-chave separadamente.
+
+Antes de retornar, verifique:
+- A resposta tem as seções RESUMO DAS MUDANÇAS e DOCUMENTO LATEX FINAL.
+- O documento LaTeX começa com \documentclass.
+- O documento LaTeX termina com \end{document}.
+- Nenhuma seção foi omitida.
+- Nenhum bullet de Stack foi alterado.
+- Nenhuma seção não permitida foi alterada.
 
 Descrição da vaga:
 {{JOB_DESCRIPTION}}
