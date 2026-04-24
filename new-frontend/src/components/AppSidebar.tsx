@@ -126,12 +126,20 @@ export default function AppSidebar() {
       </nav>
 
       <div className="mt-auto border-t border-slate-200 pt-4 max-[760px]:mt-5 dark:border-slate-800">
-        <p className="m-0 text-xs font-extrabold uppercase tracking-[0.04em] text-slate-400 dark:text-slate-500">
-          Session
-        </p>
-        <p className="m-0 mt-1 truncate text-sm font-bold text-slate-600 dark:text-slate-300">
-          user@example.com logged in
-        </p>
+        <div className="flex items-center gap-3">
+          <div className="grid size-10 flex-none place-items-center rounded-full bg-slate-200 text-sm font-extrabold text-slate-600 shadow-sm dark:bg-slate-800 dark:text-slate-200">
+            CU
+          </div>
+
+          <div className="min-w-0">
+            <p className="m-0 truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+              Custom User
+            </p>
+            <p className="m-0 mt-0.5 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+              user@example.com
+            </p>
+          </div>
+        </div>
       </div>
     </aside>
   )
