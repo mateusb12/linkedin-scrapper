@@ -50,3 +50,4 @@ __pycache__/
 /backend/source/features/profile/debug/*.txt
 **/repomix*.md
 *.codex*
+**/frontend*.md
