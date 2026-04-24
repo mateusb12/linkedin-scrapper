@@ -1,3 +1,4 @@
+import { MOCKED_JOBS } from "./MOCKED_JOBS"
 export type WorkplaceType = "Remote" | "Hybrid" | "On-site" | "Not specified"
 
 export type JobCompany = {
@@ -591,13 +592,13 @@ const createGeneratedJob = (baseJob: SearchJob, index: number): SearchJob => {
 }
 
 const buildJobPool = (count: number, query: string) => {
-    const targetCount = Math.max(count, MOCK_SEARCH_JOBS.length)
+    const targetCount = Math.max(count, MOCKED_JOBS.length)
 
     const pool = Array.from({length: targetCount}, (_, index) => {
-        if (index < MOCK_SEARCH_JOBS.length) return MOCK_SEARCH_JOBS[index]
+        if (index < MOCKED_JOBS.length) return MOCKED_JOBS[index]
 
-        const baseJob = MOCK_SEARCH_JOBS[index % MOCK_SEARCH_JOBS.length]
-        return createGeneratedJob(baseJob, index - MOCK_SEARCH_JOBS.length + 1)
+        const baseJob = MOCKED_JOBS[index % MOCKED_JOBS.length]
+        return createGeneratedJob(baseJob, index - MOCKED_JOBS.length + 1)
     })
 
     const normalizedQuery = query.trim().toLowerCase()
@@ -624,7 +625,7 @@ export async function getInitialSearchJobsMockData(): Promise<FetchJobsMockResul
         }
     }
 
-    const jobs = MOCK_SEARCH_JOBS
+    const jobs = MOCKED_JOBS
     const cachedAt = writeJobsCache(jobs)
 
     return {
