@@ -1,11 +1,4 @@
-import {useState} from "react"
-import {
-    LayoutGrid,
-    Bookmark,
-    Settings,
-    Search,
-    Pencil,
-} from "lucide-react"
+import {appRoutes} from "../routes"
 
 const navItemClass =
     "flex min-h-[58px] items-center gap-3 rounded-xl px-4 py-3 text-sm font-extrabold text-slate-600 transition-[background,color,box-shadow] duration-150 hover:bg-slate-100 hover:text-blue-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-blue-300"
@@ -13,12 +6,10 @@ const navItemClass =
 const activeNavItemClass =
     "bg-blue-50 text-blue-700 shadow-[inset_3px_0_0_#2563eb] hover:bg-blue-50 dark:bg-blue-950/45 dark:text-blue-200 dark:shadow-[inset_3px_0_0_#60a5fa] dark:hover:bg-blue-950/45"
 
-const sidebarItems = [
-    {label: "Hello World", icon: LayoutGrid},
-    {label: "Fetch Config", icon: Settings},
-    {label: "Search Jobs", icon: Search},
-    {label: "Saved Jobs", icon: Bookmark},
-] as const
+type AppSidebarProps = {
+    currentRoute: string
+    onNavigate: (route: string) => void
+}
 
 function SidebarUser() {
     return (
@@ -42,9 +33,10 @@ function SidebarUser() {
     )
 }
 
-export default function AppSidebar() {
-    const [active, setActive] = useState("Hello World")
-
+export default function AppSidebar({
+                                       currentRoute,
+                                       onNavigate,
+                                   }: AppSidebarProps) {
     return (
         <aside
             className="flex min-h-svh w-[252px] flex-none flex-col border-r border-slate-200/90 bg-white/82 px-4 py-5 shadow-[10px_0_30px_rgba(23,32,51,0.04)] backdrop-blur-xl max-[760px]:min-h-0 max-[760px]:w-full max-[760px]:border-b max-[760px]:border-r-0 max-[760px]:py-4 dark:border-slate-800 dark:bg-slate-950/70 dark:shadow-none">
@@ -64,20 +56,24 @@ export default function AppSidebar() {
             </div>
 
             <nav className="mt-8 grid gap-2.5 max-[760px]:mt-5">
-                {sidebarItems.map((item) => {
+                {appRoutes.map(item => {
                     const Icon = item.icon
-                    const isActive = active === item.label
+                    const isActive = currentRoute === item.route
 
                     return (
-                        <button
-                            key={item.label}
-                            onClick={() => setActive(item.label)}
+                        <a
+                            key={item.route}
+                            href={item.route}
+                            onClick={event => {
+                                event.preventDefault()
+                                onNavigate(item.route)
+                            }}
                             className={`${navItemClass} ${isActive ? activeNavItemClass : ""}`}
                             aria-current={isActive ? "page" : undefined}
                         >
                             <Icon className="size-5 flex-none"/>
                             <span className="min-w-0 truncate text-left">{item.label}</span>
-                        </button>
+                        </a>
                     )
                 })}
             </nav>
