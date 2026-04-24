@@ -15,10 +15,9 @@ const activeNavItemClass =
 
 const sidebarItems = [
     {label: "Hello World", icon: LayoutGrid},
-    {label: "Saved Jobs", icon: Bookmark},
-    {label: "Fetch Config", icon: Pencil},
+    {label: "Fetch Config", icon: Settings},
     {label: "Search Jobs", icon: Search},
-    {label: "Settings", icon: Settings},
+    {label: "Saved Jobs", icon: Bookmark},
 ] as const
 
 function SidebarUser() {
