@@ -9,7 +9,7 @@ import {
     type SavedScraperConfig,
     type ScraperConfigMeta,
     type ScraperConfigsData,
-} from "../services/fetchConfigMockService"
+} from "./fetchConfigMockService"
 
 type ColorTheme = {
     preview: string

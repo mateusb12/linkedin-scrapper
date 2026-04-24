@@ -2,9 +2,9 @@ import type {ComponentType} from "react"
 import type {LucideIcon} from "lucide-react"
 import {Bookmark, LayoutGrid, Search, Settings} from "lucide-react"
 import HelloWorldPage from "./pages/HelloWorldPage"
-import FetchConfigPage from "./pages/FetchConfigPage"
+import FetchConfigPage from "./features/fetch-config/FetchConfigPage"
 import SavedJobsPage from "./pages/SavedJobsPage"
-import SearchJobsPage from "./pages/SearchJobsPage"
+import SearchJobsPage from "./features/search-jobs/SearchJobsPage"
 
 export type AppRoute = {
     label: string
