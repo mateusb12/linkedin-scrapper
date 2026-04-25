@@ -41,10 +41,19 @@ type BadgeTone =
     | "slate"
     | "emerald"
 
+
+type SidebarView = "split" | "filters" | "jobs"
+
 const WORKPLACE_OPTIONS: SelectOption[] = [
     {value: "Remote", label: "Remote"},
     {value: "Hybrid", label: "Hybrid"},
     {value: "On-site", label: "On-site"},
+]
+
+const SIDEBAR_VIEW_OPTIONS: Array<{ value: SidebarView; label: string }> = [
+    {value: "split", label: "Split"},
+    {value: "filters", label: "Filters"},
+    {value: "jobs", label: "Jobs"},
 ]
 
 const getErrorMessage = (error: unknown) => {
@@ -857,6 +866,7 @@ export default function SearchJobsPage() {
     const [sourceFilter, setSourceFilter] = useState("All")
     const [sortBy, setSortBy] = useState<SortOption>("relevance")
     const [showHiddenJobs, setShowHiddenJobs] = useState(false)
+    const [sidebarView, setSidebarView] = useState<SidebarView>("split")
 
     const [positiveKeywords, setPositiveKeywords] = useState<string[]>([
         "python",
@@ -1097,21 +1107,20 @@ export default function SearchJobsPage() {
         return Math.max(...filteredJobs.map((job) => job.pythonScore))
     }, [filteredJobs])
 
-    useEffect(() => {
-        if (filteredJobs.length === 0) {
-            setSelectedJobId(null)
-            return
-        }
+    const resolvedSelectedJobId = useMemo(() => {
+        if (filteredJobs.length === 0) return null
 
-        const stillExists = filteredJobs.some((job) => job.id === selectedJobId)
+        const selectedJobStillExists =
+            selectedJobId !== null &&
+            filteredJobs.some((job) => job.id === selectedJobId)
 
-        if (!stillExists) {
-            setSelectedJobId(filteredJobs[0].id)
-        }
+        if (selectedJobStillExists) return selectedJobId
+
+        return filteredJobs[0].id
     }, [filteredJobs, selectedJobId])
 
     const selectedJob =
-        filteredJobs.find((job) => job.id === selectedJobId) ?? null
+        filteredJobs.find((job) => job.id === resolvedSelectedJobId) ?? null
 
     const addKeyword = (
         event: FormEvent<HTMLFormElement>,
@@ -1216,8 +1225,28 @@ export default function SearchJobsPage() {
             />
 
             <div
-                className="mx-auto flex h-[calc(100vh-7rem)] w-full max-w-7xl overflow-hidden rounded-2xl border border-slate-800 bg-[#081120] text-slate-100 shadow-[0_24px_80px_rgba(0,0,0,0.25)]">
-                <aside className="flex w-[430px] shrink-0 flex-col border-r border-slate-800 bg-[#0b1526]">
+                className="mx-auto flex h-[calc(100vh-7rem)] min-h-0 w-full max-w-7xl overflow-hidden rounded-2xl border border-slate-800 bg-[#081120] text-slate-100 shadow-[0_24px_80px_rgba(0,0,0,0.25)]">
+                <aside className="flex h-full min-h-0 w-[430px] shrink-0 flex-col border-r border-slate-800 bg-[#0b1526]">
+                    <div className="px-4 pb-3 pt-4">
+                        <div className="grid grid-cols-3 gap-1 rounded-xl border border-slate-700 bg-slate-900/60 p-1">
+                            {SIDEBAR_VIEW_OPTIONS.map((option) => (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => setSidebarView(option.value)}
+                                    className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                                        sidebarView === option.value
+                                            ? "bg-sky-500/15 text-sky-300"
+                                            : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                                    }`}
+                                >
+                                    {option.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {sidebarView !== "jobs" && (
                     <SearchJobsFilters
                         searchTerm={searchTerm}
                         onSearchTermChange={setSearchTerm}
@@ -1305,9 +1334,16 @@ export default function SearchJobsPage() {
                         filteredCount={filteredJobs.length}
                         hiddenCount={negativeMatchCount}
                         savedCount={savedJobsCount}
+                        containerClassName={
+                            sidebarView === "filters"
+                                ? "min-h-0 flex-1 max-h-none overflow-y-auto overscroll-contain border-b-0 [scrollbar-gutter:stable]"
+                                : undefined
+                        }
                     />
+                    )}
 
-                    <div className="flex-1 overflow-y-auto py-1">
+                    {sidebarView !== "filters" && (
+                    <div className="min-h-0 flex-1 overflow-y-auto py-1">
                         {loading && jobs.length === 0 ? (
                             <div
                                 className="flex h-full items-center justify-center px-8 text-center text-sm font-semibold text-slate-400">
@@ -1318,7 +1354,7 @@ export default function SearchJobsPage() {
                                 <JobListItem
                                     key={job.id}
                                     job={job}
-                                    isSelected={selectedJobId === job.id}
+                                    isSelected={resolvedSelectedJobId === job.id}
                                     onSelect={setSelectedJobId}
                                 />
                             ))
@@ -1335,9 +1371,10 @@ export default function SearchJobsPage() {
                             </div>
                         )}
                     </div>
+                    )}
                 </aside>
 
-                <main className="min-w-0 flex-1 bg-[#0d1728]">
+                <main className="min-h-0 min-w-0 flex-1 bg-[#0d1728]">
                     <JobDetails
                         job={selectedJob}
                         maxPythonScore={maxPythonScore}

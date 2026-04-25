@@ -99,6 +99,7 @@ type SearchJobsFiltersProps = {
     filteredCount: number
     hiddenCount: number
     savedCount: number
+    containerClassName?: string
 }
 
 const formatCacheTimestamp = (value: string | null) => {
@@ -274,6 +275,7 @@ export default function SearchJobsFilters({
                                               filteredCount,
                                               hiddenCount,
                                               savedCount,
+                                              containerClassName = "max-h-[52%] shrink-0 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]",
                                           }: SearchJobsFiltersProps) {
     const activeGeneralFiltersCount = [
         verificationFilter !== "All",
@@ -293,7 +295,9 @@ export default function SearchJobsFilters({
             : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
 
     return (
-        <div className="space-y-4 border-b border-slate-800 p-4">
+        <div
+            className={`space-y-4 border-b border-slate-800 p-4 ${containerClassName}`}
+        >
             <div className="relative">
                 <Search
                     size={16}
