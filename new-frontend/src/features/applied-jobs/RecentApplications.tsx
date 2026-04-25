@@ -136,19 +136,15 @@ function TechStackBadges({stack}: TechStackBadgesProps) {
     const hiddenCount = Math.max(stack.length - visibleStack.length, 0)
 
     if (stack.length === 0) {
-        return (
-            <span className="text-sm font-semibold text-gray-500">
-                —
-            </span>
-        )
+        return <span className="text-sm font-semibold text-gray-500">—</span>
     }
 
     return (
-        <div className="flex max-w-[260px] flex-wrap gap-1.5">
+        <div className="grid max-w-[220px] grid-cols-2 gap-1.5">
             {visibleStack.map(tech => (
                 <span
                     key={tech}
-                    className={`rounded-md border px-2 py-0.5 text-[11px] font-extrabold ${
+                    className={`inline-flex w-fit rounded-md border px-2 py-0.5 text-[11px] font-extrabold ${
                         TECH_BADGE_CLASS[tech] ??
                         "border-gray-600 bg-gray-900/70 text-gray-200"
                     }`}
@@ -159,11 +155,53 @@ function TechStackBadges({stack}: TechStackBadgesProps) {
 
             {hiddenCount > 0 && (
                 <span
-                    className="rounded-md border border-gray-600 bg-gray-700 px-2 py-0.5 text-[11px] font-extrabold text-gray-300">
+                    className="inline-flex w-fit rounded-md border border-gray-600 bg-gray-700 px-2 py-0.5 text-[11px] font-extrabold text-gray-300">
                     +{hiddenCount}
                 </span>
             )}
         </div>
+    )
+}
+
+function getSubjectPreview(subject: string) {
+    const maxLength = 22
+
+    if (subject.length <= maxLength) return subject
+
+    return `${subject.slice(0, maxLength).trim()}…`
+}
+
+type EmailPreviewProps = {
+    email: NonNullable<AppliedJob["lastEmail"]>
+}
+
+function EmailPreview({email}: EmailPreviewProps) {
+    const [isExpanded, setIsExpanded] = useState(false)
+
+    return (
+        <button
+            type="button"
+            onClick={() => setIsExpanded(current => !current)}
+            className="mt-3 block max-w-full rounded-lg border border-gray-700 bg-gray-950/50 p-2.5 text-left transition hover:border-gray-500 hover:bg-gray-950/80"
+        >
+            <p className="flex items-start gap-1.5 text-xs font-bold leading-5 text-gray-300">
+                <Mail size={13} className="mt-0.5 shrink-0"/>
+
+                <span
+                    className={
+                        isExpanded
+                            ? "break-words whitespace-normal"
+                            : "inline-block max-w-[110px] truncate align-bottom"
+                    }
+                >
+                    {isExpanded ? email.subject : getSubjectPreview(email.subject)}
+                </span>
+            </p>
+
+            <p className="mt-1 text-[10px] text-gray-500">
+                {isExpanded ? "click to collapse" : formatTimeAgo(email.receivedAt)}
+            </p>
+        </button>
     )
 }
 
@@ -269,20 +307,7 @@ function ApplicationMobileCard({job}: ApplicationMobileCardProps) {
                     </span>
                 </div>
 
-                {job.lastEmail && (
-                    <div className="rounded-lg border border-gray-700 bg-gray-950/60 p-3">
-                        <p className="flex items-start gap-1.5 text-[11px] font-bold text-gray-300">
-                            <Mail size={13} className="mt-0.5 shrink-0"/>
-                            <span className="break-words whitespace-normal">
-                                {job.lastEmail.subject}
-                            </span>
-                        </p>
-
-                        <p className="mt-1 text-[10px] text-gray-500">
-                            Received {formatTimeAgo(job.lastEmail.receivedAt)}
-                        </p>
-                    </div>
-                )}
+                {job.lastEmail && <EmailPreview email={job.lastEmail}/>}\n
             </div>
         </article>
     )
@@ -401,25 +426,31 @@ export default function RecentApplications() {
                         <table className="w-full table-fixed border-separate border-spacing-0">
                             <thead>
                             <tr className="text-left">
-                                <th className="w-[32%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+                                <th className="w-[28%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
                                     Job Identity
                                 </th>
-                                <th className="w-[25%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+
+                                <th className="w-[20%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
                                     Tech Stack
                                 </th>
+
                                 <th className="w-[8%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
                                     Level
                                 </th>
+
                                 <th className="w-[10%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
                                     Applied Date
                                 </th>
-                                <th className="w-[9%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+
+                                <th className="w-[8%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
                                     Time
                                 </th>
-                                <th className="w-[9%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+
+                                <th className="w-[12%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
                                     Competitors
                                 </th>
-                                <th className="w-[8%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+
+                                <th className="w-[14%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
                                     Status
                                 </th>
                             </tr>
@@ -537,24 +568,7 @@ export default function RecentApplications() {
                                                     {job.applicationStatus}
                                                 </span>
 
-                                                {job.lastEmail && (
-                                                    <div
-                                                        className="mt-3 rounded-lg border border-gray-700 bg-gray-950/50 p-2.5">
-                                                        <p className="flex items-start gap-1.5 text-xs font-bold leading-5 text-gray-300">
-                                                            <Mail
-                                                                size={13}
-                                                                className="mt-0.5 shrink-0"
-                                                            />
-                                                            <span className="break-words whitespace-normal">
-                                                                {job.lastEmail.subject}
-                                                            </span>
-                                                        </p>
-
-                                                        <p className="mt-1 text-[10px] text-gray-500">
-                                                            {formatTimeAgo(job.lastEmail.receivedAt)}
-                                                        </p>
-                                                    </div>
-                                                )}
+                                                {job.lastEmail && <EmailPreview email={job.lastEmail}/>}
                                             </div>
                                         </td>
                                     </tr>
