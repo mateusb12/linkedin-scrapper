@@ -1,392 +1,331 @@
 import {useEffect, useMemo, useState} from "react"
 import {
-    AlertTriangle,
-    Ban,
     Briefcase,
     CalendarDays,
     CheckCircle2,
-    ChevronRight,
     Clock,
     Code2,
-    Cpu,
-    Database,
-    Globe,
-    Layers,
+    Loader2,
+    Mail,
     MapPin,
     RefreshCw,
-    Search,
+    Send,
     Users,
-    Zap,
+    XCircle,
 } from "lucide-react"
 
 import {
-    calculateJobAge,
+    type AppliedJob,
+    type ApplicationStatus,
     fetchAppliedJobs,
     formatDateBR,
     formatTimeAgo,
     formatTimeBR,
-    syncAppliedBackfillStream,
     syncAppliedSmart,
-} from "./appliedJobsMockService"
-import type {AppliedJob} from "./appliedJobsMockService"
+} from "./appliedJobsMockService.ts"
 
-const pillBase =
-    "inline-flex items-center gap-1 px-3 py-1 rounded-md border text-sm font-mono leading-none w-fit"
+const TECH_KEYWORDS: Array<{ label: string; regex: RegExp }> = [
+    {label: "Python", regex: /\bpython\b/i},
+    {label: "FastAPI", regex: /\bfastapi\b/i},
+    {label: "Django", regex: /\bdjango\b/i},
+    {label: "React Native", regex: /\breact native\b/i},
+    {label: "React", regex: /\breact\b/i},
+    {label: "TypeScript", regex: /\btypescript\b/i},
+    {label: "JavaScript", regex: /\bjavascript\b/i},
+    {label: "Node.js", regex: /\bnode\.?js\b/i},
+    {label: "PostgreSQL", regex: /\bpostgresql\b/i},
+    {label: "MongoDB", regex: /\bmongodb\b/i},
+    {label: "SQL", regex: /\bsql\b/i},
+    {label: "Docker", regex: /\bdocker\b/i},
+    {label: "REST APIs", regex: /\brest api|\brest apis\b/i},
+]
 
-type RecentApplicationsProps = {
-    onSelectJob?: (job: AppliedJob) => void
+const TECH_BADGE_CLASS: Record<string, string> = {
+    Python: "border-yellow-500/30 bg-yellow-500/10 text-yellow-300",
+    FastAPI: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+    Django: "border-green-500/30 bg-green-500/10 text-green-300",
+    React: "border-cyan-500/30 bg-cyan-500/10 text-cyan-300",
+    "React Native": "border-sky-500/30 bg-sky-500/10 text-sky-300",
+    TypeScript: "border-blue-500/30 bg-blue-500/10 text-blue-300",
+    JavaScript: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+    "Node.js": "border-lime-500/30 bg-lime-500/10 text-lime-300",
+    PostgreSQL: "border-indigo-500/30 bg-indigo-500/10 text-indigo-300",
+    MongoDB: "border-emerald-600/30 bg-emerald-600/10 text-emerald-200",
+    SQL: "border-slate-500/30 bg-slate-500/10 text-slate-300",
+    Docker: "border-blue-600/30 bg-blue-600/10 text-blue-200",
+    "REST APIs": "border-zinc-500/30 bg-zinc-500/10 text-zinc-300",
 }
 
-type ExperienceRequirement = {
-    min: number
+function extractTechStack(description: string) {
+    return TECH_KEYWORDS
+        .filter(tech => tech.regex.test(description))
+        .map(tech => tech.label)
 }
 
-function extractExperienceFromDescription(description: string) {
-    const match = description.match(/(\d+)\+?\s*(?:anos|years|year)/i)
+function extractLevel(job: AppliedJob): string | null {
+    const text = `${job.title} ${job.description}`.toLowerCase()
 
-    if (!match) return null
-
-    return {
-        min: Number(match[1]),
-    } satisfies ExperienceRequirement
-}
-
-function extractSeniorityFromDescription(description: string) {
-    const normalized = description.toLowerCase()
-
-    if (normalized.includes("senior") || normalized.includes("sênior")) {
-        return "SÊNIOR"
+    if (/(senior|sênior|5\+|5 anos|5 or more)/i.test(text)) {
+        return "Senior"
     }
 
-    if (normalized.includes("pleno") || normalized.includes("mid")) {
-        return "PLENO"
+    if (/(pleno|mid-level|mid level|4 anos|4 or more)/i.test(text)) {
+        return "Pleno"
     }
 
-    if (normalized.includes("junior") || normalized.includes("júnior")) {
-        return "JÚNIOR"
+    if (/(junior|júnior|entry-level|entry level)/i.test(text)) {
+        return "Junior"
     }
 
     return null
 }
 
-function extractTechStack(description: string) {
-    const techs = [
-        "Python",
-        "FastAPI",
-        "Django",
-        "React",
-        "React Native",
-        "JavaScript",
-        "TypeScript",
-        "Node.js",
-        "SQL",
-        "PostgreSQL",
-        "MongoDB",
-        "Docker",
-        "AWS",
-    ]
+function getLevelClass(level: string) {
+    if (level === "Senior") {
+        return "border-purple-500/30 bg-purple-500/10 text-purple-300"
+    }
 
-    return techs.filter(tech =>
-        description.toLowerCase().includes(tech.toLowerCase()),
-    )
+    if (level === "Pleno") {
+        return "border-blue-500/30 bg-blue-500/10 text-blue-300"
+    }
+
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
 }
 
-function getTechBadgeStyle(tech: string) {
-    const normalized = tech.toLowerCase()
-
-    if (normalized.includes("python")) {
-        return "bg-red-500/10 text-red-300 border-red-500/30"
+function getStatusClass(status: ApplicationStatus) {
+    const statusClassMap: Record<ApplicationStatus, string> = {
+        Waiting: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+        Applied: "border-blue-500/30 bg-blue-500/10 text-blue-300",
+        Accepted: "border-green-500/30 bg-green-500/10 text-green-300",
+        Refused: "border-red-500/30 bg-red-500/10 text-red-300",
     }
 
-    if (normalized.includes("fastapi") || normalized.includes("django")) {
-        return "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
-    }
-
-    if (normalized.includes("javascript")) {
-        return "bg-yellow-500/10 text-yellow-300 border-yellow-500/30"
-    }
-
-    if (normalized.includes("typescript") || normalized.includes("react")) {
-        return "bg-blue-500/10 text-blue-300 border-blue-500/30"
-    }
-
-    if (
-        normalized.includes("sql") ||
-        normalized.includes("postgres") ||
-        normalized.includes("mongo")
-    ) {
-        return "bg-cyan-500/10 text-cyan-300 border-cyan-500/30"
-    }
-
-    if (normalized.includes("docker") || normalized.includes("aws")) {
-        return "bg-purple-500/10 text-purple-300 border-purple-500/30"
-    }
-
-    return "bg-slate-500/10 text-slate-300 border-slate-500/30"
+    return statusClassMap[status]
 }
 
-function getTechIconText(tech: string) {
-    const normalized = tech.toLowerCase()
+function getStatusIcon(status: ApplicationStatus) {
+    if (status === "Accepted") return <CheckCircle2 size={15}/>
+    if (status === "Refused") return <XCircle size={15}/>
+    if (status === "Applied") return <Send size={15}/>
 
-    if (normalized.includes("python")) return "🐍"
-    if (normalized.includes("javascript")) return "JS"
-    if (normalized.includes("typescript")) return "TS"
-    if (normalized.includes("fastapi")) return "⚡"
-    if (normalized.includes("django")) return "dj"
-    if (normalized.includes("react")) return "⚛"
-    if (normalized.includes("sql") || normalized.includes("postgres")) return "DB"
-    if (normalized.includes("mongo")) return "MDB"
-    if (normalized.includes("docker")) return "🐳"
-    if (normalized.includes("aws")) return "☁"
-
-    return "</>"
+    return <Clock size={15}/>
 }
 
-function getSeniorityStyle(seniority: string) {
-    if (seniority === "SÊNIOR") {
-        return "text-purple-300 bg-purple-500/10 border-purple-500/40"
+function getCompetitionClass(applicants: number, applicantsVelocity: number) {
+    if (applicants >= 800 || applicantsVelocity >= 30) {
+        return "border-red-500/30 bg-red-500/10 text-red-300"
     }
 
-    if (seniority === "PLENO") {
-        return "text-blue-300 bg-blue-500/10 border-blue-500/40"
+    if (applicants >= 250 || applicantsVelocity >= 10) {
+        return "border-amber-500/30 bg-amber-500/10 text-amber-300"
     }
 
-    return "text-green-300 bg-green-500/10 border-green-500/40"
+    return "border-green-500/30 bg-green-500/10 text-green-300"
 }
 
-function getExperienceStyle(exp: ExperienceRequirement) {
-    if (exp.min >= 5) {
-        return "text-orange-300 bg-orange-500/10 border-orange-500/40"
-    }
-
-    if (exp.min >= 3) {
-        return "text-blue-300 bg-blue-500/10 border-blue-500/40"
-    }
-
-    return "text-green-300 bg-green-500/10 border-green-500/40"
+function formatNumber(value: number) {
+    return new Intl.NumberFormat("en-US").format(value)
 }
 
-function getCompetitionStyle(applicants: number) {
-    if (applicants >= 1000) {
-        return "text-orange-300 bg-orange-500/10 border-orange-500/50"
-    }
-
-    if (applicants >= 300) {
-        return "text-yellow-300 bg-yellow-500/10 border-yellow-500/40"
-    }
-
-    if (applicants <= 50) {
-        return "text-emerald-300 bg-emerald-500/10 border-emerald-500/40"
-    }
-
-    return "text-blue-300 bg-blue-500/10 border-blue-500/40"
+type TechStackBadgesProps = {
+    stack: string[]
 }
 
-function TechStackCell({description}: { description: string }) {
-    const allTech = extractTechStack(description)
+function TechStackBadges({stack}: TechStackBadgesProps) {
+    const visibleStack = stack.slice(0, 6)
+    const hiddenCount = Math.max(stack.length - visibleStack.length, 0)
 
-    if (allTech.length === 0) {
-        return <span className="text-sm text-gray-500">-</span>
+    if (stack.length === 0) {
+        return (
+            <span className="text-sm font-semibold text-gray-500">
+                —
+            </span>
+        )
     }
-
-    const displayTech = allTech.slice(0, 3)
-    const remaining = allTech.length - 3
 
     return (
-        <div className="flex max-w-[220px] flex-wrap gap-2">
-            {displayTech.map(tech => (
+        <div className="flex max-w-[260px] flex-wrap gap-1.5">
+            {visibleStack.map(tech => (
                 <span
                     key={tech}
-                    className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold ${getTechBadgeStyle(
-                        tech,
-                    )}`}
+                    className={`rounded-md border px-2 py-0.5 text-[11px] font-extrabold ${
+                        TECH_BADGE_CLASS[tech] ??
+                        "border-gray-600 bg-gray-900/70 text-gray-200"
+                    }`}
                 >
-                    <span className="flex h-4 min-w-4 items-center justify-center rounded-sm text-[9px] font-black">
-                        {getTechIconText(tech)}
-                    </span>
                     {tech}
                 </span>
             ))}
 
-            {remaining > 0 && (
+            {hiddenCount > 0 && (
                 <span
-                    className="cursor-help rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs font-medium text-gray-400"
-                    title={allTech.slice(3).join(", ")}
-                >
-                    +{remaining}
+                    className="rounded-md border border-gray-600 bg-gray-700 px-2 py-0.5 text-[11px] font-extrabold text-gray-300">
+                    +{hiddenCount}
                 </span>
             )}
         </div>
     )
 }
 
-function RequirementsAnalysisCell({description}: { description: string }) {
-    const exp = extractExperienceFromDescription(description)
-    const seniority = extractSeniorityFromDescription(description)
-
-    if (!exp && !seniority) {
-        return <span className="text-sm text-gray-500">-</span>
-    }
-
-    return (
-        <div className="flex flex-col items-start gap-2">
-            {seniority && (
-                <span
-                    className={`rounded border px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${getSeniorityStyle(
-                        seniority,
-                    )}`}
-                >
-                    {seniority}
-                </span>
-            )}
-
-            {exp && (
-                <span
-                    className={`flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs font-medium ${getExperienceStyle(
-                        exp,
-                    )}`}
-                >
-                    <Clock size={12}/>
-                    {exp.min}+ Years
-                </span>
-            )}
-        </div>
-    )
+type ApplicationMobileCardProps = {
+    job: AppliedJob
 }
 
-function JobAgeBadge({postedAt}: { postedAt?: string }) {
-    if (!postedAt) {
-        return <span className="text-sm text-gray-500">-</span>
-    }
-
-    const days = calculateJobAge(postedAt)
-
-    let colorClass = "text-gray-400 bg-gray-800 border-gray-700"
-
-    if (days <= 3) {
-        colorClass = "text-green-400 bg-green-900/20 border-green-500/30"
-    } else if (days <= 14) {
-        colorClass = "text-blue-400 bg-blue-900/20 border-blue-500/30"
-    } else if (days > 30) {
-        colorClass = "text-red-400 bg-red-900/20 border-red-500/30"
-    }
+function ApplicationMobileCard({job}: ApplicationMobileCardProps) {
+    const stack = extractTechStack(job.description)
+    const level = extractLevel(job)
 
     return (
-        <div className={`${pillBase} ${colorClass}`}>
-            <CalendarDays size={12}/>
-            {days === 0 ? "Today" : `${days}d`}
-        </div>
-    )
-}
+        <article className="rounded-xl border border-gray-700 bg-gray-900/60 p-4 shadow-lg">
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <h4 className="truncate text-base font-extrabold text-white">
+                        {job.title}
+                    </h4>
 
-function CompetitionRichBadge({
-                                  applicants,
-                                  velocity,
-                              }: {
-    applicants: number
-    velocity: number
-}) {
-    return (
-        <div className="flex w-full flex-col gap-1.5">
-            <div className="flex items-center gap-2">
-                <Users size={14} className="text-slate-500"/>
+                    <p className="mt-1 text-sm font-bold text-gray-300">
+                        {job.company}
+                    </p>
+                </div>
+
                 <span
-                    className={`rounded-full border px-2 py-1 text-xs font-bold ${getCompetitionStyle(
-                        applicants,
+                    className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-extrabold ${getStatusClass(
+                        job.applicationStatus,
                     )}`}
                 >
-                    {applicants}
+                    {getStatusIcon(job.applicationStatus)}
+                    {job.applicationStatus}
                 </span>
             </div>
 
-            {velocity > 0 && (
-                <div
-                    className="flex w-fit items-center gap-1 rounded-full bg-green-900/30 px-2 py-0.5 text-[10px] font-bold text-green-400"
-                    title="Applicants in last 24h"
-                >
-                    <Zap size={10} fill="currentColor"/>
-                    {velocity}/d
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-400">
+                <span className="inline-flex items-center gap-1">
+                    <MapPin size={13}/>
+                    {job.location}
+                </span>
+
+                {job.workRemoteAllowed && (
+                    <span className="rounded-full bg-blue-500/10 px-2 py-0.5 font-bold text-blue-300">
+                        Remote
+                    </span>
+                )}
+            </div>
+
+            <div className="mt-4 space-y-3">
+                <div>
+                    <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-gray-500">
+                        Tech Stack
+                    </p>
+                    <TechStackBadges stack={stack}/>
                 </div>
-            )}
-        </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-gray-500">
+                            Level
+                        </p>
+
+                        {level ? (
+                            <span
+                                className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-extrabold ${getLevelClass(
+                                    level,
+                                )}`}
+                            >
+                                {level}
+                            </span>
+                        ) : (
+                            <span className="text-sm text-gray-500">—</span>
+                        )}
+                    </div>
+
+                    <div>
+                        <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-gray-500">
+                            Applied
+                        </p>
+                        <p className="text-sm font-extrabold text-gray-200">
+                            {formatDateBR(job.appliedAt)}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                            {formatTimeBR(job.appliedAt)} · {formatTimeAgo(job.appliedAt)}
+                        </p>
+                    </div>
+                </div>
+
+                <div>
+                    <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-gray-500">
+                        Competitors
+                    </p>
+                    <span
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-extrabold ${getCompetitionClass(
+                            job.applicants,
+                            job.applicantsVelocity,
+                        )}`}
+                    >
+                        <Users size={14}/>
+                        {formatNumber(job.applicants)} applicants
+                        <span className="text-[10px] opacity-80">
+                            +{job.applicantsVelocity}/day
+                        </span>
+                    </span>
+                </div>
+
+                {job.lastEmail && (
+                    <div className="rounded-lg border border-gray-700 bg-gray-950/60 p-3">
+                        <p className="flex items-start gap-1.5 text-[11px] font-bold text-gray-300">
+                            <Mail size={13} className="mt-0.5 shrink-0"/>
+                            <span className="break-words whitespace-normal">
+                                {job.lastEmail.subject}
+                            </span>
+                        </p>
+
+                        <p className="mt-1 text-[10px] text-gray-500">
+                            Received {formatTimeAgo(job.lastEmail.receivedAt)}
+                        </p>
+                    </div>
+                )}
+            </div>
+        </article>
     )
 }
 
-function ApplicationStatusBadge({status}: { status: AppliedJob["applicationStatus"] }) {
-    const base =
-        "inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border transition"
-
-    if (status === "Refused") {
-        return (
-            <span
-                className={`${base} border-red-500/30 bg-red-500/10 text-red-400 shadow-[0_0_6px_rgba(239,68,68,0.2)]`}
-            >
-                <Ban size={12}/> REFUSED
-            </span>
-        )
-    }
-
-    if (status === "Accepted") {
-        return (
-            <span
-                className={`${base} border-green-500/30 bg-green-500/10 text-green-400 shadow-[0_0_6px_rgba(34,197,94,0.2)]`}
-            >
-                <CheckCircle2 size={12}/> ACCEPTED
-            </span>
-        )
-    }
-
-    if (status === "Waiting") {
-        return (
-            <span
-                className={`${base} border-yellow-500/30 bg-yellow-500/10 text-yellow-400 shadow-[0_0_6px_rgba(234,179,8,0.2)]`}
-            >
-                <Clock size={12}/> WAITING
-            </span>
-        )
-    }
-
-    if (status === "Applied") {
-        return (
-            <span
-                className={`${base} border-blue-500/30 bg-blue-500/10 text-blue-400 shadow-[0_0_6px_rgba(59,130,246,0.2)]`}
-            >
-                <Briefcase size={12}/> APPLIED
-            </span>
-        )
-    }
-
-    return (
-        <span className={`${base} border-gray-700 bg-gray-800 text-gray-400`}>
-            {status}
-        </span>
-    )
-}
-
-export default function RecentApplications({
-                                               onSelectJob,
-                                           }: RecentApplicationsProps) {
+export default function RecentApplications() {
     const [jobs, setJobs] = useState<AppliedJob[]>([])
-    const [searchTerm, setSearchTerm] = useState("")
+    const [isLoading, setIsLoading] = useState(true)
+    const [isSyncing, setIsSyncing] = useState(false)
+    const [error, setError] = useState<string | null>(null)
 
-    const [isLoadingLocal, setIsLoadingLocal] = useState(false)
-    const [isSmartSyncing, setIsSmartSyncing] = useState(false)
-    const [isBackfilling, setIsBackfilling] = useState(false)
-
-    const [streamStatus, setStreamStatus] = useState<string | null>(null)
-    const [cutoffMonth, setCutoffMonth] = useState("2025-12")
+    const totalApplicants = useMemo(
+        () => jobs.reduce((sum, job) => sum + job.applicants, 0),
+        [jobs],
+    )
 
     async function loadJobs() {
-        setIsLoadingLocal(true)
-
         try {
+            setError(null)
+            setIsLoading(true)
+
             const result = await fetchAppliedJobs()
             setJobs(result.jobs)
-        } catch (error) {
-            console.error("Failed to load mocked applied jobs:", error)
-            setJobs([])
+        } catch (loadError) {
+            console.error(loadError)
+            setError("Could not load applied jobs.")
         } finally {
-            setIsLoadingLocal(false)
+            setIsLoading(false)
+        }
+    }
+
+    async function handleSmartSync() {
+        try {
+            setError(null)
+            setIsSyncing(true)
+
+            await syncAppliedSmart()
+            await loadJobs()
+        } catch (syncError) {
+            console.error(syncError)
+            setError("Could not sync applied jobs.")
+        } finally {
+            setIsSyncing(false)
         }
     }
 
@@ -394,400 +333,238 @@ export default function RecentApplications({
         void loadJobs()
     }, [])
 
-    async function handleReloadLocal() {
-        await loadJobs()
-    }
-
-    async function handleSmartSync() {
-        setIsSmartSyncing(true)
-
-        try {
-            const result = await syncAppliedSmart()
-
-            if (result.syncedCount > 0) {
-                setStreamStatus(`Smart Sync: ${result.syncedCount} new mocked job added.`)
-                window.setTimeout(() => setStreamStatus(null), 4000)
-            } else {
-                setStreamStatus("Smart Sync: everything already mocked.")
-                window.setTimeout(() => setStreamStatus(null), 2500)
-            }
-
-            await loadJobs()
-        } catch (error) {
-            console.error("Mocked smart sync failed:", error)
-            setStreamStatus("Smart Sync failed.")
-        } finally {
-            setIsSmartSyncing(false)
-        }
-    }
-
-    function handleBackfill() {
-        setIsBackfilling(true)
-        setStreamStatus("Starting mocked deep sync...")
-
-        syncAppliedBackfillStream({
-            from: cutoffMonth,
-
-            onProgress: data => {
-                const company = data.company.slice(0, 20)
-                const title = data.title.slice(0, 30)
-
-                const diff = data.diff
-                const diffParts: string[] = []
-
-                if (diff?.applicants) {
-                    const delta = diff.applicants.delta
-                    const sign = delta > 0 ? "+" : ""
-
-                    diffParts.push(
-                        `${sign}${delta} applicants (${diff.applicants.from}→${diff.applicants.to})`,
-                    )
-                }
-
-                if (diff?.jobState) {
-                    diffParts.push(`state: ${diff.jobState.from}→${diff.jobState.to}`)
-                }
-
-                if (diff?.applicationClosed) {
-                    diffParts.push(
-                        `closed: ${String(diff.applicationClosed.from)}→${String(
-                            diff.applicationClosed.to,
-                        )}`,
-                    )
-                }
-
-                const diffText = diffParts.length > 0 ? diffParts.join(" | ") : "no updates"
-
-                setStreamStatus(`#${data.processed} ${company} · ${title} → ${diffText}`)
-            },
-
-            onFinish: data => {
-                const reason = data.reason ? ` (${data.reason})` : ""
-
-                setStreamStatus(`Finished${reason}: +${data.inserted} mocked job inserted.`)
-
-                void loadJobs().finally(() => {
-                    setIsBackfilling(false)
-                    window.setTimeout(() => setStreamStatus(null), 4000)
-                })
-            },
-
-            onError: error => {
-                console.error("Mocked backfill error:", error)
-                setStreamStatus("Mocked deep sync failed.")
-                setIsBackfilling(false)
-            },
-        })
-    }
-
-    const filteredJobs = useMemo(() => {
-        const term = searchTerm.trim().toLowerCase()
-
-        if (!term) return jobs
-
-        return jobs.filter(job => {
-            const searchableText = [
-                job.title,
-                job.company,
-                job.location,
-                job.description,
-                job.applicationStatus,
-            ]
-                .join(" ")
-                .toLowerCase()
-
-            return searchableText.includes(term)
-        })
-    }, [jobs, searchTerm])
-
     return (
-        <div className="space-y-6 pb-10">
-            <div className="rounded-xl border border-slate-700 bg-slate-800 p-6 shadow-xl">
-                <div className="mb-6 flex flex-col justify-between gap-6 xl:flex-row xl:items-center">
-                    <h2 className="flex items-center gap-3 text-2xl font-bold text-white">
-                        <Database className="text-blue-500" size={28}/>
-                        Application History
-                        <span
-                            className="rounded-full border border-blue-500/30 bg-blue-900/40 px-3 py-1 font-mono text-sm text-blue-300">
-                            {jobs.length} JOBS
-                        </span>
-                    </h2>
+        <section className="mt-6 rounded-xl border border-gray-700 bg-gray-800 p-6 shadow-xl">
+            <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                    <h3 className="flex items-center gap-2 text-2xl font-bold text-white">
+                        <Briefcase className="text-blue-400" size={22}/>
+                        Recent Applications
+                    </h3>
 
-                    <div
-                        className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-700/50 bg-slate-900/50 p-2">
-                        <button
-                            type="button"
-                            onClick={handleReloadLocal}
-                            disabled={isLoadingLocal}
-                            className="flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-700 px-4 py-2 text-xs font-bold uppercase text-slate-200 transition hover:bg-slate-600 disabled:opacity-50"
-                            title="Reload mocked local data"
-                        >
-                            <RefreshCw
-                                size={16}
-                                className={isLoadingLocal ? "animate-spin" : ""}
-                            />
-                            {isLoadingLocal ? "Loading..." : "Mock Local"}
-                        </button>
-
-                        <div className="mx-1 h-8 w-px bg-slate-700"/>
-
-                        <button
-                            type="button"
-                            onClick={handleSmartSync}
-                            disabled={isSmartSyncing || isBackfilling}
-                            className={`flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-600 px-4 py-2 text-xs font-bold uppercase text-white shadow-lg shadow-emerald-900/20 transition hover:bg-emerald-500 ${
-                                isSmartSyncing ? "cursor-wait opacity-70" : ""
-                            }`}
-                            title="Mock quick sync"
-                        >
-                            <Zap
-                                size={16}
-                                className={
-                                    isSmartSyncing
-                                        ? "animate-pulse text-yellow-300"
-                                        : "text-yellow-300"
-                                }
-                                fill="currentColor"
-                            />
-                            {isSmartSyncing ? "Syncing..." : "Mock Sync"}
-                        </button>
-
-                        <div className="mx-1 h-8 w-px bg-slate-700"/>
-
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="month"
-                                value={cutoffMonth}
-                                onChange={event => setCutoffMonth(event.target.value)}
-                                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-200 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30"
-                            />
-
-                            <button
-                                type="button"
-                                onClick={handleBackfill}
-                                disabled={isBackfilling || isSmartSyncing}
-                                className={`flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-600 px-4 py-2 text-xs font-bold uppercase text-white shadow-lg shadow-purple-900/20 transition hover:bg-purple-500 ${
-                                    isBackfilling ? "cursor-wait opacity-70" : ""
-                                }`}
-                                title="Mock deep sync"
-                            >
-                                {isBackfilling ? (
-                                    <RefreshCw size={16} className="animate-spin"/>
-                                ) : (
-                                    <Layers size={16}/>
-                                )}
-                                {isBackfilling ? "Backfilling..." : "Mock Deep Sync"}
-                            </button>
-                        </div>
-                    </div>
+                    <p className="mt-2 text-sm font-medium text-gray-400">
+                        {jobs.length} mocked applications · {formatNumber(totalApplicants)} total competitors
+                    </p>
                 </div>
 
-                {streamStatus && (
-                    <div
-                        className="mb-4 flex items-center gap-3 rounded-lg border border-cyan-800 bg-cyan-950/50 p-3 font-mono text-sm text-cyan-300 animate-in fade-in slide-in-from-top-2">
-                        <div
-                            className="h-2.5 w-2.5 animate-pulse rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.6)]"/>
-                        {streamStatus}
-                    </div>
-                )}
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={() => void loadJobs()}
+                        disabled={isLoading || isSyncing}
+                        className="inline-flex items-center gap-2 rounded-lg border border-gray-600 bg-gray-900 px-3 py-2 text-xs font-bold text-gray-200 transition hover:border-gray-500 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        <RefreshCw size={16} className={isLoading ? "animate-spin" : ""}/>
+                        Refresh
+                    </button>
 
-                <div className="relative w-full">
-                    <input
-                        type="text"
-                        placeholder="Search applications by title, company, location or stack..."
-                        value={searchTerm}
-                        onChange={event => setSearchTerm(event.target.value)}
-                        className="w-full rounded-xl border border-slate-700 bg-slate-900/60 py-4 pl-12 pr-4 text-base text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
-                    />
-
-                    <Search
-                        size={20}
-                        className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"
-                    />
+                    <button
+                        type="button"
+                        onClick={() => void handleSmartSync()}
+                        disabled={isLoading || isSyncing}
+                        className="inline-flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs font-bold text-blue-300 transition hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        {isSyncing ? (
+                            <Loader2 size={16} className="animate-spin"/>
+                        ) : (
+                            <RefreshCw size={16}/>
+                        )}
+                        Smart Sync
+                    </button>
                 </div>
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-800 shadow-2xl">
-                <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-left">
-                        <thead className="bg-slate-900 text-xs font-bold uppercase tracking-wider text-slate-400">
-                        <tr>
-                            <th className="min-w-[280px] border-b border-slate-700 px-6 py-4">
-                                Job Identity
-                            </th>
+            {error && (
+                <div
+                    className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-300">
+                    {error}
+                </div>
+            )}
 
-                            <th className="w-64 border-b border-slate-700 px-6 py-4 text-center">
-                                <div className="flex items-center justify-center gap-2">
-                                    <Cpu size={14}/> Tech Stack
-                                </div>
-                            </th>
-
-                            <th className="w-40 border-b border-slate-700 px-6 py-4 text-center">
-                                <div className="flex items-center justify-center gap-2">
-                                    <Code2 size={14}/> Level
-                                </div>
-                            </th>
-
-                            <th className="w-48 border-b border-slate-700 px-6 py-4">
-                                Applied Date
-                            </th>
-
-                            <th className="w-36 border-b border-slate-700 px-6 py-4">
-                                Competitors
-                            </th>
-
-                            <th className="w-32 border-b border-slate-700 px-6 py-4 text-center">
-                                Status
-                            </th>
-
-                            <th className="w-12 border-b border-slate-700 px-6 py-4"/>
-                        </tr>
-                        </thead>
-
-                        <tbody className="divide-y divide-slate-700/60">
-                        {filteredJobs.map(job => (
-                            <tr
-                                key={job.urn}
-                                onClick={() => onSelectJob?.(job)}
-                                className="group cursor-pointer transition-colors duration-200 hover:bg-slate-700/50"
-                            >
-                                <td className="px-6 py-5 align-top">
-                                    <div className="flex flex-col gap-1.5">
-                                        <div
-                                            className="text-lg font-bold leading-tight text-white transition-colors group-hover:text-blue-400"
-                                            title={job.title}
-                                        >
-                                            {job.title}
-                                        </div>
-
-                                        <div
-                                            className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-300">
-                                            <Briefcase
-                                                size={14}
-                                                className="text-slate-500"
-                                            />
-                                            {job.company}
-                                        </div>
-
-                                        {job.lastEmail && (
-                                            <div
-                                                className="flex w-fit items-center gap-2 whitespace-nowrap rounded-md border border-purple-500/20 bg-purple-900/20 px-2.5 py-1 text-xs text-purple-300"
-                                                title={job.lastEmail.subject}
-                                            >
-                                                📩
-                                                <span className="text-purple-300">
-                                                        Reply
-                                                    </span>
-                                                <span className="text-purple-400">
-                                                        {formatDateBR(
-                                                            job.lastEmail.receivedAt,
-                                                        )}
-                                                    </span>
-                                                <span className="font-mono text-[12px] text-purple-500">
-                                                        {formatTimeAgo(
-                                                            job.lastEmail.receivedAt,
-                                                        )}
-                                                    </span>
-                                            </div>
-                                        )}
-
-                                        <div className="mt-1 flex flex-wrap items-center gap-2">
-                                            {job.location && (
-                                                <span
-                                                    className="flex items-center gap-1 rounded bg-slate-900/50 px-2 py-1 text-xs text-slate-400"
-                                                    title={job.location}
-                                                >
-                                                        <MapPin size={12}/>
-                                                    {job.location.split(",")[0]}
-                                                    </span>
-                                            )}
-
-                                            {job.workRemoteAllowed && (
-                                                <span
-                                                    className="flex items-center gap-1 rounded border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-300">
-                                                        <Globe size={10}/>
-                                                        Remote
-                                                    </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                </td>
-
-                                <td className="px-6 py-5 align-top">
-                                    <div className="flex justify-center">
-                                        <TechStackCell
-                                            description={job.description}
-                                        />
-                                    </div>
-                                </td>
-
-                                <td className="px-6 py-5 align-top">
-                                    <div className="flex justify-center">
-                                        <RequirementsAnalysisCell
-                                            description={job.description}
-                                        />
-                                    </div>
-                                </td>
-
-                                <td className="px-6 py-5 align-top">
-                                    <div className="flex flex-col gap-1">
-                                        <div className="text-sm font-bold text-slate-200">
-                                            {formatDateBR(job.appliedAt)}
-                                        </div>
-
-                                        <div
-                                            className={`${pillBase} border-cyan-700 bg-cyan-900/20 text-cyan-300`}
-                                        >
-                                            <Clock
-                                                size={13}
-                                                className="text-cyan-400"
-                                            />
-                                            {formatTimeBR(job.appliedAt)}
-                                        </div>
-
-                                        {job.postedAt && (
-                                            <div className="mt-2">
-                                                <JobAgeBadge
-                                                    postedAt={job.postedAt}
-                                                />
-                                            </div>
-                                        )}
-                                    </div>
-                                </td>
-
-                                <td className="px-6 py-5 align-top">
-                                    <CompetitionRichBadge
-                                        applicants={job.applicants}
-                                        velocity={job.applicantsVelocity}
-                                    />
-                                </td>
-
-                                <td className="px-6 py-5 text-center align-top">
-                                    <ApplicationStatusBadge
-                                        status={job.applicationStatus}
-                                    />
-                                </td>
-
-                                <td className="px-6 py-5 text-right align-middle">
-                                    <ChevronRight
-                                        size={20}
-                                        className="text-slate-600 transition-all group-hover:translate-x-1 group-hover:text-white"
-                                    />
-                                </td>
-                            </tr>
+            {isLoading ? (
+                <div
+                    className="flex min-h-48 items-center justify-center rounded-xl border border-dashed border-gray-700 bg-gray-900/40">
+                    <div className="flex items-center gap-3 text-sm font-bold text-gray-300">
+                        <Loader2 className="animate-spin text-blue-400" size={20}/>
+                        Loading mocked applications...
+                    </div>
+                </div>
+            ) : (
+                <>
+                    <div className="space-y-4 lg:hidden">
+                        {jobs.map(job => (
+                            <ApplicationMobileCard key={job.urn} job={job}/>
                         ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                {filteredJobs.length === 0 && (
-                    <div className="bg-slate-800/50 p-20 text-center text-slate-500">
-                        <AlertTriangle size={64} className="mx-auto mb-4 opacity-20"/>
-                        <p className="text-lg font-medium">No jobs found.</p>
-                        <p className="text-sm">Try changing the search term.</p>
                     </div>
-                )}
-            </div>
-        </div>
+
+                    <div className="hidden lg:block">
+                        <table className="w-full table-fixed border-separate border-spacing-0">
+                            <thead>
+                            <tr className="text-left">
+                                <th className="w-[32%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+                                    Job Identity
+                                </th>
+                                <th className="w-[25%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+                                    Tech Stack
+                                </th>
+                                <th className="w-[8%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+                                    Level
+                                </th>
+                                <th className="w-[10%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+                                    Applied Date
+                                </th>
+                                <th className="w-[9%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+                                    Time
+                                </th>
+                                <th className="w-[9%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+                                    Competitors
+                                </th>
+                                <th className="w-[8%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+                                    Status
+                                </th>
+                            </tr>
+                            </thead>
+
+                            <tbody>
+                            {jobs.map(job => {
+                                const stack = extractTechStack(job.description)
+                                const level = extractLevel(job)
+
+                                return (
+                                    <tr
+                                        key={job.urn}
+                                        className="align-top transition hover:bg-gray-700/20"
+                                    >
+                                        <td className="border-b border-gray-700/70 px-4 py-5">
+                                            <div className="pr-4">
+                                                <p className="line-clamp-2 text-base font-extrabold leading-6 text-white">
+                                                    {job.title}
+                                                </p>
+
+                                                <p className="mt-1.5 text-sm font-bold text-gray-300">
+                                                    {job.company}
+                                                </p>
+
+                                                <div
+                                                    className="mt-2 flex flex-wrap items-center gap-2 text-xs font-medium text-gray-500">
+                                                    <span className="inline-flex items-center gap-1">
+                                                        <MapPin size={14}/>
+                                                        {job.location}
+                                                    </span>
+
+                                                    {job.workRemoteAllowed && (
+                                                        <span
+                                                            className="rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-bold text-blue-300">
+                                                            Remote
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        <td className="border-b border-gray-700/70 px-4 py-5">
+                                            <div className="flex items-start gap-2">
+                                                <Code2
+                                                    size={16}
+                                                    className="mt-1 shrink-0 text-gray-500"
+                                                />
+                                                <TechStackBadges stack={stack}/>
+                                            </div>
+                                        </td>
+
+                                        <td className="border-b border-gray-700/70 px-4 py-5">
+                                            {level ? (
+                                                <span
+                                                    className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-extrabold ${getLevelClass(
+                                                        level,
+                                                    )}`}
+                                                >
+                                                    {level}
+                                                </span>
+                                            ) : (
+                                                <span className="text-sm text-gray-500"></span>
+                                            )}
+                                        </td>
+
+                                        <td className="border-b border-gray-700/70 px-4 py-5">
+                                            <div className="flex items-start gap-2">
+                                                <CalendarDays
+                                                    size={16}
+                                                    className="mt-1 shrink-0 text-gray-500"
+                                                />
+
+                                                <div>
+                                                    <p className="text-sm font-extrabold text-gray-100">
+                                                        {formatDateBR(job.appliedAt)}
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-gray-500">
+                                                        {formatTimeAgo(job.appliedAt)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        <td className="border-b border-gray-700/70 px-4 py-5">
+                                            <p className="text-sm font-extrabold tabular-nums text-gray-100">
+                                                {formatTimeBR(job.appliedAt)}
+                                            </p>
+                                        </td>
+
+                                        <td className="border-b border-gray-700/70 px-4 py-5">
+                                            <span
+                                                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-extrabold ${getCompetitionClass(
+                                                    job.applicants,
+                                                    job.applicantsVelocity,
+                                                )}`}
+                                            >
+                                                <Users size={15}/>
+                                                {formatNumber(job.applicants)}
+                                            </span>
+
+                                            <p className="mt-2 text-xs font-medium text-gray-500">
+                                                +{job.applicantsVelocity}/day velocity
+                                            </p>
+                                        </td>
+
+                                        <td className="border-b border-gray-700/70 px-4 py-5">
+                                            <div className="max-w-full">
+                                                <span
+                                                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-extrabold ${getStatusClass(
+                                                        job.applicationStatus,
+                                                    )}`}
+                                                >
+                                                    {getStatusIcon(job.applicationStatus)}
+                                                    {job.applicationStatus}
+                                                </span>
+
+                                                {job.lastEmail && (
+                                                    <div
+                                                        className="mt-3 rounded-lg border border-gray-700 bg-gray-950/50 p-2.5">
+                                                        <p className="flex items-start gap-1.5 text-xs font-bold leading-5 text-gray-300">
+                                                            <Mail
+                                                                size={13}
+                                                                className="mt-0.5 shrink-0"
+                                                            />
+                                                            <span className="break-words whitespace-normal">
+                                                                {job.lastEmail.subject}
+                                                            </span>
+                                                        </p>
+
+                                                        <p className="mt-1 text-[10px] text-gray-500">
+                                                            {formatTimeAgo(job.lastEmail.receivedAt)}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )
+                            })}
+                            </tbody>
+                        </table>
+                    </div>
+                </>
+            )}
+        </section>
     )
 }
