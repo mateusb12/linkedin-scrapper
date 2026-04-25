@@ -1,5 +1,6 @@
 import StreakCalendar, {type DailyStatsMap} from "./StreakCalendar.tsx";
 import PerformanceStats, {type PerformanceStatsData} from "./PerformanceStats.tsx";
+import RecentApplications from "./RecentApplications.tsx";
 
 function toDateKey(date: Date) {
     return date.toISOString().split("T")[0]
@@ -73,6 +74,7 @@ export default function AppliedJobsPage() {
 
             <PerformanceStats stats={performanceStats}/>
             <StreakCalendar dailyStats={dailyStats}/>
+            <RecentApplications/>
         </div>
     )
 }

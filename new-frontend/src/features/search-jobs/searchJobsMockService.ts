@@ -1,4 +1,5 @@
-import { MOCKED_JOBS } from "./MOCKED_JOBS"
+import {MOCKED_JOBS} from "../mock-jobs/MOCKED_JOBS"
+
 export type WorkplaceType = "Remote" | "Hybrid" | "On-site" | "Not specified"
 
 export type JobCompany = {
