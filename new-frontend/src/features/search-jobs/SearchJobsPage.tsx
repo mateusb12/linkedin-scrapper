@@ -166,6 +166,72 @@ function ScoreBadge({score}: { score: number }) {
     )
 }
 
+function JobSortHighlightBadge({
+                                   job,
+                                   sortBy,
+                               }: {
+    job: JobView
+    sortBy: SortOption
+}) {
+    if (sortBy === "keywordScore") {
+        return (
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/50 bg-amber-400/10 px-2.5 py-1 text-xs font-extrabold text-amber-200">
+                <Sparkles size={13}/>
+                {job.keywords.length}
+            </span>
+        )
+    }
+
+    if (sortBy === "applicants") {
+        return (
+            <span className="inline-flex items-center gap-1 rounded-full border border-purple-400/50 bg-purple-400/10 px-2.5 py-1 text-xs font-extrabold text-purple-200">
+                <Users size={13}/>
+                {job.applicantsTotal == null ? "N/A" : job.applicantsTotal}
+            </span>
+        )
+    }
+
+    if (sortBy === "pythonScore") {
+        return (
+            <span
+                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-extrabold ${getScoreTone(job.pythonScore)}`}
+            >
+                <Zap size={13}/>
+                {Math.round(job.pythonScore)}
+            </span>
+        )
+    }
+
+    if (sortBy === "recent") {
+        return (
+            <span className="inline-flex items-center gap-1 rounded-full border border-sky-400/50 bg-sky-400/10 px-2.5 py-1 text-[11px] font-extrabold text-sky-200">
+                <Clock3 size={13}/>
+                {formatDateDistance(job.postedAt)}
+            </span>
+        )
+    }
+
+    if (sortBy === "title") {
+        return (
+            <span className="inline-flex items-center gap-1 rounded-full border border-slate-500/60 bg-slate-700/40 px-2.5 py-1 text-xs font-extrabold text-slate-200">
+                <Briefcase size={13}/>
+                A-Z
+            </span>
+        )
+    }
+
+    if (sortBy === "company") {
+        return (
+            <span className="inline-flex items-center gap-1 rounded-full border border-slate-500/60 bg-slate-700/40 px-2.5 py-1 text-xs font-extrabold text-slate-200">
+                <Building2 size={13}/>
+                A-Z
+            </span>
+        )
+    }
+
+    return <ScoreBadge score={job.visibleScore}/>
+}
+
 function SmallPill({
                        children,
                        tone = "default",
@@ -195,11 +261,13 @@ function JobListInsideFilters({
                                   selectedJobId,
                                   onSelectJob,
                                   loading,
+                                  sortBy,
                               }: {
     jobs: JobView[]
     selectedJobId: string | null
     onSelectJob: (id: string) => void
     loading: boolean
+    sortBy: SortOption
 }) {
     if (loading && jobs.length === 0) {
         return (
@@ -284,7 +352,7 @@ function JobListInsideFilters({
                                             </p>
                                         </div>
 
-                                        <ScoreBadge score={job.visibleScore}/>
+                                        <JobSortHighlightBadge job={job} sortBy={sortBy}/>
                                     </div>
 
                                     <p className="mt-1 flex items-center gap-1 truncate text-xs text-slate-400">
@@ -1205,6 +1273,7 @@ export default function SearchJobsPage() {
                         selectedJobId={selectedJobId}
                         onSelectJob={setSelectedJobId}
                         loading={loading}
+                        sortBy={sortBy}
                     />
                 }
             />
