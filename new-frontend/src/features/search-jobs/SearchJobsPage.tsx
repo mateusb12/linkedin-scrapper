@@ -1,18 +1,31 @@
 import {useEffect, useMemo, useState, type FormEvent} from "react"
 import {
+    Bookmark,
     BookmarkCheck,
     Briefcase,
     Building2,
+    CalendarDays,
+    CheckCircle2,
     Clock3,
-    Code2,
-    ExternalLink, Filter,
+    ExternalLink,
+    Filter,
     MapPin,
     RefreshCw,
+    Search,
     ShieldCheck,
     Sparkles,
+    Target,
     Users,
-    XCircle,
+    X,
+    Zap,
 } from "lucide-react"
+
+import SearchJobsFilters, {
+    type SelectOption,
+    type SortOption,
+    type VerificationFilter,
+} from "./SearchJobsFilters.tsx"
+
 import {
     clearJobsCacheMock,
     fetchJobsMock,
@@ -20,168 +33,105 @@ import {
     getInitialSearchJobsMockData,
     placeholderLogo,
     readSavedJobIdsMock,
-    type SearchJob, toggleSavedJobMock
-} from "./searchJobsMockService.ts";
-import SearchJobsFilters, {type SelectOption, type SortOption, type VerificationFilter} from "./SearchJobsFilters.tsx";
+    type SearchJob,
+    toggleSavedJobMock,
+} from "./searchJobsMockService.ts"
 
-type SearchJobView = SearchJob & {
+type JobView = SearchJob & {
     isSaved: boolean
-    isNegativeMatch: boolean
-    positiveScore: number
+    visibleScore: number
+    isHidden: boolean
+    hiddenReasons: string[]
     matchedPositiveKeywords: string[]
+    matchedNegativeKeywords: string[]
     missingMustHaveKeywords: string[]
 }
 
-type BadgeTone =
-    | "green"
-    | "amber"
-    | "blue"
-    | "red"
-    | "purple"
-    | "slate"
-    | "emerald"
-
-
-type SidebarView = "split" | "filters" | "jobs"
-
-const WORKPLACE_OPTIONS: SelectOption[] = [
-    {value: "Remote", label: "Remote"},
-    {value: "Hybrid", label: "Hybrid"},
-    {value: "On-site", label: "On-site"},
+const DEFAULT_POSITIVE_KEYWORDS = [
+    "python",
+    "sql",
+    "flask",
+    "fastapi",
+    "postgresql",
+    "django",
+    "backend",
 ]
 
-const SIDEBAR_VIEW_OPTIONS: Array<{ value: SidebarView; label: string }> = [
-    {value: "split", label: "Split"},
-    {value: "filters", label: "Filters"},
-    {value: "jobs", label: "Jobs"},
-]
+const DEFAULT_MUST_HAVE_KEYWORDS = ["python"]
+const DEFAULT_NEGATIVE_KEYWORDS = ["php"]
 
-const getErrorMessage = (error: unknown) => {
-    if (error instanceof Error) return error.message
-    return "Unexpected error."
-}
-
-const normalizeText = (value: unknown) =>
-    String(value ?? "")
+const normalizeText = (value: string) =>
+    value
         .toLowerCase()
         .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\p{Diacritic}/gu, "")
 
-const buildJobHaystack = (job: SearchJob) =>
-    [
-        job.title,
-        job.company.name,
-        job.location,
-        job.workplaceType,
-        job.sourceLabel,
-        job.description,
-        job.seniority,
-        job.jobType,
-        job.experienceYears,
-        job.archetype,
-        ...job.keywords,
-    ].join(" ")
+const unique = (values: string[]) =>
+    [...new Set(values.map((value) => value.trim()).filter(Boolean))]
 
-const matchesKeyword = (haystack: string, keyword: string) =>
-    normalizeText(haystack).includes(normalizeText(keyword))
+const formatDateDistance = (value: string) => {
+    const date = new Date(value)
+    const now = new Date()
 
-const formatDateValue = (value: string) =>
-    new Intl.DateTimeFormat("pt-BR", {
+    if (Number.isNaN(date.getTime())) return "Recently"
+
+    const diffDays = Math.max(
+        0,
+        Math.floor((now.getTime() - date.getTime()) / 86_400_000),
+    )
+
+    if (diffDays === 0) return "Today"
+    if (diffDays === 1) return "1 day ago"
+    if (diffDays < 30) return `${diffDays} days ago`
+
+    const diffMonths = Math.floor(diffDays / 30)
+    return diffMonths === 1 ? "1 month ago" : `${diffMonths} months ago`
+}
+
+const formatFullDate = (value: string) => {
+    const date = new Date(value)
+
+    if (Number.isNaN(date.getTime())) return "No date"
+
+    return new Intl.DateTimeFormat("en", {
+        month: "short",
         day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
-    }).format(new Date(value))
-
-const getPostedText = (value: string) => {
-    const postedTime = new Date(value).getTime()
-    const diffMs = Math.max(Date.now() - postedTime, 0)
-    const diffDays = Math.floor(diffMs / 86_400_000)
-
-    if (diffDays <= 0) return "Posted today"
-    if (diffDays === 1) return "Posted 1d ago"
-
-    return `Posted ${diffDays}d ago`
+    }).format(date)
 }
 
-const formatApplicantsLabel = (value: number | null) => {
-    if (value == null) return "Applicants unknown"
-    if (value === 1) return "1 applicant"
-
-    return `${value} applicants`
+const shortText = (value: string, maxLength: number) => {
+    if (value.length <= maxLength) return value
+    return `${value.slice(0, maxLength).trim()}...`
 }
 
-const getBadgeClasses = (tone: BadgeTone) => {
-    const tones: Record<BadgeTone, string> = {
-        green: "border-green-500/30 bg-green-500/10 text-green-300",
-        amber: "border-amber-500/30 bg-amber-500/10 text-amber-300",
-        blue: "border-sky-500/30 bg-sky-500/10 text-sky-300",
-        red: "border-red-500/30 bg-red-500/10 text-red-300",
-        purple: "border-violet-500/30 bg-violet-500/10 text-violet-300",
-        slate: "border-slate-600 bg-slate-800/80 text-slate-200",
-        emerald: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-    }
-
-    return tones[tone]
-}
-
-function Badge({
-                   tone,
-                   children,
-               }: {
-    tone: BadgeTone
-    children: React.ReactNode
-}) {
-    return (
-        <span
-            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${getBadgeClasses(tone)}`}
-        >
-            {children}
-        </span>
+const buildSearchableText = (job: SearchJob) =>
+    normalizeText(
+        [
+            job.title,
+            job.company.name,
+            job.location,
+            job.workplaceType,
+            job.sourceLabel,
+            job.description,
+            job.seniority,
+            job.jobType,
+            job.experienceYears,
+            job.archetype,
+            ...job.keywords,
+        ].join(" "),
     )
-}
 
-function ScoreBadge({ score }: { score: number }) {
-    return (
-        <Badge tone={score > 0 ? "emerald" : "slate"}>
-            <Sparkles size={12} />
-            Keyword Score {score}
-        </Badge>
-    )
-}
-
-function getArchetypeLabel(value: string) {
-    const labels: Record<string, string> = {
-        backend_python_pure: "🐍 Pure Python Backend",
-        backend_python_with_minor_cross_functional_signals: "🧩 Backend Python",
-        backend_python_fullstack: "🧱 Python Full-Stack",
-        platform_or_internal_systems_python: "🏗️ Platform/Internal Systems",
-        ai_or_llm_python: "✨ AI/LLM Python",
-        qa_python: "✅ QA Python",
-        generic_backend_non_python: "🏷️ Generic Backend",
-        non_python_junior: "⚠️ Non-Python Junior",
-    }
-
-    return labels[value] ?? value
-}
-
-function getTechStack(job: SearchJob) {
-    return job.keywords.slice(0, 10)
-}
-
-function createOptions<T>(
-    items: T[],
-    getValue: (item: T) => string | null | undefined,
-    getLabel?: (item: T) => string | null | undefined,
-): SelectOption[] {
+const buildUniqueOptions = (
+    values: Array<{ value: string; label: string }>,
+): SelectOption[] => {
     const map = new Map<string, string>()
 
-    items.forEach((item) => {
-        const value = getValue(item)
-        if (!value) return
-
-        map.set(value, getLabel?.(item) ?? value)
+    values.forEach((option) => {
+        if (!map.has(option.value)) {
+            map.set(option.value, option.label)
+        }
     })
 
     return [...map.entries()]
@@ -189,654 +139,611 @@ function createOptions<T>(
         .sort((a, b) => a.label.localeCompare(b.label))
 }
 
-function FetchJobsModal({
-                            isOpen,
-                            count,
-                            query,
-                            loading,
-                            progress,
-                            onCountChange,
-                            onQueryChange,
-                            onClose,
-                            onConfirm,
-                        }: {
-    isOpen: boolean
-    count: number
-    query: string
-    loading: boolean
-    progress: FetchJobsProgress | null
-    onCountChange: (value: number) => void
-    onQueryChange: (value: string) => void
-    onClose: () => void
-    onConfirm: () => void
-}) {
-    if (!isOpen) return null
+const getScoreTone = (score: number) => {
+    if (score >= 75) return "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
+    if (score >= 55) return "border-sky-400/40 bg-sky-400/10 text-sky-200"
+    if (score >= 35) return "border-amber-400/40 bg-amber-400/10 text-amber-200"
 
-    const progressPercent =
-        progress && progress.total > 0
-            ? Math.round((progress.current / progress.total) * 100)
-            : progress?.step === "fetching"
-                ? 10
-                : 0
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-                <div className="mb-4 flex items-center justify-between">
-                    <h2 className="flex items-center gap-2 text-xl font-bold text-slate-100">
-                        <RefreshCw size={20} className="text-sky-400"/>
-                        Fetch New Jobs
-                    </h2>
-
-                    {!loading && (
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="rounded-full p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                        >
-                            ✕
-                        </button>
-                    )}
-                </div>
-
-                <p className="mb-4 text-sm text-slate-400">
-                    This uses mock data and simulates the old backend flow.
-                </p>
-
-                <label
-                    htmlFor="fetch-query"
-                    className="mb-2 block text-sm font-medium text-slate-200"
-                >
-                    Search query
-                </label>
-
-                <input
-                    id="fetch-query"
-                    type="text"
-                    value={query}
-                    onChange={(event) => onQueryChange(event.target.value)}
-                    disabled={loading}
-                    placeholder="e.g. Python backend, React, FastAPI"
-                    className="mb-5 w-full rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-500 disabled:opacity-60"
-                />
-
-                <div className="mb-6 flex flex-col items-center gap-4">
-                    <div className="flex items-center gap-4 rounded-xl border border-slate-700/50 bg-slate-800/50 p-3">
-                        <button
-                            type="button"
-                            onClick={() => onCountChange(Math.max(10, count - 10))}
-                            disabled={loading || count <= 10}
-                            className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-700 text-xl font-bold text-slate-200 transition hover:bg-slate-600 disabled:opacity-50"
-                        >
-                            -
-                        </button>
-
-                        <div className="flex w-20 flex-col items-center">
-                            <span className="text-3xl font-bold text-sky-400">
-                                {count}
-                            </span>
-                            <span className="text-[10px] uppercase tracking-wider text-slate-500">
-                                Jobs
-                            </span>
-                        </div>
-
-                        <button
-                            type="button"
-                            onClick={() => onCountChange(Math.min(100, count + 10))}
-                            disabled={loading}
-                            className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-700 text-xl font-bold text-slate-200 transition hover:bg-slate-600 disabled:opacity-50"
-                        >
-                            +
-                        </button>
-                    </div>
-
-                    <div className="flex gap-2">
-                        {[10, 25, 50, 100].map((preset) => (
-                            <button
-                                key={preset}
-                                type="button"
-                                onClick={() => onCountChange(preset)}
-                                disabled={loading}
-                                className={`rounded-lg border px-3 py-1 text-xs font-semibold transition ${
-                                    count === preset
-                                        ? "border-sky-500 bg-sky-500/20 text-sky-300"
-                                        : "border-slate-700 bg-slate-800 text-slate-400 hover:border-slate-500 hover:text-slate-200"
-                                } disabled:opacity-50`}
-                            >
-                                {preset}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                {loading ? (
-                    <div className="rounded-xl border border-sky-900/40 bg-slate-800/40 p-3">
-                        <div className="mb-2 flex items-center justify-between">
-                            <span className="text-xs font-medium text-sky-400">
-                                <RefreshCw
-                                    size={12}
-                                    className="mr-1.5 inline animate-spin"
-                                />
-                                {progress?.message ?? "Starting mock fetch..."}
-                            </span>
-
-                            <span className="text-xs font-bold text-sky-300">
-                                {progressPercent}%
-                            </span>
-                        </div>
-
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-950">
-                            <div
-                                className="h-full rounded-full bg-sky-500 transition-all duration-300"
-                                style={{width: `${progressPercent}%`}}
-                            />
-                        </div>
-                    </div>
-                ) : (
-                    <div className="mt-6 flex justify-end gap-3 border-t border-slate-800 pt-4">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800 hover:text-white"
-                        >
-                            Cancel
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={onConfirm}
-                            className="flex items-center gap-2 rounded-xl bg-sky-600 px-6 py-2 text-sm font-bold text-white shadow-lg shadow-sky-900/20 transition hover:bg-sky-500"
-                        >
-                            Fetch Mock Jobs
-                        </button>
-                    </div>
-                )}
-            </div>
-        </div>
-    )
+    return "border-red-400/40 bg-red-400/10 text-red-200"
 }
 
-function JobListItem({
-                         job,
-                         isSelected,
-                         onSelect,
-                     }: {
-    job: SearchJobView
-    isSelected: boolean
-    onSelect: (jobId: string) => void
-}) {
-    const selectedClasses = isSelected
-        ? job.isNegativeMatch
-            ? "border-red-500/70 bg-red-950/40"
-            : job.isSaved
-                ? "border-emerald-400/70 bg-emerald-950/30"
-                : "border-sky-400/70 bg-sky-950/40"
-        : job.isNegativeMatch
-            ? "border-red-900/30 bg-red-950/10 opacity-60 hover:border-red-800/40 hover:bg-red-900/20 hover:opacity-100"
-            : job.isSaved
-                ? "border-emerald-500/40 bg-emerald-950/15 hover:border-emerald-400/60 hover:bg-emerald-950/25"
-                : "border-slate-800 bg-[#0a1728] hover:border-slate-700 hover:bg-slate-800/40"
+const getScoreBarClassName = (score: number) => {
+    if (score >= 75) return "bg-emerald-400"
+    if (score >= 55) return "bg-sky-400"
+    if (score >= 35) return "bg-amber-400"
 
+    return "bg-red-400"
+}
+
+function ScoreBadge({score}: { score: number }) {
     return (
-        <button
-            type="button"
-            onClick={() => onSelect(job.id)}
-            className={`mx-3 my-2 block w-[calc(100%-1.5rem)] rounded-2xl border p-4 text-left transition-all ${selectedClasses}`}
+        <span
+            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-extrabold ${getScoreTone(score)}`}
         >
-            <div className="flex gap-3">
-                <img
-                    src={job.company.logoUrl}
-                    alt={`${job.company.name} logo`}
-                    className={`h-12 w-12 shrink-0 rounded-xl border border-slate-700 bg-slate-900 object-contain ${
-                        job.isNegativeMatch ? "grayscale" : ""
-                    }`}
-                    onError={(event) => {
-                        event.currentTarget.src = placeholderLogo(job.company.name)
-                    }}
-                />
-
-                <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                            <h3
-                                className={`truncate text-[18px] font-semibold leading-tight ${
-                                    job.isNegativeMatch
-                                        ? "text-red-200/70"
-                                        : "text-slate-100"
-                                }`}
-                            >
-                                {job.title}
-                            </h3>
-
-                            <p className="mt-1 truncate text-sm text-slate-300">
-                                {job.company.name}
-                            </p>
-
-                            <p className="mt-1 truncate text-xs text-slate-400">
-                                {job.location}
-                            </p>
-                        </div>
-
-                        <div className="flex shrink-0 items-center gap-1.5">
-                            {job.isSaved && (
-                                <BookmarkCheck
-                                    size={16}
-                                    className="text-emerald-300"
-                                />
-                            )}
-
-                            {job.isNegativeMatch && (
-                                <XCircle size={16} className="text-red-500"/>
-                            )}
-
-                            {job.verified && (
-                                <ShieldCheck size={16} className="text-emerald-400"/>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap gap-2">
-                        <ScoreBadge score={job.positiveScore} />
-
-                        <Badge tone="purple">
-                            <Code2 size={12}/>
-                            Python Score: {Math.round(job.pythonScore)}
-                        </Badge>
-
-                        <Badge tone="slate">
-                            <Briefcase size={12}/>
-                            {job.seniority}
-                        </Badge>
-
-                        <Badge tone="blue">{job.workplaceType}</Badge>
-
-                        <Badge tone="amber">
-                            <Clock3 size={12}/>
-                            {job.experienceYears} exp
-                        </Badge>
-
-                        <Badge tone="emerald">
-                            <Users size={12}/>
-                            {formatApplicantsLabel(job.applicantsTotal)}
-                        </Badge>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-700/50 pt-3">
-                        {getTechStack(job)
-                            .slice(0, 5)
-                            .map((tech) => (
-                                <span
-                                    key={`${job.id}-${tech}`}
-                                    className="rounded-full border border-slate-700 bg-slate-900/70 px-2 py-1 text-[11px] font-semibold text-slate-300"
-                                >
-                                    {tech}
-                                </span>
-                            ))}
-                    </div>
-                </div>
-            </div>
-        </button>
+            <Zap size={13}/>
+            {Math.round(score)}
+        </span>
     )
 }
 
-function InfoCard({
-                      icon,
-                      label,
-                      value,
-                  }: {
-    icon: React.ReactNode
-    label: string
-    value: string
+function SmallPill({
+                       children,
+                       tone = "default",
+                   }: {
+    children: string
+    tone?: "default" | "green" | "blue" | "amber" | "red"
 }) {
+    const toneClasses = {
+        default: "border-slate-700 bg-slate-800/70 text-slate-300",
+        green: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+        blue: "border-sky-500/30 bg-sky-500/10 text-sky-300",
+        amber: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+        red: "border-red-500/30 bg-red-500/10 text-red-300",
+    }
+
     return (
-        <div className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-800/70 px-4 py-3">
-            <span className="shrink-0 text-slate-400">{icon}</span>
-
-            <div className="min-w-0">
-                <p className="text-[11px] uppercase tracking-wide text-slate-500">
-                    {label}
-                </p>
-                <p className="truncate text-sm text-slate-200">{value}</p>
-            </div>
-        </div>
+        <span
+            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-bold ${toneClasses[tone]}`}
+        >
+            {children}
+        </span>
     )
 }
 
-function JobDetails({
-                        job,
-                        maxPythonScore,
-                        onToggleSaved,
-                    }: {
-    job: SearchJobView | null
-    maxPythonScore: number
-    onToggleSaved: (job: SearchJobView) => void
+function JobListInsideFilters({
+                                  jobs,
+                                  selectedJobId,
+                                  onSelectJob,
+                                  loading,
+                              }: {
+    jobs: JobView[]
+    selectedJobId: string | null
+    onSelectJob: (id: string) => void
+    loading: boolean
 }) {
-    if (!job) {
+    if (loading && jobs.length === 0) {
         return (
-            <div className="flex h-full items-center justify-center text-slate-400">
-                Select a job to see the details.
+            <div className="flex items-center justify-center rounded-xl border border-slate-800 bg-slate-900/40 p-6 text-sm text-slate-400">
+                <RefreshCw size={16} className="mr-2 animate-spin text-sky-400"/>
+                Loading mock jobs...
             </div>
         )
     }
 
-    const normalizedPythonScore =
-        maxPythonScore > 0
-            ? Math.max(0, Math.min((job.pythonScore / maxPythonScore) * 100, 100))
-            : 0
+    if (jobs.length === 0) {
+        return (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-6 text-center">
+                <Briefcase size={28} className="mx-auto text-slate-600"/>
+
+                <p className="mt-3 text-sm font-extrabold text-slate-300">
+                    No jobs found
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Change the filters or fetch a new mock dataset.
+                </p>
+            </div>
+        )
+    }
 
     return (
-        <div className="h-full overflow-y-auto px-6 py-7 md:px-8">
-            <div className="mb-8 flex items-start gap-5">
-                <img
-                    src={job.company.logoUrl}
-                    alt={`${job.company.name} logo`}
-                    className="h-16 w-16 rounded-xl border border-slate-700 bg-slate-900 object-contain"
-                    onError={(event) => {
-                        event.currentTarget.src = placeholderLogo(job.company.name)
-                    }}
-                />
+        <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+                <p className="flex items-center gap-2 text-sm font-black text-slate-100">
+                    <Briefcase size={16} className="text-sky-400"/>
+                    Jobs
+                </p>
 
-                <div className="min-w-0 flex-1">
-                    <h2 className="text-3xl font-bold leading-tight text-white">
-                        {job.title}
+                <span className="text-xs font-semibold text-slate-500">
+                    {jobs.length} visible
+                </span>
+            </div>
 
-                        {job.isNegativeMatch && (
-                            <span
-                                className="ml-3 inline-flex items-center gap-1 align-middle rounded-md border border-red-900 bg-red-500/20 px-2 py-0.5 text-xs font-semibold text-red-400">
-                                <XCircle size={12}/> Negative Match
-                            </span>
-                        )}
-                    </h2>
+            <div className="space-y-2">
+                {jobs.map((job) => {
+                    const selected = job.id === selectedJobId
 
-                    <p className="mt-1 text-xl text-slate-300">{job.company.name}</p>
-                    <p className="mt-1 text-sm text-slate-400">{job.location}</p>
-                    <p className="mt-1 text-xs text-slate-500">Job ID: {job.jobId}</p>
+                    return (
+                        <button
+                            key={job.id}
+                            type="button"
+                            onClick={() => onSelectJob(job.id)}
+                            className={`w-full rounded-xl border p-3 text-left transition ${
+                                selected
+                                    ? "border-sky-400/70 bg-sky-500/10 shadow-[inset_3px_0_0_#38bdf8]"
+                                    : "border-slate-800 bg-slate-950/50 hover:border-slate-700 hover:bg-slate-900/70"
+                            } ${job.isHidden ? "opacity-60" : ""}`}
+                        >
+                            <div className="flex gap-3">
+                                <img
+                                    src={job.company.logoUrl || placeholderLogo(job.company.name)}
+                                    alt={`${job.company.name} logo`}
+                                    onError={(event) => {
+                                        event.currentTarget.src = placeholderLogo(job.company.name)
+                                    }}
+                                    className="h-11 w-11 flex-none rounded-md border border-slate-700 bg-slate-900 object-cover"
+                                />
 
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        <ScoreBadge score={job.positiveScore} />
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                            <h3 className="line-clamp-2 text-sm font-extrabold leading-5 text-sky-300">
+                                                {job.title}
+                                            </h3>
 
-                        <Badge tone="purple">
-                            <Code2 size={12}/>
-                            Python Score: {Math.round(job.pythonScore)}
-                        </Badge>
+                                            <p className="mt-1 truncate text-xs font-semibold text-slate-200">
+                                                {job.company.name}
+                                            </p>
+                                        </div>
 
-                        {job.verified && <Badge tone="green">Verified</Badge>}
-                        {job.reposted && <Badge tone="amber">Reposted</Badge>}
-                        <Badge tone="blue">{job.workplaceType}</Badge>
+                                        <ScoreBadge score={job.visibleScore}/>
+                                    </div>
 
-                        <Badge tone="emerald">
-                            <Users size={12}/>
-                            {formatApplicantsLabel(job.applicantsTotal)}
-                        </Badge>
-
-                        <Badge tone="slate">
-                            <Briefcase size={12}/>
-                            {job.seniority}
-                        </Badge>
-
-                        <Badge tone="amber">
-                            <Clock3 size={12}/>
-                            {job.experienceYears} exp
-                        </Badge>
-                    </div>
-
-                    <div className="mt-3">
-                        <span
-                            className="inline-flex max-w-full items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-sm font-semibold text-emerald-200">
-                            {getArchetypeLabel(job.archetype)}
-                        </span>
-                    </div>
-
-                    {job.matchedPositiveKeywords.length > 0 && (
-                        <p className="mt-3 text-sm text-slate-400">
-                            Positive matches:{" "}
-                            <span className="text-slate-200">
-                                {job.matchedPositiveKeywords.join(", ")}
-                            </span>
-                        </p>
-                    )}
-
-                    {job.missingMustHaveKeywords.length > 0 && (
-                        <p className="mt-1 text-sm text-red-400">
-                            Missing required keywords:{" "}
-                            <span className="font-semibold">
-                                {job.missingMustHaveKeywords.join(", ")}
-                            </span>
-                        </p>
-                    )}
-
-                    <section className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-                        <div className="flex items-center justify-between gap-4">
-                            <div>
-                                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
-                                    Python Score
-                                </h3>
-                                <p className="mt-1 text-xs text-slate-500">
-                                    Relative to the strongest Python match in the current
-                                    filtered list
-                                </p>
-                            </div>
-
-                            <div className="text-right">
-                                <p className="text-2xl font-semibold text-indigo-300">
-                                    {Math.round(job.pythonScore)}
-                                </p>
-                                <p className="text-xs text-slate-500">
-                                    {Math.round(normalizedPythonScore)}% of current max
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-800">
-                            <div
-                                className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-sky-400 transition-all duration-300"
-                                style={{width: `${normalizedPythonScore}%`}}
-                            />
-                        </div>
-
-                        <details className="mt-4 rounded-xl border border-slate-800 bg-slate-950/50">
-                            <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-slate-200">
-                                Why this score?
-                            </summary>
-
-                            <div className="space-y-4 border-t border-slate-800 px-4 py-4 text-sm text-slate-300">
-                                <div>
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-400">
-                                        Positive Signals
+                                    <p className="mt-1 flex items-center gap-1 truncate text-xs text-slate-400">
+                                        <MapPin size={12}/>
+                                        {job.location}
                                     </p>
 
-                                    <ul className="mt-2 space-y-2">
-                                        {job.scoreBreakdown.positive.length > 0 ? (
-                                            job.scoreBreakdown.positive.map((item) => (
-                                                <li
-                                                    key={`${item.label}-${item.points}`}
-                                                    className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2"
-                                                >
-                                                    <div className="flex justify-between gap-3">
-                                                        <p className="font-medium text-slate-100">
-                                                            {item.label}
-                                                        </p>
-                                                        <span className="text-emerald-300">
-                                                            +{item.points}
-                                                        </span>
-                                                    </div>
-                                                    <p className="mt-1 text-xs text-slate-400">
-                                                        {item.source}
-                                                    </p>
-                                                </li>
-                                            ))
-                                        ) : (
-                                            <li className="italic text-slate-500">None.</li>
-                                        )}
-                                    </ul>
-                                </div>
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                        {job.verified && <SmallPill tone="green">Verified</SmallPill>}
 
-                                <div>
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-400">
-                                        Negative Signals
+                                        <SmallPill tone={job.workplaceType === "Remote" ? "blue" : "default"}>
+                                            {job.workplaceType}
+                                        </SmallPill>
+
+                                        {job.jobType && <SmallPill>{job.jobType}</SmallPill>}
+
+                                        {job.isHidden && <SmallPill tone="red">Filtered</SmallPill>}
+                                    </div>
+
+                                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-400">
+                                        {job.description}
                                     </p>
 
-                                    <ul className="mt-2 space-y-2">
-                                        {job.scoreBreakdown.negative.length > 0 ? (
-                                            job.scoreBreakdown.negative.map((item) => (
-                                                <li
-                                                    key={`${item.label}-${item.points}`}
-                                                    className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2"
-                                                >
-                                                    <div className="flex justify-between gap-3">
-                                                        <p className="font-medium text-slate-100">
-                                                            {item.label}
-                                                        </p>
-                                                        <span className="text-amber-300">
-                                                            {item.points}
-                                                        </span>
-                                                    </div>
-                                                    <p className="mt-1 text-xs text-slate-400">
-                                                        {item.source}
-                                                    </p>
-                                                </li>
-                                            ))
-                                        ) : (
-                                            <li className="italic text-slate-500">None.</li>
-                                        )}
-                                    </ul>
-                                </div>
+                                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                                        <span className="inline-flex items-center gap-1">
+                                            <Clock3 size={12}/>
+                                            {formatDateDistance(job.postedAt)}
+                                        </span>
 
-                                <div>
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                        Category Totals
-                                    </p>
+                                        <span className="inline-flex items-center gap-1">
+                                            <Users size={12}/>
+                                            {job.applicantsTotal == null
+                                                ? "No applicants data"
+                                                : `${job.applicantsTotal} applicants`}
+                                        </span>
 
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                        {Object.entries(
-                                            job.scoreBreakdown.categoryTotals,
-                                        ).map(([label, value]) => (
-                                            <span
-                                                key={label}
-                                                className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-200"
-                                            >
-                                                {label}: {value}
+                                        {job.isSaved && (
+                                            <span className="inline-flex items-center gap-1 text-emerald-300">
+                                                <BookmarkCheck size={12}/>
+                                                Saved
                                             </span>
-                                        ))}
+                                        )}
                                     </div>
                                 </div>
                             </div>
-                        </details>
-                    </section>
-                </div>
+                        </button>
+                    )
+                })}
             </div>
+        </div>
+    )
+}
 
-            <div className="mb-8 flex flex-wrap gap-3">
-                <button
-                    type="button"
-                    onClick={() => onToggleSaved(job)}
-                    className={`inline-flex items-center gap-2 rounded-xl border px-4 py-3 font-semibold transition ${
-                        job.isSaved
-                            ? "border-emerald-400/60 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/20"
-                            : "border-slate-700 bg-slate-800 text-slate-200 hover:border-emerald-500/40 hover:bg-slate-700"
-                    }`}
-                >
-                    <BookmarkCheck
-                        size={16}
-                        className={job.isSaved ? "text-emerald-300" : "text-slate-400"}
-                    />
-                    {job.isSaved ? "Saved" : "Save"}
-                </button>
+function DescriptionBlock({text}: { text: string }) {
+    const blocks = text.split(/\n{2,}/).filter(Boolean)
 
-                <a
-                    href={job.jobUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-500"
-                >
-                    <ExternalLink size={16}/>
-                    Open Job
-                </a>
+    if (blocks.length === 0) {
+        return (
+            <p className="text-sm leading-7 text-slate-400">
+                No description available for this mock job.
+            </p>
+        )
+    }
 
-                <a
-                    href={job.company.pageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-6 py-3 font-semibold text-slate-100 transition hover:bg-slate-700"
-                >
-                    <Building2 size={16}/>
-                    Company Page
-                </a>
+    return (
+        <div className="space-y-4">
+            {blocks.map((block) => {
+                const key = block.slice(0, 40)
+                const lines = block.split("\n").filter(Boolean)
+                const isList = lines.every((line) => line.trim().startsWith("-"))
 
-                {job.company.websiteUrl && (
-                    <a
-                        href={job.company.websiteUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-6 py-3 font-semibold text-slate-100 transition hover:bg-slate-700"
-                    >
-                        <Building2 size={16}/>
-                        Company Website
-                    </a>
-                )}
-            </div>
+                if (isList) {
+                    return (
+                        <ul key={key} className="list-disc space-y-2 pl-5 text-sm leading-6 text-slate-300">
+                            {lines.map((line) => (
+                                <li key={line}>{line.replace(/^-+\s*/, "")}</li>
+                            ))}
+                        </ul>
+                    )
+                }
 
-            <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2">
-                <InfoCard
-                    icon={<MapPin size={18}/>}
-                    label="Location"
-                    value={job.location}
-                />
-                <InfoCard
-                    icon={<Briefcase size={18}/>}
-                    label="Workplace Type"
-                    value={job.workplaceType}
-                />
-                <InfoCard
-                    icon={<Clock3 size={18}/>}
-                    label="Posted At"
-                    value={formatDateValue(job.postedAt)}
-                />
-                <InfoCard
-                    icon={<Users size={18}/>}
-                    label="Applicants"
-                    value={formatApplicantsLabel(job.applicantsTotal)}
-                />
-                <InfoCard
-                    icon={<ShieldCheck size={18}/>}
-                    label="Verification"
-                    value={job.verified ? "Verified" : "Not verified"}
-                />
-                <InfoCard
-                    icon={<Sparkles size={18}/>}
-                    label="Keyword Score"
-                    value={String(job.positiveScore)}
-                />
-            </div>
+                return (
+                    <p key={key} className="whitespace-pre-line text-sm leading-7 text-slate-300">
+                        {block}
+                    </p>
+                )
+            })}
+        </div>
+    )
+}
 
-            <section className="mb-8">
-                <h3 className="mb-4 flex items-center border-b border-slate-800 pb-2 text-xl font-semibold text-slate-100">
-                    <Code2 size={18} className="mr-2"/>
-                    Detected Stack
-                </h3>
+function MatchPanel({
+                        title,
+                        icon,
+                        values,
+                        tone,
+                        emptyLabel,
+                    }: {
+    title: string
+    icon: React.ReactNode
+    values: string[]
+    tone: "green" | "amber" | "red" | "blue"
+    emptyLabel: string
+}) {
+    const toneClasses = {
+        green: "border-emerald-500/25 bg-emerald-500/10 text-emerald-200",
+        amber: "border-amber-500/25 bg-amber-500/10 text-amber-200",
+        red: "border-red-500/25 bg-red-500/10 text-red-200",
+        blue: "border-sky-500/25 bg-sky-500/10 text-sky-200",
+    }
 
-                <div className="flex flex-wrap gap-2">
-                    {getTechStack(job).map((tech) => (
+    return (
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+            <h4 className="flex items-center gap-2 text-sm font-extrabold text-slate-100">
+                <span className={toneClasses[tone]}>{icon}</span>
+                {title}
+            </h4>
+
+            {values.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                    {values.map((value) => (
                         <span
-                            key={`${job.id}-detail-${tech}`}
-                            className="rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1 text-sm font-semibold text-slate-300"
+                            key={value}
+                            className={`rounded-full border px-2.5 py-1 text-xs font-bold ${toneClasses[tone]}`}
                         >
-                            {tech}
+                            {value}
                         </span>
                     ))}
                 </div>
-            </section>
+            ) : (
+                <p className="mt-3 text-xs leading-5 text-slate-500">{emptyLabel}</p>
+            )}
+        </div>
+    )
+}
 
-            <section>
-                <h3 className="mb-4 flex items-center border-b border-slate-800 pb-2 text-xl font-semibold text-slate-100">
-                    About This Listing
-                </h3>
+function SelectedJobPreview({
+                                job,
+                                onToggleSaved,
+                                onOpenApply,
+                            }: {
+    job: JobView
+    onToggleSaved: () => void
+    onOpenApply: () => void
+}) {
+    return (
+        <div className="h-full overflow-y-auto bg-slate-950 [scrollbar-gutter:stable]">
+            <div className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/95 p-5 backdrop-blur">
+                <div className="flex items-start gap-4">
+                    <img
+                        src={job.company.logoUrl || placeholderLogo(job.company.name)}
+                        alt={`${job.company.name} logo`}
+                        onError={(event) => {
+                            event.currentTarget.src = placeholderLogo(job.company.name)
+                        }}
+                        className="h-16 w-16 rounded-lg border border-slate-700 bg-slate-900 object-cover"
+                    />
 
-                <div
-                    className="whitespace-pre-wrap rounded-xl border border-slate-800 bg-slate-800/60 p-4 text-sm leading-7 text-slate-300">
-                    {job.description}
+                    <div className="min-w-0 flex-1">
+                        <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-sky-400">
+                            LinkedIn style preview
+                        </p>
+
+                        <h1 className="mt-2 text-2xl font-black leading-tight text-white">
+                            {job.title}
+                        </h1>
+
+                        <p className="mt-2 text-sm font-semibold text-slate-300">
+                            {job.company.name}
+                        </p>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            {job.verified && <SmallPill tone="green">Verified</SmallPill>}
+
+                            <SmallPill tone={job.workplaceType === "Remote" ? "blue" : "default"}>
+                                {job.workplaceType}
+                            </SmallPill>
+
+                            <SmallPill>{job.seniority}</SmallPill>
+                            <SmallPill>{job.experienceYears}</SmallPill>
+
+                            {job.isHidden && <SmallPill tone="red">Filtered</SmallPill>}
+                        </div>
+                    </div>
+
+                    <ScoreBadge score={job.visibleScore}/>
                 </div>
-            </section>
+
+                <div className="mt-5 grid grid-cols-2 gap-2">
+                    <button
+                        type="button"
+                        onClick={onToggleSaved}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm font-extrabold text-slate-100 transition hover:border-sky-400/60 hover:bg-slate-800"
+                    >
+                        {job.isSaved ? <BookmarkCheck size={16}/> : <Bookmark size={16}/>}
+                        {job.isSaved ? "Saved" : "Save"}
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={onOpenApply}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-500 px-3 py-2.5 text-sm font-extrabold text-slate-950 transition hover:bg-sky-400"
+                    >
+                        Apply
+                        <ExternalLink size={15}/>
+                    </button>
+                </div>
+            </div>
+
+            {job.isHidden && (
+                <div className="border-b border-red-500/20 bg-red-500/10 px-5 py-4">
+                    <p className="flex items-center gap-2 text-sm font-bold text-red-200">
+                        <Filter size={16}/>
+                        This job is currently filtered.
+                    </p>
+
+                    <div className="mt-2 flex flex-wrap gap-2">
+                        {job.hiddenReasons.map((reason) => (
+                            <SmallPill key={reason} tone="red">
+                                {reason}
+                            </SmallPill>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            <div className="space-y-5 p-5">
+                <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
+                    <div className="grid gap-3 text-sm text-slate-400 sm:grid-cols-2">
+                        <span className="inline-flex items-center gap-2">
+                            <Building2 size={15}/>
+                            {job.company.name}
+                        </span>
+
+                        <span className="inline-flex items-center gap-2">
+                            <MapPin size={15}/>
+                            {job.location}
+                        </span>
+
+                        <span className="inline-flex items-center gap-2">
+                            <CalendarDays size={15}/>
+                            {formatFullDate(job.postedAt)}
+                        </span>
+
+                        <span className="inline-flex items-center gap-2">
+                            <Users size={15}/>
+                            {job.applicantsTotal == null
+                                ? "Applicants not shown"
+                                : `${job.applicantsTotal} applicants`}
+                        </span>
+                    </div>
+
+                    <div className={`mt-5 rounded-2xl border p-4 ${getScoreTone(job.visibleScore)}`}>
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <p className="text-xs font-bold uppercase tracking-[0.16em] opacity-80">
+                                    Python match
+                                </p>
+
+                                <p className="mt-1 text-3xl font-black">
+                                    {Math.round(job.visibleScore)}
+                                </p>
+                            </div>
+
+                            <Sparkles size={28}/>
+                        </div>
+
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-950/50">
+                            <div
+                                className={`h-full rounded-full ${getScoreBarClassName(job.visibleScore)}`}
+                                style={{width: `${Math.min(100, Math.max(0, job.visibleScore))}%`}}
+                            />
+                        </div>
+                    </div>
+                </section>
+
+                <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
+                    <h2 className="text-lg font-extrabold text-slate-50">
+                        Detected stack
+                    </h2>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                        {job.keywords.length > 0 ? (
+                            job.keywords.map((item) => (
+                                <span
+                                    key={item}
+                                    className="rounded-full border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-bold text-slate-300"
+                                >
+                                    {item}
+                                </span>
+                            ))
+                        ) : (
+                            <p className="text-sm text-slate-500">
+                                No stack detected in this mock payload.
+                            </p>
+                        )}
+                    </div>
+                </section>
+
+                <div className="grid gap-5 xl:grid-cols-3">
+                    <MatchPanel
+                        title="Positive"
+                        icon={<CheckCircle2 size={15}/>}
+                        values={job.matchedPositiveKeywords}
+                        tone="green"
+                        emptyLabel="No positive keyword matched yet."
+                    />
+
+                    <MatchPanel
+                        title="Missing"
+                        icon={<Target size={15}/>}
+                        values={job.missingMustHaveKeywords}
+                        tone="amber"
+                        emptyLabel="No missing must-have keyword."
+                    />
+
+                    <MatchPanel
+                        title="Negative"
+                        icon={<Filter size={15}/>}
+                        values={job.matchedNegativeKeywords}
+                        tone="red"
+                        emptyLabel="No negative keyword matched."
+                    />
+                </div>
+
+                <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
+                    <h2 className="text-lg font-extrabold text-slate-50">
+                        About the job
+                    </h2>
+
+                    <div className="mt-4">
+                        <DescriptionBlock text={job.description}/>
+                    </div>
+                </section>
+            </div>
+        </div>
+    )
+}
+
+function FetchJobsModal({
+                            fetchCount,
+                            setFetchCount,
+                            fetchQuery,
+                            setFetchQuery,
+                            loading,
+                            progress,
+                            onClose,
+                            onSubmit,
+                        }: {
+    fetchCount: number
+    setFetchCount: (value: number) => void
+    fetchQuery: string
+    setFetchQuery: (value: string) => void
+    loading: boolean
+    progress: FetchJobsProgress | null
+    onClose: () => void
+    onSubmit: (event: FormEvent<HTMLFormElement>) => void
+}) {
+    const progressPercent = progress
+        ? Math.round((progress.current / Math.max(1, progress.total)) * 100)
+        : 0
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+            <form
+                onSubmit={onSubmit}
+                className="w-full max-w-lg rounded-3xl border border-slate-700 bg-slate-950 p-5 shadow-2xl"
+            >
+                <div className="flex items-start justify-between gap-4">
+                    <div>
+                        <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-sky-400">
+                            Mock fetch
+                        </p>
+
+                        <h2 className="mt-1 text-xl font-black text-slate-50">
+                            Load LinkedIn mock jobs
+                        </h2>
+
+                        <p className="mt-2 text-sm leading-6 text-slate-400">
+                            Simulates fetching, parsing and enriching jobs before saving them in local cache.
+                        </p>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={loading}
+                        className="rounded-xl border border-slate-700 p-2 text-slate-400 transition hover:bg-slate-900 hover:text-white disabled:opacity-50"
+                    >
+                        <X size={18}/>
+                    </button>
+                </div>
+
+                <div className="mt-5 space-y-4">
+                    <label className="block">
+                        <span className="text-xs font-bold text-slate-300">
+                            Amount of jobs
+                        </span>
+
+                        <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={fetchCount}
+                            onChange={(event) => setFetchCount(Number(event.target.value))}
+                            className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-slate-100 outline-none transition focus:border-sky-500"
+                        />
+                    </label>
+
+                    <label className="block">
+                        <span className="text-xs font-bold text-slate-300">
+                            Optional query
+                        </span>
+
+                        <div className="relative mt-2">
+                            <Search
+                                size={16}
+                                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+                            />
+
+                            <input
+                                type="text"
+                                value={fetchQuery}
+                                onChange={(event) => setFetchQuery(event.target.value)}
+                                placeholder="python, backend, remote..."
+                                className="w-full rounded-xl border border-slate-700 bg-slate-900 py-2.5 pl-10 pr-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-500"
+                            />
+                        </div>
+                    </label>
+
+                    {progress && (
+                        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                            <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-300">
+                                <span>{progress.message}</span>
+                                <span>{progressPercent}%</span>
+                            </div>
+
+                            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+                                <div
+                                    className="h-full rounded-full bg-sky-400"
+                                    style={{width: `${progressPercent}%`}}
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="mt-6 flex justify-end gap-3">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={loading}
+                        className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-bold text-slate-300 transition hover:bg-slate-900 hover:text-white disabled:opacity-50"
+                    >
+                        Cancel
+                    </button>
+
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-sky-400 disabled:opacity-50"
+                    >
+                        <RefreshCw size={16} className={loading ? "animate-spin" : ""}/>
+                        Fetch mock jobs
+                    </button>
+                </div>
+            </form>
         </div>
     )
 }
@@ -844,63 +751,43 @@ function JobDetails({
 export default function SearchJobsPage() {
     const [jobs, setJobs] = useState<SearchJob[]>([])
     const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
-    const [savedJobIds, setSavedJobIds] = useState<string[]>(() =>
-        readSavedJobIdsMock(),
-    )
-
-    const [loading, setLoading] = useState(true)
-    const [progressData, setProgressData] = useState<FetchJobsProgress | null>(
-        null,
-    )
-    const [errorMessage, setErrorMessage] = useState<string | null>(null)
-    const [cacheTimestamp, setCacheTimestamp] = useState<string | null>(null)
-    const [loadedFromCache, setLoadedFromCache] = useState(false)
-
-    const [isFetchModalOpen, setIsFetchModalOpen] = useState(false)
-    const [fetchCount, setFetchCount] = useState(10)
-    const [fetchQuery, setFetchQuery] = useState("")
 
     const [searchTerm, setSearchTerm] = useState("")
     const [verificationFilter, setVerificationFilter] =
         useState<VerificationFilter>("All")
     const [sourceFilter, setSourceFilter] = useState("All")
     const [sortBy, setSortBy] = useState<SortOption>("relevance")
-    const [showHiddenJobs, setShowHiddenJobs] = useState(false)
-    const [sidebarView, setSidebarView] = useState<SidebarView>("split")
 
-    const [positiveKeywords, setPositiveKeywords] = useState<string[]>([
-        "python",
-        "sql",
-        "docker",
-        "flask",
-        "fastapi",
-        "postgresql",
-        "django",
-    ])
+    const [positiveKeywords, setPositiveKeywords] = useState(DEFAULT_POSITIVE_KEYWORDS)
     const [newPositiveKeyword, setNewPositiveKeyword] = useState("")
 
-    const [mustHaveKeywords, setMustHaveKeywords] = useState<string[]>(["python"])
+    const [mustHaveKeywords, setMustHaveKeywords] = useState(DEFAULT_MUST_HAVE_KEYWORDS)
     const [newMustHaveKeyword, setNewMustHaveKeyword] = useState("")
 
-    const [negativeKeywords, setNegativeKeywords] = useState<string[]>([
-        "php",
-        "java",
-        "junior",
-    ])
+    const [negativeKeywords, setNegativeKeywords] = useState(DEFAULT_NEGATIVE_KEYWORDS)
     const [newNegativeKeyword, setNewNegativeKeyword] = useState("")
 
     const [negativeCompanies, setNegativeCompanies] = useState<string[]>([])
-    const [excludedWorkplaceTypes, setExcludedWorkplaceTypes] = useState<string[]>(
-        [],
-    )
-    const [maxApplicantsLimit, setMaxApplicantsLimit] = useState(
-        Number.MAX_SAFE_INTEGER,
-    )
+    const [excludedWorkplaceTypes, setExcludedWorkplaceTypes] = useState<string[]>([])
+    const [maxApplicantsLimit, setMaxApplicantsLimit] = useState(Number.MAX_SAFE_INTEGER)
+    const [showHiddenJobs, setShowHiddenJobs] = useState(false)
+
+    const [savedIds, setSavedIds] = useState<string[]>(() => readSavedJobIdsMock())
+
+    const [cacheTimestamp, setCacheTimestamp] = useState<string | null>(null)
+    const [loadedFromCache, setLoadedFromCache] = useState(false)
+    const [loading, setLoading] = useState(false)
+    const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+    const [isFetchModalOpen, setIsFetchModalOpen] = useState(false)
+    const [fetchCount, setFetchCount] = useState(75)
+    const [fetchQuery, setFetchQuery] = useState("")
+    const [fetchProgress, setFetchProgress] = useState<FetchJobsProgress | null>(null)
 
     useEffect(() => {
         let isMounted = true
 
-        const loadInitialJobs = async () => {
+        async function loadInitialJobs() {
             setLoading(true)
             setErrorMessage(null)
 
@@ -910,15 +797,20 @@ export default function SearchJobsPage() {
                 if (!isMounted) return
 
                 setJobs(result.jobs)
-                setSelectedJobId(result.jobs[0]?.id ?? null)
                 setCacheTimestamp(result.cachedAt)
                 setLoadedFromCache(result.loadedFromCache)
             } catch (error) {
                 if (!isMounted) return
 
-                setErrorMessage(getErrorMessage(error))
+                setErrorMessage(
+                    error instanceof Error
+                        ? error.message
+                        : "Could not load mock jobs.",
+                )
             } finally {
-                if (isMounted) setLoading(false)
+                if (isMounted) {
+                    setLoading(false)
+                }
             }
         }
 
@@ -929,261 +821,262 @@ export default function SearchJobsPage() {
         }
     }, [])
 
+    const maxPossibleApplicants = useMemo(() => {
+        const applicants = jobs
+            .map((job) => job.applicantsTotal ?? 0)
+            .filter((value) => Number.isFinite(value))
+
+        return Math.max(0, ...applicants)
+    }, [jobs])
+
     const sourceOptions = useMemo(
         () =>
-            createOptions(
-                jobs,
-                (job) => job.sourceKey,
-                (job) => job.sourceLabel,
+            buildUniqueOptions(
+                jobs.map((job) => ({
+                    value: job.sourceKey,
+                    label: job.sourceLabel,
+                })),
             ),
         [jobs],
     )
 
     const companyOptions = useMemo(
-        () => createOptions(jobs, (job) => job.company.name),
+        () =>
+            buildUniqueOptions(
+                jobs.map((job) => ({
+                    value: job.company.name,
+                    label: job.company.name,
+                })),
+            ),
         [jobs],
     )
 
-    const maxPossibleApplicants = useMemo(() => {
-        const values = jobs
-            .map((job) => job.applicantsTotal ?? 0)
-            .filter((value) => Number.isFinite(value))
+    const workplaceOptions = useMemo(
+        () =>
+            buildUniqueOptions(
+                jobs.map((job) => ({
+                    value: job.workplaceType,
+                    label: job.workplaceType,
+                })),
+            ),
+        [jobs],
+    )
 
-        return Math.max(100, ...values)
-    }, [jobs])
+    const evaluatedJobs = useMemo<JobView[]>(() => {
+        const normalizedSearchTerm = normalizeText(searchTerm.trim())
 
-    const filteredJobsState = useMemo(() => {
-        let result = jobs.map<SearchJobView>((job) => {
-            const haystack = buildJobHaystack(job)
+        return jobs
+            .map((job) => {
+                const searchableText = buildSearchableText(job)
 
-            const matchedPositiveKeywords = positiveKeywords.filter((keyword) =>
-                matchesKeyword(haystack, keyword),
-            )
+                const matchesSearch =
+                    !normalizedSearchTerm || searchableText.includes(normalizedSearchTerm)
 
-            const missingMustHaveKeywords = mustHaveKeywords.filter(
-                (keyword) => !matchesKeyword(haystack, keyword),
-            )
+                const matchesVerification =
+                    verificationFilter === "All" ||
+                    (verificationFilter === "Verified" && job.verified) ||
+                    (verificationFilter === "Unverified" && !job.verified)
 
-            const matchesNegativeKeyword = negativeKeywords.some((keyword) =>
-                matchesKeyword(haystack, keyword),
-            )
+                const matchesSource =
+                    sourceFilter === "All" || job.sourceKey === sourceFilter
 
-            const matchesNegativeCompany = negativeCompanies.includes(
-                job.company.name,
-            )
+                if (!matchesSearch || !matchesVerification || !matchesSource) {
+                    return null
+                }
 
-            const matchesExcludedWorkplace = excludedWorkplaceTypes.includes(
-                job.workplaceType,
-            )
-
-            const exceedsApplicantsLimit =
-                maxApplicantsLimit !== Number.MAX_SAFE_INTEGER &&
-                job.applicantsTotal != null &&
-                job.applicantsTotal > maxApplicantsLimit
-
-            const isNegativeMatch =
-                matchesNegativeKeyword ||
-                matchesNegativeCompany ||
-                matchesExcludedWorkplace ||
-                exceedsApplicantsLimit ||
-                missingMustHaveKeywords.length > 0
-
-            return {
-                ...job,
-                isSaved: savedJobIds.includes(job.id),
-                isNegativeMatch,
-                positiveScore: matchedPositiveKeywords.length,
-                matchedPositiveKeywords,
-                missingMustHaveKeywords,
-            }
-        })
-
-        if (searchTerm.trim()) {
-            const query = normalizeText(searchTerm)
-
-            result = result.filter((job) =>
-                normalizeText(buildJobHaystack(job)).includes(query),
-            )
-        }
-
-        if (verificationFilter === "Verified") {
-            result = result.filter((job) => job.verified)
-        }
-
-        if (verificationFilter === "Unverified") {
-            result = result.filter((job) => !job.verified)
-        }
-
-        if (sourceFilter !== "All") {
-            result = result.filter((job) => job.sourceKey === sourceFilter)
-        }
-
-        const negativeMatchCount = result.filter(
-            (job) => job.isNegativeMatch,
-        ).length
-
-        const visibleJobs = result.filter((job) => !job.isNegativeMatch)
-        const hiddenJobs = result.filter((job) => job.isNegativeMatch)
-
-        result = showHiddenJobs ? [...visibleJobs, ...hiddenJobs] : visibleJobs
-
-        result.sort((a, b) => {
-            if (a.isNegativeMatch !== b.isNegativeMatch) {
-                return a.isNegativeMatch ? 1 : -1
-            }
-
-            if (sortBy === "relevance") {
-                const scoreA = a.pythonScore + a.positiveScore * 12
-                const scoreB = b.pythonScore + b.positiveScore * 12
-
-                if (scoreA !== scoreB) return scoreB - scoreA
-
-                return (
-                    new Date(b.postedAt).getTime() -
-                    new Date(a.postedAt).getTime()
+                const matchedPositiveKeywords = unique(
+                    positiveKeywords.filter((keyword) =>
+                        searchableText.includes(normalizeText(keyword)),
+                    ),
                 )
-            }
 
-            if (sortBy === "keywordScore") {
-                return b.positiveScore - a.positiveScore
-            }
-
-            if (sortBy === "pythonScore") {
-                return b.pythonScore - a.pythonScore
-            }
-
-            if (sortBy === "recent") {
-                return (
-                    new Date(b.postedAt).getTime() -
-                    new Date(a.postedAt).getTime()
+                const matchedNegativeKeywords = unique(
+                    negativeKeywords.filter((keyword) =>
+                        searchableText.includes(normalizeText(keyword)),
+                    ),
                 )
-            }
 
-            if (sortBy === "applicants") {
-                return (a.applicantsTotal ?? Infinity) - (b.applicantsTotal ?? Infinity)
-            }
+                const missingMustHaveKeywords = unique(
+                    mustHaveKeywords.filter(
+                        (keyword) => !searchableText.includes(normalizeText(keyword)),
+                    ),
+                )
 
-            if (sortBy === "title") {
-                return a.title.localeCompare(b.title)
-            }
+                const hiddenReasons: string[] = []
 
-            if (sortBy === "company") {
-                return a.company.name.localeCompare(b.company.name)
-            }
+                if (missingMustHaveKeywords.length > 0) {
+                    hiddenReasons.push(`Missing: ${missingMustHaveKeywords.join(", ")}`)
+                }
 
-            return 0
-        })
+                if (matchedNegativeKeywords.length > 0) {
+                    hiddenReasons.push(`Negative: ${matchedNegativeKeywords.join(", ")}`)
+                }
 
-        return {
-            filteredJobs: result,
-            negativeMatchCount,
-        }
+                if (negativeCompanies.includes(job.company.name)) {
+                    hiddenReasons.push("Company excluded")
+                }
+
+                if (excludedWorkplaceTypes.includes(job.workplaceType)) {
+                    hiddenReasons.push("Workplace excluded")
+                }
+
+                if (
+                    maxApplicantsLimit !== Number.MAX_SAFE_INTEGER &&
+                    job.applicantsTotal != null &&
+                    job.applicantsTotal > maxApplicantsLimit
+                ) {
+                    hiddenReasons.push(`>${maxApplicantsLimit} applicants`)
+                }
+
+                const visibleScore = Math.max(
+                    0,
+                    Math.min(
+                        100,
+                        Math.round(
+                            job.pythonScore +
+                            matchedPositiveKeywords.length * 2 -
+                            matchedNegativeKeywords.length * 8 -
+                            missingMustHaveKeywords.length * 12,
+                        ),
+                    ),
+                )
+
+                return {
+                    ...job,
+                    isSaved: savedIds.includes(job.jobId),
+                    visibleScore,
+                    isHidden: hiddenReasons.length > 0,
+                    hiddenReasons,
+                    matchedPositiveKeywords,
+                    matchedNegativeKeywords,
+                    missingMustHaveKeywords,
+                }
+            })
+            .filter((job): job is JobView => Boolean(job))
     }, [
         jobs,
-        positiveKeywords,
-        mustHaveKeywords,
-        negativeKeywords,
-        negativeCompanies,
-        excludedWorkplaceTypes,
-        maxApplicantsLimit,
-        savedJobIds,
         searchTerm,
         verificationFilter,
         sourceFilter,
-        showHiddenJobs,
-        sortBy,
+        positiveKeywords,
+        negativeKeywords,
+        mustHaveKeywords,
+        negativeCompanies,
+        excludedWorkplaceTypes,
+        maxApplicantsLimit,
+        savedIds,
     ])
 
-    const {filteredJobs, negativeMatchCount} = filteredJobsState
+    const sortedJobs = useMemo(() => {
+        const sortableJobs = [...evaluatedJobs]
 
-    const savedJobsCount = useMemo(
-        () => filteredJobs.filter((job) => job.isSaved).length,
-        [filteredJobs],
+        sortableJobs.sort((a, b) => {
+            switch (sortBy) {
+                case "keywordScore":
+                    return b.keywords.length - a.keywords.length
+                case "pythonScore":
+                    return b.pythonScore - a.pythonScore
+                case "recent":
+                    return new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime()
+                case "applicants":
+                    return (
+                        (a.applicantsTotal ?? Number.MAX_SAFE_INTEGER) -
+                        (b.applicantsTotal ?? Number.MAX_SAFE_INTEGER)
+                    )
+                case "title":
+                    return a.title.localeCompare(b.title)
+                case "company":
+                    return a.company.name.localeCompare(b.company.name)
+                case "relevance":
+                default:
+                    return (
+                        b.visibleScore - a.visibleScore ||
+                        new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime()
+                    )
+            }
+        })
+
+        return sortableJobs
+    }, [evaluatedJobs, sortBy])
+
+    const visibleJobs = useMemo(
+        () => (showHiddenJobs ? sortedJobs : sortedJobs.filter((job) => !job.isHidden)),
+        [showHiddenJobs, sortedJobs],
     )
 
-    const maxPythonScore = useMemo(() => {
-        if (filteredJobs.length === 0) return 0
+    const hiddenCount = useMemo(
+        () => sortedJobs.filter((job) => job.isHidden).length,
+        [sortedJobs],
+    )
 
-        return Math.max(...filteredJobs.map((job) => job.pythonScore))
-    }, [filteredJobs])
+    const savedCount = useMemo(
+        () => jobs.filter((job) => savedIds.includes(job.jobId)).length,
+        [jobs, savedIds],
+    )
 
-    const resolvedSelectedJobId = useMemo(() => {
-        if (filteredJobs.length === 0) return null
+    const selectedJob = useMemo(
+        () =>
+            visibleJobs.find((job) => job.id === selectedJobId) ??
+            visibleJobs[0] ??
+            null,
+        [selectedJobId, visibleJobs],
+    )
 
-        const selectedJobStillExists =
-            selectedJobId !== null &&
-            filteredJobs.some((job) => job.id === selectedJobId)
-
-        if (selectedJobStillExists) return selectedJobId
-
-        return filteredJobs[0].id
-    }, [filteredJobs, selectedJobId])
-
-    const selectedJob =
-        filteredJobs.find((job) => job.id === resolvedSelectedJobId) ?? null
-
-    const addKeyword = (
-        event: FormEvent<HTMLFormElement>,
-        value: string,
-        currentKeywords: string[],
-        onChange: (keywords: string[]) => void,
-        onInputChange: (value: string) => void,
-    ) => {
-        event.preventDefault()
-
-        const normalized = value.trim().toLowerCase()
-
-        if (normalized && !currentKeywords.includes(normalized)) {
-            onChange([...currentKeywords, normalized])
-        }
-
-        onInputChange("")
-    }
-
-    const removeKeyword = (
-        keyword: string,
-        currentKeywords: string[],
-        onChange: (keywords: string[]) => void,
-    ) => {
-        onChange(currentKeywords.filter((item) => item !== keyword))
-    }
-
-    const toggleValue = (
-        value: string,
-        currentValues: string[],
-        onChange: (values: string[]) => void,
-    ) => {
-        if (currentValues.includes(value)) {
-            onChange(currentValues.filter((item) => item !== value))
+    useEffect(() => {
+        if (!selectedJob) {
+            setSelectedJobId(null)
             return
         }
 
-        onChange([...currentValues, value])
+        if (selectedJob.id !== selectedJobId) {
+            setSelectedJobId(selectedJob.id)
+        }
+    }, [selectedJob, selectedJobId])
+
+    const handleAddPositiveKeyword = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+
+        const keyword = normalizeText(newPositiveKeyword.trim())
+        if (!keyword) return
+
+        setPositiveKeywords((current) => unique([...current, keyword]))
+        setNewPositiveKeyword("")
     }
 
-    const handleFetchJobs = async () => {
-        setLoading(true)
-        setErrorMessage(null)
-        setProgressData(null)
+    const handleAddMustHaveKeyword = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
 
-        try {
-            const result = await fetchJobsMock({
-                count: fetchCount,
-                query: fetchQuery,
-                onProgress: setProgressData,
-            })
+        const keyword = normalizeText(newMustHaveKeyword.trim())
+        if (!keyword) return
 
-            setJobs(result.jobs)
-            setSelectedJobId(result.jobs[0]?.id ?? null)
-            setCacheTimestamp(result.cachedAt)
-            setLoadedFromCache(result.loadedFromCache)
-            setIsFetchModalOpen(false)
-        } catch (error) {
-            setErrorMessage(getErrorMessage(error))
-        } finally {
-            setLoading(false)
-            setProgressData(null)
-        }
+        setMustHaveKeywords((current) => unique([...current, keyword]))
+        setNewMustHaveKeyword("")
+    }
+
+    const handleAddNegativeKeyword = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+
+        const keyword = normalizeText(newNegativeKeyword.trim())
+        if (!keyword) return
+
+        setNegativeKeywords((current) => unique([...current, keyword]))
+        setNewNegativeKeyword("")
+    }
+
+    const toggleCompany = (company: string) => {
+        setNegativeCompanies((current) =>
+            current.includes(company)
+                ? current.filter((item) => item !== company)
+                : [...current, company],
+        )
+    }
+
+    const toggleWorkplaceType = (workplaceType: string) => {
+        setExcludedWorkplaceTypes((current) =>
+            current.includes(workplaceType)
+                ? current.filter((item) => item !== workplaceType)
+                : [...current, workplaceType],
+        )
     }
 
     const handleClearCache = () => {
@@ -1192,196 +1085,156 @@ export default function SearchJobsPage() {
         setSelectedJobId(null)
         setCacheTimestamp(null)
         setLoadedFromCache(false)
+        setFetchProgress(null)
+    }
+
+    const handleFetchJobs = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+
+        setLoading(true)
         setErrorMessage(null)
-        setProgressData(null)
-        setIsFetchModalOpen(true)
-    }
+        setFetchProgress(null)
 
-    const handleToggleSaved = (job: SearchJobView) => {
-        setSavedJobIds(toggleSavedJobMock(job.id))
-    }
+        try {
+            const result = await fetchJobsMock({
+                count: fetchCount,
+                query: fetchQuery,
+                onProgress: setFetchProgress,
+            })
 
-    const handleMaxApplicantsLimitChange = (value: number) => {
-        if (value >= maxPossibleApplicants) {
-            setMaxApplicantsLimit(Number.MAX_SAFE_INTEGER)
-            return
+            setJobs(result.jobs)
+            setCacheTimestamp(result.cachedAt)
+            setLoadedFromCache(result.loadedFromCache)
+            setIsFetchModalOpen(false)
+        } catch (error) {
+            setErrorMessage(
+                error instanceof Error
+                    ? error.message
+                    : "Could not fetch mock jobs.",
+            )
+        } finally {
+            setLoading(false)
         }
+    }
 
-        setMaxApplicantsLimit(value)
+    const handleToggleSaved = (job: JobView) => {
+        setSavedIds(toggleSavedJobMock(job.jobId))
+    }
+
+    const handleOpenApply = (job: JobView) => {
+        window.open(job.jobUrl, "_blank", "noopener,noreferrer")
     }
 
     return (
-        <>
-            <FetchJobsModal
-                isOpen={isFetchModalOpen}
-                count={fetchCount}
-                query={fetchQuery}
+        <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden bg-[#09111f] text-slate-100 xl:grid-cols-[430px_minmax(0,1fr)]">
+            <SearchJobsFilters
+                searchTerm={searchTerm}
+                onSearchTermChange={setSearchTerm}
+                verificationFilter={verificationFilter}
+                onVerificationFilterChange={setVerificationFilter}
+                sourceFilter={sourceFilter}
+                onSourceFilterChange={setSourceFilter}
+                sortBy={sortBy}
+                onSortByChange={setSortBy}
+                positiveKeywords={positiveKeywords}
+                newPositiveKeyword={newPositiveKeyword}
+                onNewPositiveKeywordChange={setNewPositiveKeyword}
+                onAddPositiveKeyword={handleAddPositiveKeyword}
+                onRemovePositiveKeyword={(keyword) =>
+                    setPositiveKeywords((current) =>
+                        current.filter((item) => item !== keyword),
+                    )
+                }
+                mustHaveKeywords={mustHaveKeywords}
+                newMustHaveKeyword={newMustHaveKeyword}
+                onNewMustHaveKeywordChange={setNewMustHaveKeyword}
+                onAddMustHaveKeyword={handleAddMustHaveKeyword}
+                onRemoveMustHaveKeyword={(keyword) =>
+                    setMustHaveKeywords((current) =>
+                        current.filter((item) => item !== keyword),
+                    )
+                }
+                negativeKeywords={negativeKeywords}
+                newNegativeKeyword={newNegativeKeyword}
+                onNewNegativeKeywordChange={setNewNegativeKeyword}
+                onAddNegativeKeyword={handleAddNegativeKeyword}
+                onRemoveNegativeKeyword={(keyword) =>
+                    setNegativeKeywords((current) =>
+                        current.filter((item) => item !== keyword),
+                    )
+                }
+                negativeCompanies={negativeCompanies}
+                onToggleNegativeCompany={toggleCompany}
+                excludedWorkplaceTypes={excludedWorkplaceTypes}
+                onToggleExcludedWorkplaceType={toggleWorkplaceType}
+                maxApplicantsLimit={maxApplicantsLimit}
+                maxPossibleApplicants={maxPossibleApplicants}
+                onMaxApplicantsLimitChange={(value) =>
+                    setMaxApplicantsLimit(
+                        value >= maxPossibleApplicants
+                            ? Number.MAX_SAFE_INTEGER
+                            : value,
+                    )
+                }
+                showHiddenJobs={showHiddenJobs}
+                onShowHiddenJobsChange={setShowHiddenJobs}
+                sourceOptions={sourceOptions}
+                companyOptions={companyOptions}
+                workplaceOptions={workplaceOptions}
+                cacheTimestamp={cacheTimestamp}
+                loadedFromCache={loadedFromCache}
                 loading={loading}
-                progress={progressData}
-                onCountChange={setFetchCount}
-                onQueryChange={setFetchQuery}
-                onClose={() => setIsFetchModalOpen(false)}
-                onConfirm={() => void handleFetchJobs()}
+                errorMessage={errorMessage}
+                onOpenFetchModal={() => setIsFetchModalOpen(true)}
+                onClearCache={handleClearCache}
+                filteredCount={visibleJobs.length}
+                hiddenCount={hiddenCount}
+                savedCount={savedCount}
+                containerClassName="h-full min-h-0 overflow-y-auto overscroll-contain border-b-0 border-r border-slate-800 [scrollbar-gutter:stable]"
+                resultsSlot={
+                    <JobListInsideFilters
+                        jobs={visibleJobs}
+                        selectedJobId={selectedJobId}
+                        onSelectJob={setSelectedJobId}
+                        loading={loading}
+                    />
+                }
             />
 
-            <div
-                className="mx-auto flex h-[calc(100vh-7rem)] min-h-0 w-full max-w-7xl overflow-hidden rounded-2xl border border-slate-800 bg-[#081120] text-slate-100 shadow-[0_24px_80px_rgba(0,0,0,0.25)]">
-                <aside className="flex h-full min-h-0 w-[430px] shrink-0 flex-col border-r border-slate-800 bg-[#0b1526]">
-                    <div className="px-4 pb-3 pt-4">
-                        <div className="grid grid-cols-3 gap-1 rounded-xl border border-slate-700 bg-slate-900/60 p-1">
-                            {SIDEBAR_VIEW_OPTIONS.map((option) => (
-                                <button
-                                    key={option.value}
-                                    type="button"
-                                    onClick={() => setSidebarView(option.value)}
-                                    className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
-                                        sidebarView === option.value
-                                            ? "bg-sky-500/15 text-sky-300"
-                                            : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                                    }`}
-                                >
-                                    {option.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {sidebarView !== "jobs" && (
-                    <SearchJobsFilters
-                        searchTerm={searchTerm}
-                        onSearchTermChange={setSearchTerm}
-                        verificationFilter={verificationFilter}
-                        onVerificationFilterChange={setVerificationFilter}
-                        sourceFilter={sourceFilter}
-                        onSourceFilterChange={setSourceFilter}
-                        sortBy={sortBy}
-                        onSortByChange={setSortBy}
-                        positiveKeywords={positiveKeywords}
-                        newPositiveKeyword={newPositiveKeyword}
-                        onNewPositiveKeywordChange={setNewPositiveKeyword}
-                        onAddPositiveKeyword={(event) =>
-                            addKeyword(
-                                event,
-                                newPositiveKeyword,
-                                positiveKeywords,
-                                setPositiveKeywords,
-                                setNewPositiveKeyword,
-                            )
-                        }
-                        onRemovePositiveKeyword={(keyword) =>
-                            removeKeyword(
-                                keyword,
-                                positiveKeywords,
-                                setPositiveKeywords,
-                            )
-                        }
-                        mustHaveKeywords={mustHaveKeywords}
-                        newMustHaveKeyword={newMustHaveKeyword}
-                        onNewMustHaveKeywordChange={setNewMustHaveKeyword}
-                        onAddMustHaveKeyword={(event) =>
-                            addKeyword(
-                                event,
-                                newMustHaveKeyword,
-                                mustHaveKeywords,
-                                setMustHaveKeywords,
-                                setNewMustHaveKeyword,
-                            )
-                        }
-                        onRemoveMustHaveKeyword={(keyword) =>
-                            removeKeyword(keyword, mustHaveKeywords, setMustHaveKeywords)
-                        }
-                        negativeKeywords={negativeKeywords}
-                        newNegativeKeyword={newNegativeKeyword}
-                        onNewNegativeKeywordChange={setNewNegativeKeyword}
-                        onAddNegativeKeyword={(event) =>
-                            addKeyword(
-                                event,
-                                newNegativeKeyword,
-                                negativeKeywords,
-                                setNegativeKeywords,
-                                setNewNegativeKeyword,
-                            )
-                        }
-                        onRemoveNegativeKeyword={(keyword) =>
-                            removeKeyword(keyword, negativeKeywords, setNegativeKeywords)
-                        }
-                        negativeCompanies={negativeCompanies}
-                        onToggleNegativeCompany={(company) =>
-                            toggleValue(company, negativeCompanies, setNegativeCompanies)
-                        }
-                        excludedWorkplaceTypes={excludedWorkplaceTypes}
-                        onToggleExcludedWorkplaceType={(workplaceType) =>
-                            toggleValue(
-                                workplaceType,
-                                excludedWorkplaceTypes,
-                                setExcludedWorkplaceTypes,
-                            )
-                        }
-                        maxApplicantsLimit={maxApplicantsLimit}
-                        maxPossibleApplicants={maxPossibleApplicants}
-                        onMaxApplicantsLimitChange={handleMaxApplicantsLimitChange}
-                        showHiddenJobs={showHiddenJobs}
-                        onShowHiddenJobsChange={setShowHiddenJobs}
-                        sourceOptions={sourceOptions}
-                        companyOptions={companyOptions}
-                        workplaceOptions={WORKPLACE_OPTIONS}
-                        cacheTimestamp={cacheTimestamp}
-                        loadedFromCache={loadedFromCache}
-                        loading={loading}
-                        errorMessage={errorMessage}
-                        onOpenFetchModal={() => setIsFetchModalOpen(true)}
-                        onClearCache={handleClearCache}
-                        filteredCount={filteredJobs.length}
-                        hiddenCount={negativeMatchCount}
-                        savedCount={savedJobsCount}
-                        containerClassName={
-                            sidebarView === "filters"
-                                ? "min-h-0 flex-1 max-h-none overflow-y-auto overscroll-contain border-b-0 [scrollbar-gutter:stable]"
-                                : undefined
-                        }
-                    />
-                    )}
-
-                    {sidebarView !== "filters" && (
-                    <div className="min-h-0 flex-1 overflow-y-auto py-1">
-                        {loading && jobs.length === 0 ? (
-                            <div
-                                className="flex h-full items-center justify-center px-8 text-center text-sm font-semibold text-slate-400">
-                                Loading mock jobs...
-                            </div>
-                        ) : filteredJobs.length > 0 ? (
-                            filteredJobs.map((job) => (
-                                <JobListItem
-                                    key={job.id}
-                                    job={job}
-                                    isSelected={resolvedSelectedJobId === job.id}
-                                    onSelect={setSelectedJobId}
-                                />
-                            ))
-                        ) : (
-                            <div
-                                className="flex h-full flex-col items-center justify-center px-8 text-center text-slate-400">
-                                <Filter className="mb-4 text-slate-500" size={42}/>
-                                <h3 className="text-lg font-semibold text-slate-200">
-                                    No jobs found
-                                </h3>
-                                <p className="mt-2 max-w-md text-sm">
-                                    Try changing the search term or one of the filters.
-                                </p>
-                            </div>
-                        )}
-                    </div>
-                    )}
-                </aside>
-
-                <main className="min-h-0 min-w-0 flex-1 bg-[#0d1728]">
-                    <JobDetails
+            <section className="min-h-0 overflow-hidden bg-slate-950">
+                {selectedJob ? (
+                    <SelectedJobPreview
                         job={selectedJob}
-                        maxPythonScore={maxPythonScore}
-                        onToggleSaved={handleToggleSaved}
+                        onToggleSaved={() => handleToggleSaved(selectedJob)}
+                        onOpenApply={() => handleOpenApply(selectedJob)}
                     />
-                </main>
-            </div>
-        </>
+                ) : (
+                    <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+                        <Briefcase size={34} className="text-slate-600"/>
+
+                        <p className="mt-4 text-sm font-extrabold text-slate-300">
+                            Select a job
+                        </p>
+
+                        <p className="mt-2 max-w-sm text-xs leading-5 text-slate-500">
+                            Pick one job from the existing filter/list panel to preview its details here.
+                        </p>
+                    </div>
+                )}
+            </section>
+
+            {isFetchModalOpen && (
+                <FetchJobsModal
+                    fetchCount={fetchCount}
+                    setFetchCount={setFetchCount}
+                    fetchQuery={fetchQuery}
+                    setFetchQuery={setFetchQuery}
+                    loading={loading}
+                    progress={fetchProgress}
+                    onClose={() => setIsFetchModalOpen(false)}
+                    onSubmit={handleFetchJobs}
+                />
+            )}
+        </div>
     )
 }
