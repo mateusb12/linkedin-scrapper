@@ -155,13 +155,23 @@ const getScoreBarClassName = (score: number) => {
     return "bg-red-400"
 }
 
-function ScoreBadge({score}: { score: number }) {
+function ScoreBadge({
+                        score,
+                        label = "Python score",
+                    }: {
+    score: number
+    label?: string
+}) {
+    const roundedScore = Math.round(score)
+
     return (
         <span
-            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-extrabold ${getScoreTone(score)}`}
+            title={`${label}: ${roundedScore}`}
+            aria-label={`${label}: ${roundedScore}`}
+            className={`inline-flex cursor-help items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-extrabold ${getScoreTone(score)}`}
         >
             <Zap size={13}/>
-            {Math.round(score)}
+            {roundedScore}
         </span>
     )
 }
@@ -175,7 +185,11 @@ function JobSortHighlightBadge({
 }) {
     if (sortBy === "keywordScore") {
         return (
-            <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/50 bg-amber-400/10 px-2.5 py-1 text-xs font-extrabold text-amber-200">
+            <span
+                title={`Keyword score: ${job.keywords.length} detected keywords`}
+                aria-label={`Keyword score: ${job.keywords.length} detected keywords`}
+                className="inline-flex cursor-help items-center gap-1 rounded-full border border-amber-400/50 bg-amber-400/10 px-2.5 py-1 text-xs font-extrabold text-amber-200"
+            >
                 <Sparkles size={13}/>
                 {job.keywords.length}
             </span>
@@ -183,8 +197,17 @@ function JobSortHighlightBadge({
     }
 
     if (sortBy === "applicants") {
+        const applicantsLabel =
+            job.applicantsTotal == null
+                ? "Applicants: not available"
+                : `Applicants: ${job.applicantsTotal}`
+
         return (
-            <span className="inline-flex items-center gap-1 rounded-full border border-purple-400/50 bg-purple-400/10 px-2.5 py-1 text-xs font-extrabold text-purple-200">
+            <span
+                title={applicantsLabel}
+                aria-label={applicantsLabel}
+                className="inline-flex cursor-help items-center gap-1 rounded-full border border-purple-400/50 bg-purple-400/10 px-2.5 py-1 text-xs font-extrabold text-purple-200"
+            >
                 <Users size={13}/>
                 {job.applicantsTotal == null ? "N/A" : job.applicantsTotal}
             </span>
@@ -192,19 +215,27 @@ function JobSortHighlightBadge({
     }
 
     if (sortBy === "pythonScore") {
+        const roundedPythonScore = Math.round(job.pythonScore)
+
         return (
             <span
-                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-extrabold ${getScoreTone(job.pythonScore)}`}
+                title={`Python score: ${roundedPythonScore}`}
+                aria-label={`Python score: ${roundedPythonScore}`}
+                className={`inline-flex cursor-help items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-extrabold ${getScoreTone(job.pythonScore)}`}
             >
                 <Zap size={13}/>
-                {Math.round(job.pythonScore)}
+                {roundedPythonScore}
             </span>
         )
     }
 
     if (sortBy === "recent") {
         return (
-            <span className="inline-flex items-center gap-1 rounded-full border border-sky-400/50 bg-sky-400/10 px-2.5 py-1 text-[11px] font-extrabold text-sky-200">
+            <span
+                title={`Posted date: ${formatFullDate(job.postedAt)}`}
+                aria-label={`Posted date: ${formatFullDate(job.postedAt)}`}
+                className="inline-flex cursor-help items-center gap-1 rounded-full border border-sky-400/50 bg-sky-400/10 px-2.5 py-1 text-[11px] font-extrabold text-sky-200"
+            >
                 <Clock3 size={13}/>
                 {formatDateDistance(job.postedAt)}
             </span>
@@ -213,7 +244,11 @@ function JobSortHighlightBadge({
 
     if (sortBy === "title") {
         return (
-            <span className="inline-flex items-center gap-1 rounded-full border border-slate-500/60 bg-slate-700/40 px-2.5 py-1 text-xs font-extrabold text-slate-200">
+            <span
+                title="Title sort: A-Z"
+                aria-label="Title sort: A-Z"
+                className="inline-flex cursor-help items-center gap-1 rounded-full border border-slate-500/60 bg-slate-700/40 px-2.5 py-1 text-xs font-extrabold text-slate-200"
+            >
                 <Briefcase size={13}/>
                 A-Z
             </span>
@@ -222,14 +257,18 @@ function JobSortHighlightBadge({
 
     if (sortBy === "company") {
         return (
-            <span className="inline-flex items-center gap-1 rounded-full border border-slate-500/60 bg-slate-700/40 px-2.5 py-1 text-xs font-extrabold text-slate-200">
+            <span
+                title="Company sort: A-Z"
+                aria-label="Company sort: A-Z"
+                className="inline-flex cursor-help items-center gap-1 rounded-full border border-slate-500/60 bg-slate-700/40 px-2.5 py-1 text-xs font-extrabold text-slate-200"
+            >
                 <Building2 size={13}/>
                 A-Z
             </span>
         )
     }
 
-    return <ScoreBadge score={job.visibleScore}/>
+    return <ScoreBadge score={job.visibleScore} label="Relevance score"/>
 }
 
 function SmallPill({
