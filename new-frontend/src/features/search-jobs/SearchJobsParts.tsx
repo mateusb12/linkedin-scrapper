@@ -149,6 +149,64 @@ const normalizeTechText = (value: string) =>
         .replace(/\s+/g, " ")
 
 
+
+const GENERIC_JOB_SIGNAL_KEYWORDS = new Set([
+    "api",
+    "backend",
+    "frontend",
+    "remote",
+    "hybrid",
+    "on site",
+    "on-site",
+    "onsite",
+    "presential",
+    "presencial",
+    "full stack",
+    "fullstack",
+    "full-stack",
+    "platform",
+    "data engineering",
+    "data engineer",
+    "qa",
+    "qa automation",
+    "automation",
+    "mobile",
+    "junior",
+    "júnior",
+    "pleno",
+    "senior",
+    "sênior",
+    "intern",
+    "internship",
+    "estagio",
+    "estágio",
+])
+
+const isGenericJobSignal = (keyword: string) => {
+    const normalizedKeyword = normalizeTechText(keyword)
+    const normalizedLabel = normalizeTechText(formatTechLabel(keyword))
+
+    return (
+        GENERIC_JOB_SIGNAL_KEYWORDS.has(normalizedKeyword) ||
+        GENERIC_JOB_SIGNAL_KEYWORDS.has(normalizedLabel)
+    )
+}
+
+const matchesPositiveKeyword = (value: string, positiveKeywords: string[]) => {
+    const normalizedValue = normalizeTechText(value)
+    const normalizedLabel = normalizeTechText(formatTechLabel(value))
+
+    return positiveKeywords.some((keyword) => {
+        const normalizedKeyword = normalizeTechText(keyword)
+
+        return (
+            normalizedKeyword === normalizedValue ||
+            normalizedKeyword === normalizedLabel
+        )
+    })
+}
+
+
 function TechBadge({
                        tech,
                        positive,
@@ -221,6 +279,33 @@ const getApplicantsTone = (applicants?: number | null) => {
         className: "border-red-400/40 bg-red-500/10 text-red-200",
     }
 }
+
+
+function RoleSignalBadge({
+                            signal,
+                            positive,
+                        }: {
+    signal: string
+    positive: boolean
+}) {
+    const label = formatTechLabel(signal)
+
+    return (
+        <span
+            title={positive ? `${label}: positive role signal` : `${label}: role signal`}
+            aria-label={positive ? `${label}: positive role signal` : `${label}: role signal`}
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${
+                positive
+                    ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200 shadow-[0_0_0_1px_rgba(52,211,153,0.12)]"
+                    : "border-slate-600 bg-slate-900/70 text-slate-300"
+            }`}
+        >
+            <Briefcase size={13} className="opacity-80"/>
+            {label}
+        </span>
+    )
+}
+
 
 function ApplicantsBadge({
                              applicants,
@@ -848,33 +933,61 @@ export function SelectedJobPreview({
                 </section>
 
                 <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
-                    <h2 className="text-lg font-extrabold text-slate-50">
-                        Detected stack
-                    </h2>
+                    {(() => {
+                        const stackKeywords = job.keywords.filter(
+                            (item) => !isGenericJobSignal(item),
+                        )
 
-                    <div className="mt-4 flex flex-wrap gap-2">
-                        {job.keywords.length > 0 ? (
-                            job.keywords.map((item) => {
-                                const isPositive = job.matchedPositiveKeywords.some(
-                                    (keyword) =>
-                                        normalizeTechText(keyword) === normalizeTechText(item) ||
-                                        normalizeTechText(keyword) === normalizeTechText(formatTechLabel(item)),
-                                )
+                        const roleSignals = job.keywords.filter(isGenericJobSignal)
 
-                                return (
-                                    <TechBadge
-                                        key={item}
-                                        tech={item}
-                                        positive={isPositive}
-                                    />
-                                )
-                            })
-                        ) : (
-                            <p className="text-sm text-slate-500">
-                                No stack detected in this mock payload.
-                            </p>
-                        )}
-                    </div>
+                        return (
+                            <>
+                                <h2 className="text-lg font-extrabold text-slate-50">
+                                    Detected stack
+                                </h2>
+
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                    {stackKeywords.length > 0 ? (
+                                        stackKeywords.map((item) => (
+                                            <TechBadge
+                                                key={item}
+                                                tech={item}
+                                                positive={matchesPositiveKeyword(
+                                                    item,
+                                                    job.matchedPositiveKeywords,
+                                                )}
+                                            />
+                                        ))
+                                    ) : (
+                                        <p className="text-sm text-slate-500">
+                                            No concrete tech stack detected in this mock payload.
+                                        </p>
+                                    )}
+                                </div>
+
+                                {roleSignals.length > 0 && (
+                                    <div className="mt-5 border-t border-slate-800 pt-4">
+                                        <h3 className="text-sm font-extrabold text-slate-300">
+                                            Role signals
+                                        </h3>
+
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            {roleSignals.map((item) => (
+                                                <RoleSignalBadge
+                                                    key={item}
+                                                    signal={item}
+                                                    positive={matchesPositiveKeyword(
+                                                        item,
+                                                        job.matchedPositiveKeywords,
+                                                    )}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )
+                    })()}
                 </section>
 
                 <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
