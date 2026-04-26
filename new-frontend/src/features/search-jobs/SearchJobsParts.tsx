@@ -5,7 +5,6 @@ import {
     Briefcase,
     Building2,
     CalendarDays,
-    CheckCircle2,
     Clock3,
     ExternalLink,
     Filter,
@@ -13,7 +12,6 @@ import {
     RefreshCw,
     Search,
     Sparkles,
-    Target,
     Users,
     X,
     Zap,
@@ -144,12 +142,36 @@ const formatTechLabel = (tech: string) => {
     )
 }
 
-function TechBadge({tech}: { tech: string }) {
+const normalizeTechText = (value: string) =>
+    value
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/\p{Diacritic}/gu, "")
+        .replace(/[-_.]/g, " ")
+        .replace(/\s+/g, " ")
+
+
+function TechBadge({
+                       tech,
+                       positive,
+                   }: {
+    tech: string
+    positive: boolean
+}) {
     const label = formatTechLabel(tech)
     const icon = getTechIcon(label)
 
     return (
-        <span className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-bold text-slate-300">
+        <span
+            title={positive ? `${label}: positive keyword match` : label}
+            aria-label={positive ? `${label}: positive keyword match` : label}
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${
+                positive
+                    ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200 shadow-[0_0_0_1px_rgba(52,211,153,0.12)]"
+                    : "border-slate-700 bg-slate-950 text-slate-300"
+            }`}
+        >
             {icon && (
                 <img
                     src={icon}
@@ -529,51 +551,6 @@ function DescriptionBlock({text}: { text: string }) {
     )
 }
 
-function MatchPanel({
-                        title,
-                        icon,
-                        values,
-                        tone,
-                        emptyLabel,
-                    }: {
-    title: string
-    icon: ReactNode
-    values: string[]
-    tone: "green" | "amber" | "red" | "blue"
-    emptyLabel: string
-}) {
-    const toneClasses = {
-        green: "border-emerald-500/25 bg-emerald-500/10 text-emerald-200",
-        amber: "border-amber-500/25 bg-amber-500/10 text-amber-200",
-        red: "border-red-500/25 bg-red-500/10 text-red-200",
-        blue: "border-sky-500/25 bg-sky-500/10 text-sky-200",
-    }
-
-    return (
-        <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
-            <h4 className="flex items-center gap-2 text-sm font-extrabold text-slate-100">
-                <span className={toneClasses[tone]}>{icon}</span>
-                {title}
-            </h4>
-
-            {values.length > 0 ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                    {values.map((value) => (
-                        <span
-                            key={value}
-                            className={`rounded-full border px-2.5 py-1 text-xs font-bold ${toneClasses[tone]}`}
-                        >
-                            {value}
-                        </span>
-                    ))}
-                </div>
-            ) : (
-                <p className="mt-3 text-xs leading-5 text-slate-500">{emptyLabel}</p>
-            )}
-        </div>
-    )
-}
-
 export function SelectedJobPreview({
                                        job,
                                        onToggleSaved,
@@ -716,9 +693,21 @@ export function SelectedJobPreview({
 
                     <div className="mt-4 flex flex-wrap gap-2">
                         {job.keywords.length > 0 ? (
-                            job.keywords.map((item) => (
-                                <TechBadge key={item} tech={item}/>
-                            ))
+                            job.keywords.map((item) => {
+                                const isPositive = job.matchedPositiveKeywords.some(
+                                    (keyword) =>
+                                        normalizeTechText(keyword) === normalizeTechText(item) ||
+                                        normalizeTechText(keyword) === normalizeTechText(formatTechLabel(item)),
+                                )
+
+                                return (
+                                    <TechBadge
+                                        key={item}
+                                        tech={item}
+                                        positive={isPositive}
+                                    />
+                                )
+                            })
                         ) : (
                             <p className="text-sm text-slate-500">
                                 No stack detected in this mock payload.
@@ -726,32 +715,6 @@ export function SelectedJobPreview({
                         )}
                     </div>
                 </section>
-
-                <div className="grid gap-5 xl:grid-cols-3">
-                    <MatchPanel
-                        title="Positive"
-                        icon={<CheckCircle2 size={15}/>}
-                        values={job.matchedPositiveKeywords}
-                        tone="green"
-                        emptyLabel="No positive keyword matched yet."
-                    />
-
-                    <MatchPanel
-                        title="Missing"
-                        icon={<Target size={15}/>}
-                        values={job.missingMustHaveKeywords}
-                        tone="amber"
-                        emptyLabel="No missing must-have keyword."
-                    />
-
-                    <MatchPanel
-                        title="Negative"
-                        icon={<Filter size={15}/>}
-                        values={job.matchedNegativeKeywords}
-                        tone="red"
-                        emptyLabel="No negative keyword matched."
-                    />
-                </div>
 
                 <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
                     <h2 className="text-lg font-extrabold text-slate-50">
