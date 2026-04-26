@@ -589,7 +589,7 @@ export default function SearchJobsPage() {
                 filteredCount={visibleJobs.length}
                 hiddenCount={hiddenCount}
                 savedCount={savedCount}
-                containerClassName="h-full min-h-0 overflow-y-auto overscroll-contain border-b-0 border-r border-slate-800 [scrollbar-gutter:stable]"
+                containerClassName="h-full min-h-0 overflow-hidden border-b-0 border-r border-slate-800"
                 resultsSlot={
                     <JobListInsideFilters
                         jobs={visibleJobs}

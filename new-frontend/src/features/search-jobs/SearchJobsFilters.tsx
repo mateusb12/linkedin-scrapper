@@ -304,7 +304,7 @@ export default function SearchJobsFilters({
 
     return (
         <div
-            className={`space-y-4 border-b border-slate-800 p-4 ${containerClassName}`}
+            className={`flex min-h-0 flex-col gap-4 border-b border-slate-800 p-4 ${containerClassName}`}
         >
             <div className="relative">
                 <Search
@@ -665,7 +665,7 @@ export default function SearchJobsFilters({
             </div>
 
             {resultsSlot && (
-                <div className="border-t border-slate-800 pt-4">
+                <div className="min-h-0 flex-1 overflow-hidden border-t border-slate-800 pt-4">
                     {resultsSlot}
                 </div>
             )}

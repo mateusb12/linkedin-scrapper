@@ -527,6 +527,9 @@ function JobSortHighlightBadge({
     }
 }
 
+const VISIBLE_JOB_ROWS = 10
+const ESTIMATED_JOB_CARD_HEIGHT_PX = 132
+
 export function JobListInsideFilters({
                                          jobs,
                                          selectedJobId,
@@ -567,7 +570,7 @@ export function JobListInsideFilters({
     }
 
     return (
-        <div className="space-y-2">
+        <div className="flex h-full min-h-0 flex-col gap-2">
             <div className="flex items-center justify-between gap-3">
                 <p className="flex items-center gap-2 text-sm font-black text-slate-100">
                     <Briefcase size={16} className="text-sky-400"/>
@@ -579,7 +582,12 @@ export function JobListInsideFilters({
                 </span>
             </div>
 
-            <div className="space-y-2">
+            <div
+                className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]"
+                style={{
+                    maxHeight: `calc((${ESTIMATED_JOB_CARD_HEIGHT_PX}px * ${VISIBLE_JOB_ROWS}) + (0.5rem * ${VISIBLE_JOB_ROWS - 1}))`,
+                }}
+            >
                 {jobs.map((job) => {
                     const selected = job.id === selectedJobId
 
