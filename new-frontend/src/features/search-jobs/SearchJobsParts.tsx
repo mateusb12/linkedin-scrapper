@@ -10,7 +10,7 @@ import {
     Filter,
     MapPin,
     RefreshCw,
-    Search,
+    Search, ShieldCheck,
     Sparkles,
     Users,
     X,
@@ -26,10 +26,7 @@ import {
 } from "./searchJobsMockService.ts"
 
 
-import {
-    getCompetitionStyle,
-    getTechIcon,
-} from "../job-analysis/jobUtils.ts"
+import {getTechIcon} from "../job-analysis/jobUtils.ts"
 
 export type JobView = SearchJob & {
     isSaved: boolean
@@ -185,6 +182,46 @@ function TechBadge({
     )
 }
 
+const getApplicantsTone = (applicants?: number | null) => {
+    if (applicants == null) {
+        return {
+            label: "Applicants not shown",
+            level: "Unknown competition",
+            className: "border-slate-700 bg-slate-900/80 text-slate-300",
+        }
+    }
+
+    if (applicants < 117) {
+        return {
+            label: `${applicants} applicants`,
+            level: "Low competition",
+            className: "border-emerald-400/40 bg-emerald-500/10 text-emerald-200",
+        }
+    }
+
+    if (applicants < 468) {
+        return {
+            label: `${applicants} applicants`,
+            level: "Medium competition",
+            className: "border-amber-400/40 bg-amber-500/10 text-amber-200",
+        }
+    }
+
+    if (applicants < 1820) {
+        return {
+            label: `${applicants} applicants`,
+            level: "High competition",
+            className: "border-orange-400/40 bg-orange-500/10 text-orange-200",
+        }
+    }
+
+    return {
+        label: `${applicants} applicants`,
+        level: "Very high competition",
+        className: "border-red-400/40 bg-red-500/10 text-red-200",
+    }
+}
+
 function ApplicantsBadge({
                              applicants,
                              compact = false,
@@ -192,26 +229,136 @@ function ApplicantsBadge({
     applicants?: number | null
     compact?: boolean
 }) {
-    const label =
-        applicants == null
-            ? "Applicants not shown"
-            : `${applicants} applicants`
+    const tone = getApplicantsTone(applicants)
 
     return (
         <span
-            title={label}
-            aria-label={label}
-            className={`inline-flex items-center gap-1 rounded-full border font-bold ${getCompetitionStyle(applicants)} ${
-                compact ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs"
+            title={`${tone.label} · ${tone.level}`}
+            aria-label={`${tone.label} · ${tone.level}`}
+            className={`inline-flex w-fit items-center justify-self-start gap-1.5 rounded-full border font-extrabold shadow-sm ${
+                tone.className
+            } ${
+                compact
+                    ? "px-2 py-0.5 text-[11px]"
+                    : "px-3 py-1.5 text-xs"
             }`}
         >
-            <Users size={compact ? 12 : 14}/>
-            {applicants == null ? "N/A" : applicants}
-            {!compact && <span>applicants</span>}
+            <Users size={compact ? 12 : 14} className="opacity-90"/>
+            <span>{applicants == null ? "N/A" : applicants}</span>
+            {!compact && <span className="font-bold opacity-90">applicants</span>}
         </span>
     )
 }
 
+
+const getSeniorityTone = (seniority?: string | null) => {
+    const value = (seniority ?? "").trim().toLowerCase()
+
+    if (value.includes("jun")) {
+        return {
+            label: seniority || "Junior",
+            hint: "Junior level",
+            className: "border-emerald-400/40 bg-emerald-500/10 text-emerald-200",
+        }
+    }
+
+    if (value.includes("plen") || value.includes("mid")) {
+        return {
+            label: seniority || "Mid level",
+            hint: "Mid level",
+            className: "border-sky-400/40 bg-sky-500/10 text-sky-200",
+        }
+    }
+
+    if (value.includes("sen")) {
+        return {
+            label: seniority || "Senior",
+            hint: "Senior level",
+            className: "border-purple-400/40 bg-purple-500/10 text-purple-200",
+        }
+    }
+
+    if (value.includes("estag") || value.includes("intern")) {
+        return {
+            label: seniority || "Internship",
+            hint: "Internship level",
+            className: "border-amber-400/40 bg-amber-500/10 text-amber-200",
+        }
+    }
+
+    return {
+        label: seniority || "Not specified",
+        hint: "Seniority",
+        className: "border-slate-700 bg-slate-900/80 text-slate-300",
+    }
+}
+
+function SeniorityBadge({seniority}: { seniority?: string | null }) {
+    const tone = getSeniorityTone(seniority)
+
+    return (
+        <span
+            title={`${tone.hint}: ${tone.label}`}
+            aria-label={`${tone.hint}: ${tone.label}`}
+            className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-extrabold shadow-sm ${tone.className}`}
+        >
+            <ShieldCheck size={14} className="opacity-90"/>
+            <span>{tone.label}</span>
+        </span>
+    )
+}
+
+const getExperienceTone = (experience?: string | null) => {
+    const value = (experience ?? "").trim()
+    const normalized = value.toLowerCase()
+    const match = normalized.match(/(\d+)/)
+    const years = match ? Number(match[1]) : null
+
+    if (years == null) {
+        return {
+            label: value || "Not specified",
+            hint: "Experience required",
+            className: "border-slate-700 bg-slate-900/80 text-slate-300",
+        }
+    }
+
+    if (years <= 2) {
+        return {
+            label: value,
+            hint: "Lower experience requirement",
+            className: "border-emerald-400/40 bg-emerald-500/10 text-emerald-200",
+        }
+    }
+
+    if (years <= 4) {
+        return {
+            label: value,
+            hint: "Moderate experience requirement",
+            className: "border-amber-400/40 bg-amber-500/10 text-amber-200",
+        }
+    }
+
+    return {
+        label: value,
+        hint: "Higher experience requirement",
+        className: "border-red-400/40 bg-red-500/10 text-red-200",
+    }
+}
+
+function ExperienceBadge({experience}: { experience?: string | null }) {
+    const tone = getExperienceTone(experience)
+
+    return (
+        <span
+            title={`${tone.hint}: ${tone.label}`}
+            aria-label={`${tone.hint}: ${tone.label}`}
+            className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-extrabold shadow-sm ${tone.className}`}
+        >
+            <Clock3 size={14} className="opacity-90"/>
+            <span>{tone.label}</span>
+        </span>
+    )
+}
 
 
 const getJobCardClassName = (job: JobView, selected: boolean) => {
@@ -395,7 +542,8 @@ export function JobListInsideFilters({
 }) {
     if (loading && jobs.length === 0) {
         return (
-            <div className="flex items-center justify-center rounded-xl border border-slate-800 bg-slate-900/40 p-6 text-sm text-slate-400">
+            <div
+                className="flex items-center justify-center rounded-xl border border-slate-800 bg-slate-900/40 p-6 text-sm text-slate-400">
                 <RefreshCw size={16} className="mr-2 animate-spin text-sky-400"/>
                 Loading mock jobs...
             </div>
@@ -586,17 +734,22 @@ export function SelectedJobPreview({
                             {job.company.name}
                         </p>
 
-                        <div className="mt-3 flex flex-wrap gap-2">
-                            {job.verified && <SmallPill tone="green">Verified</SmallPill>}
+                        <div className="mt-3 space-y-2">
+                            <div className="flex flex-wrap gap-2">
+                                {job.verified && <SmallPill tone="green">Verified</SmallPill>}
 
-                            <SmallPill tone={job.workplaceType === "Remote" ? "blue" : "default"}>
-                                {job.workplaceType}
-                            </SmallPill>
+                                <SmallPill tone={job.workplaceType === "Remote" ? "blue" : "default"}>
+                                    {job.workplaceType}
+                                </SmallPill>
 
-                            <SmallPill>{job.seniority}</SmallPill>
-                            <SmallPill>{job.experienceYears}</SmallPill>
+                                {job.isHidden && <SmallPill tone="red">Filtered</SmallPill>}
+                            </div>
 
-                            {job.isHidden && <SmallPill tone="red">Filtered</SmallPill>}
+                            <div className="flex flex-wrap gap-2">
+                                <ApplicantsBadge applicants={job.applicantsTotal}/>
+                                <SeniorityBadge seniority={job.seniority}/>
+                                <ExperienceBadge experience={job.experienceYears}/>
+                            </div>
                         </div>
                     </div>
 
