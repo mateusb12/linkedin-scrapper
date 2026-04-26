@@ -243,16 +243,24 @@ function JobListInsideFilters({
                 {jobs.map((job) => {
                     const selected = job.id === selectedJobId
 
+                    const cardClassName = job.isHidden
+                        ? selected
+                            ? "border-red-400/90 bg-red-950/45 shadow-[inset_4px_0_0_#f87171] ring-1 ring-red-500/40"
+                            : "border-red-500/60 bg-red-950/30 hover:border-red-400/80 hover:bg-red-950/40"
+                        : job.isSaved
+                            ? selected
+                                ? "border-emerald-400/90 bg-emerald-950/40 shadow-[inset_4px_0_0_#34d399] ring-1 ring-emerald-500/40"
+                                : "border-emerald-500/50 bg-emerald-950/20 hover:border-emerald-400/70 hover:bg-emerald-950/30"
+                            : selected
+                                ? "border-sky-400/70 bg-sky-500/10 shadow-[inset_3px_0_0_#38bdf8]"
+                                : "border-slate-800 bg-slate-950/50 hover:border-slate-700 hover:bg-slate-900/70"
+
                     return (
                         <button
                             key={job.id}
                             type="button"
                             onClick={() => onSelectJob(job.id)}
-                            className={`w-full rounded-xl border p-3 text-left transition ${
-                                selected
-                                    ? "border-sky-400/70 bg-sky-500/10 shadow-[inset_3px_0_0_#38bdf8]"
-                                    : "border-slate-800 bg-slate-950/50 hover:border-slate-700 hover:bg-slate-900/70"
-                            } ${job.isHidden ? "opacity-60" : ""}`}
+                            className={`w-full rounded-xl border p-3 text-left transition ${cardClassName}`}
                         >
                             <div className="flex gap-3">
                                 <img
