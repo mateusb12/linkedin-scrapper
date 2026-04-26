@@ -27,6 +27,12 @@ import {
     type SearchJob,
 } from "./searchJobsMockService.ts"
 
+
+import {
+    getCompetitionStyle,
+    getTechIcon,
+} from "../job-analysis/jobUtils.ts"
+
 export type JobView = SearchJob & {
     isSaved: boolean
     visibleScore: number
@@ -84,6 +90,107 @@ const getScoreBarClassName = (score: number) => {
 
     return "bg-red-400"
 }
+
+const TECH_LABEL_ALIASES: Record<string, string> = {
+    api: "API",
+    aws: "AWS",
+    azure: "Azure",
+    backend: "Backend",
+    django: "Django",
+    docker: "Docker",
+    fastapi: "FastAPI",
+    flask: "Flask",
+    frontend: "Frontend",
+    gemini: "Gemini",
+    git: "Git",
+    java: "Java",
+    javascript: "JavaScript",
+    kafka: "Kafka",
+    kubernetes: "Kubernetes",
+    langchain: "LangChain",
+    linux: "Linux",
+    llm: "LLM",
+    mysql: "MySQL",
+    nextjs: "NextJS",
+    node: "Node.js",
+    nodejs: "Node.js",
+    "node.js": "Node.js",
+    oracle: "Oracle",
+    pandas: "Pandas",
+    php: "PHP",
+    postgres: "PostgreSQL",
+    postgresql: "PostgreSQL",
+    python: "Python",
+    rabbitmq: "RabbitMQ",
+    react: "React",
+    "react native": "React Native",
+    reactnative: "React Native",
+    redis: "Redis",
+    remote: "Remote",
+    sql: "SQL",
+    terraform: "Terraform",
+    typescript: "TypeScript",
+    vue: "Vue",
+}
+
+const formatTechLabel = (tech: string) => {
+    const normalized = tech.trim().toLowerCase()
+
+    return (
+        TECH_LABEL_ALIASES[normalized] ??
+        tech
+            .replace(/[-_]/g, " ")
+            .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    )
+}
+
+function TechBadge({tech}: { tech: string }) {
+    const label = formatTechLabel(tech)
+    const icon = getTechIcon(label)
+
+    return (
+        <span className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-bold text-slate-300">
+            {icon && (
+                <img
+                    src={icon}
+                    alt=""
+                    aria-hidden="true"
+                    className="h-4 w-4 rounded-sm object-contain"
+                />
+            )}
+            {label}
+        </span>
+    )
+}
+
+function ApplicantsBadge({
+                             applicants,
+                             compact = false,
+                         }: {
+    applicants?: number | null
+    compact?: boolean
+}) {
+    const label =
+        applicants == null
+            ? "Applicants not shown"
+            : `${applicants} applicants`
+
+    return (
+        <span
+            title={label}
+            aria-label={label}
+            className={`inline-flex items-center gap-1 rounded-full border font-bold ${getCompetitionStyle(applicants)} ${
+                compact ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs"
+            }`}
+        >
+            <Users size={compact ? 12 : 14}/>
+            {applicants == null ? "N/A" : applicants}
+            {!compact && <span>applicants</span>}
+        </span>
+    )
+}
+
+
 
 const getJobCardClassName = (job: JobView, selected: boolean) => {
     if (job.isHidden) {
@@ -365,12 +472,7 @@ export function JobListInsideFilters({
                                             {formatDateDistance(job.postedAt)}
                                         </span>
 
-                                        <span className="inline-flex items-center gap-1">
-                                            <Users size={12}/>
-                                            {job.applicantsTotal == null
-                                                ? "No applicants data"
-                                                : `${job.applicantsTotal} applicants`}
-                                        </span>
+                                        <ApplicantsBadge applicants={job.applicantsTotal} compact/>
 
                                         {job.isSaved && (
                                             <span className="inline-flex items-center gap-1 text-emerald-300">
@@ -580,12 +682,7 @@ export function SelectedJobPreview({
                             {formatFullDate(job.postedAt)}
                         </span>
 
-                        <span className="inline-flex items-center gap-2">
-                            <Users size={15}/>
-                            {job.applicantsTotal == null
-                                ? "Applicants not shown"
-                                : `${job.applicantsTotal} applicants`}
-                        </span>
+                        <ApplicantsBadge applicants={job.applicantsTotal}/>
                     </div>
 
                     <div className={`mt-5 rounded-2xl border p-4 ${getScoreTone(job.visibleScore)}`}>
@@ -620,12 +717,7 @@ export function SelectedJobPreview({
                     <div className="mt-4 flex flex-wrap gap-2">
                         {job.keywords.length > 0 ? (
                             job.keywords.map((item) => (
-                                <span
-                                    key={item}
-                                    className="rounded-full border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-bold text-slate-300"
-                                >
-                                    {item}
-                                </span>
+                                <TechBadge key={item} tech={item}/>
                             ))
                         ) : (
                             <p className="text-sm text-slate-500">
