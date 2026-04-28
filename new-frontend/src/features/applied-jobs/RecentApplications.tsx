@@ -184,7 +184,7 @@ function AppliedTechBadge({tech}: {tech: string}) {
         <span
             title={label}
             aria-label={label}
-            className="inline-flex min-w-[92px] items-center justify-center gap-2 rounded-md border border-gray-700 bg-gray-900/70 px-2.5 py-1 text-xs font-extrabold text-gray-200"
+            className="inline-flex min-w-[84px] items-center justify-center gap-2 rounded-md border border-gray-700 bg-gray-900/70 px-2.5 py-1 text-xs font-extrabold text-gray-200"
         >
             {icon && (
                 <img
@@ -488,13 +488,13 @@ export default function RecentApplications({
                             <div className="hidden lg:block">
                                 <table className="w-full table-fixed border-separate border-spacing-0">
                         <colgroup>
-                            <col className="w-[26%]" />
-                            <col className="w-[30%]" />
+                            <col className="w-[25%]" />
+                            <col className="w-[25%]" />
                             <col className="w-[8%]" />
                             <col className="w-[10%]" />
-                            <col className="w-[8%]" />
-                            <col className="w-[10%]" />
-                            <col className="w-[8%]" />
+                            <col className="w-[7%]" />
+                            <col className="w-[11%]" />
+                            <col className="w-[14%]" />
                         </colgroup>
                                     <thead>
                                     <tr className="text-left">
