@@ -27,7 +27,11 @@ import {
 } from "./searchJobsService.ts"
 
 
-import {getTechIcon} from "../job-analysis/jobUtils.ts"
+import {
+    extractExperienceFromDescription,
+    getTechIcon,
+    type Experience,
+} from "../job-analysis/jobUtils.ts"
 
 export type JobView = SearchJob & {
     isSaved: boolean
@@ -374,6 +378,21 @@ function RoleSignalBadge({
         </span>
     )
 }
+
+
+const getRuntimeExperience = (job: SearchJob) =>
+    extractExperienceFromDescription(
+        [
+            job.title,
+            job.description,
+            job.description_full,
+            job.description_snippet,
+            job.premium_title,
+            job.premium_description,
+        ]
+            .filter(Boolean)
+            .join("\n\n"),
+    )
 
 
 function ApplicantsBadge({
