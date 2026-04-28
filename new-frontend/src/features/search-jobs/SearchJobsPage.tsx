@@ -49,6 +49,55 @@ const DEFAULT_POSITIVE_KEYWORDS = [
 const DEFAULT_MUST_HAVE_KEYWORDS = ["python"]
 const DEFAULT_NEGATIVE_KEYWORDS = ["php"]
 
+type SearchJobsFilterCache = {
+    positiveKeywords?: string[]
+    mustHaveKeywords?: string[]
+    negativeKeywords?: string[]
+    negativeCompanies?: string[]
+    excludedWorkplaceTypes?: string[]
+    maxApplicantsLimit?: number
+    showHiddenJobs?: boolean
+}
+
+const SEARCH_JOBS_FILTER_CACHE_KEY = "new-frontend.search-jobs.filters.v1"
+
+const readSearchJobsFilterCache = (): SearchJobsFilterCache => {
+    try {
+        const raw = window.localStorage.getItem(SEARCH_JOBS_FILTER_CACHE_KEY)
+        if (!raw) return {}
+
+        const parsed = JSON.parse(raw) as SearchJobsFilterCache
+        return parsed && typeof parsed === "object" ? parsed : {}
+    } catch {
+        return {}
+    }
+}
+
+const writeSearchJobsFilterCache = (value: SearchJobsFilterCache) => {
+    try {
+        window.localStorage.setItem(
+            SEARCH_JOBS_FILTER_CACHE_KEY,
+            JSON.stringify(value),
+        )
+    } catch (error) {
+        console.warn("Failed to write search jobs filter cache.", error)
+    }
+}
+
+const getCachedStringArray = (
+    value: unknown,
+    fallback: string[] = [],
+    useFallbackWhenEmpty = false,
+) => {
+    if (!Array.isArray(value)) return fallback
+
+    const cleaned = unique(
+        value.filter((item): item is string => typeof item === "string"),
+    )
+
+    return cleaned.length > 0 || !useFallbackWhenEmpty ? cleaned : fallback
+}
+
 const normalizeText = (value: string) =>
     value
         .toLowerCase()
@@ -283,6 +332,7 @@ const removeStringFromList = (
 export default function SearchJobsPage() {
     const [jobs, setJobs] = useState<SearchJob[]>([])
     const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
+    const [filterCache] = useState(() => readSearchJobsFilterCache())
 
     const [searchTerm, setSearchTerm] = useState("")
     const [verificationFilter, setVerificationFilter] =
@@ -290,19 +340,49 @@ export default function SearchJobsPage() {
     const [sourceFilter, setSourceFilter] = useState("All")
     const [sortBy, setSortBy] = useState<SortOption>("relevance")
 
-    const [positiveKeywords, setPositiveKeywords] = useState(DEFAULT_POSITIVE_KEYWORDS)
+    const [positiveKeywords, setPositiveKeywords] = useState(() =>
+        getCachedStringArray(
+            filterCache.positiveKeywords,
+            DEFAULT_POSITIVE_KEYWORDS,
+            true,
+        ),
+    )
     const [newPositiveKeyword, setNewPositiveKeyword] = useState("")
 
-    const [mustHaveKeywords, setMustHaveKeywords] = useState(DEFAULT_MUST_HAVE_KEYWORDS)
+    const [mustHaveKeywords, setMustHaveKeywords] = useState(() =>
+        getCachedStringArray(
+            filterCache.mustHaveKeywords,
+            DEFAULT_MUST_HAVE_KEYWORDS,
+            true,
+        ),
+    )
     const [newMustHaveKeyword, setNewMustHaveKeyword] = useState("")
 
-    const [negativeKeywords, setNegativeKeywords] = useState(DEFAULT_NEGATIVE_KEYWORDS)
+    const [negativeKeywords, setNegativeKeywords] = useState(() =>
+        getCachedStringArray(
+            filterCache.negativeKeywords,
+            DEFAULT_NEGATIVE_KEYWORDS,
+            true,
+        ),
+    )
     const [newNegativeKeyword, setNewNegativeKeyword] = useState("")
 
-    const [negativeCompanies, setNegativeCompanies] = useState<string[]>([])
-    const [excludedWorkplaceTypes, setExcludedWorkplaceTypes] = useState<string[]>([])
-    const [maxApplicantsLimit, setMaxApplicantsLimit] = useState(Number.MAX_SAFE_INTEGER)
-    const [showHiddenJobs, setShowHiddenJobs] = useState(false)
+    const [negativeCompanies, setNegativeCompanies] = useState<string[]>(() =>
+        getCachedStringArray(filterCache.negativeCompanies),
+    )
+    const [excludedWorkplaceTypes, setExcludedWorkplaceTypes] = useState<string[]>(() =>
+        getCachedStringArray(filterCache.excludedWorkplaceTypes),
+    )
+    const [maxApplicantsLimit, setMaxApplicantsLimit] = useState(() =>
+        typeof filterCache.maxApplicantsLimit === "number"
+            ? filterCache.maxApplicantsLimit
+            : Number.MAX_SAFE_INTEGER,
+    )
+    const [showHiddenJobs, setShowHiddenJobs] = useState(() =>
+        typeof filterCache.showHiddenJobs === "boolean"
+            ? filterCache.showHiddenJobs
+            : false,
+    )
 
     const [savedIds, setSavedIds] = useState<string[]>(() => readSavedJobIds())
 
@@ -352,6 +432,26 @@ export default function SearchJobsPage() {
             isMounted = false
         }
     }, [])
+
+    useEffect(() => {
+        writeSearchJobsFilterCache({
+            positiveKeywords,
+            mustHaveKeywords,
+            negativeKeywords,
+            negativeCompanies,
+            excludedWorkplaceTypes,
+            maxApplicantsLimit,
+            showHiddenJobs,
+        })
+    }, [
+        positiveKeywords,
+        mustHaveKeywords,
+        negativeKeywords,
+        negativeCompanies,
+        excludedWorkplaceTypes,
+        maxApplicantsLimit,
+        showHiddenJobs,
+    ])
 
     const maxPossibleApplicants = useMemo(() => {
         const applicants = jobs
