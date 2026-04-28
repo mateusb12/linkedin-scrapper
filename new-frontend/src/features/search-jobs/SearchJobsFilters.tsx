@@ -1,4 +1,4 @@
-import {useState, type FormEvent, type ReactNode} from "react"
+import {useEffect, useState, type FormEvent, type ReactNode} from "react"
 import {
     Building2,
     ChevronDown,
@@ -13,6 +13,7 @@ import {
     Target,
     Trash2,
     Users,
+    X,
     XCircle,
 } from "lucide-react"
 
@@ -231,6 +232,127 @@ function KeywordPill({
     )
 }
 
+function CompanyFilterModal({
+                                isOpen,
+                                onClose,
+                                companyOptions,
+                                selectedCompanies,
+                                onToggle,
+                            }: {
+    isOpen: boolean
+    onClose: () => void
+    companyOptions: SelectOption[]
+    selectedCompanies: string[]
+    onToggle: (company: string) => void
+}) {
+    const [search, setSearch] = useState("")
+
+    useEffect(() => {
+        if (!isOpen) return
+
+        const previousOverflow = document.body.style.overflow
+        const previousOverscrollBehavior = document.body.style.overscrollBehavior
+
+        document.body.style.overflow = "hidden"
+        document.body.style.overscrollBehavior = "contain"
+
+        return () => {
+            document.body.style.overflow = previousOverflow
+            document.body.style.overscrollBehavior = previousOverscrollBehavior
+        }
+    }, [isOpen])
+
+    if (!isOpen) return null
+
+    const normalizedSearch = search.trim().toLowerCase()
+    const filteredCompanies = companyOptions.filter((company) =>
+        company.label.toLowerCase().includes(normalizedSearch),
+    )
+
+    return (
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            onWheel={(event) => event.preventDefault()}
+            onTouchMove={(event) => event.preventDefault()}
+        >
+            <div
+                className="flex max-h-[80vh] w-full max-w-md flex-col rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
+                onWheel={(event) => event.stopPropagation()}
+                onTouchMove={(event) => event.stopPropagation()}
+            >
+                <div className="flex items-center justify-between border-b border-slate-800 p-5">
+                    <div>
+                        <h2 className="flex items-center gap-2 text-xl font-bold text-slate-100">
+                            <Building2 size={20} className="text-red-400"/>
+                            Exclude Companies
+                        </h2>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                            {selectedCompanies.length} selected
+                        </p>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-full p-1 text-slate-400 transition hover:bg-slate-800 hover:text-slate-200"
+                        aria-label="Close company filter modal"
+                    >
+                        <X size={20}/>
+                    </button>
+                </div>
+
+                <div className="border-b border-slate-800 p-4">
+                    <div className="relative">
+                        <Search
+                            size={16}
+                            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                        />
+
+                        <input
+                            type="text"
+                            placeholder="Search companies to filter..."
+                            value={search}
+                            onChange={(event) => setSearch(event.target.value)}
+                            className="w-full rounded-xl border border-slate-700 bg-slate-800/80 py-2 pl-9 pr-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-red-500/50"
+                        />
+                    </div>
+                </div>
+
+                <div className="min-h-0 flex-1 overscroll-contain overflow-y-auto p-2">
+                    {filteredCompanies.length > 0 ? (
+                        filteredCompanies.map((company) => {
+                            const isSelected = selectedCompanies.includes(company.value)
+
+                            return (
+                                <label
+                                    key={company.value}
+                                    className="flex cursor-pointer items-center gap-3 rounded-lg p-3 transition hover:bg-slate-800/50"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => onToggle(company.value)}
+                                        className="h-4 w-4 rounded border-slate-600 bg-slate-800 accent-red-500"
+                                    />
+
+                                    <span className="text-sm font-medium text-slate-200">
+                                        {company.label}
+                                    </span>
+                                </label>
+                            )
+                        })
+                    ) : (
+                        <div className="p-6 text-center text-sm text-slate-500">
+                            No companies found.
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    )
+}
+
 export default function SearchJobsFilters({
                                               searchTerm,
                                               onSearchTermChange,
@@ -279,6 +401,8 @@ export default function SearchJobsFilters({
                                               containerClassName = "max-h-[52%] shrink-0 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]",
                                               resultsSlot,
                                           }: SearchJobsFiltersProps) {
+    const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false)
+
     const activeGeneralFiltersCount = [
         verificationFilter !== "All",
         sourceFilter !== "All",
@@ -306,6 +430,14 @@ export default function SearchJobsFilters({
         <div
             className={`flex min-h-0 flex-col gap-4 border-b border-slate-800 p-4 ${containerClassName}`}
         >
+            <CompanyFilterModal
+                isOpen={isCompanyModalOpen}
+                onClose={() => setIsCompanyModalOpen(false)}
+                companyOptions={companyOptions}
+                selectedCompanies={negativeCompanies}
+                onToggle={onToggleNegativeCompany}
+            />
+
             <div className="relative">
                 <Search
                     size={16}
@@ -595,29 +727,37 @@ export default function SearchJobsFilters({
                     </div>
 
                     <div className="border-t border-slate-700/50 pt-3">
-                        <label className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-300">
-                            <Building2 size={14} className="text-slate-400"/>
-                            Excluded Companies
-                        </label>
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+                                <Building2 size={14} className="text-slate-400"/>
+                                Excluded Companies
+                            </label>
 
-                        <div className="max-h-36 space-y-2 overflow-y-auto pr-1">
-                            {companyOptions.map((company) => (
-                                <label
-                                    key={company.value}
-                                    className="flex cursor-pointer items-center gap-2 rounded-md border border-slate-700 bg-slate-900/50 px-2 py-2 text-xs font-medium text-slate-200 transition hover:border-red-500/50 hover:bg-slate-800"
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={negativeCompanies.includes(company.value)}
-                                        onChange={() =>
-                                            onToggleNegativeCompany(company.value)
-                                        }
-                                        className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-900 accent-red-500"
-                                    />
-                                    <span>{company.label}</span>
-                                </label>
-                            ))}
+                            <button
+                                type="button"
+                                onClick={() => setIsCompanyModalOpen(true)}
+                                className="rounded-lg bg-slate-800 px-2 py-1 text-xs font-semibold text-slate-300 transition hover:bg-slate-700 hover:text-white"
+                            >
+                                Manage
+                            </button>
                         </div>
+
+                        {negativeCompanies.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                                {negativeCompanies.map((company) => (
+                                    <KeywordPill
+                                        key={company}
+                                        keyword={company}
+                                        tone="red"
+                                        onRemove={onToggleNegativeCompany}
+                                    />
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-[11px] text-slate-500">
+                                No companies excluded.
+                            </p>
+                        )}
                     </div>
                 </FilterSection>
             </FilterSection>
