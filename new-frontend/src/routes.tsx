@@ -3,6 +3,7 @@ import type {LucideIcon} from "lucide-react"
 import {
     Bookmark,
     LayoutGrid,
+    Mail,
     PieChart,
     Search,
     Settings,
@@ -15,6 +16,7 @@ import SavedJobsPage from "./features/saved-jobs/SavedJobsPage"
 import SearchJobsPage from "./features/search-jobs/SearchJobsPage"
 import AppliedJobsPage from "./features/applied-jobs/AppliedJobsPage.tsx";
 import InsightsPage from "./features/insights/InsightsPage.tsx";
+import RejectionsPage from "./features/rejections/RejectionsPage.tsx";
 
 export type AppRoute = {
     label: string
@@ -43,6 +45,12 @@ export const appRoutes = [
         icon: PieChart,
         route: "/applied-insights",
         Page: InsightsPage,
+    },
+    {
+        label: "Rejections",
+        icon: Mail,
+        route: "/rejections",
+        Page: RejectionsPage,
     },
     {label: "Saved Jobs", icon: Bookmark, route: "/saved", Page: SavedJobsPage},
 ] as const satisfies readonly AppRoute[]
