@@ -1,64 +1,128 @@
-import StreakCalendar, {type DailyStatsMap} from "./StreakCalendar.tsx";
-import PerformanceStats, {type PerformanceStatsData} from "./PerformanceStats.tsx";
-import RecentApplications from "./RecentApplications.tsx";
+import {useCallback, useEffect, useMemo, useState} from "react"
+
+import StreakCalendar, {type DailyStatsMap} from "./StreakCalendar.tsx"
+import PerformanceStats, {type PerformanceStatsData} from "./PerformanceStats.tsx"
+import RecentApplications from "./RecentApplications.tsx"
+import {
+    type AppliedJob,
+    fetchAppliedJobs,
+} from "./appliedJobsService.ts"
 
 function toDateKey(date: Date) {
-    return date.toISOString().split("T")[0]
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    const day = String(date.getDate()).padStart(2, "0")
+
+    return `${year}-${month}-${day}`
 }
 
-function daysAgo(amount: number) {
-    const date = new Date()
-    date.setDate(date.getDate() - amount)
-    return toDateKey(date)
+function startOfDay(date: Date) {
+    const copy = new Date(date)
+    copy.setHours(0, 0, 0, 0)
+
+    return copy
 }
 
-const performanceStats = {
-    todayCount: 13,
-    streak: 6,
-    labels: ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"],
-    realData: [12, 0, 11, 8, 10, 14, 13],
-    bonusData: [0, 0, 0, 2, 0, 0, 0],
-} satisfies PerformanceStatsData
+function addDays(date: Date, amount: number) {
+    const copy = new Date(date)
+    copy.setDate(copy.getDate() + amount)
 
-const dailyStats = {
-    [daysAgo(6)]: {
-        real: 12,
-        bonus: 0,
-        effective: 12,
-    },
-    [daysAgo(5)]: {
-        real: 0,
-        bonus: 0,
-        effective: 0,
-    },
-    [daysAgo(4)]: {
-        real: 11,
-        bonus: 0,
-        effective: 11,
-    },
-    [daysAgo(3)]: {
-        real: 8,
-        bonus: 2,
-        effective: 10,
-    },
-    [daysAgo(2)]: {
-        real: 10,
-        bonus: 0,
-        effective: 10,
-    },
-    [daysAgo(1)]: {
-        real: 14,
-        bonus: 0,
-        effective: 14,
-    },
-    [daysAgo(0)]: {
-        real: 13,
-        bonus: 0,
-        effective: 13,
-    },
-} satisfies DailyStatsMap
+    return copy
+}
+
+function isWeekend(date: Date) {
+    const day = date.getDay()
+
+    return day === 0 || day === 6
+}
+
+function getAppliedDate(job: AppliedJob) {
+    const date = new Date(job.appliedAt)
+
+    return Number.isNaN(date.getTime()) ? null : date
+}
+
+function buildDailyStats(jobs: AppliedJob[]) {
+    return jobs.reduce<DailyStatsMap>((stats, job) => {
+        const appliedDate = getAppliedDate(job)
+        if (!appliedDate) return stats
+
+        const key = toDateKey(appliedDate)
+        const current = stats[key] ?? {
+            real: 0,
+            bonus: 0,
+            effective: 0,
+        }
+
+        stats[key] = {
+            ...current,
+            real: current.real + 1,
+            effective: current.effective + 1,
+        }
+
+        return stats
+    }, {})
+}
+
+function buildPerformanceStats(dailyStats: DailyStatsMap): PerformanceStatsData {
+    const today = startOfDay(new Date())
+    const days = Array.from({length: 7}, (_, index) => addDays(today, index - 6))
+    const todayKey = toDateKey(today)
+
+    let streak = 0
+
+    for (let cursor = today; ; cursor = addDays(cursor, -1)) {
+        if (isWeekend(cursor)) continue
+
+        const count = dailyStats[toDateKey(cursor)]?.effective ?? 0
+        if (count === 0) break
+
+        streak += 1
+    }
+
+    return {
+        todayCount: dailyStats[todayKey]?.real ?? 0,
+        streak,
+        labels: days.map(day =>
+            day.toLocaleDateString("en-US", {
+                weekday: "short",
+            }),
+        ),
+        realData: days.map(day => dailyStats[toDateKey(day)]?.real ?? 0),
+        bonusData: days.map(day => dailyStats[toDateKey(day)]?.bonus ?? 0),
+    }
+}
 
 export default function AppliedJobsPage() {
+    const [jobs, setJobs] = useState<AppliedJob[]>([])
+    const [isLoading, setIsLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+
+    const dailyStats = useMemo(() => buildDailyStats(jobs), [jobs])
+    const performanceStats = useMemo(
+        () => buildPerformanceStats(dailyStats),
+        [dailyStats],
+    )
+
+    const loadJobs = useCallback(async function loadJobs() {
+        try {
+            setError(null)
+            setIsLoading(true)
+
+            const result = await fetchAppliedJobs()
+            setJobs(result.jobs)
+        } catch (loadError) {
+            console.error(loadError)
+            setError("Could not load applied jobs.")
+        } finally {
+            setIsLoading(false)
+        }
+    }, [])
+
+    useEffect(() => {
+        void loadJobs()
+    }, [loadJobs])
+
     return (
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
             <section
@@ -68,13 +132,19 @@ export default function AppliedJobsPage() {
                 </h1>
 
                 <p className="m-0 mt-3 max-w-2xl text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
-                    Hardcoded tracking dashboard for application progress.
+                    Real tracking dashboard for application progress.
                 </p>
             </section>
 
             <PerformanceStats stats={performanceStats}/>
             <StreakCalendar dailyStats={dailyStats}/>
-            <RecentApplications/>
+            <RecentApplications
+                jobs={jobs}
+                isLoading={isLoading}
+                error={error}
+                onRefresh={loadJobs}
+                onError={setError}
+            />
         </div>
     )
 }

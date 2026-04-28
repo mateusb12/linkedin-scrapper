@@ -19,7 +19,7 @@ import {
     formatDateBR,
     formatTimeAgo,
     formatTimeBR,
-} from "./appliedJobsMockService.ts"
+} from "./appliedJobsService.ts"
 
 const TECH_KEYWORDS: Array<{ label: string; regex: RegExp }> = [
     {label: "Python", regex: /\bpython\b/i},
@@ -239,7 +239,7 @@ export default function AppliedJobDetailModal({
                                     </div>
                                 ) : (
                                     <p className="text-sm font-medium text-gray-500">
-                                        No stack detected in this mock description.
+                                        No stack detected in this description.
                                     </p>
                                 )}
                             </div>
@@ -316,7 +316,7 @@ export default function AppliedJobDetailModal({
                             </h3>
 
                             <div className="whitespace-pre-wrap rounded-xl border border-gray-800 bg-gray-950/40 p-4 text-sm font-medium leading-6 text-gray-300">
-                                {job.description}
+                                {job.description || "No description provided."}
                             </div>
                         </section>
                     </div>

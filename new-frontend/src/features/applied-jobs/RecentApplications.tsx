@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useState, type MouseEvent} from "react"
+import {useMemo, useState, type MouseEvent} from "react"
 import {
     Briefcase,
     CalendarDays,
@@ -18,12 +18,11 @@ import {
 import {
     type AppliedJob,
     type ApplicationStatus,
-    fetchAppliedJobs,
     formatDateBR,
     formatTimeAgo,
     formatTimeBR,
     syncAppliedSmart,
-} from "./appliedJobsMockService.ts"
+} from "./appliedJobsService.ts"
 import AppliedJobDetailModal from "./AppliedJobDetailModal.tsx"
 
 const TECH_KEYWORDS: Array<{ label: string; regex: RegExp }> = [
@@ -324,13 +323,24 @@ function ApplicationMobileCard({job, onSelect}: ApplicationMobileCardProps) {
     )
 }
 
-export default function RecentApplications() {
-    const [jobs, setJobs] = useState<AppliedJob[]>([])
+type RecentApplicationsProps = {
+    jobs: AppliedJob[]
+    isLoading: boolean
+    error: string | null
+    onRefresh: () => Promise<void>
+    onError: (message: string | null) => void
+}
+
+export default function RecentApplications({
+    jobs,
+    isLoading,
+    error,
+    onRefresh,
+    onError,
+}: RecentApplicationsProps) {
     const [searchTerm, setSearchTerm] = useState("")
     const [selectedJob, setSelectedJob] = useState<AppliedJob | null>(null)
-    const [isLoading, setIsLoading] = useState(true)
     const [isSyncing, setIsSyncing] = useState(false)
-    const [error, setError] = useState<string | null>(null)
 
     const totalApplicants = useMemo(
         () => jobs.reduce((sum, job) => sum + job.applicants, 0),
@@ -355,43 +365,23 @@ export default function RecentApplications() {
 
     const hasActiveSearch = searchTerm.trim().length > 0
 
-    const loadJobs = useCallback(async function loadJobs() {
-        try {
-            setError(null)
-            setIsLoading(true)
-
-            const result = await fetchAppliedJobs()
-            setJobs(result.jobs)
-        } catch (loadError) {
-            console.error(loadError)
-            setError("Could not load applied jobs.")
-        } finally {
-            setIsLoading(false)
-        }
-    }, [])
-
     async function handleSmartSync() {
         try {
-            setError(null)
+            onError(null)
             setIsSyncing(true)
 
-            await syncAppliedSmart()
-            await loadJobs()
+            const result = await syncAppliedSmart()
+            const syncedCount = result.syncedCount ?? result.synced_count ?? 0
+
+            console.info(`Smart sync inserted ${syncedCount} applied jobs.`)
+            await onRefresh()
         } catch (syncError) {
             console.error(syncError)
-            setError("Could not sync applied jobs.")
+            onError("Could not sync applied jobs.")
         } finally {
             setIsSyncing(false)
         }
     }
-
-    useEffect(() => {
-        const timeoutId = window.setTimeout(() => {
-            void loadJobs()
-        }, 0)
-
-        return () => window.clearTimeout(timeoutId)
-    }, [loadJobs])
 
     return (
         <section className="mt-6 rounded-xl border border-gray-700 bg-gray-800 p-6 shadow-xl">
@@ -403,7 +393,7 @@ export default function RecentApplications() {
                     </h3>
 
                     <p className="mt-2 text-sm font-medium text-gray-400">
-                        {jobs.length} mocked applications · {formatNumber(totalApplicants)} total competitors
+                        {jobs.length} applications · {formatNumber(totalApplicants)} total competitors
                         {hasActiveSearch && (
                             <span className="ml-2 inline-flex rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs font-extrabold text-blue-300">
                                 {filteredJobs.length} matching
@@ -415,7 +405,7 @@ export default function RecentApplications() {
                 <div className="flex flex-wrap gap-2">
                     <button
                         type="button"
-                        onClick={() => void loadJobs()}
+                        onClick={() => void onRefresh()}
                         disabled={isLoading || isSyncing}
                         className="inline-flex items-center gap-2 rounded-lg border border-gray-600 bg-gray-900 px-3 py-2 text-xs font-bold text-gray-200 transition hover:border-gray-500 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
@@ -473,7 +463,7 @@ export default function RecentApplications() {
                     className="flex min-h-48 items-center justify-center rounded-xl border border-dashed border-gray-700 bg-gray-900/40">
                     <div className="flex items-center gap-3 text-sm font-bold text-gray-300">
                         <Loader2 className="animate-spin text-blue-400" size={20}/>
-                        Loading mocked applications...
+                        Loading applications...
                     </div>
                 </div>
             ) : (
