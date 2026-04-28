@@ -1,4 +1,4 @@
-import type {FormEvent, ReactNode} from "react"
+import {useEffect, useState, type FormEvent, type ReactNode} from "react"
 import {
     Bookmark,
     BookmarkCheck,
@@ -6,6 +6,7 @@ import {
     Building2,
     CalendarDays,
     Clock3,
+    Database,
     ExternalLink,
     Filter,
     MapPin,
@@ -942,6 +943,190 @@ export function SelectedJobPreview({
     )
 }
 
+
+const formatRemainingTime = (ms: number | null) => {
+    if (!Number.isFinite(ms) || !ms || ms <= 0) return "—"
+
+    const totalSeconds = Math.ceil(ms / 1000)
+
+    if (totalSeconds < 60) return `${totalSeconds}s`
+
+    const totalMinutes = Math.ceil(totalSeconds / 60)
+
+    if (totalMinutes < 60) return `${totalMinutes}min`
+
+    const hours = Math.floor(totalMinutes / 60)
+    const minutes = totalMinutes % 60
+
+    return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}min`
+}
+
+const formatEta = (date: Date | null) => {
+    if (!date) return "—"
+
+    return date.toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+    })
+}
+
+function ProgressMetric({
+                            label,
+                            value,
+                        }: {
+    label: string
+    value: string
+}) {
+    return (
+        <div className="rounded-lg border border-slate-700/60 bg-slate-950/40 px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                {label}
+            </p>
+
+            <p className="mt-1 text-sm font-semibold text-slate-100">
+                {value}
+            </p>
+        </div>
+    )
+}
+
+function LiveProgressBar({progress}: { progress: SearchJobsProgress | null }) {
+    const [enrichStartedAt, setEnrichStartedAt] = useState<number | null>(null)
+    const [now, setNow] = useState(Date.now())
+
+    useEffect(() => {
+        if (!progress) {
+            setEnrichStartedAt(null)
+            setNow(Date.now())
+            return
+        }
+
+        if (progress.step !== "enriching") {
+            setEnrichStartedAt(null)
+            setNow(Date.now())
+            return
+        }
+
+        if (progress.total > 0 && enrichStartedAt === null) {
+            setEnrichStartedAt(Date.now())
+            setNow(Date.now())
+        }
+    }, [progress, enrichStartedAt])
+
+    useEffect(() => {
+        if (!progress || progress.step !== "enriching" || !enrichStartedAt) {
+            return
+        }
+
+        const intervalId = window.setInterval(() => {
+            setNow(Date.now())
+        }, 1000)
+
+        return () => window.clearInterval(intervalId)
+    }, [progress, enrichStartedAt])
+
+    if (!progress) {
+        return (
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <div className="flex items-center gap-2 text-xs font-bold text-sky-300">
+                    <RefreshCw size={14} className="animate-spin"/>
+                    Starting LinkedIn fetch...
+                </div>
+
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+                    <div className="h-full w-[8%] rounded-full bg-sky-400"/>
+                </div>
+            </div>
+        )
+    }
+
+    const {step, message, current = 0, total = 0} = progress
+
+    let percent = 0
+
+    if (step === "fetching") {
+        percent = 10
+    } else if (step === "parsing") {
+        percent = 20
+    } else if (step === "enriching" && total > 0) {
+        percent = 20 + (current / total) * 80
+    } else if (total > 0) {
+        percent = (current / total) * 100
+    }
+
+    const safePercent = Math.min(100, Math.max(0, Math.round(percent)))
+
+    const elapsedMs =
+        step === "enriching" && enrichStartedAt
+            ? Math.max(now - enrichStartedAt, 0)
+            : 0
+
+    const elapsedMinutes = elapsedMs / 60_000
+
+    const jobsPerMinute =
+        step === "enriching" && current > 0 && elapsedMinutes > 0
+            ? current / elapsedMinutes
+            : null
+
+    const remainingJobs =
+        step === "enriching" && total > 0
+            ? Math.max(total - current, 0)
+            : null
+
+    const remainingMs =
+        jobsPerMinute && remainingJobs != null
+            ? (remainingJobs / jobsPerMinute) * 60_000
+            : null
+
+    const eta =
+        remainingMs && Number.isFinite(remainingMs)
+            ? new Date(now + remainingMs)
+            : null
+
+    return (
+        <div className="rounded-2xl border border-sky-900/40 bg-slate-900/60 p-4 shadow-[0_0_15px_rgba(14,165,233,0.08)]">
+            <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-300">
+                <span className="inline-flex min-w-0 items-center gap-2 text-sky-300">
+                    <RefreshCw size={14} className="shrink-0 animate-spin"/>
+                    <span className="truncate">{message}</span>
+                </span>
+
+                <span className="shrink-0 text-sky-200">{safePercent}%</span>
+            </div>
+
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+                <div
+                    className="h-full rounded-full bg-sky-400 transition-all duration-300 ease-out"
+                    style={{width: `${safePercent}%`}}
+                />
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+                <ProgressMetric
+                    label="jobs processados"
+                    value={total > 0 ? `${current}/${total}` : "—"}
+                />
+
+                <ProgressMetric
+                    label="jobs faltando"
+                    value={remainingJobs != null ? `${remainingJobs} jobs` : "—"}
+                />
+
+                <ProgressMetric
+                    label="tempo restante"
+                    value={formatRemainingTime(remainingMs)}
+                />
+
+                <ProgressMetric
+                    label="ETA"
+                    value={formatEta(eta)}
+                />
+            </div>
+        </div>
+    )
+}
+
+
 export function FetchJobsModal({
                                    fetchCount,
                                    setFetchCount,
@@ -961,10 +1146,6 @@ export function FetchJobsModal({
     onClose: () => void
     onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }) {
-    const progressPercent = progress
-        ? Math.round((progress.current / Math.max(1, progress.total)) * 100)
-        : 0
-
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
             <form
@@ -999,22 +1180,7 @@ export function FetchJobsModal({
                 <div className="mt-5 space-y-4">
                     <label className="block">
                         <span className="text-xs font-bold text-slate-300">
-                            Amount of jobs
-                        </span>
-
-                        <input
-                            type="number"
-                            min={1}
-                            max={100}
-                            value={fetchCount}
-                            onChange={(event) => setFetchCount(Number(event.target.value))}
-                            className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-slate-100 outline-none transition focus:border-sky-500"
-                        />
-                    </label>
-
-                    <label className="block">
-                        <span className="text-xs font-bold text-slate-300">
-                            Optional query
+                            Search query
                         </span>
 
                         <div className="relative mt-2">
@@ -1027,26 +1193,70 @@ export function FetchJobsModal({
                                 type="text"
                                 value={fetchQuery}
                                 onChange={(event) => setFetchQuery(event.target.value)}
-                                placeholder="python, backend, remote..."
+                                placeholder="e.g. React, Python backend, Node.js"
                                 className="w-full rounded-xl border border-slate-700 bg-slate-900 py-2.5 pl-10 pr-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-500"
                             />
                         </div>
                     </label>
 
-                    {progress && (
-                        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-                            <div className="flex items-center justify-between gap-3 text-xs font-bold text-slate-300">
-                                <span>{progress.message}</span>
-                                <span>{progressPercent}%</span>
+                    <div>
+                        <span className="text-xs font-bold text-slate-300">
+                            Amount of jobs
+                        </span>
+
+                        <div className="mx-auto mt-3 flex w-fit items-center gap-5 rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+                            <button
+                                type="button"
+                                onClick={() => setFetchCount(Math.max(1, fetchCount - 5))}
+                                disabled={loading || fetchCount <= 1}
+                                className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-800 text-lg font-black text-slate-400 transition hover:bg-slate-700 hover:text-white disabled:opacity-40"
+                                aria-label="Decrease jobs amount"
+                            >
+                                -
+                            </button>
+
+                            <div className="min-w-16 text-center">
+                                <p className="text-3xl font-black leading-none text-sky-400">
+                                    {fetchCount}
+                                </p>
+
+                                <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                                    jobs
+                                </p>
                             </div>
 
-                            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
-                                <div
-                                    className="h-full rounded-full bg-sky-400"
-                                    style={{width: `${progressPercent}%`}}
-                                />
-                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setFetchCount(Math.min(100, fetchCount + 5))}
+                                disabled={loading || fetchCount >= 100}
+                                className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-700 text-lg font-black text-slate-100 transition hover:bg-sky-500 hover:text-slate-950 disabled:opacity-40"
+                                aria-label="Increase jobs amount"
+                            >
+                                +
+                            </button>
                         </div>
+
+                        <div className="mt-3 flex justify-center gap-2">
+                            {[10, 25, 50, 100].map((amount) => (
+                                <button
+                                    key={amount}
+                                    type="button"
+                                    onClick={() => setFetchCount(amount)}
+                                    disabled={loading}
+                                    className={`rounded-lg border px-3 py-1 text-xs font-bold transition ${
+                                        fetchCount === amount
+                                            ? "border-sky-400 bg-sky-500/15 text-sky-300"
+                                            : "border-slate-700 bg-slate-800/60 text-slate-400 hover:border-sky-500/50 hover:text-slate-200"
+                                    }`}
+                                >
+                                    {amount}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {loading && (
+                        <LiveProgressBar progress={progress}/>
                     )}
                 </div>
 
@@ -1063,10 +1273,10 @@ export function FetchJobsModal({
                     <button
                         type="submit"
                         disabled={loading}
-                        className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-sky-400 disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-6 py-2 text-sm font-black text-slate-950 shadow-lg shadow-sky-950/30 transition hover:bg-sky-400 disabled:opacity-50"
                     >
-                        <RefreshCw size={16} className={loading ? "animate-spin" : ""}/>
-                        Fetch jobs
+                        <Database size={16}/>
+                        Start Fetching
                     </button>
                 </div>
             </form>
