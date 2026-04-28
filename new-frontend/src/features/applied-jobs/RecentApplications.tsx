@@ -24,44 +24,12 @@ import {
     syncAppliedSmart,
 } from "./appliedJobsService.ts"
 import AppliedJobDetailModal from "./AppliedJobDetailModal.tsx"
-
-const TECH_KEYWORDS: Array<{ label: string; regex: RegExp }> = [
-    {label: "Python", regex: /\bpython\b/i},
-    {label: "FastAPI", regex: /\bfastapi\b/i},
-    {label: "Django", regex: /\bdjango\b/i},
-    {label: "React Native", regex: /\breact native\b/i},
-    {label: "React", regex: /\breact\b/i},
-    {label: "TypeScript", regex: /\btypescript\b/i},
-    {label: "JavaScript", regex: /\bjavascript\b/i},
-    {label: "Node.js", regex: /\bnode\.?js\b/i},
-    {label: "PostgreSQL", regex: /\bpostgresql\b/i},
-    {label: "MongoDB", regex: /\bmongodb\b/i},
-    {label: "SQL", regex: /\bsql\b/i},
-    {label: "Docker", regex: /\bdocker\b/i},
-    {label: "REST APIs", regex: /\brest api|\brest apis\b/i},
-]
-
-const TECH_BADGE_CLASS: Record<string, string> = {
-    Python: "border-yellow-500/30 bg-yellow-500/10 text-yellow-300",
-    FastAPI: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-    Django: "border-green-500/30 bg-green-500/10 text-green-300",
-    React: "border-cyan-500/30 bg-cyan-500/10 text-cyan-300",
-    "React Native": "border-sky-500/30 bg-sky-500/10 text-sky-300",
-    TypeScript: "border-blue-500/30 bg-blue-500/10 text-blue-300",
-    JavaScript: "border-amber-500/30 bg-amber-500/10 text-amber-300",
-    "Node.js": "border-lime-500/30 bg-lime-500/10 text-lime-300",
-    PostgreSQL: "border-indigo-500/30 bg-indigo-500/10 text-indigo-300",
-    MongoDB: "border-emerald-600/30 bg-emerald-600/10 text-emerald-200",
-    SQL: "border-slate-500/30 bg-slate-500/10 text-slate-300",
-    Docker: "border-blue-600/30 bg-blue-600/10 text-blue-200",
-    "REST APIs": "border-zinc-500/30 bg-zinc-500/10 text-zinc-300",
-}
-
-function extractTechStack(description: string) {
-    return TECH_KEYWORDS
-        .filter(tech => tech.regex.test(description))
-        .map(tech => tech.label)
-}
+import {
+    formatTechLabel,
+    getRuntimeJobKeywords,
+    getTechIcon,
+    splitStackAndRoleSignals,
+} from "../job-analysis/jobUtils.ts"
 
 function extractLevel(job: AppliedJob): string | null {
     const text = `${job.title} ${job.description}`.toLowerCase()
@@ -143,15 +111,7 @@ function TechStackBadges({stack}: TechStackBadgesProps) {
     return (
         <div className="grid max-w-[220px] grid-cols-2 gap-1.5">
             {visibleStack.map(tech => (
-                <span
-                    key={tech}
-                    className={`inline-flex w-fit rounded-md border px-2 py-0.5 text-[11px] font-extrabold ${
-                        TECH_BADGE_CLASS[tech] ??
-                        "border-gray-600 bg-gray-900/70 text-gray-200"
-                    }`}
-                >
-                    {tech}
-                </span>
+                <AppliedTechBadge key={tech} tech={tech}/>
             ))}
 
             {hiddenCount > 0 && (
@@ -216,8 +176,41 @@ type ApplicationMobileCardProps = {
     onSelect: (job: AppliedJob) => void
 }
 
+function AppliedTechBadge({tech}: {tech: string}) {
+    const label = formatTechLabel(tech)
+    const icon = getTechIcon(label)
+
+    return (
+        <span
+            title={label}
+            aria-label={label}
+            className="inline-flex min-w-[92px] items-center justify-center gap-2 rounded-md border border-gray-700 bg-gray-900/70 px-2.5 py-1 text-xs font-extrabold text-gray-200"
+        >
+            {icon && (
+                <img
+                    src={icon}
+                    alt=""
+                    aria-hidden="true"
+                    className="h-4 w-4 rounded-sm object-contain"
+                />
+            )}
+
+            {label}
+        </span>
+    )
+}
+
+function getAppliedJobStack(job: AppliedJob) {
+    const runtimeKeywords = getRuntimeJobKeywords({
+        title: job.title,
+        description: job.description,
+    })
+
+    return splitStackAndRoleSignals(runtimeKeywords).stackKeywords
+}
+
 function ApplicationMobileCard({job, onSelect}: ApplicationMobileCardProps) {
-    const stack = extractTechStack(job.description)
+    const stack = getAppliedJobStack(job)
     const level = extractLevel(job)
 
     return (
@@ -494,6 +487,15 @@ export default function RecentApplications({
 
                             <div className="hidden lg:block">
                                 <table className="w-full table-fixed border-separate border-spacing-0">
+                        <colgroup>
+                            <col className="w-[26%]" />
+                            <col className="w-[30%]" />
+                            <col className="w-[8%]" />
+                            <col className="w-[10%]" />
+                            <col className="w-[8%]" />
+                            <col className="w-[10%]" />
+                            <col className="w-[8%]" />
+                        </colgroup>
                                     <thead>
                                     <tr className="text-left">
                                         <th className="w-[28%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
@@ -528,7 +530,7 @@ export default function RecentApplications({
 
                                     <tbody>
                                     {filteredJobs.map(job => {
-                                        const stack = extractTechStack(job.description)
+                                        const stack = getAppliedJobStack(job)
                                         const level = extractLevel(job)
 
                                         return (
@@ -622,10 +624,6 @@ export default function RecentApplications({
                                                 <Users size={15}/>
                                                 {formatNumber(job.applicants)}
                                             </span>
-
-                                            <p className="mt-2 text-xs font-medium text-gray-500">
-                                                +{job.applicantsVelocity}/day velocity
-                                            </p>
                                         </td>
 
                                         <td className="border-b border-gray-700/70 px-4 py-5">

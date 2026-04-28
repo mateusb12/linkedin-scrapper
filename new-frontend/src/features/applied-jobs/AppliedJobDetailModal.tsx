@@ -20,43 +20,30 @@ import {
     formatTimeAgo,
     formatTimeBR,
 } from "./appliedJobsService.ts"
+import {
+    formatTechLabel,
+    getRuntimeJobKeywords,
+    getTechIcon,
+    splitStackAndRoleSignals,
+} from "../job-analysis/jobUtils.ts"
 
-const TECH_KEYWORDS: Array<{ label: string; regex: RegExp }> = [
-    {label: "Python", regex: /\bpython\b/i},
-    {label: "FastAPI", regex: /\bfastapi\b/i},
-    {label: "Django", regex: /\bdjango\b/i},
-    {label: "React Native", regex: /\breact native\b/i},
-    {label: "React", regex: /\breact\b/i},
-    {label: "TypeScript", regex: /\btypescript\b/i},
-    {label: "JavaScript", regex: /\bjavascript\b/i},
-    {label: "Node.js", regex: /\bnode\.?js\b/i},
-    {label: "PostgreSQL", regex: /\bpostgresql\b/i},
-    {label: "MongoDB", regex: /\bmongodb\b/i},
-    {label: "SQL", regex: /\bsql\b/i},
-    {label: "Docker", regex: /\bdocker\b/i},
-    {label: "REST APIs", regex: /\brest api|\brest apis\b/i},
-]
+function AppliedTechBadge({tech}: { tech: string }) {
+    const label = formatTechLabel(tech)
+    const icon = getTechIcon(label)
 
-const TECH_BADGE_CLASS: Record<string, string> = {
-    Python: "border-yellow-500/30 bg-yellow-500/10 text-yellow-300",
-    FastAPI: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-    Django: "border-green-500/30 bg-green-500/10 text-green-300",
-    React: "border-cyan-500/30 bg-cyan-500/10 text-cyan-300",
-    "React Native": "border-sky-500/30 bg-sky-500/10 text-sky-300",
-    TypeScript: "border-blue-500/30 bg-blue-500/10 text-blue-300",
-    JavaScript: "border-amber-500/30 bg-amber-500/10 text-amber-300",
-    "Node.js": "border-lime-500/30 bg-lime-500/10 text-lime-300",
-    PostgreSQL: "border-indigo-500/30 bg-indigo-500/10 text-indigo-300",
-    MongoDB: "border-emerald-600/30 bg-emerald-600/10 text-emerald-200",
-    SQL: "border-slate-500/30 bg-slate-500/10 text-slate-300",
-    Docker: "border-blue-600/30 bg-blue-600/10 text-blue-200",
-    "REST APIs": "border-zinc-500/30 bg-zinc-500/10 text-zinc-300",
-}
-
-function extractTechStack(description: string) {
-    return TECH_KEYWORDS
-        .filter(tech => tech.regex.test(description))
-        .map(tech => tech.label)
+    return (
+        <span className="inline-flex items-center gap-2 rounded-md border border-gray-600 bg-gray-900/70 px-2.5 py-1 text-xs font-extrabold text-gray-200">
+            {icon && (
+                <img
+                    src={icon}
+                    alt=""
+                    aria-hidden="true"
+                    className="h-4 w-4 rounded-sm object-contain"
+                />
+            )}
+            {label}
+        </span>
+    )
 }
 
 function getLevel(job: AppliedJob): string | null {
@@ -121,7 +108,19 @@ export default function AppliedJobDetailModal({
     job,
     onClose,
 }: AppliedJobDetailModalProps) {
-    const stack = useMemo(() => (job ? extractTechStack(job.description) : []), [job])
+    const stack = useMemo(() => {
+        if (!job) return []
+
+        const runtimeKeywords = getRuntimeJobKeywords({
+            title: job.title,
+            description: job.description,
+            location: job.location,
+            keywords: [],
+        })
+
+        return splitStackAndRoleSignals(runtimeKeywords).stackKeywords
+    }, [job])
+
     const level = useMemo(() => (job ? getLevel(job) : null), [job])
 
     useEffect(() => {
@@ -226,15 +225,7 @@ export default function AppliedJobDetailModal({
                                 {stack.length > 0 ? (
                                     <div className="flex flex-wrap gap-2">
                                         {stack.map(tech => (
-                                            <span
-                                                key={tech}
-                                                className={`rounded-md border px-2.5 py-1 text-xs font-extrabold ${
-                                                    TECH_BADGE_CLASS[tech] ??
-                                                    "border-gray-600 bg-gray-900/70 text-gray-200"
-                                                }`}
-                                            >
-                                                {tech}
-                                            </span>
+                                            <AppliedTechBadge key={tech} tech={tech}/>
                                         ))}
                                     </div>
                                 ) : (
@@ -265,9 +256,6 @@ export default function AppliedJobDetailModal({
                                 <p className="flex items-center gap-2 text-lg font-black text-gray-100">
                                     <Users size={17} className="text-blue-400"/>
                                     {formatNumber(job.applicants)}
-                                </p>
-                                <p className="mt-1 text-xs font-medium text-gray-500">
-                                    +{job.applicantsVelocity}/day velocity
                                 </p>
                             </div>
 
