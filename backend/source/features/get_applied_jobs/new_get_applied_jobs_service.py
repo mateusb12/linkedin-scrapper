@@ -13,7 +13,13 @@ from requests import Session
 from database.database_connection import get_db_session
 from models.fetch_models import FetchCurl
 from source.core.debug_mode import is_debug
-from source.features.fetch_curl.linkedin_http_client import LinkedInClient, LinkedInRequest
+from source.features.fetch_curl.linkedin_http_client import (
+    LinkedInClient,
+    LinkedInRequest,
+    apply_identity_to_headers,
+    get_linkedin_identity_config_name,
+    load_linkedin_identity,
+)
 
 
 @dataclass
@@ -351,6 +357,11 @@ class JobTrackerFetcher:
         finally:
             db.close()
 
+    def _headers_with_shared_identity(self, headers: dict[str, str]) -> dict[str, str]:
+        identity_name = get_linkedin_identity_config_name()
+        identity = load_linkedin_identity(identity_name)
+        return apply_identity_to_headers(headers, identity)
+
     def fetch_job_details(self, job_id: str) -> Dict[str, Any]:
         session = self.client.session
         csrf = session.headers.get("csrf-token")
@@ -429,7 +440,7 @@ class JobTrackerFetcher:
                 }
 
             body = re.sub(r'("jobId"\s*:\s*)("\d+"|\d+)', f'\\1"{job_id}"', self.premium_body)
-            headers = self.premium_headers.copy()
+            headers = self._headers_with_shared_identity(self.premium_headers)
             headers["Referer"] = f"https://www.linkedin.com/jobs/view/{job_id}/"
             headers.pop("Accept-Encoding", None)
             headers["Accept-Encoding"] = "identity"

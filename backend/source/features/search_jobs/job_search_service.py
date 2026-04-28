@@ -271,11 +271,23 @@ class LinkedInJobsSearchService:
                 failed_config = context.get("failed_config") or context.get("config_name") or "PremiumInsights"
                 operation = context.get("operation") or "fetch_premium_insights"
                 job_id = context.get("job_id")
-                action = context.get("action") or f"Refresh the '{failed_config}' LinkedIn curl/config."
+                identity_config = context.get("identity_config")
+                auth_injected = context.get("auth_injected")
+                auth_wall_detected = context.get("auth_wall_detected")
+                status_code = context.get("status_code")
+                content_type = context.get("content_type")
+                failure_classification = context.get("failure_classification")
+                action = context.get("action") or (
+                    f"Inspect '{failed_config}' response diagnostics and shared identity "
+                    f"'{identity_config or 'unknown'}'."
+                )
                 message = (
                     "Enrichment failed: applicants data came back invalid "
                     f"({context.get('raw_applicants_value')!r}) during {operation}. "
-                    f"The LinkedIn premium details config '{failed_config}' may be expired, invalid, or stale. "
+                    f"config={failed_config}, identity_config={identity_config}, "
+                    f"auth_injected={auth_injected}, status_code={status_code}, "
+                    f"auth_wall_detected={auth_wall_detected}, content_type={content_type}, "
+                    f"failure_classification={failure_classification}. "
                     "The pipeline was interrupted intentionally to avoid returning misleading 0 applicants data."
                 )
                 yield "enrichment_error", {
@@ -293,6 +305,22 @@ class LinkedInJobsSearchService:
                     "raw_applicants_value": context.get("raw_applicants_value"),
                     "normalized_applicants_value": context.get("normalized_applicants_value"),
                     "reason": context.get("reason"),
+                    "identity_config": identity_config,
+                    "auth_injected": auth_injected,
+                    "status_code": status_code,
+                    "redirect_happened": context.get("redirect_happened"),
+                    "redirect_location": context.get("redirect_location"),
+                    "auth_wall_detected": auth_wall_detected,
+                    "content_type": content_type,
+                    "response_preview": context.get("response_preview"),
+                    "parsed_keys": context.get("parsed_keys"),
+                    "premium_component_found": context.get("premium_component_found"),
+                    "applicants_total": context.get("applicants_total"),
+                    "applicants_last_24h": context.get("applicants_last_24h"),
+                    "has_undefined": context.get("has_undefined"),
+                    "has_numeric_applicant_signal": context.get("has_numeric_applicant_signal"),
+                    "has_distribution_signal": context.get("has_distribution_signal"),
+                    "failure_classification": failure_classification,
                     "action": action,
                     "message": message,
                     "error": str(exc),

@@ -12,9 +12,20 @@ from source.features.search_jobs.curl_voyager_jobs_fetch import (
     JobSearchTuning,
     VoyagerJobsLiteFetcher,
 )
+from source.features.fetch_curl.linkedin_http_client import (
+    apply_identity_to_headers,
+    get_linkedin_identity_config_name,
+    load_linkedin_identity,
+)
 
 
 class FetchService:
+    @staticmethod
+    def _headers_with_shared_identity(headers: Dict[str, str]) -> Dict[str, str]:
+        identity_name = get_linkedin_identity_config_name()
+        identity = load_linkedin_identity(identity_name)
+        return apply_identity_to_headers(headers, identity)
+
     @staticmethod
     def _build_search_tuning(search_spec: Optional[PipelineSearchSpec]) -> Optional[JobSearchTuning]:
         if not search_spec or not search_spec.is_active():
@@ -163,6 +174,7 @@ class FetchService:
                 raise ValueError("Pagination cURL not configured.")
 
             url, headers = record.construct_request(page_number=page_number)
+            headers = FetchService._headers_with_shared_identity(headers)
 
             print(f"🚀 Fetching Page {page_number}...")
             response = requests.get(url, headers=headers)
@@ -219,6 +231,7 @@ class FetchService:
                 raise ValueError("Pagination cURL not configured.")
 
             url, headers = record.construct_request(page_number=page_number)
+            headers = FetchService._headers_with_shared_identity(headers)
 
             print(f"🚀 [Raw Fetch] Page {page_number}...")
             response = requests.get(url, headers=headers, timeout=15)
@@ -389,15 +402,9 @@ class FetchService:
                     headers = json.loads(record.headers)
                 except:
                     pass
+            headers = FetchService._headers_with_shared_identity(headers)
 
-            cookies = {}
-            if record.cookies:
-                try:
-                    cookies = json.loads(record.cookies)
-                except:
-                    pass
-
-            req = requests.Request('GET', url, headers=headers, cookies=cookies, params=params)
+            req = requests.Request('GET', url, headers=headers, params=params)
             prepared = req.prepare()
 
             session = requests.Session()
@@ -474,13 +481,7 @@ class FetchService:
                             headers[k] = v.replace(TEMPLATE_VANITY, target_vanity_name)
                 except Exception:
                     pass
-
-            cookies = {}
-            if record.cookies:
-                try:
-                    cookies = json.loads(record.cookies)
-                except Exception:
-                    pass
+            headers = FetchService._headers_with_shared_identity(headers)
 
             url = record.base_url.replace(TEMPLATE_VANITY, target_vanity_name)
 
@@ -495,7 +496,6 @@ class FetchService:
                 method=method,
                 url=url,
                 headers=headers,
-                cookies=cookies,  
                 data=body_bytes
             )
             prepared = req.prepare()

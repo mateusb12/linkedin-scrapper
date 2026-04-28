@@ -5,6 +5,7 @@ import sys
 import requests
 import re
 from abc import ABC
+from dataclasses import dataclass
 from typing import Any, Optional, Tuple
 from urllib.parse import quote
 
@@ -14,6 +15,122 @@ logger = logging.getLogger(__name__)
 
 REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 AUTH_REDIRECT_MARKERS = ("/login", "/checkpoint", "/challenge", "/authwall")
+AUTH_HEADER_NAMES = {"cookie", "csrf-token"}
+DEFAULT_LINKEDIN_IDENTITY_CONFIG = "Connections"
+
+
+@dataclass(frozen=True)
+class LinkedInIdentity:
+    li_at: str
+    jsessionid: str
+    csrf_token: str
+    user_agent: str | None = None
+
+
+def _parse_cookie_header(cookie_header: str | None) -> dict[str, str]:
+    cookies = {}
+    if not cookie_header:
+        return cookies
+
+    for part in cookie_header.split(";"):
+        if "=" not in part:
+            continue
+        name, value = part.strip().split("=", 1)
+        cookies[name.strip()] = value.strip().strip('"')
+
+    return cookies
+
+
+def _get_header_case_insensitive(headers: dict[str, str], name: str) -> str | None:
+    lower_name = name.lower()
+    for key, value in headers.items():
+        if key.lower() == lower_name:
+            return value
+    return None
+
+
+def extract_linkedin_identity(headers: dict[str, str]) -> LinkedInIdentity:
+    cookie_header = _get_header_case_insensitive(headers, "Cookie")
+    cookies = _parse_cookie_header(cookie_header)
+    cookies_by_lower = {key.lower(): value for key, value in cookies.items()}
+
+    li_at = cookies_by_lower.get("li_at")
+    jsessionid = cookies_by_lower.get("jsessionid")
+    if not li_at or not jsessionid:
+        raise ValueError("LinkedIn identity requires li_at and JSESSIONID cookies")
+
+    csrf_token = jsessionid.strip('"')
+    return LinkedInIdentity(
+        li_at=li_at,
+        jsessionid=csrf_token,
+        csrf_token=csrf_token,
+        user_agent=_get_header_case_insensitive(headers, "User-Agent"),
+    )
+
+
+def strip_auth_headers(headers: dict[str, str]) -> dict[str, str]:
+    return {
+        key: value
+        for key, value in headers.items()
+        if key.lower() not in AUTH_HEADER_NAMES
+    }
+
+
+def build_cookie_header(identity: LinkedInIdentity) -> str:
+    return f'li_at={identity.li_at}; JSESSIONID="{identity.jsessionid}"'
+
+
+def get_linkedin_identity_config_name(identity_name: str | None = None) -> str:
+    return (
+        identity_name
+        or os.getenv("LINKEDIN_IDENTITY_CONFIG")
+        or DEFAULT_LINKEDIN_IDENTITY_CONFIG
+    )
+
+
+def apply_identity_to_headers(
+        headers: dict[str, str],
+        identity: LinkedInIdentity,
+) -> dict[str, str]:
+    headers = strip_auth_headers(headers)
+    headers["Cookie"] = build_cookie_header(identity)
+    headers["csrf-token"] = identity.csrf_token
+
+    if identity.user_agent and not _get_header_case_insensitive(headers, "User-Agent"):
+        headers["User-Agent"] = identity.user_agent
+
+    return headers
+
+
+def apply_identity_to_session(
+        session: requests.Session,
+        identity: LinkedInIdentity,
+) -> None:
+    session.cookies.set("li_at", identity.li_at)
+    session.cookies.set("JSESSIONID", identity.jsessionid)
+    session.headers.update(apply_identity_to_headers(session.headers.copy(), identity))
+
+
+def load_linkedin_identity(source_config_name: str) -> LinkedInIdentity:
+    from database.database_connection import get_db_session
+    from models.fetch_models import FetchCurl
+
+    db = get_db_session()
+    try:
+        record = db.query(FetchCurl).filter_by(name=source_config_name).first()
+        if not record:
+            raise ValueError(f"LinkedIn identity source '{source_config_name}' not found")
+
+        try:
+            headers = json.loads(record.headers) if record.headers else {}
+        except Exception as e:
+            raise ValueError(
+                f"Failed to parse headers for identity source '{source_config_name}'"
+            ) from e
+
+        return extract_linkedin_identity(headers)
+    finally:
+        db.close()
 
 
 def _build_auth_expired_error(status_code: int, location: str) -> RuntimeError:
@@ -204,13 +321,20 @@ class SduiPaginationRequest(LinkedInRequest):
 # ============================================================
 
 class LinkedInClient:
-    def __init__(self, config_name: str, slim_mode: bool = False):
+    def __init__(
+            self,
+            config_name: str,
+            slim_mode: bool = False,
+            identity_name: str | None = None,
+    ):
         """
         :param config_name: Nome da configuração no banco de dados (FetchCurl).
         :param slim_mode: Se True, remove headers e cookies não essenciais para evitar detecção.
+        :param identity_name: Optional FetchCurl row to use only as the auth identity source.
         """
         self.config_name = config_name
         self.slim_mode = slim_mode
+        self.identity_name = identity_name
         self.session = requests.Session()
         self.session._linkedin_config_name = config_name
         self.config = self._load_config()
@@ -218,6 +342,9 @@ class LinkedInClient:
 
         if self.config:
             headers = self.config.get("headers", {})
+
+            if self.identity_name:
+                headers = strip_auth_headers(headers)
 
             # --- LÓGICA SLIM ---
             if self.slim_mode:
@@ -227,6 +354,12 @@ class LinkedInClient:
 
             # update session headers first
             self.session.headers.update(headers)
+
+            if self.identity_name:
+                identity = load_linkedin_identity(self.identity_name)
+                apply_identity_to_session(self.session, identity)
+                self.csrf_token = identity.csrf_token
+                return
 
             # then hydrate cookies from Cookie header (if present)
             self._hydrate_cookies_from_header()

@@ -147,6 +147,21 @@ class BatchEnrichmentService:
                 "normalized_applicants_value",
                 "config_id",
                 "config_name",
+                "identity_config",
+                "auth_injected",
+                "redirect_happened",
+                "redirect_location",
+                "auth_wall_detected",
+                "content_type",
+                "response_preview",
+                "parsed_keys",
+                "premium_component_found",
+                "applicants_total",
+                "applicants_last_24h",
+                "has_undefined",
+                "has_numeric_applicant_signal",
+                "has_distribution_signal",
+                "failure_classification",
                 "reason",
         ):
             value = getattr(exc, attr, None)
@@ -340,6 +355,12 @@ class BatchEnrichmentService:
 
         config_name = self.single.premium_config_name
         config_id = self.single.premium_config_id
+        response_context = getattr(self.single, "_last_premium_response_context", {}) or {}
+        identity_config = response_context.get("identity_config")
+        auth_injected = response_context.get("auth_injected")
+        status_code = response_context.get("status_code")
+        auth_wall_detected = response_context.get("auth_wall_detected")
+        failure_classification = response_context.get("failure_classification")
         reason = (
             "premium details enrichment returned no valid applicants_total; "
             "aborting to avoid exposing a misleading 0 applicants value"
@@ -356,15 +377,43 @@ class BatchEnrichmentService:
             f"raw_applicants_value={repr(raw_applicants)} "
             f"normalized_applicants_value=0 "
             f"config={config_name}:{config_id} "
+            f"identity_config={identity_config} "
+            f"auth_injected={auth_injected} "
+            f"status_code={status_code} "
+            f"auth_wall_detected={auth_wall_detected} "
+            f"failure_classification={failure_classification} "
             f"reason={reason}"
         )
+
+        action = (
+            f"PremiumInsights used shared identity '{identity_config}' "
+            f"(auth_injected={auth_injected}). "
+        )
+        if auth_wall_detected:
+            action += (
+                f"Refresh the shared identity config '{identity_config}', not necessarily "
+                "the PremiumInsights request skeleton."
+            )
+        elif failure_classification == "shared_identity_or_premium_context_degraded":
+            action += (
+                "Premium returned a component shell with no metrics and no auth redirect. "
+                f"Try a fresher shared identity, for example LINKEDIN_IDENTITY_CONFIG=Experience, "
+                "before replacing the PremiumInsights request skeleton."
+            )
+        else:
+            action += (
+                "No auth wall/redirect was detected; inspect PremiumInsights request skeleton "
+                "and parser/response shape before recopying auth cookies."
+            )
 
         exc = InvalidPremiumApplicantsError(
             operation=f"fetch_premium_insights({job_id})",
             message=(
                 "Premium details enrichment failed: applicants data came back invalid "
                 f"({raw_applicants!r}) from config {config_name}:{config_id}. "
-                "The PremiumInsights curl/config may be expired, invalid, or stale. "
+                f"identity_config={identity_config}, auth_injected={auth_injected}, "
+                f"status_code={status_code}, auth_wall_detected={auth_wall_detected}, "
+                f"failure_classification={failure_classification}. "
                 "The stream was interrupted intentionally to avoid misleading data."
             ),
         )
@@ -378,4 +427,23 @@ class BatchEnrichmentService:
         exc.config_id = config_id
         exc.config_name = config_name
         exc.reason = reason
+        exc.action = action
+        for key, value in response_context.items():
+            setattr(exc, key, value)
+        self.last_failure_context = {
+            "operation": exc.operation,
+            "job_id": job_id,
+            "failed_config": config_name,
+            "config_name": config_name,
+            "config_id": config_id,
+            "title": exc.title,
+            "company": exc.company,
+            "source": exc.source,
+            "provider": exc.provider,
+            "raw_applicants_value": raw_applicants,
+            "normalized_applicants_value": 0,
+            "reason": reason,
+            "action": action,
+            **response_context,
+        }
         raise exc

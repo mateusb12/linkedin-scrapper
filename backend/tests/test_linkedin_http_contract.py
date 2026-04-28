@@ -52,6 +52,118 @@ def test_linkedin_client_hydrates_cookies_derives_csrf_and_slim_filters(monkeypa
     assert "X-Li-Track" not in client.session.headers
 
 
+def test_extract_linkedin_identity_from_cookie_header_normalizes_jsessionid():
+    from source.features.fetch_curl.linkedin_http_client import extract_linkedin_identity
+
+    identity = extract_linkedin_identity(
+        {
+            "Cookie": 'bcookie=DROP_ME; li_at=SOURCE_LI_AT; JSESSIONID="ajax:SOURCE_CSRF"',
+            "User-Agent": "source-user-agent",
+            "csrf-token": "stale-token",
+        }
+    )
+
+    assert identity.li_at == "SOURCE_LI_AT"
+    assert identity.jsessionid == "ajax:SOURCE_CSRF"
+    assert identity.csrf_token == "ajax:SOURCE_CSRF"
+    assert identity.user_agent == "source-user-agent"
+
+
+def test_strip_auth_headers_removes_cookie_and_csrf_preserves_request_headers(monkeypatch):
+    from source.features.fetch_curl.linkedin_http_client import (
+        get_linkedin_identity_config_name,
+        strip_auth_headers,
+    )
+
+    headers = strip_auth_headers(
+        {
+            "Cookie": "li_at=STALE",
+            "csrf-token": "stale-token",
+            "Accept": "application/json",
+            "X-Li-Rsc-Stream": "true",
+            "Referer": "https://www.linkedin.com/jobs/",
+        }
+    )
+
+    assert headers == {
+        "Accept": "application/json",
+        "X-Li-Rsc-Stream": "true",
+        "Referer": "https://www.linkedin.com/jobs/",
+    }
+    assert get_linkedin_identity_config_name() == "Connections"
+    monkeypatch.setenv("LINKEDIN_IDENTITY_CONFIG", "ProfileMain")
+    assert get_linkedin_identity_config_name() == "ProfileMain"
+
+
+def test_apply_identity_to_session_sets_cookies_cookie_header_and_csrf():
+    from source.features.fetch_curl.linkedin_http_client import (
+        LinkedInIdentity,
+        apply_identity_to_headers,
+        apply_identity_to_session,
+    )
+
+    stale_headers = apply_identity_to_headers(
+        {
+            "Cookie": "li_at=STALE_LI_AT; JSESSIONID=ajax:STALE_CSRF",
+            "csrf-token": "ajax:STALE_CSRF",
+            "Accept": "application/json",
+        },
+        LinkedInIdentity(
+            li_at="SOURCE_LI_AT",
+            jsessionid="ajax:SOURCE_CSRF",
+            csrf_token="ajax:SOURCE_CSRF",
+        ),
+    )
+    assert stale_headers["Accept"] == "application/json"
+    assert stale_headers["Cookie"] == 'li_at=SOURCE_LI_AT; JSESSIONID="ajax:SOURCE_CSRF"'
+    assert stale_headers["csrf-token"] == "ajax:SOURCE_CSRF"
+    assert "STALE" not in stale_headers["Cookie"]
+
+    session = requests.Session()
+    apply_identity_to_session(
+        session,
+        LinkedInIdentity(
+            li_at="SOURCE_LI_AT",
+            jsessionid="ajax:SOURCE_CSRF",
+            csrf_token="ajax:SOURCE_CSRF",
+        ),
+    )
+
+    assert session.cookies.get("li_at") == "SOURCE_LI_AT"
+    assert session.cookies.get("JSESSIONID") == "ajax:SOURCE_CSRF"
+    assert session.headers["Cookie"] == 'li_at=SOURCE_LI_AT; JSESSIONID="ajax:SOURCE_CSRF"'
+    assert session.headers["csrf-token"] == "ajax:SOURCE_CSRF"
+
+
+def test_linkedin_client_can_apply_identity_from_another_fetch_curl_row(monkeypatch):
+    records, _get_db_session = patch_linkedin_db(monkeypatch)
+    records["Connections"].headers = json.dumps(
+        {
+            "Cookie": 'li_at=SOURCE_LI_AT; JSESSIONID="ajax:SOURCE_CSRF"',
+            "User-Agent": "source-user-agent",
+        }
+    )
+    records["SavedJobs"].headers = json.dumps(
+        {
+            "Cookie": 'li_at=STALE_LI_AT; JSESSIONID="ajax:STALE_CSRF"',
+            "csrf-token": "ajax:STALE_CSRF",
+            "Accept": "application/json",
+            "Referer": "https://www.linkedin.com/jobs/tracker/",
+        }
+    )
+
+    from source.features.fetch_curl.linkedin_http_client import LinkedInClient
+
+    client = LinkedInClient("SavedJobs", identity_name="Connections")
+
+    assert client.session.cookies.get("li_at") == "SOURCE_LI_AT"
+    assert client.session.cookies.get("JSESSIONID") == "ajax:SOURCE_CSRF"
+    assert client.session.headers["Cookie"] == 'li_at=SOURCE_LI_AT; JSESSIONID="ajax:SOURCE_CSRF"'
+    assert client.session.headers["csrf-token"] == "ajax:SOURCE_CSRF"
+    assert client.session.headers["Accept"] == "application/json"
+    assert client.session.headers["Referer"] == "https://www.linkedin.com/jobs/tracker/"
+
+
 def test_perform_linkedin_request_disables_redirects_and_raises_auth_expired(monkeypatch):
     patch_linkedin_db(monkeypatch)
     captured = _capture_session_request(
@@ -206,7 +318,21 @@ def test_connections_pagination_replaces_start_index_and_posts_body(monkeypatch)
 
 
 def test_premium_insights_updates_job_id_referer_and_identity_encoding(monkeypatch):
-    patch_linkedin_db(monkeypatch)
+    records, _get_db_session = patch_linkedin_db(monkeypatch)
+    records["Connections"].headers = json.dumps(
+        {
+            "Cookie": 'li_at=SOURCE_LI_AT; JSESSIONID="ajax:SOURCE_CSRF"',
+            "User-Agent": "source-user-agent",
+        }
+    )
+    records["PremiumInsights"].headers = json.dumps(
+        {
+            "Cookie": 'li_at=STALE_LI_AT; JSESSIONID="ajax:STALE_CSRF"',
+            "csrf-token": "ajax:STALE_CSRF",
+            "Accept": "text/x-component",
+            "Accept-Encoding": "br",
+        }
+    )
     captured = []
 
     def fake_request(method, url, headers=None, data=None, **kwargs):
@@ -233,8 +359,79 @@ def test_premium_insights_updates_job_id_referer_and_identity_encoding(monkeypat
     assert '"jobId":"4387654321"' in req["data"]
     assert req["headers"]["Referer"] == "https://www.linkedin.com/jobs/view/4387654321/"
     assert req["headers"]["Accept-Encoding"] == "identity"
-    assert FAKE_LI_AT in req["headers"]["Cookie"]
+    assert req["headers"]["Cookie"] == 'li_at=SOURCE_LI_AT; JSESSIONID="ajax:SOURCE_CSRF"'
+    assert req["headers"]["csrf-token"] == "ajax:SOURCE_CSRF"
+    assert "STALE" not in req["headers"]["Cookie"]
     assert req["kwargs"]["timeout"] == 20
+
+
+def test_notifications_uses_shared_identity_not_stale_target_auth(monkeypatch):
+    records, _get_db_session = patch_linkedin_db(monkeypatch)
+    records["Connections"].headers = json.dumps(
+        {
+            "Cookie": 'li_at=SOURCE_LI_AT; JSESSIONID="ajax:SOURCE_CSRF"',
+            "User-Agent": "source-user-agent",
+        }
+    )
+    records["Notifications"].headers = json.dumps(
+        {
+            "Cookie": 'li_at=STALE_LI_AT; JSESSIONID="ajax:STALE_CSRF"',
+            "csrf-token": "ajax:STALE_CSRF",
+            "Accept": "application/json",
+        }
+    )
+    captured = []
+
+    def fake_request(self, method, url, headers=None, **kwargs):
+        captured.append({"method": method, "url": url, "headers": headers, "kwargs": kwargs})
+        return FakeResponse(json_data={"included": []})
+
+    monkeypatch.setattr(requests.Session, "request", fake_request)
+
+    from source.features.enrich_jobs.linkedin_http_job_enricher import LinkedInJobEnricher
+
+    LinkedInJobEnricher().fetch_notifications_for_job("4387654321")
+
+    req = captured[0]
+    assert req["method"] == "GET"
+    assert req["url"] == "https://www.linkedin.com/voyager/api/notifications/dash"
+    assert req["headers"]["Cookie"] == 'li_at=SOURCE_LI_AT; JSESSIONID="ajax:SOURCE_CSRF"'
+    assert req["headers"]["csrf-token"] == "ajax:SOURCE_CSRF"
+    assert req["headers"]["Accept"] == "application/json"
+    assert "STALE" not in req["headers"]["Cookie"]
+
+
+def test_job_tracker_premium_insights_uses_shared_identity_not_stale_target_auth(monkeypatch):
+    records, _get_db_session = patch_linkedin_db(monkeypatch)
+    records["Connections"].headers = json.dumps(
+        {
+            "Cookie": 'li_at=SOURCE_LI_AT; JSESSIONID="ajax:SOURCE_CSRF"',
+            "User-Agent": "source-user-agent",
+        }
+    )
+    records["PremiumInsights"].headers = json.dumps(
+        {
+            "Cookie": 'li_at=STALE_LI_AT; JSESSIONID="ajax:STALE_CSRF"',
+            "csrf-token": "ajax:STALE_CSRF",
+            "Accept": "text/x-component",
+        }
+    )
+    captured = []
+
+    def fake_request(method, url, headers=None, data=None, **kwargs):
+        captured.append({"method": method, "url": url, "headers": headers, "data": data, "kwargs": kwargs})
+        return FakeResponse(text='{"premium_component_found":false}')
+
+    monkeypatch.setattr(requests, "request", fake_request)
+
+    from source.features.get_applied_jobs.new_get_applied_jobs_service import JobTrackerFetcher
+
+    JobTrackerFetcher().fetch_premium_insights("4387654321")
+
+    req = captured[0]
+    assert req["headers"]["Cookie"] == 'li_at=SOURCE_LI_AT; JSESSIONID="ajax:SOURCE_CSRF"'
+    assert req["headers"]["csrf-token"] == "ajax:SOURCE_CSRF"
+    assert "STALE" not in req["headers"]["Cookie"]
 
 
 def test_fetch_job_details_captures_direct_session_get_and_parses_voyager(
@@ -281,7 +478,19 @@ def test_fetch_service_internal_request_sends_prepared_request_and_parses_rsc(
     monkeypatch,
 ):
     records, get_db_session = patch_linkedin_db(monkeypatch)
-    records["Pagination"].cookies = json.dumps({"li_at": FAKE_LI_AT})
+    records["Connections"].headers = json.dumps(
+        {
+            "Cookie": 'li_at=SOURCE_LI_AT; JSESSIONID="ajax:SOURCE_CSRF"',
+            "User-Agent": "source-user-agent",
+        }
+    )
+    records["Pagination"].headers = json.dumps(
+        {
+            "Cookie": 'li_at=STALE_LI_AT; JSESSIONID="ajax:STALE_CSRF"',
+            "csrf-token": "ajax:STALE_CSRF",
+            "Accept": "application/json",
+        }
+    )
     monkeypatch.setattr(
         "source.features.fetch_curl.fetch_service.get_db_session",
         get_db_session,
@@ -308,8 +517,9 @@ def test_fetch_service_internal_request_sends_prepared_request_and_parses_rsc(
     assert result == '0:{"ok":true}'
     assert prepared.method == "GET"
     assert "variables=%28count%3A1%2Cstart%3A0%29" in prepared.url
-    assert prepared.headers["csrf-token"] == "stale-token"
-    assert "li_at=FAKE_LI_AT" in prepared.headers["Cookie"]
+    assert prepared.headers["csrf-token"] == "ajax:SOURCE_CSRF"
+    assert prepared.headers["Cookie"] == 'li_at=SOURCE_LI_AT; JSESSIONID="ajax:SOURCE_CSRF"'
+    assert "STALE" not in prepared.headers["Cookie"]
     assert kwargs["timeout"] == 15
 
 

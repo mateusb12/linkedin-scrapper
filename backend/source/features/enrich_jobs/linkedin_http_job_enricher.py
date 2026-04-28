@@ -25,7 +25,14 @@ from dataclasses import asdict
 
 import requests
 
-from source.features.fetch_curl.linkedin_http_client import LinkedInClient
+from source.features.fetch_curl.linkedin_http_client import (
+    AUTH_REDIRECT_MARKERS,
+    REDIRECT_STATUSES,
+    LinkedInClient,
+    apply_identity_to_headers,
+    get_linkedin_identity_config_name,
+    load_linkedin_identity,
+)
 from source.features.get_applied_jobs.utils_proxy import (
     JobPost,
     NotificationEvent,
@@ -95,6 +102,8 @@ class LinkedInJobEnricher:
         self.premium_parser = PremiumParser()
         self.premium_config_name = "PremiumInsights"
         self.premium_config_id: Optional[int] = None
+        self._last_identity_config_name: Optional[str] = None
+        self._last_premium_response_context: Dict[str, Any] = {}
 
         from database.database_connection import get_db_session
         from models.fetch_models import FetchCurl
@@ -131,6 +140,18 @@ class LinkedInJobEnricher:
                 _log("⚠️ Notifications config not found in FetchCurl table")
         finally:
             db.close()
+
+    def _headers_with_shared_identity(self, headers: dict[str, str]) -> dict[str, str]:
+        identity_name = get_linkedin_identity_config_name()
+        identity = load_linkedin_identity(identity_name)
+        self._last_identity_config_name = identity_name
+        return apply_identity_to_headers(headers, identity)
+
+    def _detect_auth_wall_response(self, response: requests.Response) -> bool:
+        location = response.headers.get("location", "") or ""
+        preview = (response.text or "")[:3000]
+        haystack = f"{location} {getattr(response, 'url', '')} {preview}".lower()
+        return any(marker in haystack for marker in AUTH_REDIRECT_MARKERS)
 
     def _get_csrf_token(self) -> Optional[str]:
         session = self.client.session
@@ -190,9 +211,11 @@ class LinkedInJobEnricher:
             f"premium_component_found={parsed.get('premium_component_found')} "
             f"has_undefined={'$undefined' in response_text} "
             f"applicants_total_extracted={parsed.get('applicants_total') is not None} "
+            f"identity_config={self._last_identity_config_name} "
+            f"auth_injected={bool(self._last_identity_config_name)} "
             f"reason={reason} "
             f"preview={repr(self._preview_text(response_text))} "
-            f"hint='premium payload degraded; stale li_at or stale auth cookie bundle is suspected'"
+            f"hint='premium payload degraded; compare identity freshness before replacing request skeleton'"
         )
 
     def fetch_job_details(self, job_id: str, raise_on_failure: bool = False) -> Dict[str, Any]:
@@ -434,7 +457,7 @@ class LinkedInJobEnricher:
                 f'\\1"{job_id}"',
                 self.premium_body,
             )
-            headers = self.premium_headers.copy()
+            headers = self._headers_with_shared_identity(self.premium_headers)
             headers["Referer"] = f"https://www.linkedin.com/jobs/view/{job_id}/"
             headers.pop("Accept-Encoding", None)
             headers["Accept-Encoding"] = "identity"
@@ -446,6 +469,7 @@ class LinkedInJobEnricher:
                     headers=headers,
                     data=body,
                     timeout=20,
+                    allow_redirects=False,
                 )
             except requests.RequestException as e:
                 if raise_on_failure:
@@ -455,6 +479,37 @@ class LinkedInJobEnricher:
                     )
                 _log(f"⚠️ fetch_premium_insights({job_id}) request error: {e}")
                 return empty
+
+            auth_wall_detected = self._detect_auth_wall_response(r)
+            redirect_happened = r.status_code in REDIRECT_STATUSES
+            content_type = r.headers.get("Content-Type", "") or r.headers.get("content-type", "")
+            response_preview = self._preview_text(r.text)
+            self._last_premium_response_context = {
+                "failed_config": self.premium_config_name,
+                "config_name": self.premium_config_name,
+                "config_id": self.premium_config_id,
+                "identity_config": self._last_identity_config_name,
+                "auth_injected": bool(self._last_identity_config_name),
+                "status_code": r.status_code,
+                "redirect_happened": redirect_happened,
+                "redirect_location": r.headers.get("location"),
+                "auth_wall_detected": auth_wall_detected,
+                "content_type": content_type,
+                "response_preview": response_preview,
+            }
+
+            if redirect_happened and auth_wall_detected:
+                exc = AuthExpiredError(
+                    operation=f"fetch_premium_insights({job_id})",
+                    status_code=r.status_code,
+                    message=(
+                        "PremiumInsights redirected to a LinkedIn auth wall "
+                        f"using identity_config={self._last_identity_config_name}."
+                    ),
+                )
+                for key, value in self._last_premium_response_context.items():
+                    setattr(exc, key, value)
+                raise exc
 
             if r.status_code != 200:
                 if raise_on_failure:
@@ -495,6 +550,22 @@ class LinkedInJobEnricher:
                 bool(parsed.get("education_distribution")),
             ])
             has_concrete_metrics = has_numeric_applicant_signal or has_distribution_signal
+            if auth_wall_detected:
+                failure_classification = "auth_failure"
+            elif premium_component_found and has_undefined and not has_concrete_metrics:
+                failure_classification = "shared_identity_or_premium_context_degraded"
+            else:
+                failure_classification = "parser_or_response_shape"
+            self._last_premium_response_context.update({
+                "parsed_keys": sorted(parsed.keys()),
+                "premium_component_found": premium_component_found,
+                "applicants_total": applicants_total,
+                "applicants_last_24h": parsed.get("applicants_last_24h"),
+                "has_undefined": has_undefined,
+                "has_numeric_applicant_signal": has_numeric_applicant_signal,
+                "has_distribution_signal": has_distribution_signal,
+                "failure_classification": failure_classification,
+            })
 
             if premium_component_found and applicants_total is None:
                 self._log_premium_payload_degraded(
@@ -544,12 +615,9 @@ class LinkedInJobEnricher:
             return None
 
         session = self.client.session
-        csrf = self._get_csrf_token()
-
         try:
             headers = session.headers.copy()
-            headers.update(self.notifications_headers)
-            headers["csrf-token"] = csrf
+            headers.update(self._headers_with_shared_identity(self.notifications_headers))
 
             try:
                 resp = session.request(
