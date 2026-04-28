@@ -18,6 +18,7 @@ import phpIcon from "../../assets/skills/php.png";
 
 import djangoIcon from "../../assets/skills/django.png";
 import azureIcon from "../../assets/skills/azure.png";
+import googleCloudIcon from "../../assets/skills/google-cloud.png";
 import kubernetesIcon from "../../assets/skills/kubernetes.png";
 import linuxIcon from "../../assets/skills/linux.png";
 import dockerIcon from "../../assets/skills/docker.png";
@@ -138,6 +139,9 @@ const techIconsMap: Record<string, string> = {
     Vue: vueIcon,
     Oracle: oracleIcon,
     Azure: azureIcon,
+    GCP: googleCloudIcon,
+    "Google Cloud": googleCloudIcon,
+    "Google Cloud Platform": googleCloudIcon,
     Kubernetes: kubernetesIcon,
     Linux: linuxIcon,
     Docker: dockerIcon,
@@ -159,7 +163,31 @@ const techIconsMap: Record<string, string> = {
     Gemini: geminiIcon,
 };
 
+const techIconAliases: Record<string, string> = {
+    gcp: "GCP",
+    "google cloud": "GCP",
+    "google cloud platform": "GCP",
+    aws: "AWS",
+    "amazon web services": "AWS",
+    azure: "Azure",
+    postgres: "PostgreSQL",
+    postgresql: "PostgreSQL",
+    mysql: "MySQL",
+    node: "Node.js",
+    nodejs: "Node.js",
+    "node.js": "Node.js",
+    nextjs: "NextJS",
+    "next.js": "NextJS",
+}
+
 export const getTechIcon = (techName?: string | null): string | null => {
-    if (!techName) return null;
-    return techIconsMap[techName] ?? null;
+    if (!techName) return null
+
+    const directIcon = techIconsMap[techName]
+    if (directIcon) return directIcon
+
+    const normalized = techName.trim().toLowerCase()
+    const alias = techIconAliases[normalized]
+
+    return alias ? techIconsMap[alias] ?? null : null
 };
