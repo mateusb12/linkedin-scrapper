@@ -3,6 +3,8 @@ import {
     BookOpen,
     BriefcaseBusiness,
     Check,
+    ChevronDown,
+    ChevronRight,
     Copy,
     FileCode2,
     FileJson,
@@ -163,22 +165,48 @@ function Section({
                      icon,
                      children,
                      action,
+                     defaultOpen = true,
                  }: {
     title: string
     icon: React.ReactNode
     children: React.ReactNode
     action?: React.ReactNode
+    defaultOpen?: boolean
 }) {
+    const [isOpen, setIsOpen] = useState(defaultOpen)
+    const contentId = `${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-section`
+
     return (
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#172033]">
-            <div className="mb-4 flex items-center justify-between gap-3">
-                <h2 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-50">
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#172033]">
+            <div className="flex items-center justify-between gap-3 p-5">
+                <button
+                    type="button"
+                    onClick={() => setIsOpen(current => !current)}
+                    aria-expanded={isOpen}
+                    aria-controls={contentId}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left text-lg font-black text-slate-900 outline-none transition hover:text-blue-600 focus-visible rounded-lg focus-visible:ring-4 focus-visible:ring-blue-500/20 dark:text-slate-50 dark:hover:text-blue-300"
+                >
                     {icon}
-                    {title}
-                </h2>
-                {action}
+                    <span className="truncate">{title}</span>
+                    {isOpen ? (
+                        <ChevronDown className="size-5 shrink-0 text-slate-400"/>
+                    ) : (
+                        <ChevronRight className="size-5 shrink-0 text-slate-400"/>
+                    )}
+                </button>
+
+                {action ? (
+                    <div onClick={event => event.stopPropagation()}>
+                        {action}
+                    </div>
+                ) : null}
             </div>
-            {children}
+
+            {isOpen ? (
+                <div id={contentId} className="border-t border-slate-200 p-5 pt-4 dark:border-slate-800">
+                    {children}
+                </div>
+            ) : null}
         </section>
     )
 }
