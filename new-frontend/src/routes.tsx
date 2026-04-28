@@ -14,7 +14,7 @@ import FetchConfigPage from "./features/fetch-config/FetchConfigPage"
 import SavedJobsPage from "./features/saved-jobs/SavedJobsPage"
 import SearchJobsPage from "./features/search-jobs/SearchJobsPage"
 import AppliedJobsPage from "./features/applied-jobs/AppliedJobsPage.tsx";
-import AppliedJobsInsightsPage from "./features/applied-jobs/AppliedJobsInsightsPage.tsx";
+import InsightsPage from "./features/insights/InsightsPage.tsx";
 
 export type AppRoute = {
     label: string
@@ -42,7 +42,7 @@ export const appRoutes = [
         label: "Insights",
         icon: PieChart,
         route: "/applied-insights",
-        Page: AppliedJobsInsightsPage,
+        Page: InsightsPage,
     },
     {label: "Saved Jobs", icon: Bookmark, route: "/saved", Page: SavedJobsPage},
 ] as const satisfies readonly AppRoute[]
