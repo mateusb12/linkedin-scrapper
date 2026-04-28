@@ -20,10 +20,10 @@ import {
 import type {SortOption} from "./SearchJobsFilters.tsx"
 
 import {
-    type FetchJobsProgress,
+    type SearchJobsProgress,
     placeholderLogo,
     type SearchJob,
-} from "./searchJobsMockService.ts"
+} from "./searchJobsService.ts"
 
 
 import {getTechIcon} from "../job-analysis/jobUtils.ts"
@@ -633,7 +633,7 @@ export function JobListInsideFilters({
             <div
                 className="flex items-center justify-center rounded-xl border border-slate-800 bg-slate-900/40 p-6 text-sm text-slate-400">
                 <RefreshCw size={16} className="mr-2 animate-spin text-sky-400"/>
-                Loading mock jobs...
+                Loading jobs...
             </div>
         )
     }
@@ -648,7 +648,7 @@ export function JobListInsideFilters({
                 </p>
 
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-                    Change the filters or fetch a new mock dataset.
+                    Change the filters or fetch jobs from the backend.
                 </p>
             </div>
         )
@@ -760,7 +760,7 @@ function DescriptionBlock({text}: { text: string }) {
     if (blocks.length === 0) {
         return (
             <p className="text-sm leading-7 text-slate-400">
-                No description available for this mock job.
+                No description available for this job.
             </p>
         )
     }
@@ -960,7 +960,7 @@ export function SelectedJobPreview({
                                         ))
                                     ) : (
                                         <p className="text-sm text-slate-500">
-                                            No concrete tech stack detected in this mock payload.
+                                            No concrete tech stack detected in this payload.
                                         </p>
                                     )}
                                 </div>
@@ -1019,7 +1019,7 @@ export function FetchJobsModal({
     fetchQuery: string
     setFetchQuery: (value: string) => void
     loading: boolean
-    progress: FetchJobsProgress | null
+    progress: SearchJobsProgress | null
     onClose: () => void
     onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }) {
@@ -1036,15 +1036,15 @@ export function FetchJobsModal({
                 <div className="flex items-start justify-between gap-4">
                     <div>
                         <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-sky-400">
-                            Mock fetch
+                            Backend fetch
                         </p>
 
                         <h2 className="mt-1 text-xl font-black text-slate-50">
-                            Load LinkedIn mock jobs
+                            Load LinkedIn jobs
                         </h2>
 
                         <p className="mt-2 text-sm leading-6 text-slate-400">
-                            Simulates fetching, parsing and enriching jobs before saving them in local cache.
+                            Streams LinkedIn jobs from the backend, scores them, and saves them in local cache.
                         </p>
                     </div>
 
@@ -1128,7 +1128,7 @@ export function FetchJobsModal({
                         className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-sky-400 disabled:opacity-50"
                     >
                         <RefreshCw size={16} className={loading ? "animate-spin" : ""}/>
-                        Fetch mock jobs
+                        Fetch jobs
                     </button>
                 </div>
             </form>

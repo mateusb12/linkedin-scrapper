@@ -15,14 +15,18 @@ import SearchJobsFilters, {
 } from "./SearchJobsFilters.tsx"
 
 import {
-    clearJobsCacheMock,
-    fetchJobsMock,
-    type FetchJobsProgress,
-    getInitialSearchJobsMockData,
-    readSavedJobIdsMock,
+    clearJobsCache,
+    type SearchJobsProgress,
+    getInitialSearchJobsData,
+    readJobsCache,
+    readSavedJobIds,
+    scoreJobsBatch,
     type SearchJob,
-    toggleSavedJobMock,
-} from "./searchJobsMockService.ts"
+    streamGraphqlJobs,
+    toggleSavedJob,
+    writeJobsCache,
+    type StreamBackendError,
+} from "./searchJobsService.ts"
 
 import {
     FetchJobsModal,
@@ -300,7 +304,7 @@ export default function SearchJobsPage() {
     const [maxApplicantsLimit, setMaxApplicantsLimit] = useState(Number.MAX_SAFE_INTEGER)
     const [showHiddenJobs, setShowHiddenJobs] = useState(false)
 
-    const [savedIds, setSavedIds] = useState<string[]>(() => readSavedJobIdsMock())
+    const [savedIds, setSavedIds] = useState<string[]>(() => readSavedJobIds())
 
     const [cacheTimestamp, setCacheTimestamp] = useState<string | null>(null)
     const [loadedFromCache, setLoadedFromCache] = useState(false)
@@ -310,7 +314,7 @@ export default function SearchJobsPage() {
     const [isFetchModalOpen, setIsFetchModalOpen] = useState(false)
     const [fetchCount, setFetchCount] = useState(75)
     const [fetchQuery, setFetchQuery] = useState("")
-    const [fetchProgress, setFetchProgress] = useState<FetchJobsProgress | null>(null)
+    const [fetchProgress, setFetchProgress] = useState<SearchJobsProgress | null>(null)
 
     useEffect(() => {
         let isMounted = true
@@ -320,7 +324,7 @@ export default function SearchJobsPage() {
             setErrorMessage(null)
 
             try {
-                const result = await getInitialSearchJobsMockData()
+                const result = getInitialSearchJobsData()
 
                 if (!isMounted) return
 
@@ -333,7 +337,7 @@ export default function SearchJobsPage() {
                 setErrorMessage(
                     error instanceof Error
                         ? error.message
-                        : "Could not load mock jobs.",
+                        : "Could not load cached jobs.",
                 )
             } finally {
                 if (isMounted) {
@@ -449,18 +453,22 @@ export default function SearchJobsPage() {
     )
 
     useEffect(() => {
-        if (!selectedJob) {
-            setSelectedJobId(null)
-            return
-        }
+        const timeoutId = window.setTimeout(() => {
+            if (!selectedJob) {
+                setSelectedJobId(null)
+                return
+            }
 
-        if (selectedJob.id !== selectedJobId) {
-            setSelectedJobId(selectedJob.id)
-        }
+            if (selectedJob.id !== selectedJobId) {
+                setSelectedJobId(selectedJob.id)
+            }
+        }, 0)
+
+        return () => window.clearTimeout(timeoutId)
     }, [selectedJob, selectedJobId])
 
     const handleClearCache = () => {
-        clearJobsCacheMock()
+        clearJobsCache()
         setJobs([])
         setSelectedJobId(null)
         setCacheTimestamp(null)
@@ -476,21 +484,84 @@ export default function SearchJobsPage() {
         setFetchProgress(null)
 
         try {
-            const result = await fetchJobsMock({
-                count: fetchCount,
-                query: fetchQuery,
-                onProgress: setFetchProgress,
+            const trimmedQuery = fetchQuery.trim()
+            const data = await streamGraphqlJobs(
+                {
+                    count: fetchCount,
+                    ...(trimmedQuery ? {keywords: trimmedQuery} : {}),
+                    excluded_keywords: "Junior",
+                    geo_id: "106057199",
+                    distance: 25,
+                    blacklist: negativeCompanies,
+                },
+                setFetchProgress,
+            )
+
+            const scoreMap = await scoreJobsBatch(data)
+
+            const enrichedJobs = data.map((job) => {
+                const score = scoreMap.get(String(job.id))
+
+                if (!score) return job
+
+                const totalScore = score.total_score ?? 0
+                const archetype = score.archetype || score.metadata?.archetype || null
+
+                return {
+                    ...job,
+                    aiScore: totalScore,
+                    pythonScore: totalScore,
+                    pythonSignalScore: score.category_scores?.python_primary ?? 0,
+                    aiCategoryScores: score.category_scores || null,
+                    aiScoreBreakdown: score.score_breakdown || null,
+                    aiArchetype: archetype,
+                    aiSignals: score.metadata?.archetype_signals || null,
+                    aiMatchedKeywords: score.matched_keywords || null,
+                    aiBonusReasons: score.bonus_reasons || [],
+                    aiPenaltyReasons: score.penalty_reasons || [],
+                    aiEvidence: score.evidence || [],
+                    aiSuspicious: Boolean(score.suspicious),
+                    aiSuspiciousReasons: score.suspicious_reasons || [],
+                    archetype: archetype || job.archetype,
+                    scoreBreakdown: {
+                        positive: [],
+                        negative: [],
+                        categoryTotals: score.category_scores || {},
+                    },
+                }
             })
 
-            setJobs(result.jobs)
-            setCacheTimestamp(result.cachedAt)
-            setLoadedFromCache(result.loadedFromCache)
+            const cachedAt = writeJobsCache(enrichedJobs)
+
+            setJobs(enrichedJobs)
+            setCacheTimestamp(cachedAt)
+            setLoadedFromCache(false)
             setIsFetchModalOpen(false)
         } catch (error) {
+            const streamError = error as StreamBackendError
+            const isBackendEnrichmentError =
+                streamError.code === "PREMIUM_APPLICANTS_ENRICHMENT_FAILED" ||
+                streamError.details?.type === "enrichment_error"
+            const cached = readJobsCache()
+
+            if (cached?.jobs?.length && !isBackendEnrichmentError) {
+                setJobs(cached.jobs)
+                setCacheTimestamp(cached.cachedAt)
+                setLoadedFromCache(true)
+                setErrorMessage(
+                    "Backend fetch failed. Showing the latest cached jobs instead.",
+                )
+                return
+            }
+
+            setJobs([])
+            setSelectedJobId(null)
+            setCacheTimestamp(null)
+            setLoadedFromCache(false)
             setErrorMessage(
                 error instanceof Error
                     ? error.message
-                    : "Could not fetch mock jobs.",
+                    : "Could not fetch jobs from backend.",
             )
         } finally {
             setLoading(false)
@@ -498,7 +569,7 @@ export default function SearchJobsPage() {
     }
 
     const handleToggleSaved = (job: JobView) => {
-        setSavedIds(toggleSavedJobMock(job.jobId))
+        setSavedIds(toggleSavedJob(job.jobId))
     }
 
     const handleOpenApply = (job: JobView) => {

@@ -1,5 +1,5 @@
 import {MOCKED_JOBS} from "../mock-jobs/MOCKED_JOBS"
-import type {SearchJob} from "../search-jobs/searchJobsMockService.ts"
+import type {SearchJob} from "../search-jobs/searchJobsService.ts"
 
 export type SavedJobsTab = "saved" | "applied" | "in_progress" | "archived"
 

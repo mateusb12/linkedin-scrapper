@@ -1,4 +1,4 @@
-import type {SearchJob} from "../search-jobs/searchJobsMockService"
+import type {SearchJob} from "../search-jobs/searchJobsService"
 
 export const MOCKED_JOBS = [
     {
