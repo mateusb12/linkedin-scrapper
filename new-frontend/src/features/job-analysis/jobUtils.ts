@@ -48,26 +48,13 @@ import llmIcon from "../../assets/skills/llm.png";
 import langchainIcon from "../../assets/skills/langchain.svg";
 import geminiIcon from "../../assets/skills/gemini.svg";
 
-const NEGATIVE_KEYWORDS: string[] = [
-    "rpa",
-    "llm",
-    "mcp",
-    "rag",
-    "n8n",
-    "langchain",
-    "lovable",
-    "gemini",
-    "oracle",
-    "langgraph",
-];
-
 export const extractExperienceFromDescription = (
     description?: string | null,
 ): Experience | null => {
     if (!description) return null;
 
     const regex =
-        /(\d+)(?:\s*[-–to]\s*(\d+))?\s*(?:\+|plus|\s*mais)?\s*(?:years?|yrs?|anos?)\b/gi;
+        /(\d+)(?:\s*(?:-|–|to)\s*(\d+))?\s*(?:\+|plus|\s*mais)?\s*(?:years?|yrs?|anos?)\b/gi;
 
     const matches = [...description.matchAll(regex)];
     if (matches.length === 0) return null;
@@ -91,37 +78,6 @@ export const extractExperienceFromDescription = (
         max: bestMatch.max,
         text: bestMatch.fullMatch,
     };
-};
-
-export const getExperienceStyle = (experience: Experience | null): string => {
-    if (!experience)
-        return "text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700";
-
-    const minYears = experience.min ?? 0;
-
-    if (minYears <= 4)
-        return "text-emerald-700 bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800";
-
-    if (minYears <= 6)
-        return "text-amber-700 bg-amber-100 dark:text-amber-400 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800";
-
-    return "text-red-700 bg-red-100 dark:text-red-400 dark:bg-red-900/30 border-red-200 dark:border-red-800";
-};
-
-export const getCompetitionStyle = (applicants?: number | null): string => {
-    if (applicants == null)
-        return "text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700";
-
-    if (applicants < 117)
-        return "text-emerald-700 bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800";
-
-    if (applicants < 468)
-        return "text-yellow-700 bg-yellow-100 dark:text-yellow-400 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-800";
-
-    if (applicants < 1820)
-        return "text-orange-700 bg-orange-100 dark:text-orange-400 dark:bg-orange-900/30 border-orange-200 dark:border-orange-800";
-
-    return "text-red-700 bg-red-100 dark:text-red-400 dark:bg-red-900/30 border-red-200 dark:border-red-800";
 };
 
 export type JobAgeMeta = {
@@ -221,7 +177,8 @@ const techIconsMap: Record<string, string> = {
     Gemini: geminiIcon,
 };
 
-const techIconAliases: Record<string, string> = {
+const TECH_LABEL_ALIASES: Record<string, string> = {
+    api: "API",
     gcp: "GCP",
     "google cloud": "GCP",
     "google cloud platform": "GCP",
@@ -236,16 +193,259 @@ const techIconAliases: Record<string, string> = {
     "node.js": "Node.js",
     nextjs: "NextJS",
     "next.js": "NextJS",
+    backend: "Backend",
+    django: "Django",
+    docker: "Docker",
+    fastapi: "FastAPI",
+    flask: "Flask",
+    frontend: "Frontend",
+    gemini: "Gemini",
+    git: "Git",
+    java: "Java",
+    javascript: "JavaScript",
+    kafka: "Kafka",
+    kubernetes: "Kubernetes",
+    langchain: "LangChain",
+    linux: "Linux",
+    llm: "LLM",
+    oracle: "Oracle",
+    pandas: "Pandas",
+    php: "PHP",
+    python: "Python",
+    rabbitmq: "RabbitMQ",
+    react: "React",
+    "react native": "React Native",
+    reactnative: "React Native",
+    redis: "Redis",
+    remote: "Remote",
+    sql: "SQL",
+    terraform: "Terraform",
+    typescript: "TypeScript",
+    vue: "Vue",
+    "full stack": "Full Stack",
+    fullstack: "Full Stack",
+    "full-stack": "Full Stack",
+    "data pipeline": "Data pipeline",
+    "data pipelines": "Data pipeline",
+}
+
+export const normalizeTechText = (value: string) =>
+    value
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/\p{Diacritic}/gu, "")
+        .replace(/[-_.]/g, " ")
+        .replace(/\s+/g, " ")
+
+export const formatTechLabel = (tech: string) => {
+    const normalized = normalizeTechText(tech)
+
+    return (
+        TECH_LABEL_ALIASES[normalized] ??
+        tech
+            .trim()
+            .replace(/[-_]/g, " ")
+            .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    )
 }
 
 export const getTechIcon = (techName?: string | null): string | null => {
     if (!techName) return null
 
-    const directIcon = techIconsMap[techName]
+    const label = formatTechLabel(techName)
+    const directIcon = techIconsMap[label]
     if (directIcon) return directIcon
 
-    const normalized = techName.trim().toLowerCase()
-    const alias = techIconAliases[normalized]
+    const alias = TECH_LABEL_ALIASES[normalizeTechText(techName)]
 
     return alias ? techIconsMap[alias] ?? null : null
 };
+
+const RUNTIME_KEYWORD_HINTS = [
+    {label: "PostgreSQL", pattern: /\b(postgresql|postgres)\b/i},
+    {label: "MySQL", pattern: /\bmysql\b/i},
+    {label: "SQL", pattern: /\bsql\b/i},
+    {label: "AWS", pattern: /\b(aws|amazon web services)\b/i},
+    {label: "GCP", pattern: /\b(gcp|google cloud|google cloud platform)\b/i},
+    {label: "Azure", pattern: /\bazure\b/i},
+    {label: "Python", pattern: /\bpython\b/i},
+    {label: "Django", pattern: /\bdjango\b/i},
+    {label: "FastAPI", pattern: /\bfastapi\b/i},
+    {label: "Flask", pattern: /\bflask\b/i},
+    {label: "React", pattern: /\breact\b/i},
+    {label: "TypeScript", pattern: /\btypescript\b/i},
+    {label: "JavaScript", pattern: /\bjavascript\b/i},
+    {label: "Node.js", pattern: /\b(node\.js|nodejs|node)\b/i},
+    {label: "Docker", pattern: /\bdocker\b/i},
+    {label: "Kubernetes", pattern: /\b(kubernetes|k8s)\b/i},
+    {label: "Kafka", pattern: /\bkafka\b/i},
+    {label: "RabbitMQ", pattern: /\brabbitmq\b/i},
+    {label: "Redis", pattern: /\bredis\b/i},
+    {label: "Data pipeline", pattern: /\bdata pipelines?\b/i},
+    {label: "Backend", pattern: /\b(back-end|backend)\b/i},
+    {label: "Frontend", pattern: /\b(front-end|frontend)\b/i},
+    {label: "Full Stack", pattern: /\b(full stack|fullstack|full-stack)\b/i},
+    {label: "Remote", pattern: /\bremote\b/i},
+    {label: "Hybrid", pattern: /\bhybrid\b/i},
+    {label: "On-site", pattern: /\b(on-site|onsite|presential|presencial)\b/i},
+    {label: "Senior", pattern: /\b(senior|sênior)\b/i},
+    {label: "Pleno", pattern: /\b(pleno|mid level)\b/i},
+    {label: "Junior", pattern: /\b(junior|júnior|entry)\b/i},
+    {label: "Internship", pattern: /\b(intern|internship|estagio|estágio)\b/i},
+]
+
+type RuntimeJobKeywordsSource = {
+    title?: string | null
+    description?: string | null
+    description_full?: string | null
+    description_snippet?: string | null
+    premium_title?: string | null
+    premium_description?: string | null
+    jobType?: string | null
+    seniority?: string | null
+    location?: string | null
+    keywords?: string[] | null
+}
+
+const dedupeKeywordLabels = (keywords: string[]) => {
+    const keywordMap = new Map<string, string>()
+
+    keywords.forEach((item) => {
+        const label = formatTechLabel(item)
+        const key = normalizeTechText(label)
+
+        if (key && key !== "not specified" && !keywordMap.has(key)) {
+            keywordMap.set(key, label)
+        }
+    })
+
+    return [...keywordMap.values()]
+}
+
+export const extractRuntimeJobKeywordsFromText = (text: string): string[] =>
+    dedupeKeywordLabels(
+        RUNTIME_KEYWORD_HINTS
+            .filter((hint) => hint.pattern.test(text))
+            .map((hint) => hint.label),
+    )
+
+export const getRuntimeJobKeywords = (jobLike: RuntimeJobKeywordsSource) => {
+    const searchableText = [
+        jobLike.title,
+        jobLike.description,
+        jobLike.description_full,
+        jobLike.description_snippet,
+        jobLike.premium_title,
+        jobLike.premium_description,
+        jobLike.jobType,
+        jobLike.seniority,
+        jobLike.location,
+    ]
+        .filter(Boolean)
+        .join(" ")
+
+    return dedupeKeywordLabels([
+        ...(jobLike.keywords ?? []),
+        ...extractRuntimeJobKeywordsFromText(searchableText),
+    ])
+}
+
+const ROLE_SIGNAL_KEYWORDS = new Set([
+    "backend",
+    "frontend",
+    "remote",
+    "hybrid",
+    "on site",
+    "on-site",
+    "onsite",
+    "presential",
+    "presencial",
+    "full stack",
+    "fullstack",
+    "full-stack",
+    "platform",
+    "data pipeline",
+    "data pipelines",
+    "data engineering",
+    "data engineer",
+    "qa",
+    "qa automation",
+    "automation",
+    "mobile",
+    "junior",
+    "júnior",
+    "pleno",
+    "mid level",
+    "senior",
+    "sênior",
+    "intern",
+    "internship",
+    "estagio",
+    "estágio",
+])
+
+const HIDDEN_JOB_KEYWORDS = new Set([
+    "api",
+    "apis",
+    "nosql",
+    "etl",
+    "task queue",
+    "task queues",
+    "async",
+    "async processing",
+    "machine learning",
+    "ml",
+    "cloud",
+])
+
+export const isRoleSignalKeyword = (keyword: string) => {
+    const normalizedKeyword = normalizeTechText(keyword)
+    const normalizedLabel = normalizeTechText(formatTechLabel(keyword))
+
+    return (
+        ROLE_SIGNAL_KEYWORDS.has(normalizedKeyword) ||
+        ROLE_SIGNAL_KEYWORDS.has(normalizedLabel)
+    )
+}
+
+export const splitStackAndRoleSignals = (
+    keywords: string[],
+    seniority?: string | null,
+): { stackKeywords: string[]; roleSignals: string[] } => {
+    const cleanKeywords = dedupeKeywordLabels(keywords).filter(
+        (item) => !HIDDEN_JOB_KEYWORDS.has(normalizeTechText(item)),
+    )
+
+    const stackKeywords = cleanKeywords.filter(
+        (item) => !isRoleSignalKeyword(item),
+    )
+
+    const roleSignals = dedupeKeywordLabels([
+        ...cleanKeywords.filter(isRoleSignalKeyword),
+        seniority ?? "",
+    ]).filter((item) => {
+        const normalized = normalizeTechText(item)
+
+        return normalized !== "not specified" && !HIDDEN_JOB_KEYWORDS.has(normalized)
+    })
+
+    return {stackKeywords, roleSignals}
+}
+
+export const isPositiveKeywordMatch = (
+    value: string,
+    positiveKeywords: string[],
+) => {
+    const normalizedValue = normalizeTechText(value)
+    const normalizedLabel = normalizeTechText(formatTechLabel(value))
+
+    return positiveKeywords.some((keyword) => {
+        const normalizedKeyword = normalizeTechText(keyword)
+
+        return (
+            normalizedKeyword === normalizedValue ||
+            normalizedKeyword === normalizedLabel
+        )
+    })
+}

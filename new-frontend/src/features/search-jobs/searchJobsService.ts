@@ -1,3 +1,5 @@
+import {extractRuntimeJobKeywordsFromText} from "../job-analysis/jobUtils.ts";
+
 export type WorkplaceType = "Remote" | "Hybrid" | "On-site" | "Not specified"
 
 export type RawJobPayload = Record<string, unknown>
@@ -167,47 +169,6 @@ const SOURCE_LABELS: Record<string, string> = {
     JOBS_PREMIUM_OFFLINE: "LinkedIn feed",
 }
 
-const TITLE_HINTS = [
-    {match: "python", label: "Python"},
-    {match: "react", label: "React"},
-    {match: "django", label: "Django"},
-    {match: "fastapi", label: "FastAPI"},
-    {match: "flask", label: "Flask"},
-    {match: "node", label: "Node.js"},
-    {match: "nest", label: "NestJS"},
-    {match: "typescript", label: "TypeScript"},
-    {match: "javascript", label: "JavaScript"},
-    {match: "postgresql", label: "PostgreSQL"},
-    {match: "postgres", label: "PostgreSQL"},
-    {match: "mysql", label: "MySQL"},
-    {match: "nosql", label: "NoSQL"},
-    {match: "sql", label: "SQL"},
-    {match: "aws", label: "AWS"},
-    {match: "gcp", label: "GCP"},
-    {match: "google cloud", label: "GCP"},
-    {match: "azure", label: "Azure"},
-    {match: "cloud infrastructure", label: "Cloud"},
-    {match: "task queues", label: "Task queues"},
-    {match: "async processing", label: "Async"},
-    {match: "data pipeline", label: "Data pipeline"},
-    {match: "data pipelines", label: "Data pipeline"},
-    {match: "etl", label: "ETL"},
-    {match: "machine learning", label: "Machine Learning"},
-    {match: "ml", label: "ML"},
-    {match: "api", label: "API"},
-    {match: "apis", label: "API"},
-    {match: "full stack", label: "Full Stack"},
-    {match: "fullstack", label: "Full Stack"},
-    {match: "back-end", label: "Backend"},
-    {match: "backend", label: "Backend"},
-    {match: "front-end", label: "Frontend"},
-    {match: "frontend", label: "Frontend"},
-    {match: "senior", label: "Senior"},
-    {match: "pleno", label: "Pleno"},
-    {match: "junior", label: "Junior"},
-    {match: "remote", label: "Remote"},
-]
-
 export function placeholderLogo(companyName: string) {
     const initials = companyName
         .split(/\s+/)
@@ -320,15 +281,7 @@ function inferWorkplaceType(locationText = "", workRemoteAllowed = false): Workp
 }
 
 function inferKeywords(title = "", description = "") {
-    const value = `${title} ${description}`.toLowerCase()
-
-    return Array.from(
-        new Set(
-            TITLE_HINTS.filter((hint) => value.includes(hint.match)).map(
-                (hint) => hint.label,
-            ),
-        ),
-    )
+    return extractRuntimeJobKeywordsFromText(`${title} ${description}`)
 }
 
 function normalizeSourceLabel(sourceKey = "") {

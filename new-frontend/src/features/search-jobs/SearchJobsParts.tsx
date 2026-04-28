@@ -29,8 +29,12 @@ import {
 
 import {
     extractExperienceFromDescription,
+    formatTechLabel,
     getJobAgeMeta,
+    getRuntimeJobKeywords,
     getTechIcon,
+    isPositiveKeywordMatch,
+    splitStackAndRoleSignals,
 } from "../job-analysis/jobUtils.ts"
 import type {Experience} from "../job-analysis/jobUtils.ts"
 
@@ -91,193 +95,6 @@ const getScoreBarClassName = (score: number) => {
 
     return "bg-red-400"
 }
-
-const TECH_LABEL_ALIASES: Record<string, string> = {
-    api: "API",
-    aws: "AWS",
-    azure: "Azure",
-    backend: "Backend",
-    django: "Django",
-    docker: "Docker",
-    fastapi: "FastAPI",
-    flask: "Flask",
-    frontend: "Frontend",
-    gemini: "Gemini",
-    git: "Git",
-    java: "Java",
-    javascript: "JavaScript",
-    kafka: "Kafka",
-    kubernetes: "Kubernetes",
-    langchain: "LangChain",
-    linux: "Linux",
-    llm: "LLM",
-    mysql: "MySQL",
-    nextjs: "NextJS",
-    node: "Node.js",
-    nodejs: "Node.js",
-    "node.js": "Node.js",
-    oracle: "Oracle",
-    pandas: "Pandas",
-    php: "PHP",
-    postgres: "PostgreSQL",
-    postgresql: "PostgreSQL",
-    python: "Python",
-    rabbitmq: "RabbitMQ",
-    react: "React",
-    "react native": "React Native",
-    reactnative: "React Native",
-    redis: "Redis",
-    remote: "Remote",
-    sql: "SQL",
-    terraform: "Terraform",
-    typescript: "TypeScript",
-    vue: "Vue",
-}
-
-const formatTechLabel = (tech: string) => {
-    const normalized = tech.trim().toLowerCase()
-
-    return (
-        TECH_LABEL_ALIASES[normalized] ??
-        tech
-            .replace(/[-_]/g, " ")
-            .replace(/\b\w/g, (letter) => letter.toUpperCase())
-    )
-}
-
-const normalizeTechText = (value: string) =>
-    value
-        .trim()
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/\p{Diacritic}/gu, "")
-        .replace(/[-_.]/g, " ")
-        .replace(/\s+/g, " ")
-
-
-const RUNTIME_KEYWORD_HINTS = [
-    {label: "PostgreSQL", pattern: /\b(postgresql|postgres)\b/i},
-    {label: "MySQL", pattern: /\bmysql\b/i},
-    {label: "SQL", pattern: /\bsql\b/i},
-    {label: "AWS", pattern: /\baws\b/i},
-    {label: "GCP", pattern: /\b(gcp|google cloud)\b/i},
-    {label: "Azure", pattern: /\bazure\b/i},
-    {label: "Python", pattern: /\bpython\b/i},
-    {label: "Django", pattern: /\bdjango\b/i},
-    {label: "FastAPI", pattern: /\bfastapi\b/i},
-    {label: "Flask", pattern: /\bflask\b/i},
-    {label: "React", pattern: /\breact\b/i},
-    {label: "TypeScript", pattern: /\btypescript\b/i},
-    {label: "JavaScript", pattern: /\bjavascript\b/i},
-    {label: "Node.js", pattern: /\b(node\.js|nodejs|node)\b/i},
-    {label: "Docker", pattern: /\bdocker\b/i},
-    {label: "Kubernetes", pattern: /\b(kubernetes|k8s)\b/i},
-    {label: "Kafka", pattern: /\bkafka\b/i},
-    {label: "RabbitMQ", pattern: /\brabbitmq\b/i},
-    {label: "Redis", pattern: /\bredis\b/i},
-    {label: "Data pipeline", pattern: /\bdata pipelines?\b/i},
-]
-
-const getRuntimeKeywords = (job: SearchJob) => {
-    const searchableText = [
-        job.title,
-        job.description,
-        job.description_full,
-        job.description_snippet,
-        job.premium_title,
-        job.premium_description,
-        job.jobType,
-        job.seniority,
-        job.location,
-    ]
-        .filter(Boolean)
-        .join(" ")
-
-    const detectedKeywords = RUNTIME_KEYWORD_HINTS
-        .filter((hint) => hint.pattern.test(searchableText))
-        .map((hint) => hint.label)
-
-    const merged = [...job.keywords, ...detectedKeywords]
-    const keywordMap = new Map<string, string>()
-
-    merged.forEach((item) => {
-        const label = formatTechLabel(item)
-        const key = normalizeTechText(label)
-
-        if (key && !keywordMap.has(key)) {
-            keywordMap.set(key, label)
-        }
-    })
-
-    return [...keywordMap.values()]
-}
-
-
-const GENERIC_JOB_SIGNAL_KEYWORDS = new Set([
-    "api",
-    "backend",
-    "frontend",
-    "remote",
-    "hybrid",
-    "on site",
-    "on-site",
-    "onsite",
-    "presential",
-    "presencial",
-    "full stack",
-    "fullstack",
-    "full-stack",
-    "platform",
-    "etl",
-    "async",
-    "task queues",
-    "task queue",
-    "data pipeline",
-    "data pipelines",
-    "machine learning",
-    "ml",
-    "nosql",
-    "data engineering",
-    "data engineer",
-    "qa",
-    "qa automation",
-    "automation",
-    "mobile",
-    "junior",
-    "júnior",
-    "pleno",
-    "senior",
-    "sênior",
-    "intern",
-    "internship",
-    "estagio",
-    "estágio",
-])
-
-const isGenericJobSignal = (keyword: string) => {
-    const normalizedKeyword = normalizeTechText(keyword)
-    const normalizedLabel = normalizeTechText(formatTechLabel(keyword))
-
-    return (
-        GENERIC_JOB_SIGNAL_KEYWORDS.has(normalizedKeyword) ||
-        GENERIC_JOB_SIGNAL_KEYWORDS.has(normalizedLabel)
-    )
-}
-
-const matchesPositiveKeyword = (value: string, positiveKeywords: string[]) => {
-    const normalizedValue = normalizeTechText(value)
-    const normalizedLabel = normalizeTechText(formatTechLabel(value))
-
-    return positiveKeywords.some((keyword) => {
-        const normalizedKeyword = normalizeTechText(keyword)
-
-        return (
-            normalizedKeyword === normalizedValue ||
-            normalizedKeyword === normalizedLabel
-        )
-    })
-}
-
 
 function TechBadge({
                        tech,
@@ -509,23 +326,12 @@ const getSeniorityTone = (seniority?: string | null) => {
     }
 }
 
-const getExperienceTone = (experience?: string | null) => {
-    const value = (experience ?? "").trim()
-    const normalized = value.toLowerCase()
-    const match = normalized.match(/(\d+)/)
-    const years = match ? Number(match[1]) : null
-
-    if (years == null) {
-        return {
-            label: value || "Not specified",
-            hint: "Experience required",
-            className: "border-slate-700 bg-slate-900/80 text-slate-300",
-        }
-    }
+const getExperienceTone = (experience: Experience) => {
+    const years = experience.min
 
     if (years <= 2) {
         return {
-            label: value,
+            label: experience.text,
             hint: "Lower experience requirement",
             className: "border-emerald-400/40 bg-emerald-500/10 text-emerald-200",
         }
@@ -533,20 +339,20 @@ const getExperienceTone = (experience?: string | null) => {
 
     if (years <= 4) {
         return {
-            label: value,
+            label: experience.text,
             hint: "Moderate experience requirement",
             className: "border-amber-400/40 bg-amber-500/10 text-amber-200",
         }
     }
 
     return {
-        label: value,
+        label: experience.text,
         hint: "Higher experience requirement",
         className: "border-red-400/40 bg-red-500/10 text-red-200",
     }
 }
 
-function ExperienceBadge({experience}: { experience?: string | null }) {
+function ExperienceBadge({experience}: { experience: Experience }) {
     const tone = getExperienceTone(experience)
 
     return (
@@ -912,11 +718,13 @@ export function SelectedJobPreview({
                                        job,
                                        onToggleSaved,
                                        onOpenApply,
-                                   }: {
+}: {
     job: JobView
     onToggleSaved: () => void
     onOpenApply: () => void
 }) {
+    const runtimeExperience = getRuntimeExperience(job)
+
     return (
         <div className="h-full overflow-y-auto bg-slate-950 [scrollbar-gutter:stable]">
             <div className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/95 p-5 backdrop-blur">
@@ -956,7 +764,9 @@ export function SelectedJobPreview({
 
                             <div className="flex flex-wrap gap-2">
                                 <SeniorityBadge seniority={job.seniority}/>
-                                <ExperienceBadge experience={job.experienceYears}/>
+                                {runtimeExperience && (
+                                    <ExperienceBadge experience={runtimeExperience}/>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -1005,26 +815,11 @@ export function SelectedJobPreview({
             <div className="space-y-5 p-5">
                 <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
                     {(() => {
-                        const runtimeKeywords = getRuntimeKeywords(job)
-
-                        const stackKeywords = runtimeKeywords.filter(
-                            (item) => !isGenericJobSignal(item),
+                        const runtimeKeywords = getRuntimeJobKeywords(job)
+                        const {stackKeywords, roleSignals} = splitStackAndRoleSignals(
+                            runtimeKeywords,
+                            job.seniority,
                         )
-
-                        const roleSignals = [
-                            ...new Set(
-                                [
-                                    ...runtimeKeywords.filter(isGenericJobSignal),
-                                    job.seniority,
-                                ]
-                                    .map((item) => item?.trim())
-                                    .filter((item): item is string => {
-                                        if (!item) return false
-
-                                        return normalizeTechText(item) !== "not specified"
-                                    }),
-                            ),
-                        ]
 
                         return (
                             <>
@@ -1038,7 +833,7 @@ export function SelectedJobPreview({
                                             <TechBadge
                                                 key={item}
                                                 tech={item}
-                                                positive={matchesPositiveKeyword(
+                                                positive={isPositiveKeywordMatch(
                                                     item,
                                                     job.matchedPositiveKeywords,
                                                 )}
@@ -1062,7 +857,7 @@ export function SelectedJobPreview({
                                                 <RoleSignalBadge
                                                     key={item}
                                                     signal={item}
-                                                    positive={matchesPositiveKeyword(
+                                                    positive={isPositiveKeywordMatch(
                                                         item,
                                                         job.matchedPositiveKeywords,
                                                     )}
