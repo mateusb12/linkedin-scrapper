@@ -2,6 +2,10 @@ export type RejectionEmail = {
     id: number
     threadId: string
     jobUrn?: string
+    company?: string
+    jobTitle?: string
+    jobDescription?: string
+    competition?: number
     folder: "Job fails"
     category: "rejection"
     sender: string
@@ -46,6 +50,11 @@ const rejectionEmails: RejectionEmail[] = [
     {
         id: 144,
         threadId: "thread-144",
+        company: "Clarke Energia",
+        jobTitle: "Pessoa Desenvolvedora Full Stack - Pleno (Remoto)",
+        competition: 545,
+        jobDescription:
+            "Pessoa Desenvolvedora Full Stack - Pleno (Remoto). Responsabilidades: contribuir para o amadurecimento e manutencao da infraestrutura em Kubernetes; colaborar com o desenvolvimento tecnico de desenvolvedores juniores; implementar layouts desenvolvidos pelo time de Design; atuar na execucao de novos projetos com definicao de arquitetura, modelagem de banco de dados e criacao de APIs.",
         folder: "Job fails",
         category: "rejection",
         sender: "Clarke Energia Trial",
@@ -99,6 +108,10 @@ const rejectionEmails: RejectionEmail[] = [
         id: 148,
         threadId: "thread-148",
         jobUrn: "4385760020",
+        company: "CodiLime",
+        jobTitle: "Junior/Mid Full Stack Developer",
+        jobDescription:
+            "Junior/Mid Full Stack role focused on full stack product development, collaboration with engineering teams, frontend implementation, backend APIs and pragmatic delivery in a remote international environment.",
         folder: "Job fails",
         category: "rejection",
         sender: "Oksana Dynia - CodiLime",
@@ -117,6 +130,10 @@ const rejectionEmails: RejectionEmail[] = [
         id: 149,
         threadId: "thread-149",
         jobUrn: "4390172600",
+        company: "LaTeam Partners",
+        jobTitle: "Python Developer - Odoo",
+        jobDescription:
+            "Python Developer - Odoo role. Expected experience with Python, Odoo customization, backend development, business workflows, integrations, SQL databases and maintenance of ERP modules.",
         folder: "Job fails",
         category: "rejection",
         sender: "LinkedIn",
@@ -134,6 +151,10 @@ const rejectionEmails: RejectionEmail[] = [
     {
         id: 150,
         threadId: "thread-150",
+        company: "Ayesa Digital",
+        jobTitle: "Back-end Senior Python",
+        jobDescription:
+            "Back-end Senior Python role focused on backend services, APIs, system integrations, clean code, production support and senior ownership of Python services.",
         folder: "Job fails",
         category: "rejection",
         sender: "LinkedIn",
@@ -151,6 +172,10 @@ const rejectionEmails: RejectionEmail[] = [
     {
         id: 151,
         threadId: "thread-151",
+        company: "OnHires",
+        jobTitle: "Python Scraping Developer",
+        jobDescription:
+            "Python Scraping Developer position. Requirements include Python scraping, data extraction pipelines, browser automation, API integrations, resilient parsers, proxy/session handling and careful debugging of data quality issues.",
         folder: "Job fails",
         category: "rejection",
         sender: "OnHires Hiring Team",
@@ -169,6 +194,10 @@ const rejectionEmails: RejectionEmail[] = [
         id: 152,
         threadId: "thread-152",
         jobUrn: "4383173301",
+        company: "ProFUSION",
+        jobTitle: "Desenvolvedor de Software",
+        jobDescription:
+            "Desenvolvedor de Software com atuacao em desenvolvimento de sistemas, manutencao de funcionalidades, integracoes, boas praticas de codigo, colaboracao com time tecnico e entrega de solucoes para produto.",
         folder: "Job fails",
         category: "rejection",
         sender: "ProFUSION",
@@ -186,6 +215,10 @@ const rejectionEmails: RejectionEmail[] = [
     {
         id: 153,
         threadId: "thread-153",
+        company: "Mercor x AI Labs",
+        jobTitle: "Python Developer",
+        jobDescription:
+            "Python Developer opportunity for AI Labs. Expected backend Python skills, remote collaboration, problem solving, data-oriented workflows, API integrations and reliable delivery for AI-related products.",
         folder: "Job fails",
         category: "rejection",
         sender: "Crossing Hurdles",
@@ -270,6 +303,9 @@ export async function fetchRejectionEmails({
                   email.subject,
                   email.snippet,
                   email.bodyText,
+                  email.company ?? "",
+                  email.jobTitle ?? "",
+                  email.jobDescription ?? "",
               ].some(value => value.toLowerCase().includes(normalizedSearch)),
           )
         : rejectionEmails

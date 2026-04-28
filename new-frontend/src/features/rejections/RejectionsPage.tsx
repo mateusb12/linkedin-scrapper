@@ -1,18 +1,16 @@
 import {useCallback, useEffect, useMemo, useState} from "react"
 import {
-    AlertCircle,
     Archive,
     ChevronLeft,
     ChevronRight,
     Inbox,
     Loader2,
     Mail,
-    MailOpen,
     RefreshCw,
     Search,
-    Tag,
 } from "lucide-react"
 
+import RejectionImprovementBuilder from "./RejectionImprovementBuilder.tsx"
 import {
     type RejectionEmail,
     fetchRejectionEmails,
@@ -151,96 +149,6 @@ function EmailListItem({email, isSelected, onSelect}: EmailListItemProps) {
                 <p className="mt-1 font-mono text-[10px] text-gray-600">{time}</p>
             </div>
         </button>
-    )
-}
-
-type EmailReaderProps = {
-    email: RejectionEmail | null
-}
-
-function EmailReader({email}: EmailReaderProps) {
-    if (!email) {
-        return (
-            <div className="flex h-full min-h-[520px] items-center justify-center bg-gray-950/30 px-6 text-center">
-                <div>
-                    <Mail size={44} className="mx-auto mb-4 text-gray-700"/>
-                    <p className="text-lg font-black text-gray-300">Select an email</p>
-                    <p className="mt-2 max-w-sm text-sm font-medium text-gray-500">
-                        Pick a rejection message from the inbox to inspect the sender,
-                        linked job and imported body.
-                    </p>
-                </div>
-            </div>
-        )
-    }
-
-    const {date, time} = formatDateTime(email.receivedAt)
-
-    return (
-        <article className="flex h-full min-h-[520px] flex-col bg-gray-950/30">
-            <header className="border-b border-gray-800 p-5">
-                <div className="mb-4 flex items-center gap-2 text-xs font-black uppercase tracking-wider text-red-300">
-                    <AlertCircle size={15}/>
-                    Job fails
-                    <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px]">
-                        rejection
-                    </span>
-                </div>
-
-                <h2 className="text-2xl font-black leading-tight text-white">
-                    {email.subject}
-                </h2>
-
-                <div className="mt-5 flex items-start justify-between gap-4">
-                    <div className="flex min-w-0 items-start gap-3">
-                        <div className="grid size-11 shrink-0 place-items-center rounded-full bg-red-500/15 text-sm font-black text-red-300">
-                            {getSenderInitial(email.sender)}
-                        </div>
-
-                        <div className="min-w-0">
-                            <p className="truncate text-sm font-black text-gray-100">
-                                {email.sender}
-                            </p>
-                            <p className="truncate text-xs font-medium text-gray-500">
-                                {email.senderEmail}
-                            </p>
-                            <p className="mt-1 truncate text-xs font-medium text-gray-600">
-                                to {email.recipient}
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="shrink-0 text-right">
-                        <p className="text-sm font-bold text-gray-300">{date}</p>
-                        <p className="font-mono text-xs text-gray-500">{time}</p>
-                    </div>
-                </div>
-            </header>
-
-            <div className="flex-1 overflow-y-auto p-5">
-                <div className="mb-4 flex flex-wrap gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-xs font-black text-red-300">
-                        <Tag size={13}/>
-                        {email.folder}
-                    </span>
-                    {email.jobUrn && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-black text-blue-300">
-                            Linked job {email.jobUrn}
-                        </span>
-                    )}
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-700 bg-gray-900 px-3 py-1 text-xs font-black text-gray-400">
-                        {email.isRead ? <MailOpen size={13}/> : <Mail size={13}/>}
-                        {email.isRead ? "Read" : "Unread"}
-                    </span>
-                </div>
-
-                <div className="rounded-xl border border-gray-800 bg-gray-900/70 p-5">
-                    <p className="whitespace-pre-wrap text-sm font-medium leading-7 text-gray-300">
-                        {email.bodyText}
-                    </p>
-                </div>
-            </div>
-        </article>
     )
 }
 
@@ -417,7 +325,7 @@ export default function RejectionsPage() {
                         </div>
                     </div>
                 ) : (
-                    <div className="grid min-h-[620px] grid-cols-1 lg:grid-cols-[minmax(360px,0.9fr)_minmax(0,1.1fr)]">
+                    <div className="grid min-h-[620px] grid-cols-1 lg:grid-cols-[minmax(340px,0.72fr)_minmax(0,1.28fr)]">
                         <div className="border-r border-gray-800">
                             {emails.length > 0 ? (
                                 emails.map(email => (
@@ -443,7 +351,7 @@ export default function RejectionsPage() {
                             )}
                         </div>
 
-                        <EmailReader email={selectedEmail}/>
+                        <RejectionImprovementBuilder email={selectedEmail}/>
                     </div>
                 )}
             </section>
