@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useState} from "react"
+import {useCallback, useEffect, useMemo, useState, type MouseEvent} from "react"
 import {
     Briefcase,
     CalendarDays,
@@ -24,6 +24,7 @@ import {
     formatTimeBR,
     syncAppliedSmart,
 } from "./appliedJobsMockService.ts"
+import AppliedJobDetailModal from "./AppliedJobDetailModal.tsx"
 
 const TECH_KEYWORDS: Array<{ label: string; regex: RegExp }> = [
     {label: "Python", regex: /\bpython\b/i},
@@ -179,10 +180,15 @@ type EmailPreviewProps = {
 function EmailPreview({email}: EmailPreviewProps) {
     const [isExpanded, setIsExpanded] = useState(false)
 
+    function handleClick(event: MouseEvent<HTMLButtonElement>) {
+        event.stopPropagation()
+        setIsExpanded(current => !current)
+    }
+
     return (
         <button
             type="button"
-            onClick={() => setIsExpanded(current => !current)}
+            onClick={handleClick}
             className="mt-3 block max-w-full rounded-lg border border-gray-700 bg-gray-950/50 p-2.5 text-left transition hover:border-gray-500 hover:bg-gray-950/80"
         >
             <p className="flex items-start gap-1.5 text-xs font-bold leading-5 text-gray-300">
@@ -208,14 +214,18 @@ function EmailPreview({email}: EmailPreviewProps) {
 
 type ApplicationMobileCardProps = {
     job: AppliedJob
+    onSelect: (job: AppliedJob) => void
 }
 
-function ApplicationMobileCard({job}: ApplicationMobileCardProps) {
+function ApplicationMobileCard({job, onSelect}: ApplicationMobileCardProps) {
     const stack = extractTechStack(job.description)
     const level = extractLevel(job)
 
     return (
-        <article className="rounded-xl border border-gray-700 bg-gray-900/60 p-4 shadow-lg">
+        <article
+            onClick={() => onSelect(job)}
+            className="cursor-pointer rounded-xl border border-gray-700 bg-gray-900/60 p-4 shadow-lg transition hover:border-gray-600 hover:bg-gray-900/80"
+        >
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                     <h4 className="truncate text-base font-extrabold text-white">
@@ -317,6 +327,7 @@ function ApplicationMobileCard({job}: ApplicationMobileCardProps) {
 export default function RecentApplications() {
     const [jobs, setJobs] = useState<AppliedJob[]>([])
     const [searchTerm, setSearchTerm] = useState("")
+    const [selectedJob, setSelectedJob] = useState<AppliedJob | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [isSyncing, setIsSyncing] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -483,7 +494,11 @@ export default function RecentApplications() {
                         <>
                             <div className="space-y-4 lg:hidden">
                                 {filteredJobs.map(job => (
-                                    <ApplicationMobileCard key={job.urn} job={job}/>
+                                    <ApplicationMobileCard
+                                        key={job.urn}
+                                        job={job}
+                                        onSelect={setSelectedJob}
+                                    />
                                 ))}
                             </div>
 
@@ -529,7 +544,8 @@ export default function RecentApplications() {
                                         return (
                                             <tr
                                                 key={job.urn}
-                                                className="align-top transition hover:bg-gray-700/20"
+                                                onClick={() => setSelectedJob(job)}
+                                                className="cursor-pointer align-top transition hover:bg-gray-700/20"
                                             >
                                         <td className="border-b border-gray-700/70 px-4 py-5">
                                             <div className="pr-4">
@@ -646,6 +662,11 @@ export default function RecentApplications() {
                     )}
                 </>
             )}
+
+            <AppliedJobDetailModal
+                job={selectedJob}
+                onClose={() => setSelectedJob(null)}
+            />
         </section>
     )
 }
