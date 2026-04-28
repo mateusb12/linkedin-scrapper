@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from "react"
+import {useCallback, useEffect, useMemo, useState} from "react"
 import {
     Briefcase,
     CalendarDays,
@@ -9,6 +9,7 @@ import {
     Mail,
     MapPin,
     RefreshCw,
+    Search,
     Send,
     Users,
     XCircle,
@@ -307,7 +308,7 @@ function ApplicationMobileCard({job}: ApplicationMobileCardProps) {
                     </span>
                 </div>
 
-                {job.lastEmail && <EmailPreview email={job.lastEmail}/>}\n
+                {job.lastEmail && <EmailPreview email={job.lastEmail}/>}
             </div>
         </article>
     )
@@ -315,6 +316,7 @@ function ApplicationMobileCard({job}: ApplicationMobileCardProps) {
 
 export default function RecentApplications() {
     const [jobs, setJobs] = useState<AppliedJob[]>([])
+    const [searchTerm, setSearchTerm] = useState("")
     const [isLoading, setIsLoading] = useState(true)
     const [isSyncing, setIsSyncing] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -324,7 +326,25 @@ export default function RecentApplications() {
         [jobs],
     )
 
-    async function loadJobs() {
+    const filteredJobs = useMemo(() => {
+        const term = searchTerm.trim().toLowerCase()
+
+        if (!term) return jobs
+
+        return jobs.filter(job =>
+            [
+                job.title,
+                job.company,
+                job.location,
+                job.description,
+                job.applicationStatus,
+            ].some(value => value.toLowerCase().includes(term)),
+        )
+    }, [jobs, searchTerm])
+
+    const hasActiveSearch = searchTerm.trim().length > 0
+
+    const loadJobs = useCallback(async function loadJobs() {
         try {
             setError(null)
             setIsLoading(true)
@@ -337,7 +357,7 @@ export default function RecentApplications() {
         } finally {
             setIsLoading(false)
         }
-    }
+    }, [])
 
     async function handleSmartSync() {
         try {
@@ -355,8 +375,12 @@ export default function RecentApplications() {
     }
 
     useEffect(() => {
-        void loadJobs()
-    }, [])
+        const timeoutId = window.setTimeout(() => {
+            void loadJobs()
+        }, 0)
+
+        return () => window.clearTimeout(timeoutId)
+    }, [loadJobs])
 
     return (
         <section className="mt-6 rounded-xl border border-gray-700 bg-gray-800 p-6 shadow-xl">
@@ -369,6 +393,11 @@ export default function RecentApplications() {
 
                     <p className="mt-2 text-sm font-medium text-gray-400">
                         {jobs.length} mocked applications · {formatNumber(totalApplicants)} total competitors
+                        {hasActiveSearch && (
+                            <span className="ml-2 inline-flex rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs font-extrabold text-blue-300">
+                                {filteredJobs.length} matching
+                            </span>
+                        )}
                     </p>
                 </div>
 
@@ -399,6 +428,28 @@ export default function RecentApplications() {
                 </div>
             </div>
 
+            <div className="mb-4">
+                <label htmlFor="applications-search" className="sr-only">
+                    Search applications
+                </label>
+
+                <div className="relative">
+                    <Search
+                        size={18}
+                        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"
+                    />
+
+                    <input
+                        id="applications-search"
+                        type="text"
+                        value={searchTerm}
+                        onChange={event => setSearchTerm(event.target.value)}
+                        placeholder="Search by title, company, location, status or stack..."
+                        className="w-full rounded-lg border border-gray-700 bg-gray-900/70 py-3 pl-11 pr-4 text-sm font-semibold text-gray-100 outline-none transition placeholder:text-gray-500 focus:border-blue-500/60 focus:bg-gray-900 focus:ring-2 focus:ring-blue-500/20"
+                    />
+                </div>
+            </div>
+
             {error && (
                 <div
                     className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-300">
@@ -416,56 +467,70 @@ export default function RecentApplications() {
                 </div>
             ) : (
                 <>
-                    <div className="space-y-4 lg:hidden">
-                        {jobs.map(job => (
-                            <ApplicationMobileCard key={job.urn} job={job}/>
-                        ))}
-                    </div>
+                    {filteredJobs.length === 0 ? (
+                        <div
+                            className="flex min-h-48 items-center justify-center rounded-xl border border-dashed border-gray-700 bg-gray-900/40 px-6 text-center">
+                            <div>
+                                <p className="text-base font-extrabold text-gray-200">
+                                    No applications found for this search.
+                                </p>
+                                <p className="mt-2 text-sm font-medium text-gray-500">
+                                    Try another title, company, location, status or stack.
+                                </p>
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="space-y-4 lg:hidden">
+                                {filteredJobs.map(job => (
+                                    <ApplicationMobileCard key={job.urn} job={job}/>
+                                ))}
+                            </div>
 
-                    <div className="hidden lg:block">
-                        <table className="w-full table-fixed border-separate border-spacing-0">
-                            <thead>
-                            <tr className="text-left">
-                                <th className="w-[28%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
-                                    Job Identity
-                                </th>
+                            <div className="hidden lg:block">
+                                <table className="w-full table-fixed border-separate border-spacing-0">
+                                    <thead>
+                                    <tr className="text-left">
+                                        <th className="w-[28%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+                                            Job Identity
+                                        </th>
 
-                                <th className="w-[20%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
-                                    Tech Stack
-                                </th>
+                                        <th className="w-[20%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+                                            Tech Stack
+                                        </th>
 
-                                <th className="w-[8%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
-                                    Level
-                                </th>
+                                        <th className="w-[8%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+                                            Level
+                                        </th>
 
-                                <th className="w-[10%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
-                                    Applied Date
-                                </th>
+                                        <th className="w-[10%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+                                            Applied Date
+                                        </th>
 
-                                <th className="w-[8%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
-                                    Time
-                                </th>
+                                        <th className="w-[8%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+                                            Time
+                                        </th>
 
-                                <th className="w-[12%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
-                                    Competitors
-                                </th>
+                                        <th className="w-[12%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+                                            Competitors
+                                        </th>
 
-                                <th className="w-[14%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
-                                    Status
-                                </th>
-                            </tr>
-                            </thead>
+                                        <th className="w-[14%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
+                                            Status
+                                        </th>
+                                    </tr>
+                                    </thead>
 
-                            <tbody>
-                            {jobs.map(job => {
-                                const stack = extractTechStack(job.description)
-                                const level = extractLevel(job)
+                                    <tbody>
+                                    {filteredJobs.map(job => {
+                                        const stack = extractTechStack(job.description)
+                                        const level = extractLevel(job)
 
-                                return (
-                                    <tr
-                                        key={job.urn}
-                                        className="align-top transition hover:bg-gray-700/20"
-                                    >
+                                        return (
+                                            <tr
+                                                key={job.urn}
+                                                className="align-top transition hover:bg-gray-700/20"
+                                            >
                                         <td className="border-b border-gray-700/70 px-4 py-5">
                                             <div className="pr-4">
                                                 <p className="line-clamp-2 text-base font-extrabold leading-6 text-white">
@@ -571,12 +636,14 @@ export default function RecentApplications() {
                                                 {job.lastEmail && <EmailPreview email={job.lastEmail}/>}
                                             </div>
                                         </td>
-                                    </tr>
-                                )
-                            })}
-                            </tbody>
-                        </table>
-                    </div>
+                                            </tr>
+                                        )
+                                    })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </>
+                    )}
                 </>
             )}
         </section>
