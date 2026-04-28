@@ -212,7 +212,19 @@ export function normalizeAppliedJob(raw: unknown): AppliedJob {
         ) ?? null,
         description:
             getFirstString(job, ["description", "description_full", "description_snippet"]) ?? "",
-        jobUrl: getFirstString(job, ["jobUrl", "job_url", "url"]),
+        jobUrl:
+            getFirstString(job, [
+                "jobUrl",
+                "job_url",
+                "url",
+                "navigation_url",
+                "navigationUrl",
+                "linkedin_url",
+                "linkedinUrl",
+            ]) ??
+            (urn.match(/\d{6,}/)
+                ? `https://www.linkedin.com/jobs/view/${urn.match(/\d{6,}/)?.[0]}/`
+                : undefined),
         lastEmail: normalizeLastEmail(job.lastEmail ?? job.last_email),
     }
 }

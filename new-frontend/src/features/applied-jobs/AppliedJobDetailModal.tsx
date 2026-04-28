@@ -5,6 +5,7 @@ import {
     CheckCircle2,
     Clock,
     Code2,
+    ExternalLink,
     Mail,
     MapPin,
     Send,
@@ -32,7 +33,8 @@ function AppliedTechBadge({tech}: { tech: string }) {
     const icon = getTechIcon(label)
 
     return (
-        <span className="inline-flex items-center gap-2 rounded-md border border-gray-600 bg-gray-900/70 px-2.5 py-1 text-xs font-extrabold text-gray-200">
+        <span
+            className="inline-flex items-center gap-2 rounded-md border border-gray-600 bg-gray-900/70 px-2.5 py-1 text-xs font-extrabold text-gray-200">
             {icon && (
                 <img
                     src={icon}
@@ -105,9 +107,9 @@ type AppliedJobDetailModalProps = {
 }
 
 export default function AppliedJobDetailModal({
-    job,
-    onClose,
-}: AppliedJobDetailModalProps) {
+                                                  job,
+                                                  onClose,
+                                              }: AppliedJobDetailModalProps) {
     const stack = useMemo(() => {
         if (!job) return []
 
@@ -170,14 +172,28 @@ export default function AppliedJobDetailModal({
                             </p>
                         </div>
 
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-800 hover:text-white"
-                            aria-label="Close job details"
-                        >
-                            <X size={22}/>
-                        </button>
+                        <div className="flex shrink-0 items-center gap-2">
+                            {job.jobUrl && (
+                                <a
+                                    href={job.jobUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-blue-900/40 transition hover:bg-blue-500"
+                                >
+                                    <ExternalLink size={16}/>
+                                    Open Job
+                                </a>
+                            )}
+
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-800 hover:text-white"
+                                aria-label="Close job details"
+                            >
+                                <X size={22}/>
+                            </button>
+                        </div>
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-2">
@@ -200,13 +216,15 @@ export default function AppliedJobDetailModal({
                             </span>
                         )}
 
-                        <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs font-bold text-gray-300">
+                        <span
+                            className="inline-flex items-center gap-1.5 rounded-full border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs font-bold text-gray-300">
                             <MapPin size={14}/>
                             {job.location}
                         </span>
 
                         {job.workRemoteAllowed && (
-                            <span className="inline-flex rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-extrabold text-blue-300">
+                            <span
+                                className="inline-flex rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-extrabold text-blue-300">
                                 Remote
                             </span>
                         )}
@@ -303,7 +321,8 @@ export default function AppliedJobDetailModal({
                                 Description
                             </h3>
 
-                            <div className="whitespace-pre-wrap rounded-xl border border-gray-800 bg-gray-950/40 p-4 text-sm font-medium leading-6 text-gray-300">
+                            <div
+                                className="whitespace-pre-wrap rounded-xl border border-gray-800 bg-gray-950/40 p-4 text-sm font-medium leading-6 text-gray-300">
                                 {job.description || "No description provided."}
                             </div>
                         </section>
