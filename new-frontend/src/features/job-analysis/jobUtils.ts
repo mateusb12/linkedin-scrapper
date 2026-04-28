@@ -124,6 +124,64 @@ export const getCompetitionStyle = (applicants?: number | null): string => {
     return "text-red-700 bg-red-100 dark:text-red-400 dark:bg-red-900/30 border-red-200 dark:border-red-800";
 };
 
+export type JobAgeMeta = {
+    label: string;
+    totalDays: number | null;
+    tone: "green" | "amber" | "red" | "slate";
+};
+
+export const getJobAgeMeta = (postedAt?: string | null): JobAgeMeta => {
+    if (!postedAt) {
+        return {
+            label: "N/A",
+            totalDays: null,
+            tone: "slate",
+        };
+    }
+
+    const date = new Date(postedAt);
+
+    if (Number.isNaN(date.getTime())) {
+        return {
+            label: "N/A",
+            totalDays: null,
+            tone: "slate",
+        };
+    }
+
+    const diffMs = Math.max(0, Date.now() - date.getTime());
+    const totalMinutes = Math.floor(diffMs / 60_000);
+    const totalHours = Math.floor(diffMs / 3_600_000);
+    const totalDays = Math.floor(diffMs / 86_400_000);
+
+    const months = Math.floor(totalDays / 30);
+    const days = totalDays % 30;
+
+    const label =
+        totalDays === 0
+            ? totalHours > 0
+                ? `${totalHours}h`
+                : `${Math.max(1, totalMinutes)}m`
+            : months > 0 && days > 0
+                ? `${months}m${days}d`
+                : months > 0
+                    ? `${months}m`
+                    : `${days}d`;
+
+    const tone =
+        totalDays <= 3
+            ? "green"
+            : totalDays <= 14
+                ? "amber"
+                : "red";
+
+    return {
+        label,
+        totalDays,
+        tone,
+    };
+};
+
 // Tipagem forte do map de ícones
 const techIconsMap: Record<string, string> = {
     Python: pythonIcon,

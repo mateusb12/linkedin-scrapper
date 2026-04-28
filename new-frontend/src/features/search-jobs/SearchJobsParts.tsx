@@ -29,9 +29,10 @@ import {
 
 import {
     extractExperienceFromDescription,
+    getJobAgeMeta,
     getTechIcon,
-    type Experience,
 } from "../job-analysis/jobUtils.ts"
+import type {Experience} from "../job-analysis/jobUtils.ts"
 
 export type JobView = SearchJob & {
     isSaved: boolean
@@ -154,7 +155,6 @@ const normalizeTechText = (value: string) =>
         .replace(/\s+/g, " ")
 
 
-
 const RUNTIME_KEYWORD_HINTS = [
     {label: "PostgreSQL", pattern: /\b(postgresql|postgres)\b/i},
     {label: "MySQL", pattern: /\bmysql\b/i},
@@ -211,7 +211,6 @@ const getRuntimeKeywords = (job: SearchJob) => {
 
     return [...keywordMap.values()]
 }
-
 
 
 const GENERIC_JOB_SIGNAL_KEYWORDS = new Set([
@@ -355,9 +354,9 @@ const getApplicantsTone = (applicants?: number | null) => {
 
 
 function RoleSignalBadge({
-                            signal,
-                            positive,
-                        }: {
+                             signal,
+                             positive,
+                         }: {
     signal: string
     positive: boolean
 }) {
@@ -419,6 +418,34 @@ function ApplicantsBadge({
             <Users size={compact ? 12 : 14} className="opacity-90"/>
             <span>{applicants == null ? "N/A" : applicants}</span>
             {!compact && <span className="font-bold opacity-90">applicants</span>}
+        </span>
+    )
+}
+
+
+function JobAgeBadge({postedAt}: { postedAt: string }) {
+    const age = getJobAgeMeta(postedAt)
+
+    const toneClasses = {
+        green: "border-emerald-400/40 bg-emerald-500/10 text-emerald-200",
+        amber: "border-amber-400/40 bg-amber-500/10 text-amber-200",
+        red: "border-red-400/40 bg-red-500/10 text-red-200",
+        slate: "border-slate-700 bg-slate-900/80 text-slate-300",
+    }
+
+    const title =
+        age.totalDays == null
+            ? "Posted date not available"
+            : `Posted ${formatDateDistance(postedAt)} · ${formatFullDate(postedAt)}`
+
+    return (
+        <span
+            title={title}
+            aria-label={title}
+            className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-extrabold shadow-sm ${toneClasses[age.tone]}`}
+        >
+            <Clock3 size={14} className="opacity-90"/>
+            <span>{age.label}</span>
         </span>
     )
 }
@@ -1051,11 +1078,12 @@ export function SelectedJobPreview({
 
                                 <div className="mt-5 border-t border-slate-800 pt-4">
                                     <h3 className="text-sm font-extrabold text-slate-300">
-                                        Applicants
+                                        Job metrics
                                     </h3>
 
-                                    <div className="mt-3">
+                                    <div className="mt-3 flex flex-wrap gap-2">
                                         <ApplicantsBadge applicants={job.applicantsTotal}/>
+                                        <JobAgeBadge postedAt={job.postedAt}/>
                                     </div>
                                 </div>
                             </>
