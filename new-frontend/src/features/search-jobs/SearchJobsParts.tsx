@@ -154,7 +154,6 @@ const normalizeTechText = (value: string) =>
 const RUNTIME_KEYWORD_HINTS = [
     {label: "PostgreSQL", pattern: /\b(postgresql|postgres)\b/i},
     {label: "MySQL", pattern: /\bmysql\b/i},
-    {label: "NoSQL", pattern: /\bno\s?sql\b/i},
     {label: "SQL", pattern: /\bsql\b/i},
     {label: "AWS", pattern: /\baws\b/i},
     {label: "GCP", pattern: /\b(gcp|google cloud)\b/i},
@@ -172,12 +171,7 @@ const RUNTIME_KEYWORD_HINTS = [
     {label: "Kafka", pattern: /\bkafka\b/i},
     {label: "RabbitMQ", pattern: /\brabbitmq\b/i},
     {label: "Redis", pattern: /\bredis\b/i},
-    {label: "ETL", pattern: /\betl\b/i},
-    {label: "API", pattern: /\bapis?\b/i},
     {label: "Data pipeline", pattern: /\bdata pipelines?\b/i},
-    {label: "Task queues", pattern: /\btask queues?\b/i},
-    {label: "Async", pattern: /\basync processing\b/i},
-    {label: "Machine Learning", pattern: /\b(machine learning|ml)\b/i},
 ]
 
 const getRuntimeKeywords = (job: SearchJob) => {
@@ -231,6 +225,15 @@ const GENERIC_JOB_SIGNAL_KEYWORDS = new Set([
     "fullstack",
     "full-stack",
     "platform",
+    "etl",
+    "async",
+    "task queues",
+    "task queue",
+    "data pipeline",
+    "data pipelines",
+    "machine learning",
+    "ml",
+    "nosql",
     "data engineering",
     "data engineer",
     "qa",
@@ -969,7 +972,11 @@ export function SelectedJobPreview({
                                     job.seniority,
                                 ]
                                     .map((item) => item?.trim())
-                                    .filter((item): item is string => Boolean(item)),
+                                    .filter((item): item is string => {
+                                        if (!item) return false
+
+                                        return normalizeTechText(item) !== "not specified"
+                                    }),
                             ),
                         ]
 
