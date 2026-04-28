@@ -1,7 +1,6 @@
 import json
 import pytest
 from unittest.mock import MagicMock, patch
-from app import app
 from models import FetchCurl
 
 # 1. IMPORT THE MODULE WHERE 'get_db_session' IS USED
@@ -26,12 +25,6 @@ INDIVIDUAL_JOB_PAYLOAD = {
   -H 'Cookie: bcookie="v=2&test_cookie";'"""
 }
 
-@pytest.fixture
-def client():
-    app.config['TESTING'] = True
-    with app.test_client() as client:
-        yield client
-
 def test_pagination_curl_parsing(client):
     """
     Safety Net: Ensures the Pagination cURL is parsed into specific columns.
@@ -53,7 +46,7 @@ def test_pagination_curl_parsing(client):
 
         # Fire Request
         response = client.put(
-            '/fetch-jobs/pagination-curl',
+            '/config/pagination-curl',
             data=json.dumps(PAGINATION_PAYLOAD),
             content_type='application/json'
         )
@@ -91,7 +84,7 @@ def test_individual_job_curl_parsing(client):
         mock_query_chain.first.return_value = None
 
         response = client.put(
-            '/fetch-jobs/individual-job-curl',
+            '/config/individual-job-curl',
             data=json.dumps(INDIVIDUAL_JOB_PAYLOAD),
             content_type='application/json'
         )

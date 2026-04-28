@@ -5,13 +5,6 @@ from unittest.mock import patch, MagicMock
 from source.features.job_population.job_repository import JobRepository
 # Note: We patch the Repository class itself, so any instance created in the controller is mocked.
 
-@pytest.fixture
-def client():
-    from app import app
-    app.config['TESTING'] = True
-    with app.test_client() as client:
-        yield client
-
 def test_browse_fetched_jobs(client):
     """
     STORY: As a user, I browse the dashboard to see my fetched jobs.

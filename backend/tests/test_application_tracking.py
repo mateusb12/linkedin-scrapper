@@ -1,19 +1,8 @@
-import json
-import pytest
 from unittest.mock import patch, MagicMock
-from datetime import datetime
 
 # --- Import Services/Repositories to Patch ---
 # We patch the class/method where it is DEFINED or IMPORTED by the controller.
-from source.features.job_population.job_repository import JobRepository
 from source.features.job_population.population_service import PopulationService
-
-@pytest.fixture
-def client():
-    from app import app
-    app.config['TESTING'] = True
-    with app.test_client() as client:
-        yield client
 
 # ============================================================================
 # 📊 1. Applied Jobs Endpoint Tests
@@ -21,51 +10,29 @@ def client():
 
 def test_get_applied_jobs_paginated(client):
     """
-    STORY: The dashboard requests page 1 of applied jobs.
-    ENDPOINT: GET /services/applied-jobs?page=1&limit=10
-    MOCK: JobRepository.fetch_paginated_applied_jobs
+    STORY: The dashboard requests applied jobs.
+    ENDPOINT: GET /services/applied
+    MOCK: JobRepository.get_applied_jobs
     """
-    # 1. Mock Data
-    mock_job_1 = MagicMock()
-    mock_job_1.to_dict.return_value = {
+    mock_job = {
         "urn": "urn:li:job:123",
         "title": "Backend Dev",
         "company": {"name": "Tech Corp"}
     }
 
-    mock_response = {
-        "jobs": [mock_job_1],
-        "total": 50,
-        "page": 1,
-        "limit": 10
-    }
+    with patch(
+        "source.features.get_applied_jobs.applied_jobs_controller.JobRepository.get_applied_jobs",
+        return_value=[mock_job],
+    ) as mock_fetch:
+        response = client.get('/services/applied?page=1&limit=10')
 
-    # 2. Patch the Repository
-    # Note: Adjust the patch path 'source.features.get_applied_jobs.services_controller.JobRepository'
-    # if the controller imports it differently, but patching the class definition usually works
-    # if you patch where it is used.
-    with patch.object(JobRepository, 'fetch_paginated_applied_jobs', return_value=mock_response) as mock_fetch:
-
-        # 3. Action
-        response = client.get('/services/applied-jobs?page=1&limit=10')
-
-        # 4. Assertions
         assert response.status_code == 200
         data = response.json
 
-        # Verify structure
-        assert "jobs" in data
-        assert data["total"] == 50
-        assert data["jobs"][0]["title"] == "Backend Dev"
-
-        # Verify Repository was called with correct params
-        # Note: '1' and '10' come as strings from query params,
-        # controller should convert them to int.
-        mock_fetch.assert_called_once()
-        args, _ = mock_fetch.call_args
-        # Assuming controller converts str -> int
-        assert args[0] == 1 or args[0] == '1'
-        assert args[1] == 10 or args[1] == '10'
+        assert data["status"] == "success"
+        assert data["data"]["count"] == 1
+        assert data["data"]["jobs"][0]["title"] == "Backend Dev"
+        mock_fetch.assert_called_once_with()
 
 
 # ============================================================================
@@ -110,11 +77,8 @@ def test_get_failure_emails(client):
     """
     STORY: Dashboard views the 'Job fails' email tab.
     ENDPOINT: GET /emails/?folder=Job fails
-    MOCK: Since we don't see GmailController code, we assume it queries the DB model 'Email'.
-    We will patch the db session in the controller or a service layer.
+    MOCK: Real gmail_controller database dependency.
     """
-    # 1. Mock DB Session and Query Chain
-    # This mocks: session.query(Email).filter(...).limit(...).all()
     mock_email = MagicMock()
     mock_email.to_dict.return_value = {
         "id": 1,
@@ -122,57 +86,54 @@ def test_get_failure_emails(client):
         "folder": "Job fails"
     }
 
-    # We need to target where get_db_session is imported in the gmail_controller
-    # OR mock the specific service method if one exists.
-    # Assuming the controller calls a service or uses global session:
     with patch('source.features.gmail_service.gmail_controller.get_db_session') as mock_get_db:
         mock_session = MagicMock()
         mock_get_db.return_value = mock_session
 
-        # Setup the query chain
         mock_query = mock_session.query.return_value
         mock_filter = mock_query.filter.return_value
-        mock_offset = mock_filter.offset.return_value
+        mock_filter.count.return_value = 1
+        mock_order = mock_filter.order_by.return_value
+        mock_offset = mock_order.offset.return_value
         mock_limit = mock_offset.limit.return_value
-        mock_limit.all.return_value = [mock_email] # Final result
-        mock_query.filter.return_value.count.return_value = 1 # Total count
+        mock_limit.all.return_value = [mock_email]
 
-        # 2. Action
         response = client.get('/emails/?folder=Job fails&page=1&limit=10')
 
-        # 3. Assertions
-        # (Assuming the endpoint is implemented; if not, this will 404)
-        if response.status_code != 404:
-            assert response.status_code == 200
-            data = response.json
-            # Expecting pagination structure or list
-            if isinstance(data, list):
-                assert data[0]['subject'] == "Thank you for applying"
-            elif 'items' in data:
-                assert data['items'][0]['subject'] == "Thank you for applying"
+        assert response.status_code == 200
+        data = response.json
+        assert data["data"][0]["subject"] == "Thank you for applying"
+        assert data["total"] == 1
+        assert data["page"] == 1
+        assert data["total_pages"] == 1
+        mock_session.close.assert_called_once()
 
 
 def test_sync_failure_emails(client):
     """
     STORY: User clicks 'Sync Emails'.
     ENDPOINT: POST /emails/sync
-    MOCK: GmailService (assuming it exists based on blueprints)
+    MOCK: Real gmail_controller dependencies.
     """
     mock_payload = {"label": "Job fails"}
 
-    # Patching the hypothetical service used by gmail_controller
-    # You might need to adjust 'GmailService' to the exact class name found in your missing file
-    with patch('source.features.gmail_service.gmail_controller.GmailService') as MockGmailService:
-        mock_instance = MockGmailService.return_value
-        mock_instance.fetch_and_store_emails.return_value = {"new": 5, "updated": 0}
+    mock_profile = MagicMock()
+    mock_profile.email = "mateus@example.com"
+    mock_profile.email_app_password = "app-password"
+    mock_session = MagicMock()
+    mock_session.query.return_value.first.return_value = mock_profile
 
+    with patch('source.features.gmail_service.gmail_controller.get_db_session', return_value=mock_session), \
+         patch('source.features.gmail_service.gmail_controller._perform_gmail_sync', return_value=5) as mock_sync:
         response = client.post('/emails/sync', json=mock_payload)
 
-        # Assertions
-        # Assuming the controller returns success info
-        if response.status_code != 404:
-            assert response.status_code == 200
-            assert response.json['new'] == 5
+        assert response.status_code == 200
+        assert response.json == {
+            "message": "Synced 5 emails",
+            "label": "Job fails",
+        }
+        mock_sync.assert_called_once_with(mock_session, mock_profile, "Job fails")
+        mock_session.close.assert_called_once()
 
 
 # ============================================================================
@@ -181,40 +142,43 @@ def test_sync_failure_emails(client):
 
 def test_get_dashboard_insights(client):
     """
-    STORY: Dashboard loads summary charts (Applied vs Rejected vs Interview).
+    STORY: Dashboard loads summary charts.
     ENDPOINT: GET /services/insights?time_range=30d
-    MOCK: A hypothetical InsightsService or JobRepository aggregation method.
+    MOCK: Database session returning applied jobs.
     """
-    # 1. Mock Data
-    mock_metrics = {
-        "total_applied": 120,
-        "active": 45,
-        "rejected": 70,
-        "interviews": 5,
-        "time_range": "30d"
+    active_job = MagicMock()
+    active_job.application_closed = False
+    active_job.job_state = "LISTED"
+    active_job.applicants = 40
+    active_job.application_status = "Waiting"
+    active_job.title = "Backend Dev"
+
+    closed_job = MagicMock()
+    closed_job.application_closed = True
+    closed_job.job_state = "CLOSED"
+    closed_job.applicants = 250
+    closed_job.application_status = "Refused"
+    closed_job.title = "Platform Engineer"
+
+    mock_session = MagicMock()
+    mock_query = mock_session.query.return_value
+    mock_query.filter.return_value = mock_query
+    mock_query.all.return_value = [active_job, closed_job]
+
+    with patch('source.features.get_applied_jobs.services_controller.get_db_session', return_value=mock_session):
+        response = client.get('/services/insights?time_range=30d')
+
+    assert response.status_code == 200
+    data = response.json
+    assert data["overview"] == {
+        "total": 2,
+        "active": 1,
+        "paused": 0,
+        "closed": 1,
+        "unknown": 0,
     }
-
-    # 2. Patch
-    # Assuming 'get_dashboard_metrics' is a static method in ServicesController or Repository
-    # You will need to adjust the target based on your actual controller implementation
-    with patch('source.features.get_applied_jobs.services_controller.JobRepository') as MockRepo:
-        # Assuming the controller does something like:
-        # jobs = repo.get_jobs_by_date(range) -> calculate metrics
-        # We can just mock the return of the specific method called.
-
-        # Let's mock a hypothetical method that might exist or simply raw logic
-        # For now, we assume the endpoint returns 200
-        pass
-
-        # Since I cannot see the controller logic, I will implement a check
-    # that ensures the route handles the param correctly if it existed.
-
-    # Simulating a controller behavior via Mock for demonstration:
-    # (In reality, run this against your actual controller code)
-    response = client.get('/services/insights?time_range=30d')
-
-    if response.status_code != 404:
-        assert response.status_code == 200
-        # Check keys
-        data = response.json
-        assert "total_applied" in data
+    assert data["competition"]["low"] == 1
+    assert data["competition"]["high"] == 1
+    assert data["competition"]["avg_applicants"] == 145
+    assert len(data["competition_raw"]) == 2
+    mock_session.close.assert_called_once()

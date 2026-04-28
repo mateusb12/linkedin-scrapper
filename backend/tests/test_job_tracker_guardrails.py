@@ -1,21 +1,9 @@
-import pathlib
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-
-from app import app
 from source.features.get_applied_jobs.linkedin_http_proxy import LinkedInProxy
 from source.features.get_applied_jobs.utils_proxy import JobPost, LinkedInAppliedJobsEmptyError
-
-
-@pytest.fixture
-def client():
-    app.config["TESTING"] = True
-    with app.test_client() as test_client:
-        yield test_client
 
 
 def _build_proxy(response_text: str, status_code: int = 200) -> LinkedInProxy:

@@ -6,13 +6,6 @@ from source.features.fetch_curl.fetch_service import FetchService
 from source.features.job_population.population_service import PopulationService
 from source.features.job_population.search_spec import PipelineSearchSpec
 
-@pytest.fixture
-def client():
-    from app import app
-    app.config['TESTING'] = True
-    with app.test_client() as client:
-        yield client
-
 def test_configure_pagination_curl(client):
     """
     STORY: As a user, I configure the scraper by pasting a cURL command.

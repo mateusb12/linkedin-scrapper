@@ -1,5 +1,3 @@
-import json
-from pathlib import Path
 from unittest.mock import patch
 
 from source.features.fetch_curl.fetch_service import FetchService
@@ -8,17 +6,62 @@ from source.features.job_population.population_service import PopulationService
 from source.features.job_population.search_spec import PipelineSearchSpec
 
 
-FIXTURE_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "source"
-    / "features"
-    / "search_jobs"
-    / "linkedin_graphql_response.json"
-)
-
-
 def load_search_fixture():
-    return json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+    return {
+        "data": {
+            "paging": {"count": 10, "start": 0, "total": 1},
+            "elements": [
+                {
+                    "jobCardUnion": {
+                        "*jobPostingCard": "urn:li:fsd_jobPostingCard:(4314156884,JOBS_SEARCH)"
+                    }
+                }
+            ],
+        },
+        "included": [
+            {
+                "entityUrn": "urn:li:fsd_jobPostingCard:(4314156884,JOBS_SEARCH)",
+                "$type": "com.linkedin.voyager.dash.jobs.JobPostingCard",
+                "title": {"text": "Backend Engineer"},
+                "primaryDescription": {"text": "Tech Corp"},
+                "secondaryDescription": {"text": "Remote"},
+                "*jobPosting": "urn:li:fsd_jobPosting:4314156884",
+                "preDashNormalizedJobPostingUrn": "urn:li:fsd_jobPosting:4314156884",
+                "logo": {
+                    "actionTarget": "https://www.linkedin.com/company/tech-corp/",
+                    "attributes": [
+                        {
+                            "detailData": {
+                                "*companyLogo": "urn:li:fsd_company:123"
+                            }
+                        }
+                    ],
+                },
+            },
+            {
+                "entityUrn": "urn:li:fsd_jobPosting:4314156884",
+                "$type": "com.linkedin.voyager.dash.jobs.JobPosting",
+                "title": "Backend Engineer",
+                "trackingUrn": "urn:li:jobPosting:4314156884",
+            },
+            {
+                "entityUrn": "urn:li:fsd_company:123",
+                "$type": "com.linkedin.voyager.dash.organization.Company",
+                "logo": {
+                    "vectorImage": {
+                        "rootUrl": "https://media.licdn.com/logo/",
+                        "artifacts": [
+                            {
+                                "fileIdentifyingUrlPathSegment": "logo.png",
+                                "width": 100,
+                                "height": 100,
+                            }
+                        ],
+                    }
+                },
+            },
+        ],
+    }
 
 
 def test_parse_job_entries_supports_jobcardslite_payload():
