@@ -1,7 +1,6 @@
 import imaplib
 import email
 import re
-from difflib import get_close_matches
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 from datetime import datetime
@@ -13,6 +12,10 @@ from database.database_connection import get_db_session
 from models.user_models import Profile
 from models.email_models import Email
 from models.job_models import Job, Company
+from source.features.gmail_service.safe_reconciliation import (
+    reconcile_email_backlog_report,
+    reconcile_email_to_job,
+)
 
 JOB_KEYWORDS = [
     "application",
@@ -197,165 +200,14 @@ def extract_role_company(subject: str):
 # ---------------------------------------------------
 
 def _auto_reconcile_job(session, email_obj):
-    raw_subject = email_obj.subject or ""
-    subject_clean = normalize_text(raw_subject)
-    subject = subject_clean.lower()
-    sender = normalize_text(email_obj.sender or "").lower()
-
-    if any(k in subject or k in sender for k in IGNORE_KEYWORDS):
-        print(f"\n[Status Sync] Skipping ignored email: '{subject_clean}'")
-        return False
-
-    if not any(k in subject for k in JOB_KEYWORDS):
-        print(f"\n[Status Sync] Skipping non-job email: '{subject_clean}'")
-        return False
-
-    print(f"\n[Status Sync] Processing: '{subject_clean}'")
-
-    role, company = extract_role_company(subject_clean)
-
-    print(f"   -> Extracted role: {role}")
-    print(f"   -> Extracted company: {company}")
-
-    target_job = None
-
-    applied_jobs = (
-        session.query(Job)
-        .join(Company)
-        .filter(Job.has_applied.is_(True))
-        .order_by(Job.applied_on.desc())
-        .all()
+    decision = reconcile_email_to_job(session, email_obj, dry_run=False)
+    print(
+        "[Status Sync] "
+        f"email_id={decision['email_id']} decision={decision['decision']} "
+        f"job_urn={decision['job_urn']} reasons={decision['reasons']} "
+        f"score={decision['score']}"
     )
-
-    print(f"   -> Applied jobs universe: {len(applied_jobs)}")
-
-    if company:
-        normalized_company = normalize_company_name(company)
-        print(f"   -> Normalized extracted company: '{normalized_company}'")
-
-        company_candidates = [
-            job
-            for job in applied_jobs
-            if job.company and normalize_company_name(job.company.name) == normalized_company
-        ]
-
-        print(f"   -> Exact normalized company candidates: {len(company_candidates)}")
-
-        if company_candidates:
-            print(
-                "   -> Candidate companies: "
-                f"{[job.company.name for job in company_candidates[:10]]}"
-            )
-
-        if not company_candidates:
-            company_tokens = [t for t in normalized_company.split() if len(t) >= 3]
-
-            token_hits = []
-            for job in applied_jobs:
-                if not job.company or not job.company.name:
-                    continue
-
-                db_company_norm = normalize_company_name(job.company.name)
-
-                if any(token in db_company_norm for token in company_tokens):
-                    token_hits.append(job.company.name)
-
-            unique_token_hits = sorted(set(token_hits))
-            print(f"   -> Token hits: {unique_token_hits[:10]}")
-
-            db_company_names_norm = sorted(
-                set(
-                    normalize_company_name(job.company.name)
-                    for job in applied_jobs
-                    if job.company and job.company.name
-                )
-            )
-
-            close_matches = get_close_matches(
-                normalized_company,
-                db_company_names_norm,
-                n=5,
-                cutoff=0.5,
-            )
-            print(f"   -> Close normalized company matches: {close_matches}")
-
-            if close_matches:
-                close_originals = sorted(
-                    set(
-                        job.company.name
-                        for job in applied_jobs
-                        if job.company
-                        and job.company.name
-                        and normalize_company_name(job.company.name) in close_matches
-                    )
-                )
-                print(f"   -> Close original company matches: {close_originals}")
-
-        if len(company_candidates) == 1:
-            target_job = company_candidates[0]
-            print(
-                f"   -> Single company match: {target_job.title} @ {target_job.company.name}"
-            )
-
-        elif len(company_candidates) > 1 and role:
-            role_lower = normalize_text(role).lower()
-            print(f"   -> Trying title refinement with role: '{role_lower}'")
-
-            for job in company_candidates:
-                db_title = normalize_text(job.title or "").lower()
-                print(f"      - Candidate title: '{db_title}'")
-
-                if role_lower in db_title or db_title in role_lower:
-                    target_job = job
-                    print(
-                        f"      ✅ Title-refined match: {job.title} @ {job.company.name}"
-                    )
-                    break
-
-            if not target_job:
-                target_job = company_candidates[0]
-                print(
-                    f"   -> Falling back to first company candidate: "
-                    f"{target_job.title} @ {target_job.company.name}"
-                )
-
-    if not target_job:
-        print("   -> Starting reverse company lookup in subject/sender")
-
-        normalized_subject = normalize_company_name(subject_clean)
-        normalized_sender = normalize_company_name(sender)
-
-        for job in applied_jobs:
-            if not job.company or not job.company.name:
-                continue
-
-            db_name = normalize_company_name(job.company.name)
-
-            if db_name and (db_name in normalized_subject or db_name in normalized_sender):
-                target_job = job
-                print(f"   -> Reverse match: {job.company.name} / {job.title}")
-                break
-
-    if target_job:
-        email_obj.job_urn = target_job.urn
-        print(f"   -> Linked email to job_urn: {target_job.urn}")
-
-        if target_job.application_status not in ["Refused", "Accepted"]:
-            print(
-                f"      🔄 Updating {target_job.title} at "
-                f"{target_job.company.name} -> Refused"
-            )
-            target_job.application_status = "Refused"
-            return True
-
-        print(
-            f"      ℹ️ Matched {target_job.title} at {target_job.company.name}, "
-            f"status already {target_job.application_status}"
-        )
-        return False
-
-    print("      ❌ No job match found")
-    return False
+    return decision.get("wrote") is True
 
 
 # ---------------------------------------------------
@@ -547,6 +399,21 @@ def reconcile_backlog():
         return jsonify({
             "processed": len(emails),
             "updated": updated
+        })
+
+    finally:
+        session.close()
+
+
+def reconcile_backlog_dry_run():
+    session = get_db_session()
+
+    try:
+        report = reconcile_email_backlog_report(session)
+        return jsonify({
+            "processed": len(report),
+            "dry_run": True,
+            "results": report,
         })
 
     finally:

@@ -7,6 +7,7 @@ from flask import Blueprint
 from source.features.gmail_service.gmail_controller import (
     sync_emails_endpoint,
     reconcile_backlog,
+    reconcile_backlog_dry_run,
     get_stored_emails,
 )
 
@@ -93,6 +94,14 @@ def reconcile_backlog_route():
             updated: 4
     """
     return reconcile_backlog()
+
+
+@gmail_bp.route("/reconcile-backlog/dry-run", methods=["GET", "POST"])
+def reconcile_backlog_dry_run_route():
+    """
+    Reports safe email-to-job reconciliation decisions without writing changes.
+    """
+    return reconcile_backlog_dry_run()
 
 
 @gmail_bp.route("/", methods=["GET"])

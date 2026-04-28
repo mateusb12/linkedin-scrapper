@@ -2,14 +2,12 @@
 
 import json
 import math
-import re
 import traceback
 from datetime import timezone, datetime, timedelta
 from flask import jsonify, request
 from dateutil.parser import parse as parse_datetime
-from sqlalchemy import or_, func
 
-from models import Job, FetchCurl, Email, Company
+from models import Job, FetchCurl, Email
 from source.features.get_applied_jobs.legacy_code.fetch_linkedin_saved_jobs import fetch_linkedin_saved_jobs
 from source.features.fetch_curl.linkedin_http_client import get_linkedin_fetch_artefacts
 from source.features.job_population.job_repository import JobRepository
@@ -19,6 +17,7 @@ from source.features.get_applied_jobs.legacy_code.fetch_linkedin_applied_jobs im
 from source.features.job_population.population_service import PopulationService
 from source.features.profile.fetch_linkedin_profile_experiences import fetch_linkedin_profile_experiences
 from source.services.experience_extractor import extract_years_experience
+from source.features.gmail_service.safe_reconciliation import reconcile_email_to_job
 
 
 def normalize_huntr_job(job: dict) -> dict:
@@ -178,56 +177,29 @@ def get_all_applied_jobs():
 
 def sync_application_status():
     """
-    Cross-references 'Job fails' emails with Jobs table to update status to 'Refused'.
+    Cross-references 'Job fails' emails with Jobs table using the safe reconciler.
     """
     session = get_db_session()
     try:
-        rejection_emails = session.query(Email).filter(Email.folder == "Job fails").all()
+        rejection_emails = session.query(Email).filter(
+            Email.folder == "Job fails",
+            Email.job_urn.is_(None),
+        ).all()
         updated_count = 0
+        results = []
 
         for email in rejection_emails:
-            target_company_name = None
-
-            # 1. Parse Subject (Ascendion case)
-            subject_match = re.search(r"application to .*? at (.*)", email.subject, re.IGNORECASE)
-
-            if subject_match:
-                target_company_name = subject_match.group(1).strip().rstrip('.')
-
-            # 2. Fallback to Sender
-            if not target_company_name:
-                sender_clean = email.sender.split(' via ')[0].split('<')[0].strip().replace('"', '')
-                if "linkedin" not in sender_clean.lower():
-                    target_company_name = sender_clean
-
-            if not target_company_name:
-                continue
-
-            print(f"   [Status Sync] Email: '{email.subject}' -> Detected Company: '{target_company_name}'")
-
-            # 3. Find matching jobs
-            # CRITICAL FIX: Allow application_status to be NULL or "Waiting"
-            candidate_jobs = session.query(Job).join(Company).filter(
-                or_(
-                    Job.application_status == "Waiting",
-                    Job.application_status.is_(None)
-                ),
-                or_(
-                    func.lower(Company.name).contains(func.lower(target_company_name)),
-                    func.lower(target_company_name).contains(func.lower(Company.name))
-                )
-            ).all()
-
-            if not candidate_jobs:
-                print(f"      -> ⚠️ NO MATCH found for '{target_company_name}' in DB (or already refused).")
-
-            for job in candidate_jobs:
-                job.application_status = "Refused"
+            result = reconcile_email_to_job(session, email, dry_run=False)
+            results.append(result)
+            if result.get("wrote") is True:
                 updated_count += 1
-                print(f"      -> ✅ UPDATING: Marked '{job.title}' at '{job.company.name}' as Refused.")
 
         session.commit()
-        return jsonify({"message": f"Sync complete. Updated {updated_count} jobs to 'Refused'."}), 200
+        return jsonify({
+            "message": f"Sync complete. Safely linked {updated_count} rejection emails.",
+            "updated_count": updated_count,
+            "results": results,
+        }), 200
 
     except Exception as e:
         session.rollback()

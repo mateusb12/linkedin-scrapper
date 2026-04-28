@@ -15,6 +15,7 @@ from source.features.job_population.linkedin_parser import parse_job_entries
 from source.features.job_population.search_spec import PipelineSearchSpec
 from source.features.job_population.enrichment_service import EnrichmentService
 from source.features.fetch_curl.linkedin_http_client import get_linkedin_fetch_artefacts
+from source.features.gmail_service.safe_reconciliation import reconcile_email_to_job
 from database.database_connection import get_db_session
 
 class PopulationService:
@@ -979,60 +980,25 @@ class PopulationService:
 
     @staticmethod
     def reconcile_failures() -> Dict[str, Any]:
-        print("[Reconcile] Starting SQL Cross-Check...")
+        print("[Reconcile] Starting safe email-to-job reconciliation...")
         session = get_db_session()
         updated_count = 0
 
-        import re
-
         try:
-            # 1. Fetch emails
             rejection_emails = session.query(Email).filter(
-                or_(Email.folder == 'Job fails', Email.category == 'Rejection')
+                or_(Email.folder == 'Job fails', Email.category == 'Rejection'),
+                Email.job_urn.is_(None),
             ).all()
+            results = []
 
-            # 2. Fetch active jobs
-            active_jobs = session.query(Job).filter(
-                or_(
-                    Job.application_status.is_(None),
-                    Job.application_status.notin_(['Refused', 'Rejected', 'Hired'])
-                )
-            ).all()
-
-            for job in active_jobs:
-                # SKIP JOBS WITHOUT COMPANY
-                if not job.company or not job.company.name:
-                    continue
-
-                # 1. Normalize
-                company_name_raw = job.company.name.lower().strip()
-                company_slug = re.sub(r'[\W_]+', '', company_name_raw)
-
-                if len(company_slug) < 3: continue
-
-                # Debug specific company
-                if "framework" in company_name_raw:
-                    print(f"[DEBUG LOOP] Processing: {company_name_raw} (Slug: {company_slug})")
-
-                match_found = False
-                for email in rejection_emails:
-                    sender = (email.sender or "").lower()
-                    address = (email.sender_email or "").lower()
-                    subject = (email.subject or "").lower()
-
-                    content_blob = f"{sender} {address} {subject}"
-
-                    if company_name_raw in content_blob or (len(company_slug) > 3 and company_slug in content_blob):
-                        match_found = True
-                        print(f"[Reconcile] ❌ MATCH FOUND! {job.company.name} -> Refused")
-                        break
-
-                if match_found:
-                    job.application_status = "Refused"
+            for email in rejection_emails:
+                result = reconcile_email_to_job(session, email, dry_run=False)
+                results.append(result)
+                if result.get("wrote") is True:
                     updated_count += 1
 
             session.commit()
-            return {"success": True, "updated_count": updated_count}
+            return {"success": True, "updated_count": updated_count, "results": results}
 
         except Exception as e:
             session.rollback()
