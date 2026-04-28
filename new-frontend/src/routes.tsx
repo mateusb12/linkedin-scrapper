@@ -5,6 +5,7 @@ import {
     LayoutGrid,
     Mail,
     PieChart,
+    UserRound,
     Search,
     Settings,
     CheckCircle,
@@ -17,6 +18,7 @@ import SearchJobsPage from "./features/search-jobs/SearchJobsPage"
 import AppliedJobsPage from "./features/applied-jobs/AppliedJobsPage.tsx";
 import InsightsPage from "./features/insights/InsightsPage.tsx";
 import RejectionsPage from "./features/rejections/RejectionsPage.tsx";
+import ProfilePage from "./features/profile/ProfilePage.tsx";
 
 export type AppRoute = {
     label: string
@@ -51,6 +53,12 @@ export const appRoutes = [
         icon: Mail,
         route: "/rejections",
         Page: RejectionsPage,
+    },
+    {
+        label: "Profile",
+        icon: UserRound,
+        route: "/profile",
+        Page: ProfilePage,
     },
     {label: "Saved Jobs", icon: Bookmark, route: "/saved", Page: SavedJobsPage},
 ] as const satisfies readonly AppRoute[]
