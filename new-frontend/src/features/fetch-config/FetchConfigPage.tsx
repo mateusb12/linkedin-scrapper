@@ -1,15 +1,15 @@
-import {useEffect, useState} from "react"
+import {useCallback, useEffect, useState} from "react"
 import {
-    deleteScraperConfigMock,
-    getFetchConfigMockData,
-    saveGmailTokenMock,
-    saveScraperConfigMock,
-    testGmailConnectionMock,
-    type GmailMockState,
+    deleteScraperConfig,
+    getFetchConfigData,
+    saveGmailToken,
+    saveScraperConfig,
+    testGmailConnection,
+    type GmailState,
     type SavedScraperConfig,
     type ScraperConfigMeta,
     type ScraperConfigsData,
-} from "./fetchConfigMockService"
+} from "./fetchConfigService"
 
 type ColorTheme = {
     preview: string
@@ -178,7 +178,7 @@ function ConfigCard({
                             </span>
 
                             <span className="text-xs font-bold text-slate-400">
-                                Mock data
+                                Backend config
                             </span>
                         </div>
 
@@ -227,10 +227,12 @@ function ConfigCard({
 
 function GmailIntegrationCard({
                                   gmail,
+                                  profileId,
                                   onSaveToken,
                                   onTestConnection,
                               }: {
-    gmail: GmailMockState | null
+    gmail: GmailState | null
+    profileId: number | null
     onSaveToken: (token: string) => Promise<void>
     onTestConnection: () => Promise<void>
 }) {
@@ -240,9 +242,10 @@ function GmailIntegrationCard({
     const [isTesting, setIsTesting] = useState(false)
 
     const isConnected = gmail?.status === "connected"
+    const hasProfile = profileId !== null
 
     const handleSave = async () => {
-        if (!token.trim()) return
+        if (!token.trim() || !hasProfile) return
 
         setIsSaving(true)
 
@@ -297,7 +300,7 @@ function GmailIntegrationCard({
             </div>
 
             <label className="mb-2 block text-xs font-black text-slate-500 dark:text-slate-400">
-                App Password Mock
+                App Password (Not your Google Password)
             </label>
 
             <div className="relative mb-4">
@@ -306,12 +309,14 @@ function GmailIntegrationCard({
                     value={token}
                     onChange={(event) => setToken(event.target.value)}
                     placeholder={gmail?.appPasswordPreview ?? "•••• •••• •••• ••••"}
+                    disabled={!hasProfile}
                     className="w-full rounded-lg border border-slate-300 bg-slate-50 p-3 pr-12 font-mono text-sm text-slate-800 outline-none transition focus:border-red-400 focus:ring-4 focus:ring-red-500/30 dark:border-slate-700 dark:bg-[#101827] dark:text-slate-200"
                 />
 
                 <button
                     type="button"
                     onClick={() => setShowToken((current) => !current)}
+                    disabled={!hasProfile}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-900 dark:hover:text-white"
                     aria-label="Toggle token visibility"
                 >
@@ -319,11 +324,17 @@ function GmailIntegrationCard({
                 </button>
             </div>
 
+            {!hasProfile && (
+                <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                    No profile found. Create a profile first.
+                </p>
+            )}
+
             <div className="flex gap-3">
                 <button
                     type="button"
                     onClick={handleSave}
-                    disabled={!token.trim() || isSaving}
+                    disabled={!hasProfile || !token.trim() || isSaving}
                     className="flex-1 rounded-lg bg-red-600 px-4 py-3 text-sm font-black text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     {isSaving ? "Saving..." : "Save Token"}
@@ -332,7 +343,7 @@ function GmailIntegrationCard({
                 <button
                     type="button"
                     onClick={handleTest}
-                    disabled={isTesting}
+                    disabled={!hasProfile || isTesting}
                     className="rounded-lg bg-slate-200 px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
                 >
                     {isTesting ? "Testing..." : "Test"}
@@ -345,47 +356,53 @@ function GmailIntegrationCard({
 export default function FetchConfigPage() {
     const [scraperConfigs, setScraperConfigs] = useState<ScraperConfigMeta[]>([])
     const [configsData, setConfigsData] = useState<ScraperConfigsData>({})
-    const [gmail, setGmail] = useState<GmailMockState | null>(null)
+    const [gmail, setGmail] = useState<GmailState | null>(null)
+    const [profileId, setProfileId] = useState<number | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [statusMessage, setStatusMessage] = useState<string | null>(null)
 
-    const flashStatus = (message: string) => {
+    const flashStatus = useCallback((message: string) => {
         setStatusMessage(message)
         window.setTimeout(() => setStatusMessage(null), 3500)
-    }
+    }, [])
 
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         setIsLoading(true)
 
         try {
-            const data = await getFetchConfigMockData()
+            const data = await getFetchConfigData()
 
             setScraperConfigs(data.scraperConfigs)
             setConfigsData(data.configsData)
             setGmail(data.gmail)
+            setProfileId(data.profileId)
         } catch (error) {
             flashStatus(`❌ ${getErrorMessage(error)}`)
         } finally {
             setIsLoading(false)
         }
-    }
+    }, [flashStatus])
 
     useEffect(() => {
-        void loadData()
-    }, [])
+        const timeoutId = window.setTimeout(() => {
+            void loadData()
+        }, 0)
+
+        return () => window.clearTimeout(timeoutId)
+    }, [loadData])
 
     const handleSaveConfig = async (config: ScraperConfigMeta, curl: string) => {
         setStatusMessage(`Saving ${config.title}...`)
 
         try {
-            const savedConfig = await saveScraperConfigMock(config, curl)
+            const savedConfig = await saveScraperConfig(config, curl)
 
             setConfigsData((current) => ({
                 ...current,
                 [config.id]: savedConfig,
             }))
 
-            flashStatus(`✅ ${config.title} updated in mock storage.`)
+            flashStatus(`✅ ${config.title} updated.`)
         } catch (error) {
             flashStatus(`❌ ${getErrorMessage(error)}`)
         }
@@ -395,37 +412,50 @@ export default function FetchConfigPage() {
         setStatusMessage(`Deleting ${config.title}...`)
 
         try {
-            await deleteScraperConfigMock(config.id)
+            await deleteScraperConfig(config)
 
             setConfigsData((current) => ({
                 ...current,
                 [config.id]: null,
             }))
 
-            flashStatus(`🗑️ ${config.title} deleted from mock storage.`)
+            flashStatus(`🗑️ ${config.title} deleted.`)
         } catch (error) {
             flashStatus(`❌ ${getErrorMessage(error)}`)
         }
     }
 
     const handleSaveGmailToken = async (token: string) => {
+        if (profileId === null) {
+            flashStatus("❌ No profile found. Create a profile first.")
+            return
+        }
+
         setStatusMessage("Saving Gmail token...")
 
         try {
-            const updatedGmail = await saveGmailTokenMock(token)
+            const updatedGmail = await saveGmailToken(profileId, token)
 
-            setGmail(updatedGmail)
-            flashStatus("✅ Gmail token saved in mock storage.")
+            setGmail((current) => ({
+                ...updatedGmail,
+                profileEmail: current?.profileEmail ?? "",
+            }))
+            flashStatus("✅ Gmail token saved securely.")
         } catch (error) {
             flashStatus(`❌ ${getErrorMessage(error)}`)
         }
     }
 
     const handleTestGmailConnection = async () => {
+        if (profileId === null) {
+            flashStatus("❌ No profile found. Create a profile first.")
+            return
+        }
+
         setStatusMessage("Testing Gmail connection...")
 
         try {
-            const message = await testGmailConnectionMock()
+            const message = await testGmailConnection(profileId)
             flashStatus(message)
         } catch (error) {
             flashStatus(`❌ ${getErrorMessage(error)}`)
@@ -440,8 +470,8 @@ export default function FetchConfigPage() {
                 </h1>
 
                 <p className="m-0 mt-3 max-w-2xl text-base font-medium leading-6 text-slate-600 dark:text-slate-300">
-                    Manage scraper settings and external integrations using local mock
-                    data while the TypeScript frontend is being migrated.
+                    Manage scraper settings and external integrations backed by the
+                    local backend service.
                 </p>
             </section>
 
@@ -461,7 +491,7 @@ export default function FetchConfigPage() {
                 {isLoading ? (
                     <div
                         className="rounded-xl border border-slate-200 bg-white/80 p-8 text-center text-sm font-black text-slate-500 dark:border-slate-700 dark:bg-[#172033]/80 dark:text-slate-300">
-                        Loading mock configurations...
+                        Loading configurations...
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
@@ -487,6 +517,7 @@ export default function FetchConfigPage() {
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     <GmailIntegrationCard
                         gmail={gmail}
+                        profileId={profileId}
                         onSaveToken={handleSaveGmailToken}
                         onTestConnection={handleTestGmailConnection}
                     />
