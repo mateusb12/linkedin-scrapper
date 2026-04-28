@@ -10,7 +10,7 @@ import {
     Filter,
     MapPin,
     RefreshCw,
-    Search, ShieldCheck,
+    Search,
     Sparkles,
     Users,
     X,
@@ -376,21 +376,6 @@ const getSeniorityTone = (seniority?: string | null) => {
         hint: "Seniority",
         className: "border-slate-700 bg-slate-900/80 text-slate-300",
     }
-}
-
-function SeniorityBadge({seniority}: { seniority?: string | null }) {
-    const tone = getSeniorityTone(seniority)
-
-    return (
-        <span
-            title={`${tone.hint}: ${tone.label}`}
-            aria-label={`${tone.hint}: ${tone.label}`}
-            className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-extrabold shadow-sm ${tone.className}`}
-        >
-            <ShieldCheck size={14} className="opacity-90"/>
-            <span>{tone.label}</span>
-        </span>
-    )
 }
 
 const getExperienceTone = (experience?: string | null) => {
@@ -839,8 +824,6 @@ export function SelectedJobPreview({
                             </div>
 
                             <div className="flex flex-wrap gap-2">
-                                <ApplicantsBadge applicants={job.applicantsTotal}/>
-                                <SeniorityBadge seniority={job.seniority}/>
                                 <ExperienceBadge experience={job.experienceYears}/>
                             </div>
                         </div>
@@ -889,56 +872,21 @@ export function SelectedJobPreview({
 
             <div className="space-y-5 p-5">
                 <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
-                    <div className="grid gap-3 text-sm text-slate-400 sm:grid-cols-2">
-                        <span className="inline-flex items-center gap-2">
-                            <Building2 size={15}/>
-                            {job.company.name}
-                        </span>
-
-                        <span className="inline-flex items-center gap-2">
-                            <MapPin size={15}/>
-                            {job.location}
-                        </span>
-
-                        <span className="inline-flex items-center gap-2">
-                            <CalendarDays size={15}/>
-                            {formatFullDate(job.postedAt)}
-                        </span>
-
-                        <ApplicantsBadge applicants={job.applicantsTotal}/>
-                    </div>
-
-                    <div className={`mt-5 rounded-2xl border p-4 ${getScoreTone(job.visibleScore)}`}>
-                        <div className="flex items-center justify-between gap-3">
-                            <div>
-                                <p className="text-xs font-bold uppercase tracking-[0.16em] opacity-80">
-                                    Python match
-                                </p>
-
-                                <p className="mt-1 text-3xl font-black">
-                                    {Math.round(job.visibleScore)}
-                                </p>
-                            </div>
-
-                            <Sparkles size={28}/>
-                        </div>
-
-                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-950/50">
-                            <div
-                                className={`h-full rounded-full ${getScoreBarClassName(job.visibleScore)}`}
-                                style={{width: `${Math.min(100, Math.max(0, job.visibleScore))}%`}}
-                            />
-                        </div>
-                    </div>
-                </section>
-
-                <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
                     {(() => {
                         const stackKeywords = job.keywords.filter(
                             (item) => !isGenericJobSignal(item),
                         )
 
-                        const roleSignals = job.keywords.filter(isGenericJobSignal)
+                        const roleSignals = [
+                            ...new Set(
+                                [
+                                    ...job.keywords.filter(isGenericJobSignal),
+                                    job.seniority,
+                                ]
+                                    .map((item) => item?.trim())
+                                    .filter((item): item is string => Boolean(item)),
+                            ),
+                        ]
 
                         return (
                             <>
@@ -965,14 +913,14 @@ export function SelectedJobPreview({
                                     )}
                                 </div>
 
-                                {roleSignals.length > 0 && (
-                                    <div className="mt-5 border-t border-slate-800 pt-4">
-                                        <h3 className="text-sm font-extrabold text-slate-300">
-                                            Role signals
-                                        </h3>
+                                <div className="mt-5 border-t border-slate-800 pt-4">
+                                    <h3 className="text-sm font-extrabold text-slate-300">
+                                        Role signals
+                                    </h3>
 
-                                        <div className="mt-3 flex flex-wrap gap-2">
-                                            {roleSignals.map((item) => (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {roleSignals.length > 0 ? (
+                                            roleSignals.map((item) => (
                                                 <RoleSignalBadge
                                                     key={item}
                                                     signal={item}
@@ -981,13 +929,69 @@ export function SelectedJobPreview({
                                                         job.matchedPositiveKeywords,
                                                     )}
                                                 />
-                                            ))}
-                                        </div>
+                                            ))
+                                        ) : (
+                                            <p className="text-sm text-slate-500">
+                                                No role signals detected in this payload.
+                                            </p>
+                                        )}
                                     </div>
-                                )}
+                                </div>
+
+                                <div className="mt-5 border-t border-slate-800 pt-4">
+                                    <h3 className="text-sm font-extrabold text-slate-300">
+                                        Applicants
+                                    </h3>
+
+                                    <div className="mt-3">
+                                        <ApplicantsBadge applicants={job.applicantsTotal}/>
+                                    </div>
+                                </div>
                             </>
                         )
                     })()}
+                </section>
+
+                <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
+                    <div className="grid gap-3 text-sm text-slate-400 sm:grid-cols-2">
+                        <span className="inline-flex items-center gap-2">
+                            <Building2 size={15}/>
+                            {job.company.name}
+                        </span>
+
+                        <span className="inline-flex items-center gap-2">
+                            <MapPin size={15}/>
+                            {job.location}
+                        </span>
+
+                        <span className="inline-flex items-center gap-2">
+                            <CalendarDays size={15}/>
+                            {formatFullDate(job.postedAt)}
+                        </span>
+                    </div>
+
+                    <div className={`mt-5 rounded-2xl border p-4 ${getScoreTone(job.visibleScore)}`}>
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <p className="text-xs font-bold uppercase tracking-[0.16em] opacity-80">
+                                    Python match
+                                </p>
+
+                                <p className="mt-1 text-3xl font-black">
+                                    {Math.round(job.visibleScore)}
+                                </p>
+                            </div>
+
+                            <Sparkles size={28}/>
+                        </div>
+
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-950/50">
+                            <div
+                                className={`h-full rounded-full ${getScoreBarClassName(job.visibleScore)}`}
+                                style={{width: `${Math.min(100, Math.max(0, job.visibleScore))}%`}}
+                            />
+                        </div>
+                    </div>
                 </section>
 
                 <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
