@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 AUTH_REDIRECT_MARKERS = ("/login", "/checkpoint", "/challenge", "/authwall")
 AUTH_HEADER_NAMES = {"cookie", "csrf-token"}
-DEFAULT_LINKEDIN_IDENTITY_CONFIG = "Connections"
+DEFAULT_LINKEDIN_IDENTITY_CONFIG = "Experience"
 
 
 @dataclass(frozen=True)
@@ -82,9 +82,9 @@ def build_cookie_header(identity: LinkedInIdentity) -> str:
 
 def get_linkedin_identity_config_name(identity_name: str | None = None) -> str:
     return (
-        identity_name
-        or os.getenv("LINKEDIN_IDENTITY_CONFIG")
-        or DEFAULT_LINKEDIN_IDENTITY_CONFIG
+            identity_name
+            or os.getenv("LINKEDIN_IDENTITY_CONFIG")
+            or DEFAULT_LINKEDIN_IDENTITY_CONFIG
     )
 
 
