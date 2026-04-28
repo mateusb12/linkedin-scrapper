@@ -11,6 +11,7 @@ import {
     MapPin,
     RefreshCw,
     Search,
+    ShieldCheck,
     Sparkles,
     Users,
     X,
@@ -147,6 +148,71 @@ const normalizeTechText = (value: string) =>
         .replace(/\p{Diacritic}/gu, "")
         .replace(/[-_.]/g, " ")
         .replace(/\s+/g, " ")
+
+
+
+const RUNTIME_KEYWORD_HINTS = [
+    {label: "PostgreSQL", pattern: /\b(postgresql|postgres)\b/i},
+    {label: "MySQL", pattern: /\bmysql\b/i},
+    {label: "NoSQL", pattern: /\bno\s?sql\b/i},
+    {label: "SQL", pattern: /\bsql\b/i},
+    {label: "AWS", pattern: /\baws\b/i},
+    {label: "GCP", pattern: /\b(gcp|google cloud)\b/i},
+    {label: "Azure", pattern: /\bazure\b/i},
+    {label: "Python", pattern: /\bpython\b/i},
+    {label: "Django", pattern: /\bdjango\b/i},
+    {label: "FastAPI", pattern: /\bfastapi\b/i},
+    {label: "Flask", pattern: /\bflask\b/i},
+    {label: "React", pattern: /\breact\b/i},
+    {label: "TypeScript", pattern: /\btypescript\b/i},
+    {label: "JavaScript", pattern: /\bjavascript\b/i},
+    {label: "Node.js", pattern: /\b(node\.js|nodejs|node)\b/i},
+    {label: "Docker", pattern: /\bdocker\b/i},
+    {label: "Kubernetes", pattern: /\b(kubernetes|k8s)\b/i},
+    {label: "Kafka", pattern: /\bkafka\b/i},
+    {label: "RabbitMQ", pattern: /\brabbitmq\b/i},
+    {label: "Redis", pattern: /\bredis\b/i},
+    {label: "ETL", pattern: /\betl\b/i},
+    {label: "API", pattern: /\bapis?\b/i},
+    {label: "Data pipeline", pattern: /\bdata pipelines?\b/i},
+    {label: "Task queues", pattern: /\btask queues?\b/i},
+    {label: "Async", pattern: /\basync processing\b/i},
+    {label: "Machine Learning", pattern: /\b(machine learning|ml)\b/i},
+]
+
+const getRuntimeKeywords = (job: SearchJob) => {
+    const searchableText = [
+        job.title,
+        job.description,
+        job.description_full,
+        job.description_snippet,
+        job.premium_title,
+        job.premium_description,
+        job.jobType,
+        job.seniority,
+        job.location,
+    ]
+        .filter(Boolean)
+        .join(" ")
+
+    const detectedKeywords = RUNTIME_KEYWORD_HINTS
+        .filter((hint) => hint.pattern.test(searchableText))
+        .map((hint) => hint.label)
+
+    const merged = [...job.keywords, ...detectedKeywords]
+    const keywordMap = new Map<string, string>()
+
+    merged.forEach((item) => {
+        const label = formatTechLabel(item)
+        const key = normalizeTechText(label)
+
+        if (key && !keywordMap.has(key)) {
+            keywordMap.set(key, label)
+        }
+    })
+
+    return [...keywordMap.values()]
+}
 
 
 
@@ -331,6 +397,22 @@ function ApplicantsBadge({
             <Users size={compact ? 12 : 14} className="opacity-90"/>
             <span>{applicants == null ? "N/A" : applicants}</span>
             {!compact && <span className="font-bold opacity-90">applicants</span>}
+        </span>
+    )
+}
+
+
+function SeniorityBadge({seniority}: { seniority?: string | null }) {
+    const tone = getSeniorityTone(seniority)
+
+    return (
+        <span
+            title={`${tone.hint}: ${tone.label}`}
+            aria-label={`${tone.hint}: ${tone.label}`}
+            className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-extrabold shadow-sm ${tone.className}`}
+        >
+            <ShieldCheck size={14} className="opacity-90"/>
+            <span>{tone.label}</span>
         </span>
     )
 }
@@ -824,6 +906,7 @@ export function SelectedJobPreview({
                             </div>
 
                             <div className="flex flex-wrap gap-2">
+                                <SeniorityBadge seniority={job.seniority}/>
                                 <ExperienceBadge experience={job.experienceYears}/>
                             </div>
                         </div>
@@ -873,14 +956,16 @@ export function SelectedJobPreview({
             <div className="space-y-5 p-5">
                 <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5">
                     {(() => {
-                        const stackKeywords = job.keywords.filter(
+                        const runtimeKeywords = getRuntimeKeywords(job)
+
+                        const stackKeywords = runtimeKeywords.filter(
                             (item) => !isGenericJobSignal(item),
                         )
 
                         const roleSignals = [
                             ...new Set(
                                 [
-                                    ...job.keywords.filter(isGenericJobSignal),
+                                    ...runtimeKeywords.filter(isGenericJobSignal),
                                     job.seniority,
                                 ]
                                     .map((item) => item?.trim())
