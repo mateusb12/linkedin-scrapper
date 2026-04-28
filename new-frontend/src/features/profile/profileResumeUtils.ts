@@ -4,7 +4,7 @@ import type {
     ResumeExperience,
     ResumeLanguage,
     ResumeSkillMap,
-} from "./profileMockService"
+} from "./profileService"
 
 export type NormalizedResumePayload = {
     id: number

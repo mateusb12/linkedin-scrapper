@@ -9,13 +9,16 @@ def extract_resume_data(data):
     """Helper to extract data from the specific JSON template structure"""
     profile_section = data.get("profile", {})
 
+    meta = data.get("meta") or {}
+
     return {
         "name": data.get("internal_name") or data.get("name"),
+        "resume_language": data.get("resume_language") or meta.get("language"),
         "summary": data.get("summary"),
-        "meta": data.get("meta"),
+        "meta": meta,
 
         # Flatten profile.contacts -> contact_info column
-        "contact_info": profile_section.get("contacts", {}),
+        "contact_info": data.get("contacts") or profile_section.get("contacts", {}),
 
         "languages": data.get("languages", []),
         "hard_skills": data.get("skills", {}),

@@ -71,11 +71,15 @@ class Resume(Base):
         return {
             "id": self.id,
             "internal_name": self.name,
+            "resume_language": self.resume_language,
+            "summary": self.summary or "",
+            "profile_id": self.profile_id,
             "meta": merged_meta,
             "profile": {
                 "name": profile_name,
                 "contacts": final_contacts
             },
+            "contacts": final_contacts,
             "experience": self.professional_experience or [],
             "projects": self.projects or [],
             "education": final_education or [],

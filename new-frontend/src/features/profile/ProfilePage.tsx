@@ -17,13 +17,13 @@ import {
 import type {LucideIcon} from "lucide-react"
 
 import {
-    deleteResumeMock,
-    duplicateResumeMock,
-    fetchProfileMock,
-    fetchResumesMock,
-    resetProfileMock,
-    saveProfileMock,
-    saveResumeMock,
+    deleteResume,
+    duplicateResume,
+    fetchProfile,
+    fetchResumes,
+    reloadProfileData,
+    saveProfile,
+    saveResume,
     type CareerProfile,
     type ResumeDraft,
     type ResumeEducation,
@@ -32,7 +32,7 @@ import {
     type ResumeLanguageItem,
     type ResumeProject,
     type ResumeSkillMap,
-} from "./profileMockService"
+} from "./profileService"
 import {
     buildFinalPrompt,
     generateResumeExport,
@@ -200,19 +200,25 @@ export default function ProfilePage() {
     const [includeAtsHiddenKeywords, setIncludeAtsHiddenKeywords] = useState(false)
     const [promptTemplate, setPromptTemplate] = useState(getPromptTemplate("PTBR"))
     const [copied, setCopied] = useState<"resume" | "prompt" | null>(null)
-    const [status, setStatus] = useState("Mock localStorage")
+    const [status, setStatus] = useState("Backend SQLite")
+    const [loadError, setLoadError] = useState("")
 
     useEffect(() => {
         async function load() {
-            const [nextProfile, nextResumes] = await Promise.all([
-                fetchProfileMock(),
-                fetchResumesMock(),
-            ])
+            try {
+                const nextProfile = await fetchProfile()
+                const nextResumes = await fetchResumes(nextProfile)
 
-            setProfile(nextProfile)
-            setResumes(nextResumes)
-            setActiveResumeId(nextResumes[0]?.id ?? null)
-            setPromptTemplate(getPromptTemplate(nextResumes[0]?.language ?? "PTBR"))
+                setProfile(nextProfile)
+                setResumes(nextResumes)
+                setActiveResumeId(nextResumes[0]?.id ?? null)
+                setPromptTemplate(getPromptTemplate(nextResumes[0]?.language ?? "PTBR"))
+                setLoadError("")
+            } catch (error) {
+                const message = error instanceof Error ? error.message : "Failed to load profile data"
+                setLoadError(message)
+                setStatus("Backend unavailable")
+            }
         }
 
         void load()
@@ -262,39 +268,63 @@ export default function ProfilePage() {
     const handleSave = async () => {
         if (!profile || !activeResume) return
 
-        await saveProfileMock(profile)
-        await saveResumeMock(activeResume)
-        setStatus(`Saved ${activeResume.internalName}`)
+        try {
+            const savedProfile = await saveProfile(profile)
+            const savedResume = await saveResume(activeResume, savedProfile)
+
+            setProfile(savedProfile)
+            setResumes(current =>
+                current.map(resume => (resume.id === activeResume.id ? savedResume : resume)),
+            )
+            setActiveResumeId(savedResume.id)
+            setStatus(`Saved ${activeResume.internalName}`)
+        } catch (error) {
+            setStatus(error instanceof Error ? error.message : "Save failed")
+        }
     }
 
     const handleDuplicate = async () => {
         if (!activeResume) return
 
-        const copy = await duplicateResumeMock(activeResume.id)
-        setResumes(current => [...current, copy])
-        setActiveResumeId(copy.id)
-        setPromptTemplate(getPromptTemplate(copy.language))
-        setStatus(`Duplicated ${activeResume.internalName}`)
+        try {
+            const copy = await duplicateResume(activeResume, profile ?? undefined)
+            setResumes(current => [...current, copy])
+            setActiveResumeId(copy.id)
+            setPromptTemplate(getPromptTemplate(copy.language))
+            setStatus(`Duplicated ${activeResume.internalName}`)
+        } catch (error) {
+            setStatus(error instanceof Error ? error.message : "Duplicate failed")
+        }
     }
 
     const handleDelete = async () => {
         if (!activeResume || resumes.length <= 1) return
 
-        const next = await deleteResumeMock(activeResume.id)
-        setResumes(next)
-        setActiveResumeId(next[0]?.id ?? null)
-        setStatus(`Deleted ${activeResume.internalName}`)
+        try {
+            await deleteResume(activeResume.id)
+            const next = resumes.filter(resume => resume.id !== activeResume.id)
+            setResumes(next)
+            setActiveResumeId(next[0]?.id ?? null)
+            setStatus(`Deleted ${activeResume.internalName}`)
+        } catch (error) {
+            setStatus(error instanceof Error ? error.message : "Delete failed")
+        }
     }
 
     const handleReset = async () => {
-        const next = await resetProfileMock()
-        setProfile(next.profile)
-        setResumes(next.resumes)
-        setActiveResumeId(next.resumes[0]?.id ?? null)
-        setPromptTemplate(getPromptTemplate(next.resumes[0]?.language ?? "PTBR"))
-        setJobDescription("")
-        setIncludeAtsHiddenKeywords(false)
-        setStatus("Reset to SQLite seed")
+        try {
+            const next = await reloadProfileData()
+            setProfile(next.profile)
+            setResumes(next.resumes)
+            setActiveResumeId(next.resumes[0]?.id ?? null)
+            setPromptTemplate(getPromptTemplate(next.resumes[0]?.language ?? "PTBR"))
+            setJobDescription("")
+            setIncludeAtsHiddenKeywords(false)
+            setStatus("Reloaded from backend")
+            setLoadError("")
+        } catch (error) {
+            setStatus(error instanceof Error ? error.message : "Reload failed")
+        }
     }
 
     const handleCopy = async (kind: "resume" | "prompt", value: string) => {
@@ -363,6 +393,25 @@ export default function ProfilePage() {
         }))
     }
 
+    if (loadError) {
+        return (
+            <main className="min-h-svh bg-slate-100 p-8 text-slate-900 dark:bg-[#101827] dark:text-slate-50">
+                <section className="mx-auto max-w-2xl rounded-xl border border-red-200 bg-white p-5 shadow-sm dark:border-red-900/70 dark:bg-[#172033]">
+                    <p className="text-sm font-black uppercase tracking-wide text-red-500">Backend error</p>
+                    <h1 className="mt-2 text-2xl font-black">Profile data could not be loaded</h1>
+                    <p className="mt-2 text-sm font-semibold text-slate-600 dark:text-slate-300">{loadError}</p>
+                    <button
+                        type="button"
+                        onClick={handleReset}
+                        className="mt-4 rounded-lg border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-black text-white"
+                    >
+                        Retry
+                    </button>
+                </section>
+            </main>
+        )
+    }
+
     if (!profile || !activeResume) {
         return (
             <main className="min-h-svh bg-slate-100 p-8 text-slate-900 dark:bg-[#101827] dark:text-slate-50">
@@ -377,7 +426,7 @@ export default function ProfilePage() {
                 <div className="mx-auto flex max-w-7xl flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                         <p className="text-xs font-black uppercase tracking-widest text-blue-300">
-                            Mocked profile builder
+                            Backend profile builder
                         </p>
                         <h1 className="mt-1 text-3xl font-black tracking-normal">
                             Profile
@@ -406,7 +455,7 @@ export default function ProfilePage() {
                             <Copy size={16}/>
                             Duplicate
                         </IconButton>
-                        <IconButton label="Save mock data" onClick={handleSave} tone="emerald">
+                        <IconButton label="Save profile and resume" onClick={handleSave} tone="emerald">
                             <Save size={16}/>
                             Save
                         </IconButton>
@@ -418,7 +467,7 @@ export default function ProfilePage() {
                         >
                             <Trash2 size={16}/>
                         </IconButton>
-                        <IconButton label="Reset mock data" onClick={handleReset}>
+                        <IconButton label="Reload from backend" onClick={handleReset}>
                             <RefreshCw size={16}/>
                         </IconButton>
                     </div>
