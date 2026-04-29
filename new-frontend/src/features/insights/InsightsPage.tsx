@@ -29,8 +29,9 @@ import {
 
 import {
     type AppliedJob,
-    fetchAppliedJobs,
-} from "../applied-jobs/appliedJobsMockService.ts"
+    type AppliedInsights,
+    fetchAppliedInsights,
+} from "../applied-jobs/appliedJobsService.ts"
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Legend)
 
@@ -38,70 +39,6 @@ type TimeRange = "current_week" | "last_2_weeks" | "last_month" | "all_time" | "
 
 function formatNumber(value: number) {
     return new Intl.NumberFormat("en-US").format(value)
-}
-
-function getStartOfDay(date: Date) {
-    const nextDate = new Date(date)
-    nextDate.setHours(0, 0, 0, 0)
-
-    return nextDate
-}
-
-function getStartOfCurrentWeek() {
-    const today = getStartOfDay(new Date())
-    const day = today.getDay()
-    const diff = day === 0 ? 6 : day - 1
-    today.setDate(today.getDate() - diff)
-
-    return today
-}
-
-function getDaysAgo(days: number) {
-    const date = getStartOfDay(new Date())
-    date.setDate(date.getDate() - days)
-
-    return date
-}
-
-function filterJobsByTimeRange(
-    jobs: AppliedJob[],
-    timeRange: TimeRange,
-    customStartDate: string,
-    customEndDate: string,
-) {
-    if (timeRange === "all_time") return jobs
-
-    const endDate = getStartOfDay(new Date())
-    endDate.setHours(23, 59, 59, 999)
-
-    let startDate: Date | null = null
-
-    if (timeRange === "current_week") {
-        startDate = getStartOfCurrentWeek()
-    }
-
-    if (timeRange === "last_2_weeks") {
-        startDate = getDaysAgo(14)
-    }
-
-    if (timeRange === "last_month") {
-        startDate = getDaysAgo(30)
-    }
-
-    if (timeRange === "custom") {
-        if (!customStartDate || !customEndDate) return jobs
-
-        startDate = getStartOfDay(new Date(`${customStartDate}T00:00:00`))
-        endDate.setTime(new Date(`${customEndDate}T23:59:59`).getTime())
-    }
-
-    if (!startDate) return jobs
-
-    return jobs.filter(job => {
-        const appliedAt = new Date(job.appliedAt)
-
-        return appliedAt >= startDate && appliedAt <= endDate
-    })
 }
 
 function getStatusCounts(jobs: AppliedJob[]) {
@@ -507,7 +444,7 @@ function ApplicationFlowSankey({jobs}: ApplicationFlowSankeyProps) {
                         Application Flow
                     </h2>
                     <p className="mt-1 text-sm font-medium text-gray-500">
-                        Sankey built from mocked applied jobs status.
+                        Sankey built from real applied jobs status.
                     </p>
                 </div>
 
@@ -573,47 +510,51 @@ function StatusBreakdown({jobs}: ApplicationFlowSankeyProps) {
 }
 
 export default function InsightsPage() {
-    const [jobs, setJobs] = useState<AppliedJob[]>([])
+    const [insights, setInsights] = useState<AppliedInsights | null>(null)
     const [timeRange, setTimeRange] = useState<TimeRange>("all_time")
     const [customStartDate, setCustomStartDate] = useState("")
     const [customEndDate, setCustomEndDate] = useState("")
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    const filteredJobs = useMemo(
-        () => filterJobsByTimeRange(jobs, timeRange, customStartDate, customEndDate),
-        [customEndDate, customStartDate, jobs, timeRange],
-    )
-    const counts = useMemo(() => getStatusCounts(filteredJobs), [filteredJobs])
-    const activePipeline = counts.Waiting + counts.Applied
-    const avgApplicants = useMemo(() => getAverageApplicants(filteredJobs), [filteredJobs])
+    const requestTimeRange = useMemo(() => {
+        if (timeRange !== "custom") return timeRange
+        if (!customStartDate || !customEndDate) return "all_time"
+
+        return `custom_${customStartDate}_${customEndDate}`
+    }, [customEndDate, customStartDate, timeRange])
+    const filteredJobs = insights?.jobs ?? []
+    const counts = insights?.statusCounts ?? getStatusCounts(filteredJobs)
+    const activePipeline = insights?.activePipelineCount ?? counts.Waiting + counts.Applied
+    const avgApplicants = insights?.avgApplicants ?? getAverageApplicants(filteredJobs)
+    const totalApplications = insights?.totalApplications ?? filteredJobs.length
     const timeRangeLabel =
         timeRange === "custom"
             ? "Custom Range"
             : timeRange.replace(/_/g, " ")
 
-    const loadJobs = useCallback(async function loadJobs() {
+    const loadInsights = useCallback(async function loadInsights() {
         try {
             setError(null)
             setIsLoading(true)
 
-            const result = await fetchAppliedJobs()
-            setJobs(result.jobs)
+            const result = await fetchAppliedInsights(requestTimeRange)
+            setInsights(result)
         } catch (loadError) {
             console.error(loadError)
-            setError("Could not load applied jobs insights.")
+            setError("Could not load applied jobs insights from the backend.")
         } finally {
             setIsLoading(false)
         }
-    }, [])
+    }, [requestTimeRange])
 
     useEffect(() => {
         const timeoutId = window.setTimeout(() => {
-            void loadJobs()
+            void loadInsights()
         }, 0)
 
         return () => window.clearTimeout(timeoutId)
-    }, [loadJobs])
+    }, [loadInsights])
 
     return (
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
@@ -626,7 +567,7 @@ export default function InsightsPage() {
                         </h1>
 
                         <p className="m-0 mt-3 max-w-2xl text-sm font-medium leading-6 text-gray-400">
-                            Mocked application flow analytics based on the same applied jobs data.
+                            Application flow analytics based on your real applied jobs data.
                             <span className="ml-1 font-bold capitalize text-purple-300">
                                 {timeRangeLabel}
                             </span>
@@ -680,7 +621,7 @@ export default function InsightsPage() {
 
                         <button
                             type="button"
-                            onClick={() => void loadJobs()}
+                            onClick={() => void loadInsights()}
                             disabled={isLoading}
                             className="inline-flex w-fit items-center gap-2 rounded-lg border border-gray-600 bg-gray-900 px-3 py-2 text-xs font-bold text-gray-200 transition hover:border-gray-500 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
@@ -701,7 +642,7 @@ export default function InsightsPage() {
                 <div className="flex min-h-48 items-center justify-center rounded-xl border border-dashed border-gray-700 bg-gray-900/40">
                     <div className="flex items-center gap-3 text-sm font-bold text-gray-300">
                         <Loader2 className="animate-spin text-blue-400" size={20}/>
-                        Loading mocked insights...
+                        Loading insights...
                     </div>
                 </div>
             ) : (
@@ -710,7 +651,7 @@ export default function InsightsPage() {
                         <StatCard
                             label="Applications"
                             value={filteredJobs.length}
-                            helper={`${jobs.length} total mocked applications`}
+                            helper={`${totalApplications} total applications`}
                             icon={Users}
                             tone="border-blue-500/20 text-blue-300"
                         />
@@ -724,7 +665,7 @@ export default function InsightsPage() {
                         <StatCard
                             label="Accepted"
                             value={counts.Accepted}
-                            helper="Positive outcomes in mock data"
+                            helper="Positive outcomes in selected range"
                             icon={CheckCircle2}
                             tone="border-green-500/20 text-green-300"
                         />

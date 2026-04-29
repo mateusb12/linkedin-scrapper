@@ -34,6 +34,25 @@ export type FetchAppliedJobsResult = {
     count?: number
 }
 
+export type InsightsStatusCounts = Record<ApplicationStatus, number>
+
+export type ApplicationFlowLink = {
+    from: string
+    to: string
+    weight: number
+}
+
+export type AppliedInsights = {
+    jobs: AppliedJob[]
+    totalApplications: number
+    activePipelineCount: number
+    acceptedCount: number
+    avgApplicants: number
+    statusCounts: InsightsStatusCounts
+    applicationFlow: ApplicationFlowLink[]
+    raw: unknown
+}
+
 export type SmartSyncResult = Record<string, unknown> & {
     syncedCount: number
     synced_count?: number
@@ -130,8 +149,8 @@ function normalizeApplicationStatus(value: unknown): ApplicationStatus {
     const status = asString(value, "Waiting").trim().toLowerCase()
 
     if (status === "accepted" || status === "hired" || status === "offer") return "Accepted"
-    if (status === "refused" || status === "rejected" || status === "declined") return "Refused"
-    if (status === "applied" || status === "submitted") return "Applied"
+    if (status === "refused" || status === "rejected" || status === "declined" || status === "closed") return "Refused"
+    if (status === "applied" || status === "submitted" || status === "suspended" || status === "paused") return "Applied"
 
     return "Waiting"
 }
@@ -157,7 +176,7 @@ export async function handleResponse<T = unknown>(
     response: Response,
     fallbackMessage: string,
 ): Promise<T> {
-    let payload: unknown = null
+    let payload: unknown
 
     try {
         payload = await response.json()
@@ -395,6 +414,174 @@ export async function fetchDashboardInsights(timeRange = "all_time") {
     )
 
     return handleResponse(response, "Failed to fetch dashboard insights")
+}
+
+function unwrapData(payload: unknown): unknown {
+    if (!isRecord(payload)) return payload
+
+    return isRecord(payload.data) ? payload.data : payload
+}
+
+function getRecord(payload: unknown, key: string): Record<string, unknown> {
+    if (!isRecord(payload) || !isRecord(payload[key])) return {}
+
+    return payload[key]
+}
+
+function getArray(payload: unknown, keys: string[]): unknown[] {
+    if (!isRecord(payload)) return []
+
+    for (const key of keys) {
+        if (Array.isArray(payload[key])) return payload[key]
+    }
+
+    return []
+}
+
+function normalizeInsightsCounts(value: unknown, jobs: AppliedJob[]): InsightsStatusCounts {
+    const fallback = {
+        Waiting: 0,
+        Applied: 0,
+        Accepted: 0,
+        Refused: 0,
+    }
+
+    if (isRecord(value)) {
+        return {
+            Waiting: asNumber(value.Waiting ?? value.waiting),
+            Applied: asNumber(value.Applied ?? value.applied),
+            Accepted: asNumber(value.Accepted ?? value.accepted),
+            Refused: asNumber(value.Refused ?? value.refused ?? value.rejected),
+        }
+    }
+
+    return jobs.reduce((counts, job) => {
+        counts[job.applicationStatus] += 1
+
+        return counts
+    }, fallback)
+}
+
+function normalizeInsightsJob(raw: unknown, index: number): AppliedJob {
+    const job = isRecord(raw) ? raw : {}
+    const urn = getFirstString(job, ["urn", "id", "job_id"]) ?? `insight-job-${index}`
+    const applicants = asNumber(job.applicants ?? job.applicants_total)
+
+    return normalizeAppliedJob({
+        ...job,
+        urn,
+        id: urn,
+        title: getFirstString(job, ["title"]) ?? `Application ${index + 1}`,
+        applicants,
+        applicationStatus:
+            job.applicationStatus ??
+            job.application_status ??
+            job.status ??
+            job.job_state,
+        appliedAt:
+            getFirstString(job, ["appliedAt", "applied_at_brt", "applied_on", "applied_at"]) ??
+            "",
+    })
+}
+
+function jobsFromLegacyOverview(payload: unknown): AppliedJob[] {
+    const overview = getRecord(payload, "overview")
+    const competition = getRecord(payload, "competition")
+    const total = asNumber(overview.total)
+
+    if (total <= 0) return []
+
+    const rows = [
+        {status: "Waiting", count: asNumber(overview.active) + asNumber(overview.unknown)},
+        {status: "Applied", count: asNumber(overview.paused)},
+        {status: "Refused", count: asNumber(overview.closed)},
+    ]
+
+    let index = 0
+
+    return rows.flatMap(row =>
+        Array.from({length: row.count}, () => {
+            const job = normalizeInsightsJob(
+                {
+                    urn: `legacy-insight-${index}`,
+                    title: `Application ${index + 1}`,
+                    applicants: asNumber(competition.avg_applicants),
+                    applicationStatus: row.status,
+                },
+                index,
+            )
+            index += 1
+
+            return job
+        }),
+    )
+}
+
+export function normalizeDashboardInsights(payload: unknown): AppliedInsights {
+    const data = unwrapData(payload)
+    const rawApplications = getArray(data, ["applications", "jobs", "application_raw", "applicationRaw"])
+    const rawCompetition = getArray(data, ["competition_raw", "competitionRaw"])
+    const sourceRows = rawApplications.length > 0 ? rawApplications : rawCompetition
+    const jobs = sourceRows.length > 0
+        ? sourceRows.map(normalizeInsightsJob)
+        : jobsFromLegacyOverview(data)
+    const statusCounts = normalizeInsightsCounts(
+        isRecord(data) ? data.statusCounts ?? data.status_counts : undefined,
+        jobs,
+    )
+    const competition = getRecord(data, "competition")
+    const totalApplications =
+        isRecord(data)
+            ? asNumber(
+                data.totalApplications ??
+                data.applicationsTotal ??
+                data.applications_total ??
+                getRecord(data, "overview").total,
+                jobs.length,
+            )
+            : jobs.length
+    const activePipelineCount =
+        isRecord(data)
+            ? asNumber(
+                data.activePipelineCount ??
+                data.active_pipeline_count,
+                statusCounts.Waiting + statusCounts.Applied,
+            )
+            : statusCounts.Waiting + statusCounts.Applied
+    const acceptedCount =
+        isRecord(data)
+            ? asNumber(data.acceptedCount ?? data.accepted_count, statusCounts.Accepted)
+            : statusCounts.Accepted
+    const avgApplicants =
+        isRecord(data)
+            ? asNumber(data.avgApplicants ?? data.avg_applicants ?? competition.avg_applicants)
+            : 0
+    const rawFlow = getArray(data, ["applicationFlow", "application_flow", "flow"])
+    const applicationFlow = rawFlow
+        .filter(isRecord)
+        .map(item => ({
+            from: asString(item.from),
+            to: asString(item.to),
+            weight: asNumber(item.weight ?? item.value),
+        }))
+        .filter(item => item.from && item.to)
+
+    return {
+        jobs,
+        totalApplications,
+        activePipelineCount,
+        acceptedCount,
+        avgApplicants,
+        statusCounts,
+        applicationFlow,
+        raw: payload,
+    }
+}
+
+export async function fetchAppliedInsights(timeRange = "all_time"): Promise<AppliedInsights> {
+    const payload = await fetchDashboardInsights(timeRange)
+
+    return normalizeDashboardInsights(payload)
 }
 
 export function formatDateBR(value: string) {

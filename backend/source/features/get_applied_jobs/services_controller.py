@@ -302,6 +302,9 @@ def get_dashboard_insights():
         if time_range == "current_week":
             start_date = now - timedelta(days=now.weekday())
 
+        elif time_range == "last_2_weeks":
+            start_date = now - timedelta(days=14)
+
         elif time_range == "last_month":
             start_date = now - timedelta(days=30)
 
@@ -310,6 +313,21 @@ def get_dashboard_insights():
 
         elif time_range == "last_year":
             start_date = now - timedelta(days=365)
+
+        elif time_range.startswith("custom_"):
+            try:
+                start_raw, end_raw = time_range.removeprefix("custom_").split("_", 1)
+                start_date = parse_datetime(start_raw).replace(tzinfo=timezone.utc)
+                end_date = parse_datetime(end_raw).replace(
+                    hour=23,
+                    minute=59,
+                    second=59,
+                    microsecond=999999,
+                    tzinfo=timezone.utc,
+                )
+                query = query.filter(Job.applied_on <= end_date)
+            except Exception:
+                start_date = None
 
         if start_date:
             query = query.filter(Job.applied_on >= start_date)
@@ -329,11 +347,19 @@ def get_dashboard_insights():
             "unknown": 0
         }
 
+        application_status_counts = {
+            "Waiting": 0,
+            "Applied": 0,
+            "Accepted": 0,
+            "Refused": 0
+        }
+
         # ---------------------------
         # COMPETITION
         # ---------------------------
 
         competition_raw = []
+        applications = []
 
         low_comp = 0
         med_comp = 0
@@ -346,7 +372,30 @@ def get_dashboard_insights():
         # LOOP
         # ---------------------------
 
+        def safe_string(value, fallback=""):
+            return value if isinstance(value, str) else fallback
+
+        def safe_bool(value):
+            return value if isinstance(value, bool) else False
+
+        def safe_datetime_iso(value):
+            return value.isoformat() if isinstance(value, datetime) else None
+
         for j in jobs:
+            application_status = (j.application_status or "Waiting").strip()
+            normalized_application_status = application_status.lower()
+
+            if normalized_application_status in ("accepted", "hired", "offer"):
+                application_status = "Accepted"
+            elif normalized_application_status in ("refused", "rejected", "declined", "closed"):
+                application_status = "Refused"
+            elif normalized_application_status in ("applied", "submitted"):
+                application_status = "Applied"
+            else:
+                application_status = "Waiting"
+
+            application_status_counts[application_status] += 1
+            job_state = safe_string(j.job_state)
 
             # STATUS LOGIC (same as frontend)
             if j.application_closed or j.job_state == "CLOSED":
@@ -378,7 +427,43 @@ def get_dashboard_insights():
             competition_raw.append({
                 "title": j.title,
                 "applicants": applicants,
-                "status": j.job_state or "UNKNOWN"
+                "status": application_status,
+                "application_status": application_status,
+                "job_state": job_state or "UNKNOWN"
+            })
+
+            company = getattr(j, "company", None)
+            company_name = safe_string(getattr(company, "name", None), "Unknown Company")
+            urn = safe_string(getattr(j, "urn", None), f"insight-{len(applications)}")
+            applied_on = safe_datetime_iso(getattr(j, "applied_on", None))
+            posted_on = safe_string(getattr(j, "posted_on", None))
+            applicants_velocity = getattr(j, "applicants_velocity", 0)
+
+            applications.append({
+                "urn": urn,
+                "id": urn,
+                "title": j.title,
+                "company": company_name,
+                "location": safe_string(getattr(j, "location", None)),
+                "workRemoteAllowed": safe_bool(getattr(j, "work_remote_allowed", False)),
+                "work_remote_allowed": safe_bool(getattr(j, "work_remote_allowed", False)),
+                "appliedAt": applied_on or "",
+                "applied_on": applied_on,
+                "postedAt": posted_on,
+                "posted_on": posted_on,
+                "applicants": applicants,
+                "applicantsVelocity": applicants_velocity if isinstance(applicants_velocity, int) else 0,
+                "applicants_velocity": applicants_velocity if isinstance(applicants_velocity, int) else 0,
+                "applicationStatus": application_status,
+                "application_status": application_status,
+                "jobState": job_state,
+                "job_state": job_state,
+                "applicationClosed": safe_bool(getattr(j, "application_closed", False)),
+                "application_closed": safe_bool(getattr(j, "application_closed", False)),
+                "description": safe_string(getattr(j, "description_full", None)),
+                "description_full": safe_string(getattr(j, "description_full", None)),
+                "jobUrl": safe_string(getattr(j, "job_url", None), None),
+                "job_url": safe_string(getattr(j, "job_url", None), None)
             })
 
         # ---------------------------
@@ -413,6 +498,48 @@ def get_dashboard_insights():
         # RESPONSE
         # ---------------------------
 
+        active_pipeline_count = (
+            application_status_counts["Waiting"] +
+            application_status_counts["Applied"]
+        )
+        finished_outcomes_count = (
+            application_status_counts["Accepted"] +
+            application_status_counts["Refused"]
+        )
+
+        application_flow = [
+            {
+                "from": "Total Applications",
+                "to": "Active Pipeline",
+                "weight": active_pipeline_count
+            },
+            {
+                "from": "Total Applications",
+                "to": "Finished Outcomes",
+                "weight": finished_outcomes_count
+            },
+            {
+                "from": "Active Pipeline",
+                "to": "Waiting",
+                "weight": application_status_counts["Waiting"]
+            },
+            {
+                "from": "Active Pipeline",
+                "to": "Applied",
+                "weight": application_status_counts["Applied"]
+            },
+            {
+                "from": "Finished Outcomes",
+                "to": "Accepted",
+                "weight": application_status_counts["Accepted"]
+            },
+            {
+                "from": "Finished Outcomes",
+                "to": "Refused",
+                "weight": application_status_counts["Refused"]
+            }
+        ]
+
         return jsonify({
             "overview": {
                 "total": total_applications,
@@ -428,7 +555,20 @@ def get_dashboard_insights():
                 "avg_applicants": avg_applicants,
                 "high_comp_refusal_rate": high_comp_refusal_rate
             },
-            "competition_raw": competition_raw
+            "competition_raw": competition_raw,
+            "applications": applications,
+            "applications_total": total_applications,
+            "applicationsTotal": total_applications,
+            "active_pipeline_count": active_pipeline_count,
+            "activePipelineCount": active_pipeline_count,
+            "accepted_count": application_status_counts["Accepted"],
+            "acceptedCount": application_status_counts["Accepted"],
+            "avg_applicants": avg_applicants,
+            "avgApplicants": avg_applicants,
+            "status_counts": application_status_counts,
+            "statusCounts": application_status_counts,
+            "application_flow": application_flow,
+            "applicationFlow": application_flow
         }), 200
 
     except Exception as e:
