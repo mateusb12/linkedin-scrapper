@@ -164,8 +164,103 @@ function htmlToReadableText(html: string) {
         .trim()
 }
 
+function cleanReadableText(value: string) {
+    const withoutHiddenPreview = Array.from(value)
+        .filter(character => {
+            const code = character.charCodeAt(0)
+
+            return !(
+                code === 0x034f ||
+                code === 0x061c ||
+                code === 0x115f ||
+                code === 0x1160 ||
+                code === 0x17b4 ||
+                code === 0x17b5 ||
+                code === 0x180e ||
+                (code >= 0x200b && code <= 0x200f) ||
+                (code >= 0x202a && code <= 0x202e) ||
+                (code >= 0x2060 && code <= 0x206f) ||
+                code === 0xfeff
+            )
+        })
+        .join("")
+
+    return withoutHiddenPreview
+        .replace(/\u00a0/g, " ")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/[ \t]{2,}/g, " ")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+}
+
 function normalizeReadableText(value: string) {
-    return isProbablyHtml(value) ? htmlToReadableText(value) : value
+    return cleanReadableText(isProbablyHtml(value) ? htmlToReadableText(value) : value)
+}
+
+function isLinkedInFooterOnlyText(value: string) {
+    const normalized = value.toLowerCase().replace(/\s+/g, " ")
+
+    if (!normalized.trim()) return false
+
+    const hasLinkedInFooter =
+        normalized.includes("this email was intended for") &&
+        normalized.includes("you are receiving linkedin notification emails")
+    const hasRejectionDetail = [
+        "will not be moving forward",
+        "moved forward with other candidates",
+        "no longer considering",
+        "decided not to proceed",
+        "not selected",
+        "not be progressing",
+        "seguimos com outro",
+        "nao seguiremos",
+        "não seguiremos",
+        "nao avancara",
+        "não avançará",
+    ].some(phrase => normalized.includes(phrase))
+
+    return hasLinkedInFooter && !hasRejectionDetail
+}
+
+function parseLinkedInApplicationSubject(subject: string) {
+    const match = subject.match(/^your application to\s+(.+?)\s+at\s+(.+)$/i)
+
+    if (!match) return undefined
+
+    return {
+        jobTitle: match[1].trim(),
+        company: match[2].trim(),
+    }
+}
+
+function buildLinkedInFallbackBody(
+    email: Record<string, unknown>,
+    body: string,
+    jobTitle?: string,
+    company?: string,
+) {
+    if (!isLinkedInFooterOnlyText(body)) return body
+
+    const senderEmail = getFirstString(email, ["senderEmail", "sender_email"]) ?? ""
+    const subject = asString(email.subject)
+    const subjectDetails = parseLinkedInApplicationSubject(subject)
+    const isLinkedInRejection =
+        senderEmail.toLowerCase().includes("linkedin.com") &&
+        (body.includes("email_jobs_application_rejected") ||
+            subject.toLowerCase().startsWith("your application to "))
+
+    if (!isLinkedInRejection) return body
+
+    const resolvedJobTitle = jobTitle ?? subjectDetails?.jobTitle ?? "the role"
+    const resolvedCompany = company ?? subjectDetails?.company ?? "the company"
+
+    return [
+        `LinkedIn rejection update`,
+        ``,
+        `Your application to ${resolvedJobTitle} at ${resolvedCompany} was marked as rejected by LinkedIn.`,
+        ``,
+        `LinkedIn only provided footer/security text in the stored email body, so no additional rejection details were available.`,
+    ].join("\n")
 }
 
 async function handleJsonResponse<T>(
@@ -197,6 +292,26 @@ function normalizeRejectionEmail(value: unknown): RejectionEmail {
     const email = isRecord(value) ? value : {}
     const id = asNumber(email.id)
     const body = getFirstString(email, ["bodyText", "body_text", "body", "text", "body_html"]) ?? ""
+    const jobUrn =
+        getFirstString(email, ["jobUrn", "job_urn", "urn"]) ??
+        getFirstNestedString(email, [
+            ["job", "urn"],
+            ["linked_job", "urn"],
+        ])
+    const company =
+        getFirstString(email, ["company", "company_name", "job_company"]) ??
+        getFirstNestedString(email, [
+            ["job", "company"],
+            ["job", "company_name"],
+            ["linked_job", "company"],
+            ["linked_job", "company_name"],
+        ])
+    const jobTitle =
+        getFirstString(email, ["jobTitle", "job_title", "title"]) ??
+        getFirstNestedString(email, [
+            ["job", "title"],
+            ["linked_job", "title"],
+        ])
     const jobDescription =
         getFirstString(email, [
             "jobDescription",
@@ -221,26 +336,9 @@ function normalizeRejectionEmail(value: unknown): RejectionEmail {
     return {
         id,
         threadId: getFirstString(email, ["threadId", "thread_id"]) ?? String(id),
-        jobUrn:
-            getFirstString(email, ["jobUrn", "job_urn", "urn"]) ??
-            getFirstNestedString(email, [
-                ["job", "urn"],
-                ["linked_job", "urn"],
-            ]),
-        company:
-            getFirstString(email, ["company", "company_name", "job_company"]) ??
-            getFirstNestedString(email, [
-                ["job", "company"],
-                ["job", "company_name"],
-                ["linked_job", "company"],
-                ["linked_job", "company_name"],
-            ]),
-        jobTitle:
-            getFirstString(email, ["jobTitle", "job_title", "title"]) ??
-            getFirstNestedString(email, [
-                ["job", "title"],
-                ["linked_job", "title"],
-            ]),
+        jobUrn,
+        company,
+        jobTitle,
         jobDescription: jobDescription ? normalizeReadableText(jobDescription) : undefined,
         competition: getFirstNumber(email, [
             "competition",
@@ -256,8 +354,10 @@ function normalizeRejectionEmail(value: unknown): RejectionEmail {
         senderEmail: getFirstString(email, ["senderEmail", "sender_email"]) ?? "",
         recipient: getFirstString(email, ["recipient", "to"]) ?? "",
         subject: asString(email.subject, "(No subject)"),
-        snippet: asString(email.snippet),
-        bodyText: normalizeReadableText(body),
+        snippet: normalizeReadableText(asString(email.snippet)),
+        bodyText: normalizeReadableText(
+            buildLinkedInFallbackBody(email, body, jobTitle, company),
+        ),
         receivedAt,
         createdAt,
         isRead: Boolean(email.isRead ?? email.is_read ?? true),

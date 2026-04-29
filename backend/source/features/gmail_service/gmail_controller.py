@@ -4,6 +4,8 @@ import re
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 from datetime import datetime
+from html import unescape
+from html.parser import HTMLParser
 
 from flask import jsonify, request
 from sqlalchemy import desc
@@ -60,31 +62,178 @@ def decode_mime_words(s):
     return "".join(text_parts)
 
 
+class ReadableHTMLParser(HTMLParser):
+    block_tags = {
+        "address",
+        "article",
+        "aside",
+        "br",
+        "div",
+        "footer",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "header",
+        "li",
+        "main",
+        "p",
+        "section",
+        "table",
+        "td",
+        "th",
+        "tr",
+    }
+    ignored_tags = {"script", "style", "noscript"}
+
+    def __init__(self):
+        super().__init__()
+        self.parts = []
+        self.ignored_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.ignored_tags:
+            self.ignored_depth += 1
+            return
+
+        if tag in self.block_tags:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in self.ignored_tags:
+            self.ignored_depth = max(0, self.ignored_depth - 1)
+            return
+
+        if tag in self.block_tags:
+            self.parts.append("\n")
+
+    def handle_data(self, data):
+        if self.ignored_depth:
+            return
+
+        text = unescape(data)
+        if text.strip():
+            self.parts.append(text)
+
+    def text(self):
+        value = "".join(self.parts)
+        value = value.replace("\xa0", " ")
+        value = re.sub(r"[ \t]+\n", "\n", value)
+        value = re.sub(r"\n[ \t]+", "\n", value)
+        value = re.sub(r"[ \t]{2,}", " ", value)
+        value = re.sub(r"\n{3,}", "\n\n", value)
+        return value.strip()
+
+
+def decode_part_payload(part):
+    payload = part.get_payload(decode=True)
+    if not payload:
+        return ""
+
+    charset = part.get_content_charset() or "utf-8"
+    try:
+        return payload.decode(charset, errors="replace")
+    except LookupError:
+        return payload.decode("utf-8", errors="replace")
+
+
+def html_to_readable_text(html):
+    parser = ReadableHTMLParser()
+    parser.feed(html or "")
+    return parser.text()
+
+
+def clean_readable_text(text):
+    if not text:
+        return ""
+
+    text = re.sub(
+        r"[\u034f\u061c\u115f\u1160\u17b4\u17b5\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]",
+        "",
+        text,
+    )
+    text = text.replace("\xa0", " ")
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def is_attachment(part):
+    disposition = str(part.get("Content-Disposition") or "").lower()
+    return "attachment" in disposition
+
+
+def is_linkedin_footer_only(text):
+    normalized = normalize_text(text).lower()
+    if not normalized:
+        return True
+
+    has_footer = (
+        "this email was intended for" in normalized
+        and "you are receiving linkedin notification emails" in normalized
+    )
+    has_rejection_signal = any(
+        phrase in normalized
+        for phrase in [
+            "will not be moving forward",
+            "moved forward with other candidates",
+            "no longer considering",
+            "decided not to proceed",
+            "not selected",
+            "not be progressing",
+            "seguimos com outro",
+            "não seguiremos",
+            "nao seguiremos",
+            "não avançará",
+            "nao avancara",
+        ]
+    )
+
+    return has_footer and not has_rejection_signal
+
+
 def get_body_text(msg):
-    body = ""
+    plain_parts = []
+    html_parts = []
 
     if msg.is_multipart():
         for part in msg.walk():
-            if (
-                    part.get_content_type() == "text/plain"
-                    and "attachment" not in str(part.get("Content-Disposition"))
-            ):
-                try:
-                    payload = part.get_payload(decode=True)
-                    if payload:
-                        body = payload.decode(errors="ignore")
-                        break
-                except Exception:
-                    pass
+            if is_attachment(part):
+                continue
+
+            content_type = part.get_content_type()
+            try:
+                if content_type == "text/plain":
+                    text = decode_part_payload(part).strip()
+                    if text:
+                        plain_parts.append(text)
+                elif content_type == "text/html":
+                    text = html_to_readable_text(decode_part_payload(part))
+                    if text:
+                        html_parts.append(text)
+            except Exception:
+                pass
     else:
         try:
-            payload = msg.get_payload(decode=True)
-            if payload:
-                body = payload.decode(errors="ignore")
+            if msg.get_content_type() == "text/html":
+                html_parts.append(html_to_readable_text(decode_part_payload(msg)))
+            else:
+                text = decode_part_payload(msg).strip()
+                if text:
+                    plain_parts.append(text)
         except Exception:
             pass
 
-    return body if body else "No readable content."
+    plain_body = "\n\n".join(plain_parts).strip()
+    html_body = "\n\n".join(html_parts).strip()
+
+    if html_body and (not plain_body or is_linkedin_footer_only(plain_body)):
+        return clean_readable_text(html_body)
+
+    return clean_readable_text(plain_body or html_body) or "No readable content."
 
 
 def parse_email_address(raw_header):
@@ -241,10 +390,6 @@ def _perform_gmail_sync(session, profile, target_label):
 
         msg_id = msg.get("Message-ID", "").strip()
 
-        exists = session.query(Email).filter_by(message_id=msg_id).first()
-        if exists:
-            continue
-
         subject = decode_mime_words(msg["Subject"])
         sender_full, sender_email = parse_email_address(msg["From"])
 
@@ -254,6 +399,24 @@ def _perform_gmail_sync(session, profile, target_label):
             received_dt = datetime.now()
 
         full_body = get_body_text(msg)
+        exists = session.query(Email).filter_by(message_id=msg_id).first()
+        if exists:
+            existing_body = exists.body_text or ""
+            if (
+                is_linkedin_footer_only(existing_body)
+                and full_body
+                and not is_linkedin_footer_only(full_body)
+            ):
+                exists.body_text = full_body
+                exists.snippet = " ".join(full_body.split())[:120] + "..."
+                exists.subject = subject or exists.subject
+                exists.sender = sender_full or exists.sender
+                exists.sender_email = sender_email or exists.sender_email
+                exists.recipient = decode_mime_words(msg["To"]) or exists.recipient
+                exists.headers_json = dict(msg.items())
+                synced_count += 1
+
+            continue
 
         new_email = Email(
             profile_id=profile.id,
