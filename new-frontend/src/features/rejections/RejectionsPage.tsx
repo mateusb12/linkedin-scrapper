@@ -184,8 +184,10 @@ export default function RejectionsPage() {
             setTotalPages(result.totalPages)
 
             setSelectedEmail(current => {
-                if (current && result.data.some(email => email.id === current.id)) {
-                    return current
+                if (current) {
+                    const refreshedEmail = result.data.find(email => email.id === current.id)
+
+                    if (refreshedEmail) return refreshedEmail
                 }
 
                 return result.data[0] ?? null

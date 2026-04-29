@@ -93,6 +93,7 @@ type TextPanelProps = {
     onChange?: (value: string) => void
     placeholder?: string
     readOnly?: boolean
+    hint?: string
     minHeightClass?: string
 }
 
@@ -103,13 +104,21 @@ function TextPanel({
     onChange,
     placeholder,
     readOnly = false,
+    hint,
     minHeightClass = "min-h-64",
 }: TextPanelProps) {
     return (
         <section className="flex min-h-0 flex-col rounded-xl border border-gray-800 bg-gray-900/70">
-            <div className="flex items-center gap-2 border-b border-gray-800 px-4 py-3 text-xs font-black uppercase tracking-wider text-gray-400">
-                {icon}
-                {label}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-800 px-4 py-3">
+                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-gray-400">
+                    {icon}
+                    {label}
+                </div>
+                {hint && (
+                    <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-blue-300">
+                        {hint}
+                    </span>
+                )}
             </div>
 
             <textarea
@@ -119,7 +128,7 @@ function TextPanel({
                 placeholder={placeholder}
                 spellCheck={false}
                 className={`${minHeightClass} flex-1 resize-none rounded-b-xl border-0 bg-transparent p-4 text-sm font-medium leading-7 text-gray-300 outline-none placeholder:text-gray-600 focus:ring-2 focus:ring-red-500/20 ${
-                    readOnly ? "cursor-text" : ""
+                    readOnly ? "cursor-text bg-gray-950/20" : ""
                 }`}
             />
         </section>
@@ -135,8 +144,14 @@ type RejectionImprovementContentProps = {
 }
 
 function RejectionImprovementContent({email}: RejectionImprovementContentProps) {
+    const hasLinkedJob = Boolean(email.jobUrn)
+    const linkedJobDescription = email.jobDescription ?? ""
+    const linkedJobDescriptionMissingMessage =
+        "Linked job found, but no job description was returned by the backend."
     const [jobDescription, setJobDescription] = useState(() =>
-        readCachedValue(email.id, "job-description", email.jobDescription ?? ""),
+        hasLinkedJob
+            ? linkedJobDescription
+            : readCachedValue(email.id, "job-description", email.jobDescription ?? ""),
     )
     const [resumeContent, setResumeContent] = useState(() =>
         readCachedValue(email.id, "resume-content"),
@@ -148,10 +163,13 @@ function RejectionImprovementContent({email}: RejectionImprovementContentProps) 
         readCachedValue(email.id, "prompt-template", DEFAULT_PROMPT_TEMPLATE),
     )
     const [copied, setCopied] = useState(false)
+    const effectiveJobDescription = hasLinkedJob ? linkedJobDescription : jobDescription
 
     useEffect(() => {
+        if (hasLinkedJob) return
+
         writeCachedValue(email.id, "job-description", jobDescription)
-    }, [email, jobDescription])
+    }, [email, hasLinkedJob, jobDescription])
 
     useEffect(() => {
         writeCachedValue(email.id, "resume-content", resumeContent)
@@ -168,18 +186,27 @@ function RejectionImprovementContent({email}: RejectionImprovementContentProps) 
     const finalPrompt = useMemo(() => {
         if (!email) return ""
 
+        const promptJobDescription =
+            hasLinkedJob && !linkedJobDescription
+                ? "[DESCRICAO DA VAGA VINCULADA NAO RETORNADA PELO BACKEND]"
+                : effectiveJobDescription || "[COLE A DESCRICAO DA VAGA AQUI]"
+
         return promptTemplate
             .replaceAll("{{COMPANY}}", email.company ?? email.sender)
             .replaceAll("{{REJECTION_EMAIL}}", email.bodyText)
-            .replaceAll(
-                "{{JOB_DESCRIPTION}}",
-                jobDescription || "[COLE A DESCRICAO DA VAGA AQUI]",
-            )
+            .replaceAll("{{JOB_DESCRIPTION}}", promptJobDescription)
             .replaceAll(
                 "{{RESUME_CONTENT}}",
                 resumeContent || "[COLE OU ANEXE O CURRICULO AQUI]",
             )
-    }, [email, jobDescription, promptTemplate, resumeContent])
+    }, [
+        email,
+        effectiveJobDescription,
+        hasLinkedJob,
+        linkedJobDescription,
+        promptTemplate,
+        resumeContent,
+    ])
 
     async function handleCopyPrompt() {
         await navigator.clipboard.writeText(finalPrompt)
@@ -266,9 +293,25 @@ function RejectionImprovementContent({email}: RejectionImprovementContentProps) 
                     <TextPanel
                         icon={<FileText size={15}/>}
                         label="2. Job description"
-                        value={jobDescription}
-                        onChange={setJobDescription}
-                        placeholder="Paste or adjust the job description for this rejection..."
+                        value={
+                            hasLinkedJob && !linkedJobDescription
+                                ? linkedJobDescriptionMissingMessage
+                                : effectiveJobDescription
+                        }
+                        onChange={hasLinkedJob ? undefined : setJobDescription}
+                        placeholder={
+                            hasLinkedJob
+                                ? undefined
+                                : "Paste or adjust the job description for this rejection..."
+                        }
+                        readOnly={hasLinkedJob}
+                        hint={
+                            hasLinkedJob && linkedJobDescription
+                                ? "Loaded from linked job"
+                                : hasLinkedJob
+                                  ? "Linked job missing description"
+                                : undefined
+                        }
                     />
 
                     <TextPanel

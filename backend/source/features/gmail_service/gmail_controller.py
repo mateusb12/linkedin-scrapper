@@ -437,10 +437,48 @@ def get_stored_emails():
             .limit(limit)
             .all()
         )
+        linked_jobs = {}
+        job_urns = [
+            email_obj.job_urn
+            for email_obj in emails
+            if isinstance(getattr(email_obj, "job_urn", None), str) and email_obj.job_urn
+        ]
+        job_urn_candidates = set(job_urns)
+        for job_urn in job_urns:
+            if ":" not in job_urn:
+                job_urn_candidates.add(f"urn:li:jobPosting:{job_urn}")
+                job_urn_candidates.add(f"urn:li:fsd_jobPosting:{job_urn}")
+
+        if job_urns:
+            jobs = session.query(Job).filter(Job.urn.in_(job_urn_candidates)).all()
+            linked_jobs = {job.urn: job for job in jobs}
+            for job in jobs:
+                linked_jobs[job.urn.split(":")[-1]] = job
+
+        email_payload = []
+        for email_obj in emails:
+            email_data = email_obj.to_dict()
+            linked_job = linked_jobs.get(email_obj.job_urn)
+
+            if linked_job:
+                company_name = linked_job.company.name if linked_job.company else None
+                email_data["job"] = {
+                    "urn": linked_job.urn,
+                    "title": linked_job.title,
+                    "company": company_name,
+                    "company_name": company_name,
+                    "description_full": linked_job.description_full,
+                    "description": linked_job.description_full,
+                    "description_snippet": linked_job.description_snippet,
+                    "applicants": linked_job.applicants,
+                }
+                email_data["linked_job"] = email_data["job"]
+
+            email_payload.append(email_data)
 
         return jsonify(
             {
-                "data": [e.to_dict() for e in emails],
+                "data": email_payload,
                 "total": total,
                 "page": page,
                 "total_pages": (total + limit - 1) // limit,
