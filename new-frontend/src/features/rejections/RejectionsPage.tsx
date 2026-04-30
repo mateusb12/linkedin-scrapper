@@ -3,6 +3,7 @@ import {
     Archive,
     ChevronLeft,
     ChevronRight,
+    Clock,
     Inbox,
     Loader2,
     Mail,
@@ -64,6 +65,47 @@ function formatDateTime(value: string) {
             minute: "2-digit",
         }),
     }
+}
+
+function getDateTime(value?: string) {
+    if (!value) return null
+
+    const date = new Date(value)
+
+    return Number.isNaN(date.getTime()) ? null : date
+}
+
+function formatResponseTime(fromValue?: string, toValue?: string) {
+    const fromDate = getDateTime(fromValue)
+    const toDate = getDateTime(toValue)
+
+    if (!fromDate || !toDate) return null
+
+    const diffMs = toDate.getTime() - fromDate.getTime()
+    const hasChronologicalMismatch = diffMs < 0
+    const absoluteMinutes = Math.max(Math.round(Math.abs(diffMs) / 60000), 1)
+    const absoluteHours = Math.round(absoluteMinutes / 60)
+    const absoluteDays = Math.round(absoluteHours / 24)
+    const absoluteWeeks = Math.round(absoluteDays / 7)
+    const absoluteMonths = Math.round(absoluteDays / 30)
+
+    let label: string
+
+    if (absoluteMinutes < 90) {
+        label = `${absoluteMinutes}m`
+    } else if (absoluteHours < 36) {
+        label = `${Math.max(absoluteHours, 1)}h`
+    } else if (absoluteDays < 14) {
+        label = `${Math.max(absoluteDays, 1)}d`
+    } else if (absoluteWeeks < 9) {
+        label = `${Math.max(absoluteWeeks, 1)}w`
+    } else {
+        label = `${Math.max(absoluteMonths, 1)}mo`
+    }
+
+    return hasChronologicalMismatch
+        ? `date mismatch: ${label}`
+        : `response time: ${label}`
 }
 
 function getSenderInitial(sender: string) {
@@ -129,10 +171,10 @@ type PaginationControlsProps = {
 }
 
 function PaginationControls({
-    page,
-    totalPages,
-    onPageChange,
-}: PaginationControlsProps) {
+                                page,
+                                totalPages,
+                                onPageChange,
+                            }: PaginationControlsProps) {
     const canGoBack = page > 1
     const canGoForward = page < totalPages
 
@@ -173,6 +215,7 @@ type EmailListItemProps = {
 
 function EmailListItem({email, isSelected, onSelect}: EmailListItemProps) {
     const {date, time} = formatDateTime(email.receivedAt)
+    const responseTime = formatResponseTime(email.appliedAt, email.receivedAt)
 
     return (
         <button
@@ -182,8 +225,8 @@ function EmailListItem({email, isSelected, onSelect}: EmailListItemProps) {
                 isSelected
                     ? "bg-red-500/10"
                     : email.isRead
-                      ? "bg-gray-900/40 hover:bg-gray-800/60"
-                      : "bg-gray-900 hover:bg-gray-800/80"
+                        ? "bg-gray-900/40 hover:bg-gray-800/60"
+                        : "bg-gray-900 hover:bg-gray-800/80"
             }`}
         >
             <div
@@ -197,7 +240,7 @@ function EmailListItem({email, isSelected, onSelect}: EmailListItemProps) {
             </div>
 
             <div className="min-w-0">
-                <div className="flex min-w-0 items-center gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
                     {!email.isRead && <span className="size-2 rounded-full bg-red-400"/>}
                     <p
                         className={`truncate text-sm ${
@@ -209,9 +252,17 @@ function EmailListItem({email, isSelected, onSelect}: EmailListItemProps) {
                         {email.sender}
                     </p>
                     {email.jobUrn && (
-                        <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] font-black text-blue-300">
+                        <span
+                            className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] font-black text-blue-300">
                             linked
                         </span>
+                    )}
+                    {responseTime && (
+                        <span
+                            className="inline-flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-black text-amber-300">
+        <Clock size={11}/>
+                            {responseTime}
+    </span>
                     )}
                 </div>
 
@@ -247,7 +298,7 @@ export default function RejectionsPage() {
     const [isSyncing, setIsSyncing] = useState(false)
     const [isRefreshingAfterSync, setIsRefreshingAfterSync] = useState(false)
     const [syncStartedAt, setSyncStartedAt] = useState<number | null>(null)
-    const [syncNow, setSyncNow] = useState(Date.now())
+    const [syncNow, setSyncNow] = useState(0)
     const [syncedCount, setSyncedCount] = useState<number | null>(null)
     const [error, setError] = useState<string | null>(null)
 
@@ -356,7 +407,8 @@ export default function RejectionsPage() {
                             </p>
                         </div>
 
-                        <span className="rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-xs font-black text-red-300">
+                        <span
+                            className="rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-xs font-black text-red-300">
                             {total} emails
                         </span>
                     </div>
@@ -422,13 +474,15 @@ export default function RejectionsPage() {
             </section>
 
             {error && (
-                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-300">
+                <div
+                    className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-300">
                     {error}
                 </div>
             )}
 
             <section className="overflow-hidden rounded-xl border border-gray-700 bg-gray-900 shadow-2xl">
-                <div className="flex flex-col border-b border-gray-800 bg-gray-950/80 px-4 py-3 gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div
+                    className="flex flex-col border-b border-gray-800 bg-gray-950/80 px-4 py-3 gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex items-center gap-3">
                         <Mail className="text-gray-500" size={19}/>
                         <span className="text-sm font-black text-gray-200">Inbox</span>
@@ -473,7 +527,8 @@ export default function RejectionsPage() {
                         </div>
                     </div>
                 ) : (
-                    <div className="grid min-h-[620px] grid-cols-1 lg:grid-cols-[minmax(340px,0.72fr)_minmax(0,1.28fr)]">
+                    <div
+                        className="grid min-h-[620px] grid-cols-1 lg:grid-cols-[minmax(340px,0.72fr)_minmax(0,1.28fr)]">
                         <div className="border-r border-gray-800">
                             {emails.length > 0 ? (
                                 emails.map(email => (

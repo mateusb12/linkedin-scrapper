@@ -3,7 +3,7 @@ import email
 import re
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from html import unescape
 from html.parser import HTMLParser
 
@@ -583,6 +583,17 @@ def reconcile_backlog_dry_run():
         session.close()
 
 
+def _datetime_to_brt_iso(value):
+    if not value:
+        return None
+
+    dt_utc = value
+    if dt_utc.tzinfo is None:
+        dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+
+    return dt_utc.astimezone(timezone(timedelta(hours=-3))).isoformat()
+
+
 def get_stored_emails():
     session = get_db_session()
 
@@ -633,8 +644,11 @@ def get_stored_emails():
                     "description_full": linked_job.description_full,
                     "description": linked_job.description_full,
                     "description_snippet": linked_job.description_snippet,
+                    "applied_on": linked_job.applied_on.isoformat() if linked_job.applied_on else None,
+                    "applied_at_brt": _datetime_to_brt_iso(linked_job.applied_on),
                     "applicants": linked_job.applicants,
                 }
+                email_data["appliedAt"] = email_data["job"]["applied_at_brt"] or email_data["job"]["applied_on"]
                 email_data["linked_job"] = email_data["job"]
 
             email_payload.append(email_data)

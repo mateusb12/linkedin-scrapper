@@ -5,6 +5,7 @@ export type RejectionEmail = {
     company?: string
     jobTitle?: string
     jobDescription?: string
+    appliedAt?: string
     competition?: number
     folder: "Job fails"
     category: "rejection"
@@ -329,6 +330,16 @@ function normalizeRejectionEmail(value: unknown): RejectionEmail {
     const receivedAt =
         getFirstString(email, ["receivedAt", "received_at", "date", "created_at"]) ??
         new Date().toISOString()
+    const appliedAt =
+        getFirstString(email, ["appliedAt", "applied_at_brt", "applied_on", "applied_at"]) ??
+        getFirstNestedString(email, [
+            ["job", "applied_at_brt"],
+            ["job", "applied_on"],
+            ["job", "applied_at"],
+            ["linked_job", "applied_at_brt"],
+            ["linked_job", "applied_on"],
+            ["linked_job", "applied_at"],
+        ])
     const createdAt =
         getFirstString(email, ["createdAt", "created_at", "receivedAt", "received_at"]) ??
         new Date().toISOString()
@@ -340,6 +351,7 @@ function normalizeRejectionEmail(value: unknown): RejectionEmail {
         company,
         jobTitle,
         jobDescription: jobDescription ? normalizeReadableText(jobDescription) : undefined,
+        appliedAt,
         competition: getFirstNumber(email, [
             "competition",
             "applicants",

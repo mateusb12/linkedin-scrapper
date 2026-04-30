@@ -2,6 +2,7 @@ import {type ReactNode, useEffect, useMemo, useState} from "react"
 import {
     AlertCircle,
     Check,
+    Clock,
     Copy,
     FileText,
     Lightbulb,
@@ -68,6 +69,45 @@ function formatDateTime(value: string) {
             minute: "2-digit",
         }),
     }
+}
+
+function getDateTime(value?: string) {
+    if (!value) return null
+
+    const date = new Date(value)
+
+    return Number.isNaN(date.getTime()) ? null : date
+}
+
+function formatRelativeDuration(fromValue?: string, toValue?: string) {
+    const fromDate = getDateTime(fromValue)
+    const toDate = getDateTime(toValue)
+
+    if (!fromDate || !toDate) return null
+
+    const diffMs = toDate.getTime() - fromDate.getTime()
+    const isBefore = diffMs >= 0
+    const absoluteMinutes = Math.max(Math.round(Math.abs(diffMs) / 60000), 1)
+    const absoluteHours = Math.round(absoluteMinutes / 60)
+    const absoluteDays = Math.round(absoluteHours / 24)
+    const absoluteWeeks = Math.round(absoluteDays / 7)
+    const absoluteMonths = Math.round(absoluteDays / 30)
+
+    let label: string
+
+    if (absoluteMinutes < 90) {
+        label = `${absoluteMinutes}m`
+    } else if (absoluteHours < 36) {
+        label = `${Math.max(absoluteHours, 1)}h`
+    } else if (absoluteDays < 14) {
+        label = `${Math.max(absoluteDays, 1)}d`
+    } else if (absoluteWeeks < 9) {
+        label = `${Math.max(absoluteWeeks, 1)}w`
+    } else {
+        label = `${Math.max(absoluteMonths, 1)}mo`
+    }
+
+    return `${label} ${isBefore ? "before rejection" : "after rejection"}`
 }
 
 function storageKey(emailId: number, field: string) {
@@ -215,6 +255,8 @@ function RejectionImprovementContent({email}: RejectionImprovementContentProps) 
     }
 
     const {date, time} = formatDateTime(email.receivedAt)
+    const appliedDateTime = email.appliedAt ? formatDateTime(email.appliedAt) : null
+    const appliedDelta = formatRelativeDuration(email.appliedAt, email.receivedAt)
 
     return (
         <article className="flex h-full min-h-[620px] flex-col bg-gray-950/30">
@@ -268,6 +310,12 @@ function RejectionImprovementContent({email}: RejectionImprovementContentProps) 
                         {email.jobUrn && (
                             <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-black text-blue-300">
                                 Linked job {email.jobUrn}
+                            </span>
+                        )}
+                        {appliedDateTime && appliedDelta && (
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-black text-amber-300">
+                                <Clock size={13}/>
+                                Applied {appliedDateTime.date} {appliedDateTime.time} · {appliedDelta}
                             </span>
                         )}
                         <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-700 bg-gray-900 px-3 py-1 text-xs font-black text-gray-400">
