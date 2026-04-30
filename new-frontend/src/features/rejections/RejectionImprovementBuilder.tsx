@@ -64,10 +64,13 @@ function formatDateTime(value: string) {
             month: "short",
             day: "numeric",
         }),
-        time: date.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-        }),
+        time: date
+            .toLocaleTimeString("en-GB", {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false,
+            })
+            .replace(":", "h"),
     }
 }
 
@@ -256,7 +259,6 @@ function RejectionImprovementContent({email}: RejectionImprovementContentProps) 
 
     const {date, time} = formatDateTime(email.receivedAt)
     const appliedDateTime = email.appliedAt ? formatDateTime(email.appliedAt) : null
-    const appliedDelta = formatRelativeDuration(email.appliedAt, email.receivedAt)
 
     return (
         <article className="flex h-full min-h-[620px] flex-col bg-gray-950/30">
@@ -312,18 +314,19 @@ function RejectionImprovementContent({email}: RejectionImprovementContentProps) 
                                 Linked job {email.jobUrn}
                             </span>
                         )}
-                        {appliedDateTime && appliedDelta && (
+                        {appliedDateTime && (
                             <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-black text-amber-300">
                                 <Clock size={13}/>
-                                Applied {appliedDateTime.date} {appliedDateTime.time} · {appliedDelta}
+                                Applied on {appliedDateTime.date} at {appliedDateTime.time}
                             </span>
                         )}
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-xs font-black text-red-300">
+                            <Mail size={13}/>
+                            Rejected on {date} at {time}
+                        </span>
                         <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-700 bg-gray-900 px-3 py-1 text-xs font-black text-gray-400">
                             {email.isRead ? <MailOpen size={13}/> : <Mail size={13}/>}
                             {email.isRead ? "Read" : "Unread"}
-                        </span>
-                        <span className="rounded-full border border-gray-700 bg-gray-900 px-3 py-1 font-mono text-xs font-bold text-gray-400">
-                            {date} {time}
                         </span>
                     </div>
                 </div>
