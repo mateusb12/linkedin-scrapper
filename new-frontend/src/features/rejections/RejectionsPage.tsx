@@ -18,6 +18,38 @@ import {
 } from "./rejectionsMockService.ts"
 
 const PAGE_SIZE = 8
+const SYNC_PHASES = [
+    {
+        seconds: 0,
+        percent: 8,
+        label: "Connecting to Gmail",
+        detail: "Opening the Gmail label on the backend.",
+    },
+    {
+        seconds: 6,
+        percent: 28,
+        label: "Reading email messages",
+        detail: "The backend is fetching messages from the Job fails label.",
+    },
+    {
+        seconds: 18,
+        percent: 52,
+        label: "Saving imported emails",
+        detail: "New messages are being normalized and stored locally.",
+    },
+    {
+        seconds: 35,
+        percent: 76,
+        label: "Reconciling jobs",
+        detail: "Rejection emails are being matched against applied jobs.",
+    },
+    {
+        seconds: 60,
+        percent: 90,
+        label: "Waiting for backend response",
+        detail: "The request is still open; check backend logs if this does not finish.",
+    },
+] as const
 
 function formatDateTime(value: string) {
     const date = new Date(value)
@@ -36,6 +68,58 @@ function formatDateTime(value: string) {
 
 function getSenderInitial(sender: string) {
     return sender.trim().charAt(0).toUpperCase() || "?"
+}
+
+function formatElapsedTime(totalSeconds: number) {
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+
+    if (minutes === 0) return `${seconds}s`
+
+    return `${minutes}m ${seconds.toString().padStart(2, "0")}s`
+}
+
+function getEstimatedSyncProgress(
+    elapsedSeconds: number,
+    isRefreshingInbox: boolean,
+    syncedCount: number | null,
+) {
+    if (isRefreshingInbox) {
+        return {
+            percent: 96,
+            label: "Refreshing inbox",
+            detail:
+                syncedCount === null
+                    ? "The sync finished; loading the updated rejection inbox."
+                    : `The sync finished with ${syncedCount} imported or repaired emails.`,
+        }
+    }
+
+    const activePhase = [...SYNC_PHASES]
+        .reverse()
+        .find(phase => elapsedSeconds >= phase.seconds) ?? SYNC_PHASES[0]
+    const nextPhase = SYNC_PHASES.find(phase => phase.seconds > activePhase.seconds)
+
+    if (!nextPhase) {
+        const extraSeconds = Math.max(elapsedSeconds - activePhase.seconds, 0)
+
+        return {
+            ...activePhase,
+            percent: Math.min(activePhase.percent + Math.floor(extraSeconds / 20), 94),
+        }
+    }
+
+    const phaseSpan = Math.max(nextPhase.seconds - activePhase.seconds, 1)
+    const phaseElapsed = Math.max(elapsedSeconds - activePhase.seconds, 0)
+    const phaseProgress = Math.min(phaseElapsed / phaseSpan, 1)
+    const percent =
+        activePhase.percent +
+        Math.round((nextPhase.percent - activePhase.percent) * phaseProgress)
+
+    return {
+        ...activePhase,
+        percent,
+    }
 }
 
 type PaginationControlsProps = {
@@ -161,11 +245,23 @@ export default function RejectionsPage() {
     const [totalPages, setTotalPages] = useState(1)
     const [isLoading, setIsLoading] = useState(true)
     const [isSyncing, setIsSyncing] = useState(false)
+    const [isRefreshingAfterSync, setIsRefreshingAfterSync] = useState(false)
+    const [syncStartedAt, setSyncStartedAt] = useState<number | null>(null)
+    const [syncNow, setSyncNow] = useState(Date.now())
+    const [syncedCount, setSyncedCount] = useState<number | null>(null)
     const [error, setError] = useState<string | null>(null)
 
     const unreadCount = useMemo(
         () => emails.filter(email => !email.isRead).length,
         [emails],
+    )
+    const syncElapsedSeconds = syncStartedAt
+        ? Math.max(Math.floor((syncNow - syncStartedAt) / 1000), 0)
+        : 0
+    const syncProgress = getEstimatedSyncProgress(
+        syncElapsedSeconds,
+        isRefreshingAfterSync,
+        syncedCount,
     )
 
     const loadEmails = useCallback(async function loadEmails() {
@@ -204,16 +300,34 @@ export default function RejectionsPage() {
         try {
             setError(null)
             setIsSyncing(true)
+            setIsRefreshingAfterSync(false)
+            setSyncStartedAt(Date.now())
+            setSyncNow(Date.now())
+            setSyncedCount(null)
 
-            await syncRejectionEmails()
+            const result = await syncRejectionEmails()
+            setSyncedCount(result.newCount)
+            setIsRefreshingAfterSync(true)
             await loadEmails()
         } catch (syncError) {
             console.error(syncError)
             setError("Could not sync rejection emails.")
         } finally {
             setIsSyncing(false)
+            setIsRefreshingAfterSync(false)
+            setSyncStartedAt(null)
         }
     }
+
+    useEffect(() => {
+        if (!isSyncing) return
+
+        const intervalId = window.setInterval(() => {
+            setSyncNow(Date.now())
+        }, 1000)
+
+        return () => window.clearInterval(intervalId)
+    }, [isSyncing])
 
     useEffect(() => {
         const timeoutId = window.setTimeout(() => {
@@ -262,17 +376,49 @@ export default function RejectionsPage() {
                             type="button"
                             onClick={() => void handleSync()}
                             disabled={isLoading || isSyncing}
-                            className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="relative inline-flex min-w-40 items-center justify-center gap-2 overflow-hidden rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-80"
                         >
                             {isSyncing ? (
                                 <Loader2 size={16} className="animate-spin"/>
                             ) : (
                                 <Archive size={16}/>
                             )}
-                            Import Emails
+                            <span>{isSyncing ? `${syncProgress.percent}%` : "Import Emails"}</span>
+                            {isSyncing && (
+                                <span
+                                    className="absolute inset-x-0 bottom-0 h-1 bg-red-400 transition-all duration-500"
+                                    style={{width: `${syncProgress.percent}%`}}
+                                />
+                            )}
                         </button>
                     </div>
                 </div>
+
+                {isSyncing && (
+                    <div className="mt-5 rounded-lg border border-red-500/20 bg-gray-950/50 p-4">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                                <p className="truncate text-sm font-black text-red-200">
+                                    {syncProgress.label}
+                                </p>
+                                <p className="mt-1 text-xs font-semibold text-gray-400">
+                                    {syncProgress.detail}
+                                </p>
+                            </div>
+
+                            <div className="shrink-0 font-mono text-xs font-bold text-gray-400">
+                                {formatElapsedTime(syncElapsedSeconds)}
+                            </div>
+                        </div>
+
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-900">
+                            <div
+                                className="h-full rounded-full bg-red-400 transition-all duration-500"
+                                style={{width: `${syncProgress.percent}%`}}
+                            />
+                        </div>
+                    </div>
+                )}
             </section>
 
             {error && (
