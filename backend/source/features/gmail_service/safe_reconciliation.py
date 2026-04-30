@@ -81,6 +81,19 @@ def parse_linkedin_application_subject(subject: Optional[str]) -> Tuple[Optional
     return match.group(1).strip(), match.group(2).strip()
 
 
+def parse_application_body(body: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    body_norm = " ".join(str(body or "").split())
+    match = re.search(
+        r"interest in (?:the |our )?(.+?) position at ([^.]+?)(?:\.|,| while|$)",
+        body_norm,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None, None
+
+    return match.group(1).strip(), match.group(2).strip()
+
+
 def _role_tokens(value: Optional[str]) -> set[str]:
     tokens = set(normalize_match_text(value).split())
     return {token for token in tokens if len(token) >= 2 and token not in GENERIC_ROLE_TOKENS}
@@ -94,6 +107,8 @@ def role_title_similarity(role: Optional[str], title: Optional[str]) -> float:
         overlap = role_relevant & title_relevant
         if not overlap:
             return 0.0
+        if len(overlap) >= 2 and title_relevant.issubset(role_relevant):
+            return 1.0
         return min(
             len(overlap) / len(role_relevant),
             len(overlap) / min(len(role_relevant), len(title_relevant)),
@@ -114,6 +129,19 @@ def company_similarity(left: Optional[str], right: Optional[str]) -> float:
     if left_norm == right_norm:
         return 1.0
     return SequenceMatcher(None, left_norm, right_norm).ratio()
+
+
+def company_token_similarity(left: Optional[str], right: Optional[str]) -> float:
+    left_tokens = set(normalize_match_text(left).split())
+    right_tokens = set(normalize_match_text(right).split())
+    if not left_tokens or not right_tokens:
+        return 0.0
+
+    overlap = left_tokens & right_tokens
+    if not overlap:
+        return 0.0
+
+    return len(overlap) / min(len(left_tokens), len(right_tokens))
 
 
 def _date_for_compare(value):
@@ -211,7 +239,11 @@ def _build_candidate(email_obj: Email, job: Job, parsed_role: Optional[str], par
     elif received_at < applied_on:
         reasons.append(EMAIL_BEFORE_APPLICATION)
 
-    company_score = company_similarity(parsed_company, job.company.name if job.company else None)
+    company_name = job.company.name if job.company else None
+    company_score = max(
+        company_similarity(parsed_company, company_name),
+        company_token_similarity(parsed_company, company_name),
+    )
     if company_score < 0.9:
         reasons.append(COMPANY_MISMATCH)
 
@@ -237,6 +269,8 @@ def _build_candidate(email_obj: Email, job: Job, parsed_role: Optional[str], par
 
 def reconcile_email_to_job(session, email_obj: Email, dry_run: bool = False) -> Dict[str, Any]:
     parsed_role, parsed_company = parse_linkedin_application_subject(email_obj.subject)
+    if not parsed_role and not parsed_company:
+        parsed_role, parsed_company = parse_application_body(email_obj.body_text)
     reasons: List[str] = []
 
     jobs_query = (
@@ -258,7 +292,12 @@ def reconcile_email_to_job(session, email_obj: Email, dry_run: bool = False) -> 
     company_candidates = [
         _build_candidate(email_obj, job, parsed_role, parsed_company)
         for job in applied_jobs
-        if parsed_company and company_similarity(parsed_company, job.company.name if job.company else None) >= 0.9
+        if parsed_company
+        and max(
+            company_similarity(parsed_company, job.company.name if job.company else None),
+            company_token_similarity(parsed_company, job.company.name if job.company else None),
+        )
+        >= 0.9
     ]
 
     if not company_candidates and parsed_company:

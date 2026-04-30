@@ -188,6 +188,37 @@ def test_valid_linkedin_rejection_links_email_and_refuses_job(db_session):
     assert job.application_status == "Refused"
 
 
+def test_ats_rejection_body_fallback_links_sigma_style_email(db_session):
+    job = add_job(
+        db_session,
+        "4393903370",
+        "Full Stack Engineer",
+        "Sigma Software Group",
+        datetime(2026, 4, 22, 22, 43, 50),
+    )
+    email = add_email(
+        db_session,
+        "Thank you for your interest in Sigma Software",
+        datetime(2026, 4, 24, 12, 18, 53),
+        body_text=(
+            "Dear Mr./Ms. Mateus,\n\n"
+            "Thank you for your interest in the Senior Full-Stack Developer "
+            "(interior design) position at Sigma Software. While your skills "
+            "and background are impressive, we have decided to proceed with "
+            "other candidates."
+        ),
+    )
+
+    result = reconcile_email_to_job(db_session, email, dry_run=False)
+
+    assert result["decision"] == LINK
+    assert result["parsed_role"] == "Senior Full-Stack Developer (interior design)"
+    assert result["parsed_company"] == "Sigma Software"
+    assert result["wrote"] is True
+    assert email.job_urn == job.urn
+    assert job.application_status == "Refused"
+
+
 def test_dry_run_does_not_write_refused_or_link_email(db_session):
     job = add_job(
         db_session,
