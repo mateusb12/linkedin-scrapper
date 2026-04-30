@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from "react"
+import {useEffect, useMemo, useRef, useState} from "react"
 import {ChevronDown} from "lucide-react"
 
 import {appRoutes, type AppRoute} from "../routes"
@@ -15,6 +15,8 @@ const groupButtonClass =
 const groupTitleClass = "min-w-0 truncate"
 
 const groupItemsWrapperClass = "grid gap-2 pl-2"
+
+const SIDEBAR_OPEN_GROUPS_STORAGE_KEY = "linkedin-scraper:sidebar-open-groups"
 
 const sidebarGroups = [
     {
@@ -49,6 +51,54 @@ type AppSidebarProps = {
     onNavigate: (route: string) => void
 }
 
+function readStoredOpenGroups(groupTitles: Set<string>) {
+    if (typeof window === "undefined") {
+        return null
+    }
+
+    const rawValue = window.localStorage.getItem(SIDEBAR_OPEN_GROUPS_STORAGE_KEY)
+
+    if (!rawValue) {
+        return null
+    }
+
+    try {
+        const parsed: unknown = JSON.parse(rawValue)
+
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+            return null
+        }
+
+        return Object.entries(parsed).reduce<Record<string, boolean>>(
+            (acc, [title, value]) => {
+                if (groupTitles.has(title) && typeof value === "boolean") {
+                    acc[title] = value
+                }
+
+                return acc
+            },
+            {},
+        )
+    } catch {
+        return null
+    }
+}
+
+function writeStoredOpenGroups(openGroups: Record<string, boolean>) {
+    if (typeof window === "undefined") {
+        return
+    }
+
+    try {
+        window.localStorage.setItem(
+            SIDEBAR_OPEN_GROUPS_STORAGE_KEY,
+            JSON.stringify(openGroups),
+        )
+    } catch {
+        // Ignore localStorage failures.
+    }
+}
+
 function SidebarUser() {
     return (
         <div className="mt-auto border-t border-slate-200 pt-4 max-[760px]:mt-5 dark:border-slate-800">
@@ -78,6 +128,7 @@ export default function AppSidebar({
     const groupedRoutes = useMemo<SidebarGroup[]>(() => {
         const routeByLabel = new Map(appRoutes.map(item => [item.label, item]))
         const groupedLabels = new Set<string>()
+
         const groups: SidebarGroup[] = sidebarGroups.map(group => {
             const items = group.items.flatMap(label => {
                 const route = routeByLabel.get(label)
@@ -114,12 +165,35 @@ export default function AppSidebar({
         )?.title
     }, [currentRoute, groupedRoutes])
 
-    const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
-        activeGroupTitle ? {[activeGroupTitle]: true} : {},
+    const groupTitles = useMemo(
+        () => new Set(groupedRoutes.map(group => group.title)),
+        [groupedRoutes],
     )
+
+    const initialRouteRef = useRef(currentRoute)
+
+    const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+        const storedOpenGroups = readStoredOpenGroups(groupTitles)
+
+        if (storedOpenGroups) {
+            return storedOpenGroups
+        }
+
+        return activeGroupTitle ? {[activeGroupTitle]: true} : {}
+    })
+
+    useEffect(() => {
+        writeStoredOpenGroups(openGroups)
+    }, [openGroups])
 
     useEffect(() => {
         if (!activeGroupTitle) {
+            return
+        }
+
+        const isInitialPageLoad = currentRoute === initialRouteRef.current
+
+        if (isInitialPageLoad) {
             return
         }
 
@@ -133,7 +207,7 @@ export default function AppSidebar({
                 [activeGroupTitle]: true,
             }
         })
-    }, [activeGroupTitle])
+    }, [activeGroupTitle, currentRoute])
 
     return (
         <aside
@@ -195,7 +269,9 @@ export default function AppSidebar({
                                                 aria-current={isActive ? "page" : undefined}
                                             >
                                                 <Icon className="size-5 flex-none"/>
-                                                <span className="min-w-0 truncate text-left">{item.label}</span>
+                                                <span className="min-w-0 truncate text-left">
+                                                    {item.label}
+                                                </span>
                                             </a>
                                         )
                                     })}
