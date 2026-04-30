@@ -1,4 +1,11 @@
-import {type ReactNode, useEffect, useMemo, useState} from "react"
+import {
+    type ChangeEvent,
+    type DragEvent,
+    type ReactNode,
+    useEffect,
+    useMemo,
+    useState,
+} from "react"
 import {
     AlertCircle,
     Check,
@@ -6,14 +13,18 @@ import {
     Copy,
     FileText,
     Lightbulb,
+    Loader2,
     Mail,
     MailOpen,
     Sparkles,
     Tag,
+    UploadCloud,
+    X,
 } from "lucide-react"
 
 import {
     type RejectionEmail,
+    extractTextFromResumePdf,
     updateRejectionImprovementBacklog,
 } from "./rejectionsMockService.ts"
 
@@ -167,6 +178,154 @@ function TextPanel({
     )
 }
 
+type ResumeParseStatus = "idle" | "parsing" | "parsed" | "error"
+
+type ResumeTextPanelProps = {
+    value: string
+    onChange: (value: string) => void
+    onPdfSelected: (file: File) => Promise<void>
+    parseStatus: ResumeParseStatus
+    fileName: string
+    error: string
+    onClear: () => void
+}
+
+function ResumeTextPanel({
+    value,
+    onChange,
+    onPdfSelected,
+    parseStatus,
+    fileName,
+    error,
+    onClear,
+}: ResumeTextPanelProps) {
+    const [isDragging, setIsDragging] = useState(false)
+    const inputId = "resume-pdf-upload"
+    const isParsing = parseStatus === "parsing"
+
+    const statusLabel =
+        parseStatus === "parsing"
+            ? "Extracting text from PDF..."
+            : parseStatus === "parsed"
+              ? `Loaded ${fileName}`
+              : parseStatus === "error"
+                ? error || "Could not read this PDF."
+                : "Drag the resume PDF here, or click to select it."
+
+    function handleInputChange(event: ChangeEvent<HTMLInputElement>) {
+        const file = event.target.files?.[0]
+
+        if (file) {
+            void onPdfSelected(file)
+        }
+
+        event.currentTarget.value = ""
+    }
+
+    function handleDragOver(event: DragEvent<HTMLLabelElement>) {
+        event.preventDefault()
+
+        if (!isParsing) {
+            setIsDragging(true)
+        }
+    }
+
+    function handleDragLeave(event: DragEvent<HTMLLabelElement>) {
+        event.preventDefault()
+        setIsDragging(false)
+    }
+
+    function handleDrop(event: DragEvent<HTMLLabelElement>) {
+        event.preventDefault()
+        setIsDragging(false)
+
+        if (isParsing) return
+
+        const file = event.dataTransfer.files?.[0]
+
+        if (file) {
+            void onPdfSelected(file)
+        }
+    }
+
+    return (
+        <section className="flex min-h-0 flex-col rounded-xl border border-gray-800 bg-gray-900/70">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-800 px-4 py-3">
+                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-gray-400">
+                    <FileText size={15}/>
+                    Resume used
+                </div>
+
+                <div className="flex items-center gap-2">
+                    {parseStatus === "parsed" && (
+                        <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-300">
+                            PDF parsed
+                        </span>
+                    )}
+
+                    {value && (
+                        <button
+                            type="button"
+                            onClick={onClear}
+                            className="inline-flex items-center gap-1 rounded-full border border-gray-700 bg-gray-950 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-gray-400 transition hover:border-red-500/30 hover:text-red-300"
+                        >
+                            <X size={12}/>
+                            Clear
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            <div className="space-y-3 p-4">
+                <label
+                    htmlFor={inputId}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-4 py-4 text-center transition ${
+                        isDragging
+                            ? "border-purple-400 bg-purple-500/10"
+                            : "border-gray-700 bg-gray-950/40 hover:border-purple-500/50 hover:bg-purple-500/5"
+                    } ${isParsing ? "pointer-events-none opacity-70" : ""}`}
+                >
+                    <input
+                        id={inputId}
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        className="hidden"
+                        onChange={handleInputChange}
+                    />
+
+                    {isParsing ? (
+                        <Loader2 size={22} className="mb-2 animate-spin text-purple-300"/>
+                    ) : (
+                        <UploadCloud size={24} className="mb-2 text-purple-300"/>
+                    )}
+
+                    <span className="text-sm font-black text-gray-200">
+                        Drop resume PDF here
+                    </span>
+                    <span
+                        className={`mt-1 text-xs font-medium ${
+                            parseStatus === "error" ? "text-red-300" : "text-gray-500"
+                        }`}
+                    >
+                        {statusLabel}
+                    </span>
+                </label>
+
+                <textarea
+                    value={value}
+                    onChange={event => onChange(event.target.value)}
+                    placeholder="Paste the resume used for this application, or drop the PDF above..."
+                    spellCheck={false}
+                    className="min-h-52 w-full resize-none rounded-xl border border-gray-800 bg-gray-950/30 p-4 text-sm font-medium leading-7 text-gray-300 outline-none placeholder:text-gray-600 focus:ring-2 focus:ring-purple-500/20"
+                />
+            </div>
+        </section>
+    )
+}
+
 type RejectionImprovementBuilderProps = {
     email: RejectionEmailWithImprovement | null
 }
@@ -182,6 +341,9 @@ function RejectionImprovementContent({email}: RejectionImprovementContentProps) 
         "Linked job found, but no job description was returned by the backend."
     const [jobDescription, setJobDescription] = useState(email.jobDescription ?? "")
     const [resumeContent, setResumeContent] = useState("")
+    const [resumeParseStatus, setResumeParseStatus] = useState<ResumeParseStatus>("idle")
+    const [resumePdfName, setResumePdfName] = useState("")
+    const [resumeParseError, setResumeParseError] = useState("")
     const [improvement, setImprovement] = useState(email.improvementBacklog ?? "")
     const [promptTemplate, setPromptTemplate] = useState(DEFAULT_PROMPT_TEMPLATE)
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
@@ -208,6 +370,32 @@ function RejectionImprovementContent({email}: RejectionImprovementContentProps) 
     function handleImprovementChange(value: string) {
         setImprovement(value)
         setSaveStatus(value === (email.improvementBacklog ?? "") ? "idle" : "saving")
+    }
+
+    async function handleResumePdfSelected(file: File) {
+        setResumePdfName(file.name)
+        setResumeParseStatus("parsing")
+        setResumeParseError("")
+
+        try {
+            const extractedText = await extractTextFromResumePdf(file)
+
+            setResumeContent(extractedText)
+            setResumeParseStatus("parsed")
+        } catch (error) {
+            console.error(error)
+            setResumeParseStatus("error")
+            setResumeParseError(
+                error instanceof Error ? error.message : "Failed to read PDF.",
+            )
+        }
+    }
+
+    function handleClearResume() {
+        setResumeContent("")
+        setResumePdfName("")
+        setResumeParseError("")
+        setResumeParseStatus("idle")
     }
 
     const finalPrompt = useMemo(() => {
@@ -397,13 +585,14 @@ function RejectionImprovementContent({email}: RejectionImprovementContentProps) 
                             minHeightClass="min-h-72"
                         />
 
-                        <TextPanel
-                            icon={<FileText size={15}/>}
-                            label="Resume used"
+                        <ResumeTextPanel
                             value={resumeContent}
                             onChange={setResumeContent}
-                            placeholder="Paste the resume used for this application..."
-                            minHeightClass="min-h-72"
+                            onPdfSelected={handleResumePdfSelected}
+                            parseStatus={resumeParseStatus}
+                            fileName={resumePdfName}
+                            error={resumeParseError}
+                            onClear={handleClearResume}
                         />
 
                         <TextPanel

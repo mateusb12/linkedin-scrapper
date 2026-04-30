@@ -1,3 +1,6 @@
+import * as pdfjsLib from "pdfjs-dist"
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url"
+
 export type RejectionEmail = {
     id: number
     threadId: string
@@ -197,6 +200,66 @@ function cleanReadableText(value: string) {
 
 function normalizeReadableText(value: string) {
     return cleanReadableText(isProbablyHtml(value) ? htmlToReadableText(value) : value)
+}
+
+let isPdfWorkerConfigured = false
+
+function ensurePdfWorkerConfigured() {
+    if (isPdfWorkerConfigured) return
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
+    isPdfWorkerConfigured = true
+}
+
+function normalizePdfExtractedText(value: string) {
+    return cleanReadableText(value)
+        .replace(/\s+([,.;:!?%)])/g, "$1")
+        .replace(/([([{])\s+/g, "$1")
+        .replace(/[ \t]{2,}/g, " ")
+        .trim()
+}
+
+export async function extractTextFromResumePdf(file: File): Promise<string> {
+    const isPdf =
+        file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
+
+    if (!isPdf) {
+        throw new Error("Please select a PDF file.")
+    }
+
+    ensurePdfWorkerConfigured()
+
+    const arrayBuffer = await file.arrayBuffer()
+    const pdf = await pdfjsLib.getDocument({
+        data: new Uint8Array(arrayBuffer),
+    }).promise
+
+    try {
+        const pageTexts: string[] = []
+
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+            const page = await pdf.getPage(pageNumber)
+            const textContent = await page.getTextContent()
+
+            const pageText = textContent.items
+                .map(item => ("str" in item && typeof item.str === "string" ? item.str : ""))
+                .join(" ")
+
+            pageTexts.push(normalizePdfExtractedText(pageText))
+        }
+
+        const extractedText = cleanReadableText(pageTexts.filter(Boolean).join("\n\n"))
+
+        if (!extractedText) {
+            throw new Error(
+                "No readable text was found in this PDF. It may be scanned/image-based.",
+            )
+        }
+
+        return extractedText
+    } finally {
+        await pdf.destroy()
+    }
 }
 
 function isLinkedInFooterOnlyText(value: string) {
