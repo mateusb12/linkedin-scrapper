@@ -218,6 +218,7 @@ function EmailListItem({email, isSelected, onSelect}: EmailListItemProps) {
     const responseTime = formatResponseTime(email.appliedAt, email.receivedAt)
     const displayCompany = email.company ?? email.sender
     const displaySender = email.senderEmail || email.sender
+    const hasImprovementBacklog = Boolean(email.improvementBacklog?.trim())
 
     return (
         <button
@@ -225,10 +226,14 @@ function EmailListItem({email, isSelected, onSelect}: EmailListItemProps) {
             onClick={() => onSelect(email)}
             className={`grid w-full grid-cols-[auto_1fr_auto] items-start gap-3 border-b border-gray-800 px-4 py-3 text-left transition ${
                 isSelected
-                    ? "bg-red-500/10"
-                    : email.isRead
-                        ? "bg-gray-900/40 hover:bg-gray-800/60"
-                        : "bg-gray-900 hover:bg-gray-800/80"
+                    ? hasImprovementBacklog
+                        ? "bg-emerald-500/10 ring-1 ring-inset ring-emerald-500/25"
+                        : "bg-red-500/10"
+                    : hasImprovementBacklog
+                        ? "bg-emerald-500/5 hover:bg-emerald-500/10"
+                        : email.isRead
+                            ? "bg-gray-900/40 hover:bg-gray-800/60"
+                            : "bg-gray-900 hover:bg-gray-800/80"
             }`}
         >
             <div
@@ -256,11 +261,16 @@ function EmailListItem({email, isSelected, onSelect}: EmailListItemProps) {
                     <span className="truncate text-[11px] font-semibold text-gray-500">
                         {displaySender}
                     </span>
-                    {email.jobUrn && (
+                    {email.jobUrn ? (
                         <span
                             className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] font-black text-blue-300">
-                            linked
-                        </span>
+        linked
+    </span>
+                    ) : (
+                        <span
+                            className="rounded-full border border-red-400/50 bg-red-500/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-red-200 shadow-sm shadow-red-950/40">
+        not linked
+    </span>
                     )}
                     {responseTime && (
                         <span
