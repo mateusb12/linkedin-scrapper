@@ -9,6 +9,7 @@ from source.features.gmail_service.gmail_controller import (
     reconcile_backlog,
     reconcile_backlog_dry_run,
     get_stored_emails,
+    update_email_improvement_backlog,
 )
 
 gmail_bp = Blueprint("gmail", __name__, url_prefix="/emails")
@@ -194,3 +195,11 @@ def get_stored_emails_route():
             total_pages: 5
     """
     return get_stored_emails()
+
+
+@gmail_bp.route("/<int:email_id>/improvement-backlog", methods=["PATCH"])
+def update_email_improvement_backlog_route(email_id):
+    """
+    Updates the persistent improvement backlog for one stored email.
+    """
+    return update_email_improvement_backlog(email_id)

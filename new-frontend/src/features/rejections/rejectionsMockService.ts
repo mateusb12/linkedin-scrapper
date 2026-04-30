@@ -15,6 +15,7 @@ export type RejectionEmail = {
     subject: string
     snippet: string
     bodyText: string
+    improvementBacklog?: string
     receivedAt: string
     createdAt: string
     isRead: boolean
@@ -293,6 +294,8 @@ function normalizeRejectionEmail(value: unknown): RejectionEmail {
     const email = isRecord(value) ? value : {}
     const id = asNumber(email.id)
     const body = getFirstString(email, ["bodyText", "body_text", "body", "text", "body_html"]) ?? ""
+    const subject = asString(email.subject, "(No subject)")
+    const subjectDetails = parseLinkedInApplicationSubject(subject)
     const jobUrn =
         getFirstString(email, ["jobUrn", "job_urn", "urn"]) ??
         getFirstNestedString(email, [
@@ -306,13 +309,15 @@ function normalizeRejectionEmail(value: unknown): RejectionEmail {
             ["job", "company_name"],
             ["linked_job", "company"],
             ["linked_job", "company_name"],
-        ])
+        ]) ??
+        subjectDetails?.company
     const jobTitle =
         getFirstString(email, ["jobTitle", "job_title", "title"]) ??
         getFirstNestedString(email, [
             ["job", "title"],
             ["linked_job", "title"],
-        ])
+        ]) ??
+        subjectDetails?.jobTitle
     const jobDescription =
         getFirstString(email, [
             "jobDescription",
@@ -365,11 +370,15 @@ function normalizeRejectionEmail(value: unknown): RejectionEmail {
         sender: asString(email.sender, "Unknown sender"),
         senderEmail: getFirstString(email, ["senderEmail", "sender_email"]) ?? "",
         recipient: getFirstString(email, ["recipient", "to"]) ?? "",
-        subject: asString(email.subject, "(No subject)"),
+        subject,
         snippet: normalizeReadableText(asString(email.snippet)),
         bodyText: normalizeReadableText(
             buildLinkedInFallbackBody(email, body, jobTitle, company),
         ),
+        improvementBacklog: getFirstString(email, [
+            "improvementBacklog",
+            "improvement_backlog",
+        ]),
         receivedAt,
         createdAt,
         isRead: Boolean(email.isRead ?? email.is_read ?? true),
@@ -424,6 +433,7 @@ function filterEmailsLocally(emails: RejectionEmail[], searchTerm: string) {
             email.company ?? "",
             email.jobTitle ?? "",
             email.jobDescription ?? "",
+            email.improvementBacklog ?? "",
         ].some(value => value.toLowerCase().includes(normalizedSearch)),
     )
 }
@@ -484,4 +494,20 @@ export async function syncRejectionEmails(): Promise<SyncRejectionEmailsResult> 
     )
 
     return normalizeSyncResponse(payload)
+}
+
+export async function updateRejectionImprovementBacklog(
+    emailId: number,
+    improvementBacklog: string,
+): Promise<RejectionEmail> {
+    const payload = await handleJsonResponse<unknown>(
+        await fetch(`${API_BASE}/emails/${emailId}/improvement-backlog`, {
+            method: "PATCH",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({improvement_backlog: improvementBacklog}),
+        }),
+        "Failed to save improvement backlog",
+    )
+
+    return normalizeRejectionEmail(payload)
 }

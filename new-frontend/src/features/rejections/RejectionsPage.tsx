@@ -216,6 +216,8 @@ type EmailListItemProps = {
 function EmailListItem({email, isSelected, onSelect}: EmailListItemProps) {
     const {date, time} = formatDateTime(email.receivedAt)
     const responseTime = formatResponseTime(email.appliedAt, email.receivedAt)
+    const displayCompany = email.company ?? email.sender
+    const displaySender = email.senderEmail || email.sender
 
     return (
         <button
@@ -236,7 +238,7 @@ function EmailListItem({email, isSelected, onSelect}: EmailListItemProps) {
                         : "bg-red-500/15 text-red-300"
                 }`}
             >
-                {getSenderInitial(email.sender)}
+                {getSenderInitial(displayCompany)}
             </div>
 
             <div className="min-w-0">
@@ -249,8 +251,11 @@ function EmailListItem({email, isSelected, onSelect}: EmailListItemProps) {
                                 : "font-black text-white"
                         }`}
                     >
-                        {email.sender}
+                        {displayCompany}
                     </p>
+                    <span className="truncate text-[11px] font-semibold text-gray-500">
+                        {displaySender}
+                    </span>
                     {email.jobUrn && (
                         <span
                             className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] font-black text-blue-300">

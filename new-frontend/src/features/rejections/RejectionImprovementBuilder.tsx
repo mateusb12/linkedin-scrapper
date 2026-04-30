@@ -12,9 +12,14 @@ import {
     Tag,
 } from "lucide-react"
 
-import type {RejectionEmail} from "./rejectionsMockService.ts"
+import {
+    type RejectionEmail,
+    updateRejectionImprovementBacklog,
+} from "./rejectionsMockService.ts"
 
-const STORAGE_PREFIX = "rejection-improvement"
+type RejectionEmailWithImprovement = RejectionEmail & {
+    improvementBacklog?: string
+}
 
 const DEFAULT_PROMPT_TEMPLATE = `Vou te passar uma rejeicao de vaga que estou usando como backlog de melhoria.
 
@@ -113,22 +118,6 @@ function formatRelativeDuration(fromValue?: string, toValue?: string) {
     return `${label} ${isBefore ? "before rejection" : "after rejection"}`
 }
 
-function storageKey(emailId: number, field: string) {
-    return `${STORAGE_PREFIX}:${emailId}:${field}`
-}
-
-function readCachedValue(emailId: number, field: string, fallback = "") {
-    if (typeof window === "undefined") return fallback
-
-    return window.localStorage.getItem(storageKey(emailId, field)) ?? fallback
-}
-
-function writeCachedValue(emailId: number, field: string, value: string) {
-    if (typeof window === "undefined") return
-
-    window.localStorage.setItem(storageKey(emailId, field), value)
-}
-
 type TextPanelProps = {
     icon: ReactNode
     label: string
@@ -179,11 +168,11 @@ function TextPanel({
 }
 
 type RejectionImprovementBuilderProps = {
-    email: RejectionEmail | null
+    email: RejectionEmailWithImprovement | null
 }
 
 type RejectionImprovementContentProps = {
-    email: RejectionEmail
+    email: RejectionEmailWithImprovement
 }
 
 function RejectionImprovementContent({email}: RejectionImprovementContentProps) {
@@ -191,40 +180,35 @@ function RejectionImprovementContent({email}: RejectionImprovementContentProps) 
     const linkedJobDescription = email.jobDescription ?? ""
     const linkedJobDescriptionMissingMessage =
         "Linked job found, but no job description was returned by the backend."
-    const [jobDescription, setJobDescription] = useState(() =>
-        hasLinkedJob
-            ? linkedJobDescription
-            : readCachedValue(email.id, "job-description", email.jobDescription ?? ""),
-    )
-    const [resumeContent, setResumeContent] = useState(() =>
-        readCachedValue(email.id, "resume-content"),
-    )
-    const [improvement, setImprovement] = useState(() =>
-        readCachedValue(email.id, "improvement"),
-    )
-    const [promptTemplate, setPromptTemplate] = useState(() =>
-        readCachedValue(email.id, "prompt-template", DEFAULT_PROMPT_TEMPLATE),
-    )
+    const [jobDescription, setJobDescription] = useState(email.jobDescription ?? "")
+    const [resumeContent, setResumeContent] = useState("")
+    const [improvement, setImprovement] = useState(email.improvementBacklog ?? "")
+    const [promptTemplate, setPromptTemplate] = useState(DEFAULT_PROMPT_TEMPLATE)
+    const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle")
     const [copied, setCopied] = useState(false)
     const effectiveJobDescription = hasLinkedJob ? linkedJobDescription : jobDescription
 
     useEffect(() => {
-        if (hasLinkedJob) return
+        if (improvement === (email.improvementBacklog ?? "")) {
+            return
+        }
 
-        writeCachedValue(email.id, "job-description", jobDescription)
-    }, [email, hasLinkedJob, jobDescription])
+        const timeoutId = window.setTimeout(() => {
+            updateRejectionImprovementBacklog(email.id, improvement)
+                .then(() => setSaveStatus("saved"))
+                .catch(error => {
+                    console.error(error)
+                    setSaveStatus("error")
+                })
+        }, 600)
 
-    useEffect(() => {
-        writeCachedValue(email.id, "resume-content", resumeContent)
-    }, [email, resumeContent])
+        return () => window.clearTimeout(timeoutId)
+    }, [email.id, email.improvementBacklog, improvement])
 
-    useEffect(() => {
-        writeCachedValue(email.id, "improvement", improvement)
-    }, [email, improvement])
-
-    useEffect(() => {
-        writeCachedValue(email.id, "prompt-template", promptTemplate)
-    }, [email, promptTemplate])
+    function handleImprovementChange(value: string) {
+        setImprovement(value)
+        setSaveStatus(value === (email.improvementBacklog ?? "") ? "idle" : "saving")
+    }
 
     const finalPrompt = useMemo(() => {
         if (!email) return ""
@@ -269,21 +253,34 @@ function RejectionImprovementContent({email}: RejectionImprovementContentProps) 
                     <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px]">
                         rejection
                     </span>
-                    {improvement.trim() && (
+                    {saveStatus === "saving" && (
+                        <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-300">
+                            saving
+                        </span>
+                    )}
+                    {saveStatus === "saved" && (
                         <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-300">
-                            cached improvement
+                            saved
+                        </span>
+                    )}
+                    {saveStatus === "error" && (
+                        <span className="rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[10px] text-red-300">
+                            save failed
                         </span>
                     )}
                 </div>
 
                 <h2 className="text-2xl font-black leading-tight text-white">
-                    {email.jobTitle ?? email.subject}
+                    {email.company ?? email.sender}
                 </h2>
+                <p className="mt-2 text-sm font-bold text-gray-400">
+                    {email.jobTitle ?? email.subject}
+                </p>
 
                 <div className="mt-5 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                     <div className="flex min-w-0 items-start gap-3">
                         <div className="grid size-11 shrink-0 place-items-center rounded-full bg-red-500/15 text-sm font-black text-red-300">
-                            {getSenderInitial(email.sender)}
+                            {getSenderInitial(email.company ?? email.sender)}
                         </div>
 
                         <div className="min-w-0">
@@ -369,8 +366,8 @@ function RejectionImprovementContent({email}: RejectionImprovementContentProps) 
                         icon={<Lightbulb size={15}/>}
                         label="3. Improvement backlog"
                         value={improvement}
-                        onChange={setImprovement}
-                        placeholder="Write the curriculum/study improvements here. This is saved in browser cache."
+                        onChange={handleImprovementChange}
+                        placeholder="Write the curriculum/study improvements here. This is saved in the backend."
                     />
                 </div>
 

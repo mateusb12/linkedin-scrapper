@@ -664,3 +664,31 @@ def get_stored_emails():
 
     finally:
         session.close()
+
+
+def update_email_improvement_backlog(email_id):
+    session = get_db_session()
+
+    try:
+        data = request.get_json(silent=True) or {}
+        improvement_backlog = data.get("improvement_backlog", data.get("improvementBacklog"))
+
+        if improvement_backlog is not None and not isinstance(improvement_backlog, str):
+            return jsonify({"error": "improvement_backlog must be a string"}), 400
+
+        email_obj = session.query(Email).filter(Email.id == email_id).first()
+
+        if not email_obj:
+            return jsonify({"error": "Email not found"}), 404
+
+        email_obj.improvement_backlog = improvement_backlog or None
+        session.commit()
+
+        return jsonify(email_obj.to_dict()), 200
+
+    except Exception as exc:
+        session.rollback()
+        return jsonify({"error": str(exc)}), 500
+
+    finally:
+        session.close()

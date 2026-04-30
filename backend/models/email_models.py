@@ -31,6 +31,7 @@ class Email(Base):
 
     snippet = Column(String)
     body_text = Column(Text)
+    improvement_backlog = Column(Text, nullable=True)
 
     # --- Metadata ---
     received_at = Column(DateTime, index=True)
@@ -52,6 +53,8 @@ class Email(Base):
             "subject": self.subject,
             "snippet": self.snippet,
             "body_text": self.body_text,
+            "improvement_backlog": self.improvement_backlog,
+            "improvementBacklog": self.improvement_backlog,
             "receivedAt": self.received_at.isoformat() if self.received_at else None,
             "createdAt": self.created_at.isoformat() if self.created_at else None,
             "isRead": self.is_read,
