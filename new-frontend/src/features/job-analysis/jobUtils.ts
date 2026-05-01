@@ -220,6 +220,22 @@ const TECH_LABEL_ALIASES: Record<string, string> = {
     "domain driven design": "DDD",
     lambda: "AWS Lambda",
     azure: "Azure",
+    "c#": "C#",
+    csharp: "C#",
+    "c sharp": "C#",
+    net: ".NET",
+    dotnet: ".NET",
+    "dot net": ".NET",
+    "net core": ".NET",
+    "net framework": ".NET",
+    "asp net": "ASP.NET",
+    aspnet: "ASP.NET",
+    "asp net core": "ASP.NET Core",
+    aspnetcore: "ASP.NET Core",
+    "entity framework": "Entity Framework",
+    entityframework: "Entity Framework",
+    "entity framework core": "Entity Framework",
+    "ef core": "Entity Framework",
     postgres: "PostgreSQL",
     postgresql: "PostgreSQL",
     mysql: "MySQL",
@@ -271,6 +287,7 @@ export const normalizeTechText = (value: string) =>
         .replace(/\p{Diacritic}/gu, "")
         .replace(/[-_.]/g, " ")
         .replace(/\s+/g, " ")
+        .trim()
 
 export const formatTechLabel = (tech: string) => {
     const normalized = normalizeTechText(tech)
@@ -300,6 +317,11 @@ const RUNTIME_KEYWORD_HINTS = [
     {label: "PostgreSQL", pattern: /\b(postgresql|postgres)\b/i},
     {label: "MySQL", pattern: /\bmysql\b/i},
     {label: "SQL", pattern: /\bsql\b/i},
+    {label: "C#", pattern: /(^|[^a-z0-9])(?:c\s*#|csharp|c\s+sharp)([^a-z0-9]|$)/i},
+    {label: "ASP.NET Core", pattern: /(^|[^a-z0-9])(?:asp\s*\.?\s*net\s*core|aspnetcore)([^a-z0-9]|$)/i},
+    {label: "ASP.NET", pattern: /(^|[^a-z0-9])(?:asp\s*\.?\s*net|aspnet)(?!\s*core)([^a-z0-9]|$)/i},
+    {label: ".NET", pattern: /(^|[^a-z0-9])(?:asp\s*\.?\s*net|\.net|dot\s*net|dotnet|net\s+(?:core|framework|[0-9]))([^a-z0-9]|$)/i},
+    {label: "Entity Framework", pattern: /\b(entity\s*framework(?:\s*core)?|entityframework|ef\s*core)\b/i},
     {label: "AWS Lambda", pattern: /\baws\s+lambda\b/i},
     {label: "API Gateway", pattern: /\b(?:aws\s+)?api\s+gateway\b/i},
     {label: "DynamoDB", pattern: /\b(?:dynamodb|dynamo\s*db)\b/i},
