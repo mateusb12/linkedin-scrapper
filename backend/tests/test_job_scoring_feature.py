@@ -266,6 +266,62 @@ def test_hybrid_penalizes_ai_training_evaluation_contractor_pattern() -> None:
     assert "vaga usa Python mais para avaliação/treino de IA do que para engenharia backend" in result.suspicious_reasons
 
 
+def test_hybrid_classifies_agent_evaluation_python_engineer_as_ai_training() -> None:
+    scorer = HybridScorer()
+    job = build_job(
+        urn="agent-eval-python-engineer",
+        title="Python Engineer (Remote)",
+        description_full=(
+            "Help design and evaluate autonomous AI agents across multiple LLMs, spanning health, "
+            "education, daily life, and other real-world domains (all coding work). Shape the future "
+            "of agentic AI systems by providing expert human feedback to leading AI organisations. "
+            "Help train Large Language Models (LLMs) for complex, multi-step architectural workflows.\n\n"
+            "Key Responsibilities:\n"
+            "AI Agent Evaluation\n"
+            "Write evaluation rubrics with objective pass/fail criteria\n"
+            "Debug agent traces to identify failure patterns\n"
+            "Stress test agents against edge cases, prompt injection, and tool misuse\n"
+            "Technical Assessment\n"
+            "Assess production-grade modular software architecture\n"
+            "Analyse multi-turn system interactions and behaviours\n"
+            "Provide high-density technical feedback for LLM training\n"
+            "Project Workflow\n"
+            "Create an account and upload a resume/ID\n"
+            "Complete the onboarding assessment\n"
+            "Start earning through flexible task assignments\n\n"
+            "Qualifications:\n"
+            "Experience in backend engineering, AI automation, or complex systems integration\n"
+            "Proven ability to build and maintain production-grade software with modular separation\n"
+            "Strong command of at least two major languages such as Python, JavaScript, Go, or Java "
+            "and experience working with SQL databases\n"
+            "Practical experience building for live, non-mocked environments and handling multi-turn "
+            "system interactions\n\n"
+            "Preferred:\n"
+            "Experience integrating agents with live tools such as Supabase, Gmail, and other APIs\n"
+            "Familiarity with persistent state and session-tracking patterns\n"
+            "Experience identifying privacy leaks, authority escalation, or indirect prompt injection "
+            "vulnerabilities\n\n"
+            "Compensation:\n"
+            "Hourly compensation ranges from USD $30-$50\n"
+            "Payments are issued weekly via PayPal or AirTM\n"
+            "Full compensation details are provided prior to task acceptance"
+        ),
+        programming_languages=["Python", "JavaScript", "SQL"],
+    )
+
+    result = scorer.score_job(job)
+    signals = result.metadata["archetype_signals"]
+
+    assert result.metadata["archetype"] == "ai_training_or_evaluation_python"
+    assert signals["backend_core"] > 0
+    assert signals["ai_evaluation_core"] > signals["backend_core"] * 3
+    assert signals["contractor_style"] > 0
+    assert result.metadata["structural_penalty"] >= 15
+    assert result.suspicious is True
+    assert result.total_score <= 45
+    assert "vaga usa Python mais para avaliação/treino de IA do que para engenharia backend" in result.suspicious_reasons
+
+
 def test_hybrid_preserves_legit_ai_backend_engineering_role() -> None:
     scorer = HybridScorer()
     job = build_job(
@@ -302,6 +358,38 @@ def test_hybrid_preserves_legit_ai_backend_engineering_role() -> None:
     assert result.category_scores["penalties"] < 10
     positive_labels = {item.label for item in result.score_breakdown.positive}
     assert "Backend ownership boost" in positive_labels or "Backend core preserved" in positive_labels
+
+
+def test_hybrid_preserves_ai_agent_backend_product_role_with_eval_terms() -> None:
+    scorer = HybridScorer()
+    job = build_job(
+        urn="agent-backend-product",
+        title="Senior Backend Python Engineer - AI Agents",
+        description_full=(
+            "Build backend services for autonomous AI agent products in Python with FastAPI. "
+            "Design APIs, implement backend features, maintain production systems, deploy services, "
+            "own services, database schemas, reliability, observability and scaling. "
+            "Support evaluation rubrics, prompt injection defenses and agent trace debugging as "
+            "product features for production agent workflows."
+        ),
+        qualifications=["Python", "FastAPI", "PostgreSQL", "Docker", "AWS"],
+        responsibilities=[
+            "Build and operate production systems for agent APIs.",
+            "Maintain service ownership and deploy backend services.",
+        ],
+        keywords=["backend", "services", "apis", "ai agents"],
+    )
+
+    result = scorer.score_job(job)
+
+    assert result.metadata["archetype"] in {
+        "backend_python_pure",
+        "backend_python_with_minor_cross_functional_signals",
+        "ai_or_llm_python",
+    }
+    assert result.metadata["archetype"] != "ai_training_or_evaluation_python"
+    assert result.suspicious is False
+    assert result.total_score >= 65
 
 
 def test_pure_backend_python_stays_above_ai_evaluation_job() -> None:
