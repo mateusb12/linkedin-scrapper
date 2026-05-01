@@ -18,6 +18,13 @@ export type ScoreSignal = {
     source: string
 }
 
+export type AiScoreBreakdown = {
+    positive?: ScoreSignal[]
+    negative?: ScoreSignal[]
+    category_totals?: Record<string, number>
+    final_score?: number
+}
+
 export type SearchJob = {
     id: string
     jobId: string
@@ -70,10 +77,10 @@ export type SearchJob = {
     aiScore: number
     pythonSignalScore?: number
     aiCategoryScores?: Record<string, number> | null
-    aiScoreBreakdown?: unknown
+    aiScoreBreakdown?: AiScoreBreakdown | null
     aiArchetype?: string | null
     aiSignals?: unknown
-    aiMatchedKeywords?: string[] | null
+    aiMatchedKeywords?: Record<string, string[]> | null
     aiBonusReasons?: string[]
     aiPenaltyReasons?: string[]
     aiEvidence?: unknown[]
@@ -145,13 +152,13 @@ type ScoreItem = {
     data?: ScoreItem
     total_score?: number
     category_scores?: Record<string, number>
-    score_breakdown?: unknown
+    score_breakdown?: AiScoreBreakdown
     archetype?: string
     metadata?: {
         archetype?: string
         archetype_signals?: unknown
     }
-    matched_keywords?: string[]
+    matched_keywords?: Record<string, string[]>
     bonus_reasons?: string[]
     penalty_reasons?: string[]
     evidence?: unknown[]

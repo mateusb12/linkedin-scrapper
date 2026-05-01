@@ -606,6 +606,7 @@ export default function SearchJobsPage() {
 
                 const totalScore = score.total_score ?? 0
                 const archetype = score.archetype || score.metadata?.archetype || null
+                const scoreBreakdown = score.score_breakdown || null
 
                 return {
                     ...job,
@@ -613,7 +614,7 @@ export default function SearchJobsPage() {
                     pythonScore: totalScore,
                     pythonSignalScore: score.category_scores?.python_primary ?? 0,
                     aiCategoryScores: score.category_scores || null,
-                    aiScoreBreakdown: score.score_breakdown || null,
+                    aiScoreBreakdown: scoreBreakdown,
                     aiArchetype: archetype,
                     aiSignals: score.metadata?.archetype_signals || null,
                     aiMatchedKeywords: score.matched_keywords || null,
@@ -624,9 +625,10 @@ export default function SearchJobsPage() {
                     aiSuspiciousReasons: score.suspicious_reasons || [],
                     archetype: archetype || job.archetype,
                     scoreBreakdown: {
-                        positive: [],
-                        negative: [],
-                        categoryTotals: score.category_scores || {},
+                        positive: scoreBreakdown?.positive || [],
+                        negative: scoreBreakdown?.negative || [],
+                        categoryTotals:
+                            scoreBreakdown?.category_totals || score.category_scores || {},
                     },
                 }
             })
