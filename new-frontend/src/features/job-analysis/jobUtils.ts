@@ -49,6 +49,8 @@ import terraformIcon from "../../assets/skills/terraform.svg";
 import llmIcon from "../../assets/skills/llm.png";
 import langchainIcon from "../../assets/skills/langchain.svg";
 import geminiIcon from "../../assets/skills/gemini.svg";
+import langflowIcon from "../../assets/skills/langflow.svg";
+import langgraphIcon from "../../assets/skills/langgraph.svg";
 
 export const extractExperienceFromDescription = (
     description?: string | null,
@@ -187,6 +189,8 @@ const techIconsMap: Record<string, string> = {
     Terraform: terraformIcon,
     LangChain: langchainIcon,
     Gemini: geminiIcon,
+    LangFlow: langflowIcon,
+    LangGraph: langgraphIcon,
 };
 
 const TECH_LABEL_ALIASES: Record<string, string> = {
@@ -273,6 +277,15 @@ const TECH_LABEL_ALIASES: Record<string, string> = {
     langchain: "LangChain",
     linux: "Linux",
     llm: "LLM",
+    "no sql": "NoSQL",
+    nosql: "NoSQL",
+    "lang graph": "LangGraph",
+    langgraph: "LangGraph",
+    "lang flow": "LangFlow",
+    langflow: "LangFlow",
+    "large language models": "LLM",
+    "large language model": "LLM",
+    llms: "LLM",
     oracle: "Oracle",
     pandas: "Pandas",
     php: "PHP",
@@ -357,6 +370,10 @@ const RUNTIME_KEYWORD_HINTS = [
     {label: "GCP", pattern: /\b(gcp|google cloud|google cloud platform)\b/i},
     {label: "Azure", pattern: /\bazure\b/i},
     {label: "Python", pattern: /\bpython\b/i},
+    {label: "LLM", pattern: /\b(?:llms?|large\s+language\s+models?)\b/i},
+    {label: "LangFlow", pattern: /\blangflow\b/i},
+    {label: "LangGraph", pattern: /\blanggraph\b/i},
+    {label: "NoSQL", pattern: /\b(?:nosql|no\s*sql)\b/i},
     {label: "Java", pattern: /\bjava\b/i},
     {label: "C++", pattern: /(^|[^a-z0-9])(?:c\s*\+\s*\+|cpp|cplusplus|c\s+plus\s+plus)([^a-z0-9]|$)/i},
     {label: "Go", pattern: /\b(go|golang)\b/i},
@@ -489,7 +506,6 @@ const ROLE_SIGNAL_KEYWORDS = new Set([
 const HIDDEN_JOB_KEYWORDS = new Set([
     "api",
     "apis",
-    "nosql",
     "etl",
     "task queue",
     "task queues",
@@ -498,6 +514,17 @@ const HIDDEN_JOB_KEYWORDS = new Set([
     "machine learning",
     "ml",
     "cloud",
+    "agentes conversacionais",
+    "conversational agents",
+    "multiagentes",
+    "multiagente",
+    "multiagent",
+    "multi-agent",
+    "multi agent",
+    "agentic ai",
+    "ia generativa",
+    "gen ai",
+    "generative ai",
 ])
 
 export const isRoleSignalKeyword = (keyword: string) => {

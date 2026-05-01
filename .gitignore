@@ -51,3 +51,5 @@ __pycache__/
 **/repomix*.md
 *.codex*
 **/frontend*.md
+/backend/source/features/search_jobs/linkedin_graphql_parsed_jobs.json
+/backend/source/features/search_jobs/linkedin_graphql_response.json

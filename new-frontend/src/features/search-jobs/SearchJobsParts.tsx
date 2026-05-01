@@ -297,7 +297,7 @@ const ENGINEERING_PRACTICE_SIGNALS = new Set([
     "ddd",
 ])
 
-type StackCategoryKey = "languages" | "backendFrameworks" | "databases" | "misc"
+type StackCategoryKey = "languages" | "backendFrameworks" | "ai" | "databases" | "misc"
 
 const STACK_LANGUAGE_KEYWORDS = new Set([
     "python",
@@ -323,8 +323,15 @@ const STACK_BACKEND_FRAMEWORK_KEYWORDS = new Set([
     "ruby on rails",
 ])
 
+const STACK_AI_KEYWORDS = new Set([
+    "llm",
+    "langflow",
+    "langgraph",
+])
+
 const STACK_DATABASE_KEYWORDS = new Set([
     "sql",
+    "nosql",
     "mysql",
     "postgresql",
     "postgres",
@@ -341,6 +348,7 @@ const categorizeStackKeywords = (keywords: string[]) => {
     const categories: Record<StackCategoryKey, string[]> = {
         languages: [],
         backendFrameworks: [],
+        ai: [],
         databases: [],
         misc: [],
     }
@@ -355,6 +363,11 @@ const categorizeStackKeywords = (keywords: string[]) => {
 
         if (STACK_BACKEND_FRAMEWORK_KEYWORDS.has(normalized)) {
             categories.backendFrameworks.push(keyword)
+            return
+        }
+
+        if (STACK_AI_KEYWORDS.has(normalized)) {
+            categories.ai.push(keyword)
             return
         }
 
@@ -1316,6 +1329,11 @@ export function SelectedJobPreview({
                                 key: "backendFrameworks",
                                 label: "Backend frameworks",
                                 items: categorizedStack.backendFrameworks,
+                            },
+                            {
+                                key: "ai",
+                                label: "AI / LLM",
+                                items: categorizedStack.ai,
                             },
                             {
                                 key: "databases",
