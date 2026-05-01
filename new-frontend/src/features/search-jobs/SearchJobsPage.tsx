@@ -22,7 +22,8 @@ import {
     readSavedJobIds,
     scoreJobsBatch,
     type SearchJob,
-    streamGraphqlJobs,
+    type SearchJobsMeta,
+    streamGraphqlJobsWithMeta,
     toggleSavedJob,
     writeJobsCache,
     type StreamBackendError,
@@ -31,6 +32,7 @@ import {
 import {
     FetchJobsModal,
     JobListInsideFilters,
+    PrefilterAuditPanel,
     SelectedJobPreview,
     type JobView,
 } from "./SearchJobsParts.tsx"
@@ -48,6 +50,14 @@ const DEFAULT_POSITIVE_KEYWORDS = [
 
 const DEFAULT_MUST_HAVE_KEYWORDS = ["python"]
 const DEFAULT_NEGATIVE_KEYWORDS = ["php"]
+const DEFAULT_LINKEDIN_EXCLUDED_KEYWORDS = [
+    "estágio",
+    "estagio",
+    "junior",
+    "júnior",
+    "senior",
+    "sênior",
+]
 
 type SearchJobsFilterCache = {
     positiveKeywords?: string[]
@@ -368,6 +378,24 @@ const removeStringFromList = (
     setItems((current) => current.filter((item) => item !== value))
 }
 
+const buildLinkedInSearchParams = (
+    fetchQuery: string,
+    mustHaveKeywords: string[],
+    negativeKeywords: string[],
+) => {
+    const keywords = fetchQuery.trim() || unique(mustHaveKeywords).join(" ") || "python"
+    const excludedKeywordList = unique([
+        ...DEFAULT_LINKEDIN_EXCLUDED_KEYWORDS,
+        ...negativeKeywords,
+    ])
+
+    return {
+        keywords,
+        excludedKeywordList,
+        excludedKeywords: excludedKeywordList.join(","),
+    }
+}
+
 export default function SearchJobsPage() {
     const [jobs, setJobs] = useState<SearchJob[]>([])
     const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
@@ -426,6 +454,7 @@ export default function SearchJobsPage() {
     const [savedIds, setSavedIds] = useState<string[]>(() => readSavedJobIds())
 
     const [cacheTimestamp, setCacheTimestamp] = useState<string | null>(null)
+    const [searchMeta, setSearchMeta] = useState<SearchJobsMeta | null>(null)
     const [loadedFromCache, setLoadedFromCache] = useState(false)
     const [loading, setLoading] = useState(false)
     const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -449,6 +478,7 @@ export default function SearchJobsPage() {
 
                 setJobs(result.jobs)
                 setCacheTimestamp(result.cachedAt)
+                setSearchMeta(result.meta)
                 setLoadedFromCache(result.loadedFromCache)
             } catch (error) {
                 if (!isMounted) return
@@ -591,6 +621,33 @@ export default function SearchJobsPage() {
         [selectedJobId, visibleJobs],
     )
 
+    const fetchRequestPreview = useMemo(() => {
+        const searchParams = buildLinkedInSearchParams(
+            fetchQuery,
+            mustHaveKeywords,
+            negativeKeywords,
+        )
+        const backendNegativeKeywords = unique([
+            ...DEFAULT_LINKEDIN_EXCLUDED_KEYWORDS,
+            ...negativeKeywords,
+        ])
+
+        return {
+            linkedinKeywords: searchParams.keywords,
+            linkedinExcludedKeywords: searchParams.excludedKeywordList,
+            effectiveLinkedinQuery: [
+                searchParams.keywords,
+                ...searchParams.excludedKeywordList.map((keyword) => `NOT ${keyword}`),
+            ].join(" "),
+            prefilterMustHaveKeywords: mustHaveKeywords,
+            prefilterNegativeKeywords: backendNegativeKeywords,
+            prefilterNegativeCompanies: negativeCompanies,
+            geoId: "106057199",
+            distance: 25,
+            dropPrefiltered: true,
+        }
+    }, [fetchQuery, mustHaveKeywords, negativeKeywords, negativeCompanies])
+
     useEffect(() => {
         const timeoutId = window.setTimeout(() => {
             if (!selectedJob) {
@@ -611,6 +668,7 @@ export default function SearchJobsPage() {
         setJobs([])
         setSelectedJobId(null)
         setCacheTimestamp(null)
+        setSearchMeta(null)
         setLoadedFromCache(false)
         setFetchProgress(null)
     }
@@ -623,18 +681,30 @@ export default function SearchJobsPage() {
         setFetchProgress(null)
 
         try {
-            const trimmedQuery = fetchQuery.trim()
-            const data = await streamGraphqlJobs(
+            const searchParams = buildLinkedInSearchParams(
+                fetchQuery,
+                mustHaveKeywords,
+                negativeKeywords,
+            )
+            const response = await streamGraphqlJobsWithMeta(
                 {
                     count: fetchCount,
-                    ...(trimmedQuery ? {keywords: trimmedQuery} : {}),
-                    excluded_keywords: "Junior",
+                    keywords: searchParams.keywords,
+                    excluded_keywords: searchParams.excludedKeywords,
+                    must_have_keywords: mustHaveKeywords,
+                    negative_keywords: unique([
+                        ...DEFAULT_LINKEDIN_EXCLUDED_KEYWORDS,
+                        ...negativeKeywords,
+                    ]),
+                    drop_prefiltered: true,
+                    prefilter_enabled: true,
                     geo_id: "106057199",
                     distance: 25,
                     blacklist: negativeCompanies,
                 },
                 setFetchProgress,
             )
+            const data = response.jobs
 
             const scoreMap = await scoreJobsBatch(data)
 
@@ -672,10 +742,11 @@ export default function SearchJobsPage() {
                 }
             })
 
-            const cachedAt = writeJobsCache(enrichedJobs)
+            const cachedAt = writeJobsCache(enrichedJobs, response.meta)
 
             setJobs(enrichedJobs)
             setCacheTimestamp(cachedAt)
+            setSearchMeta(response.meta)
             setLoadedFromCache(false)
             setIsFetchModalOpen(false)
         } catch (error) {
@@ -688,6 +759,7 @@ export default function SearchJobsPage() {
             if (cached?.jobs?.length && !isBackendEnrichmentError) {
                 setJobs(cached.jobs)
                 setCacheTimestamp(cached.cachedAt)
+                setSearchMeta(cached.meta ?? null)
                 setLoadedFromCache(true)
                 setErrorMessage(
                     "Backend fetch failed. Showing the latest cached jobs instead.",
@@ -698,6 +770,7 @@ export default function SearchJobsPage() {
             setJobs([])
             setSelectedJobId(null)
             setCacheTimestamp(null)
+            setSearchMeta(null)
             setLoadedFromCache(false)
             setErrorMessage(
                 error instanceof Error
@@ -813,26 +886,30 @@ export default function SearchJobsPage() {
                 }
             />
 
-            <section className="min-h-0 overflow-hidden bg-slate-950">
-                {selectedJob ? (
-                    <SelectedJobPreview
-                        job={selectedJob}
-                        onToggleSaved={() => handleToggleSaved(selectedJob)}
-                        onOpenApply={() => handleOpenApply(selectedJob)}
-                    />
-                ) : (
-                    <div className="flex h-full flex-col items-center justify-center p-8 text-center">
-                        <Briefcase size={34} className="text-slate-600"/>
+            <section className="flex min-h-0 flex-col overflow-hidden bg-slate-950">
+                <div className="min-h-0 flex-1 overflow-hidden">
+                    {selectedJob ? (
+                        <SelectedJobPreview
+                            job={selectedJob}
+                            onToggleSaved={() => handleToggleSaved(selectedJob)}
+                            onOpenApply={() => handleOpenApply(selectedJob)}
+                        />
+                    ) : (
+                        <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+                            <Briefcase size={34} className="text-slate-600"/>
 
-                        <p className="mt-4 text-sm font-extrabold text-slate-300">
-                            Select a job
-                        </p>
+                            <p className="mt-4 text-sm font-extrabold text-slate-300">
+                                Select a job
+                            </p>
 
-                        <p className="mt-2 max-w-sm text-xs leading-5 text-slate-500">
-                            Pick one job from the existing filter/list panel to preview its details here.
-                        </p>
-                    </div>
-                )}
+                            <p className="mt-2 max-w-sm text-xs leading-5 text-slate-500">
+                                Pick one job from the existing filter/list panel to preview its details here.
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                <PrefilterAuditPanel meta={searchMeta}/>
             </section>
 
             {isFetchModalOpen && (
@@ -843,6 +920,7 @@ export default function SearchJobsPage() {
                     setFetchQuery={setFetchQuery}
                     loading={loading}
                     progress={fetchProgress}
+                    requestPreview={fetchRequestPreview}
                     onClose={() => setIsFetchModalOpen(false)}
                     onSubmit={handleFetchJobs}
                 />

@@ -27,6 +27,7 @@ from source.features.search_jobs.curl_voyager_jobs_fetch import (
     WorkType,
 )
 from source.features.search_jobs.job_search_service import LinkedInJobsSearchService
+from source.features.search_jobs.search_prefilter import JobSearchPrefilter
 
 # ══════════════════════════════════════════════════════════════
 # Helpers — request parsing only
@@ -223,6 +224,10 @@ def _enum_options(enum_cls: type[Enum]) -> list[dict[str, str]]:
 
 def _get_search_params() -> dict[str, Any]:
     """Extrai todos os parâmetros comuns para evitar repetição nos endpoints."""
+    blacklist = _normalize_list_input(
+        _get_input("blacklist", "blackList", "blacklistedCompanies")
+    )
+
     return {
         "page": _parse_int(_get_input("page", default=1), "page") or 1,
         "start": _parse_int(_get_input("start"), "start"),
@@ -231,8 +236,27 @@ def _get_search_params() -> dict[str, Any]:
         "save_raw_json": _parse_bool(_get_input("save_raw_json", "saveRawJson", default=True), default=True),
         "save_parsed_json": _parse_bool(_get_input("save_parsed_json", "saveParsedJson", default=True), default=True),
         "tuning": _build_tuning_from_request(),
-        "blacklist": _normalize_list_input(
-            _get_input("blacklist", "blackList", "blacklistedCompanies")
+        "blacklist": blacklist,
+        "prefilter": JobSearchPrefilter(
+            must_have_keywords=_normalize_list_input(
+                _get_input("must_have_keywords", "mustHaveKeywords")
+            ),
+            negative_keywords=_normalize_list_input(
+                _get_input("negative_keywords", "negativeKeywords")
+            ),
+            negative_companies=blacklist,
+            max_applicants=_parse_int(
+                _get_input("max_applicants", "maxApplicants"),
+                "max_applicants",
+            ),
+            drop_rejected=_parse_bool(
+                _get_input("drop_prefiltered", "dropPrefiltered", default=True),
+                default=True,
+            ),
+            enabled=_parse_bool(
+                _get_input("prefilter_enabled", "prefilterEnabled", default=True),
+                default=True,
+            ),
         ),
     }
 

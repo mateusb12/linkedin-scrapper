@@ -25,6 +25,10 @@ from source.features.search_jobs.curl_voyager_jobs_parse import (
     parse_linkedin_graphql_response,
     jobs_to_json_serializable,
 )
+from source.features.search_jobs.search_prefilter import (
+    JobSearchPrefilter,
+    build_prefilter_audit,
+)
 
 
 def _deduplicate_jobs(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -98,6 +102,7 @@ class LinkedInJobsSearchService:
             save_parsed_json: bool = True,
             enrich_jobs: bool = True,
             blacklist: list[str] | None = None,
+            prefilter: JobSearchPrefilter | None = None,
     ) -> dict[str, Any]:
         """
         Wrapper síncrono para garantir retrocompatibilidade.
@@ -114,6 +119,7 @@ class LinkedInJobsSearchService:
                 save_parsed_json=save_parsed_json,
                 enrich_jobs=enrich_jobs,
                 blacklist=blacklist,
+                prefilter=prefilter,
         ):
             if event.get("type") == "result":
                 result = event.get("data", {})
@@ -135,6 +141,7 @@ class LinkedInJobsSearchService:
             save_parsed_json: bool = True,
             enrich_jobs: bool = True,
             blacklist: list[str] | None = None,
+            prefilter: JobSearchPrefilter | None = None,
     ):
         """
         Full orchestration flow for endpoint usage with stream/progress capability.
@@ -166,19 +173,47 @@ class LinkedInJobsSearchService:
 
         self.batch_enricher.set_blacklist(blacklist or [])
 
+        prefilter_audit: dict[str, Any] | None = None
+
         if enrich_jobs:
-            final_jobs_json = []
-            for event_type, data in self._enrich_parsed_jobs_stream(parsed_jobs_json):
+            jobs_for_enrichment = parsed_jobs_json
+            rejected_jobs_json: list[dict[str, Any]] = []
+
+            if prefilter and prefilter.enabled and prefilter.has_rules:
+                for event_type, data in self._prefilter_parsed_jobs_stream(
+                        parsed_jobs_json,
+                        prefilter,
+                ):
+                    if event_type == "progress":
+                        yield {"type": "progress", **data}
+                    elif event_type == "result":
+                        jobs_for_enrichment = data["accepted"]
+                        rejected_jobs_json = data["rejected"]
+                        prefilter_audit = data["audit"]
+                    elif event_type == "auth_error":
+                        yield {"type": "auth_error", **data}
+                        return
+                    elif event_type == "enrichment_error":
+                        yield {"type": "enrichment_error", **data}
+                        return
+
+            enriched_jobs_json = []
+            for event_type, data in self._enrich_parsed_jobs_stream(jobs_for_enrichment):
                 if event_type == "progress":
                     yield {"type": "progress", **data}
                 elif event_type == "result":
-                    final_jobs_json = data
+                    enriched_jobs_json = data
                 elif event_type == "auth_error":
                     yield {"type": "auth_error", **data}
                     return
                 elif event_type == "enrichment_error":
                     yield {"type": "enrichment_error", **data}
                     return
+
+            if prefilter and prefilter.enabled and prefilter.has_rules and not prefilter.drop_rejected:
+                final_jobs_json = enriched_jobs_json + rejected_jobs_json
+            else:
+                final_jobs_json = enriched_jobs_json
         else:
             final_jobs_json = parsed_jobs_json
 
@@ -198,6 +233,7 @@ class LinkedInJobsSearchService:
                 "paging": asdict(parsed_output.paging),
                 "geo": asdict(parsed_output.geo) if parsed_output.geo else None,
                 "jobs_enriched": enrich_jobs,
+                "prefilter": prefilter_audit,
             },
             "audit": self._build_audit(parsed_output.jobs),
             "jobs": final_jobs_json,
@@ -209,6 +245,91 @@ class LinkedInJobsSearchService:
             if event_type == "result":
                 return data
         return parsed_jobs
+
+    def _prefilter_parsed_jobs_stream(
+            self,
+            parsed_jobs: list[dict[str, Any]],
+            prefilter: JobSearchPrefilter,
+    ):
+        accepted_jobs: list[dict[str, Any]] = []
+        rejected_jobs: list[dict[str, Any]] = []
+        total = len(parsed_jobs)
+
+        for index, parsed_job in enumerate(parsed_jobs, start=1):
+            job_id = str(parsed_job.get("job_id") or "").strip()
+            if not job_id:
+                continue
+
+            seed = self._build_base_job_seed(parsed_job)
+
+            try:
+                hydrated_seed = self.batch_enricher.hydrate_job_details(
+                    job_id,
+                    seed_data=seed,
+                )
+            except AuthExpiredError as exc:
+                context = self.batch_enricher.last_failure_context or {}
+                yield "auth_error", {
+                    "step": "prefiltering",
+                    "code": "LINKEDIN_AUTH_EXPIRED",
+                    "failed_config": context.get("failed_config") or "SavedJobs",
+                    "operation": context.get("operation") or "fetch_job_details",
+                    "job_id": context.get("job_id") or job_id,
+                    "status_code": context.get("status_code"),
+                    "message": str(exc),
+                    "error": str(exc),
+                }
+                return
+            except Exception as exc:
+                hydrated_seed = {
+                    **seed,
+                    "prefilter_details_hydrated": False,
+                    "prefilter_details_error": str(exc),
+                }
+
+            merged = {**parsed_job, **hydrated_seed}
+            evaluation = prefilter.evaluate(merged)
+            if merged.get("prefilter_details_error"):
+                evaluation["details_unavailable"] = True
+            merged["prefilter_evaluation"] = evaluation
+
+            if evaluation["accepted"]:
+                accepted_jobs.append(merged)
+            else:
+                merged.update({
+                    "enrichment_skipped": True,
+                    "enrichment_skip_reason": "search_prefilter",
+                    "premium_component_found": False,
+                    "applicants_total": merged.get("applicants_total"),
+                    "applicants_last_24h": None,
+                    "seniority_distribution": [],
+                    "education_distribution": [],
+                    "premium_title": None,
+                    "premium_description": None,
+                    "learn_more_url": None,
+                    "data_sdui_components": [],
+                })
+                rejected_jobs.append(merged)
+
+            yield "progress", {
+                "step": "prefiltering",
+                "current": index,
+                "total": total,
+                "message": f"Aplicando pré-filtro {index}/{total}",
+            }
+
+        audit = build_prefilter_audit(
+            total=total,
+            accepted=accepted_jobs,
+            rejected=rejected_jobs,
+            prefilter=prefilter,
+        )
+
+        yield "result", {
+            "accepted": accepted_jobs,
+            "rejected": rejected_jobs,
+            "audit": audit,
+        }
 
     def _enrich_parsed_jobs_stream(self, parsed_jobs: list[dict[str, Any]]):
         """

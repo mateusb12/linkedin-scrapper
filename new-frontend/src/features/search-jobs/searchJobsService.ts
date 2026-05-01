@@ -100,6 +100,10 @@ export type SearchJobsParams = {
     count?: number
     keywords?: string
     excluded_keywords?: string
+    must_have_keywords?: string[]
+    negative_keywords?: string[]
+    drop_prefiltered?: boolean
+    prefilter_enabled?: boolean
     geo_id?: string
     distance?: number
     blacklist?: string[]
@@ -115,11 +119,57 @@ export type SearchJobsProgress = {
     [key: string]: unknown
 }
 
+export type PrefilterRejectedJob = {
+    job_id?: string | number | null
+    title?: string | null
+    company?: string | null
+    location?: string | null
+    job_url?: string | null
+    reasons?: string[]
+    reason_codes?: string[]
+    missing_must_have_keywords?: string[]
+    matched_negative_keywords?: string[]
+    details_unavailable?: boolean
+    details_error?: string | null
+}
+
+export type PrefilterAudit = {
+    enabled?: boolean
+    drop_rejected?: boolean
+    rules?: {
+        must_have_keywords?: string[]
+        negative_keywords?: string[]
+        negative_companies?: string[]
+        max_applicants?: number | null
+    }
+    cards_checked?: number
+    accepted_for_expensive_enrichment?: number
+    rejected_before_expensive_enrichment?: number
+    reason_counts?: Record<string, number>
+    missing_must_have_counts?: Record<string, number>
+    matched_negative_counts?: Record<string, number>
+    sample_rejected?: PrefilterRejectedJob[]
+    rejected_jobs?: PrefilterRejectedJob[]
+}
+
+export type SearchJobsMeta = {
+    page?: number
+    count?: number
+    duplicates_removed?: number
+    keywords?: string | null
+    origin?: string | null
+    paging?: unknown
+    geo?: unknown
+    jobs_enriched?: boolean
+    prefilter?: PrefilterAudit | null
+    [key: string]: unknown
+}
+
 export type GraphqlJobsResponse = {
     status: string
     jobs: SearchJob[]
     audit: unknown
-    meta: unknown
+    meta: SearchJobsMeta | null
 }
 
 export type StreamBackendErrorDetails = {
@@ -143,6 +193,7 @@ export type StreamBackendError = Error & {
 type JobsCachePayload = {
     jobs: SearchJob[]
     cachedAt: string
+    meta?: SearchJobsMeta | null
 }
 
 type ScoreItem = {
@@ -227,9 +278,9 @@ const writeJson = (key: string, value: unknown) => {
 export const readJobsCache = (): JobsCachePayload | null =>
     readJson<JobsCachePayload | null>(JOBS_CACHE_KEY, null)
 
-export const writeJobsCache = (jobs: SearchJob[]) => {
+export const writeJobsCache = (jobs: SearchJob[], meta: SearchJobsMeta | null = null) => {
     const cachedAt = new Date().toISOString()
-    writeJson(JOBS_CACHE_KEY, {jobs, cachedAt})
+    writeJson(JOBS_CACHE_KEY, {jobs, cachedAt, meta})
 
     return cachedAt
 }
@@ -268,6 +319,7 @@ export function getInitialSearchJobsData() {
         jobs: cached?.jobs ?? [],
         cachedAt: cached?.cachedAt ?? null,
         loadedFromCache: Boolean(cached?.jobs?.length),
+        meta: cached?.meta ?? null,
     }
 }
 
@@ -516,11 +568,15 @@ function normalizeGraphqlJobsResponse(apiData: unknown): GraphqlJobsResponse {
         .map((job) => normalizeSearchJob(job as RawJobPayload))
         .filter((job): job is SearchJob => job !== null)
 
+    const meta = typeof payloadRoot.meta === "object" && payloadRoot.meta !== null
+        ? payloadRoot.meta as SearchJobsMeta
+        : null
+
     return {
         status: getString(apiObject.status) || "success",
         jobs,
         audit: payloadRoot.audit || null,
-        meta: payloadRoot.meta || null,
+        meta,
     }
 }
 
@@ -597,7 +653,7 @@ function buildStreamError(parsed: StreamBackendErrorDetails): StreamBackendError
     return error
 }
 
-export async function streamGraphqlJobs(
+export async function streamGraphqlJobsWithMeta(
     params: SearchJobsParams = {},
     onProgress?: (progress: SearchJobsProgress) => void,
 ) {
@@ -662,7 +718,7 @@ export async function streamGraphqlJobs(
 
             if (parsed.type === "result") {
                 const responseModel = normalizeGraphqlJobsResponse(parsed.data)
-                return responseModel.jobs
+                return responseModel
             }
 
             if (
@@ -689,6 +745,14 @@ export async function streamGraphqlJobs(
             lastEventType || "none"
         }.`,
     )
+}
+
+export async function streamGraphqlJobs(
+    params: SearchJobsParams = {},
+    onProgress?: (progress: SearchJobsProgress) => void,
+) {
+    const result = await streamGraphqlJobsWithMeta(params, onProgress)
+    return result.jobs
 }
 
 export async function getGraphqlJobs(params: SearchJobsParams = {}) {

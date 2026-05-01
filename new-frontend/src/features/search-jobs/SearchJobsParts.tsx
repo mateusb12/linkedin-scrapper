@@ -29,6 +29,7 @@ import {
     placeholderLogo,
     type ScoreSignal,
     type SearchJob,
+    type SearchJobsMeta,
 } from "./searchJobsService.ts"
 
 
@@ -1545,6 +1546,375 @@ function LiveProgressBar({progress}: { progress: SearchJobsProgress | null }) {
     )
 }
 
+const formatCountMap = (value?: Record<string, number>) =>
+    Object.entries(value || {})
+        .sort((a, b) => b[1] - a[1])
+        .map(([key, count]) => `${key}: ${count}`)
+
+const getPrefilterRejectedJobs = (meta: SearchJobsMeta | null) =>
+    meta?.prefilter?.rejected_jobs || meta?.prefilter?.sample_rejected || []
+
+export function PrefilterAuditPanel({meta}: { meta: SearchJobsMeta | null }) {
+    const [isOpen, setIsOpen] = useState(false)
+    const prefilter = meta?.prefilter || null
+    const rejectedJobs = getPrefilterRejectedJobs(meta)
+
+    if (!prefilter) {
+        return (
+            <div className="border-t border-slate-800 bg-slate-950 px-4 py-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                    <Filter size={14}/>
+                    Prefilter report unavailable for this cache.
+                </div>
+            </div>
+        )
+    }
+
+    const cardsChecked = prefilter.cards_checked ?? 0
+    const accepted = prefilter.accepted_for_expensive_enrichment ?? 0
+    const rejected = prefilter.rejected_before_expensive_enrichment ?? rejectedJobs.length
+    const missingCounts = formatCountMap(prefilter.missing_must_have_counts)
+    const negativeCounts = formatCountMap(prefilter.matched_negative_counts)
+    const rules = prefilter.rules || {}
+
+    return (
+        <div className="shrink-0 border-t border-slate-800 bg-slate-950">
+            <button
+                type="button"
+                onClick={() => setIsOpen((current) => !current)}
+                className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition hover:bg-slate-900/70"
+            >
+                <span className="inline-flex min-w-0 items-center gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-red-400/30 bg-red-500/10 text-red-200">
+                        <Filter size={15}/>
+                    </span>
+
+                    <span className="min-w-0">
+                        <span className="block text-sm font-black text-slate-100">
+                            Prefilter report
+                        </span>
+                        <span className="block truncate text-xs font-bold text-slate-500">
+                            {rejected} rejected before enrichment · {accepted} enriched · {cardsChecked} checked
+                        </span>
+                    </span>
+                </span>
+
+                <ChevronRight
+                    size={18}
+                    className={`shrink-0 text-slate-500 transition ${
+                        isOpen ? "rotate-90" : ""
+                    }`}
+                />
+            </button>
+
+            {isOpen && (
+                <div className="max-h-[42vh] overflow-y-auto border-t border-slate-800 px-4 py-4">
+                    <div className="grid gap-3 md:grid-cols-3">
+                        <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
+                            <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                                Checked
+                            </p>
+                            <p className="mt-1 text-2xl font-black text-slate-100">
+                                {cardsChecked}
+                            </p>
+                        </div>
+
+                        <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-3">
+                            <p className="text-[10px] font-black uppercase tracking-wide text-emerald-300/70">
+                                Enriched
+                            </p>
+                            <p className="mt-1 text-2xl font-black text-emerald-200">
+                                {accepted}
+                            </p>
+                        </div>
+
+                        <div className="rounded-lg border border-red-400/25 bg-red-500/10 p-3">
+                            <p className="text-[10px] font-black uppercase tracking-wide text-red-300/70">
+                                Skipped
+                            </p>
+                            <p className="mt-1 text-2xl font-black text-red-200">
+                                {rejected}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                        <PrefilterAuditBlock
+                            label="Rules"
+                            items={[
+                                `must: ${(rules.must_have_keywords || []).join(", ") || "-"}`,
+                                `negative: ${(rules.negative_keywords || []).join(", ") || "-"}`,
+                                `companies: ${(rules.negative_companies || []).join(", ") || "-"}`,
+                                `max applicants: ${rules.max_applicants ?? "-"}`,
+                            ]}
+                        />
+
+                        <PrefilterAuditBlock
+                            label="Top reject signals"
+                            items={[
+                                ...missingCounts.map((item) => `missing ${item}`),
+                                ...negativeCounts.map((item) => `negative ${item}`),
+                            ]}
+                            emptyLabel="No reject signals recorded."
+                        />
+                    </div>
+
+                    <div className="mt-4 overflow-hidden rounded-lg border border-slate-800">
+                        <div className="grid grid-cols-[minmax(0,1fr)_minmax(130px,0.35fr)] gap-3 border-b border-slate-800 bg-slate-900/80 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                            <span>Rejected job</span>
+                            <span>Reason</span>
+                        </div>
+
+                        {rejectedJobs.length > 0 ? (
+                            rejectedJobs.map((job, index) => (
+                                <div
+                                    key={`${job.job_id || job.title || "job"}-${index}`}
+                                    className="grid grid-cols-[minmax(0,1fr)_minmax(130px,0.35fr)] gap-3 border-b border-slate-800/70 px-3 py-3 last:border-b-0"
+                                >
+                                    <div className="min-w-0">
+                                        <div className="flex min-w-0 items-center gap-2">
+                                            <p className="truncate text-sm font-extrabold text-slate-100">
+                                                {job.title || "Untitled job"}
+                                            </p>
+
+                                            {job.job_url && (
+                                                <a
+                                                    href={job.job_url}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="shrink-0 text-slate-500 transition hover:text-sky-300"
+                                                    aria-label="Open rejected job"
+                                                >
+                                                    <ExternalLink size={13}/>
+                                                </a>
+                                            )}
+                                        </div>
+
+                                        <p className="mt-1 truncate text-xs font-bold text-slate-500">
+                                            {[job.company, job.location, job.job_id]
+                                                .filter(Boolean)
+                                                .join(" · ")}
+                                        </p>
+
+                                        {job.details_unavailable && (
+                                            <p className="mt-1 text-[11px] font-bold text-amber-300">
+                                                Details unavailable; card data was used.
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="flex flex-wrap items-start gap-1.5">
+                                        {(job.reasons || []).length > 0 ? (
+                                            (job.reasons || []).map((reason) => (
+                                                <span
+                                                    key={reason}
+                                                    className="rounded-md border border-red-400/25 bg-red-500/10 px-2 py-1 text-[11px] font-bold text-red-200"
+                                                >
+                                                    {reason}
+                                                </span>
+                                            ))
+                                        ) : (
+                                            <span className="text-xs font-bold text-slate-500">
+                                                No reason recorded
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="px-3 py-5 text-sm font-bold text-slate-500">
+                                No rejected jobs recorded.
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}
+
+function PrefilterAuditBlock({
+                                 label,
+                                 items,
+                                 emptyLabel = "None",
+                             }: {
+    label: string
+    items: string[]
+    emptyLabel?: string
+}) {
+    const visibleItems = items.filter(Boolean)
+
+    return (
+        <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
+            <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+                {label}
+            </p>
+
+            <div className="mt-2 flex flex-wrap gap-1.5">
+                {visibleItems.length > 0 ? (
+                    visibleItems.map((item) => (
+                        <span
+                            key={item}
+                            className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] font-bold text-slate-300"
+                        >
+                            {item}
+                        </span>
+                    ))
+                ) : (
+                    <span className="text-xs font-bold text-slate-500">
+                        {emptyLabel}
+                    </span>
+                )}
+            </div>
+        </div>
+    )
+}
+
+type FetchRequestPreview = {
+    linkedinKeywords: string
+    linkedinExcludedKeywords: string[]
+    effectiveLinkedinQuery: string
+    prefilterMustHaveKeywords: string[]
+    prefilterNegativeKeywords: string[]
+    prefilterNegativeCompanies: string[]
+    geoId: string
+    distance: number
+    dropPrefiltered: boolean
+}
+
+function QueryPreviewRow({
+                             label,
+                             value,
+                         }: {
+    label: string
+    value: ReactNode
+}) {
+    return (
+        <div className="grid gap-1 border-b border-slate-800/70 py-2 last:border-b-0 sm:grid-cols-[130px_minmax(0,1fr)] sm:gap-3">
+            <span className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+                {label}
+            </span>
+            <div className="min-w-0 text-xs font-bold leading-5 text-slate-300">
+                {value}
+            </div>
+        </div>
+    )
+}
+
+function QueryPreviewChips({
+                               values,
+                               emptyLabel = "-",
+                               tone = "slate",
+                           }: {
+    values: string[]
+    emptyLabel?: string
+    tone?: "slate" | "red" | "emerald"
+}) {
+    const className = {
+        slate: "border-slate-700 bg-slate-950 text-slate-300",
+        red: "border-red-400/25 bg-red-500/10 text-red-200",
+        emerald: "border-emerald-400/25 bg-emerald-500/10 text-emerald-200",
+    }[tone]
+
+    if (values.length === 0) {
+        return <span className="text-slate-500">{emptyLabel}</span>
+    }
+
+    return (
+        <div className="flex flex-wrap gap-1.5">
+            {values.map((value) => (
+                <span
+                    key={value}
+                    className={`rounded-md border px-2 py-1 text-[11px] font-bold ${className}`}
+                >
+                    {value}
+                </span>
+            ))}
+        </div>
+    )
+}
+
+function FetchRequestPreviewPanel({
+                                      preview,
+                                  }: {
+    preview: FetchRequestPreview
+}) {
+    return (
+        <div className="rounded-xl border border-slate-800 bg-slate-900/55 p-3">
+            <div className="flex items-center gap-2 text-xs font-black text-slate-100">
+                <Search size={14} className="text-sky-300"/>
+                Request preview
+            </div>
+
+            <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/70 px-3">
+                <QueryPreviewRow
+                    label="LinkedIn query"
+                    value={
+                        <code className="break-words rounded bg-slate-900 px-1.5 py-0.5 text-[11px] text-sky-200">
+                            {preview.effectiveLinkedinQuery}
+                        </code>
+                    }
+                />
+
+                <QueryPreviewRow
+                    label="keywords"
+                    value={
+                        <code className="break-words rounded bg-slate-900 px-1.5 py-0.5 text-[11px] text-slate-200">
+                            {preview.linkedinKeywords}
+                        </code>
+                    }
+                />
+
+                <QueryPreviewRow
+                    label="excluded"
+                    value={
+                        <QueryPreviewChips
+                            values={preview.linkedinExcludedKeywords}
+                            tone="red"
+                        />
+                    }
+                />
+
+                <QueryPreviewRow
+                    label="prefilter must"
+                    value={
+                        <QueryPreviewChips
+                            values={preview.prefilterMustHaveKeywords}
+                            tone="emerald"
+                        />
+                    }
+                />
+
+                <QueryPreviewRow
+                    label="prefilter no"
+                    value={
+                        <QueryPreviewChips
+                            values={preview.prefilterNegativeKeywords}
+                            tone="red"
+                        />
+                    }
+                />
+
+                <QueryPreviewRow
+                    label="companies"
+                    value={
+                        <QueryPreviewChips
+                            values={preview.prefilterNegativeCompanies}
+                        />
+                    }
+                />
+
+                <QueryPreviewRow
+                    label="scope"
+                    value={`geo ${preview.geoId} · ${preview.distance} mi · ${
+                        preview.dropPrefiltered ? "drop rejected before enrichment" : "keep rejected"
+                    }`}
+                />
+            </div>
+        </div>
+    )
+}
+
 
 export function FetchJobsModal({
                                    fetchCount,
@@ -1553,6 +1923,7 @@ export function FetchJobsModal({
                                    setFetchQuery,
                                    loading,
                                    progress,
+                                   requestPreview,
                                    onClose,
                                    onSubmit,
                                }: {
@@ -1562,6 +1933,7 @@ export function FetchJobsModal({
     setFetchQuery: (value: string) => void
     loading: boolean
     progress: SearchJobsProgress | null
+    requestPreview: FetchRequestPreview
     onClose: () => void
     onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }) {
@@ -1569,7 +1941,7 @@ export function FetchJobsModal({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
             <form
                 onSubmit={onSubmit}
-                className="w-full max-w-lg rounded-3xl border border-slate-700 bg-slate-950 p-5 shadow-2xl"
+                className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-700 bg-slate-950 p-5 shadow-2xl"
             >
                 <div className="flex items-start justify-between gap-4">
                     <div>
@@ -1612,7 +1984,7 @@ export function FetchJobsModal({
                                 type="text"
                                 value={fetchQuery}
                                 onChange={(event) => setFetchQuery(event.target.value)}
-                                placeholder="e.g. React, Python backend, Node.js"
+                                placeholder="Defaults to your must-have keywords"
                                 className="w-full rounded-xl border border-slate-700 bg-slate-900 py-2.5 pl-10 pr-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-500"
                             />
                         </div>
@@ -1673,6 +2045,8 @@ export function FetchJobsModal({
                             ))}
                         </div>
                     </div>
+
+                    <FetchRequestPreviewPanel preview={requestPreview}/>
 
                     {loading && (
                         <LiveProgressBar progress={progress}/>

@@ -259,12 +259,15 @@ class BatchEnrichmentService:
             return JobPost.from_dict(base_job_dict)
 
         try:
-            details = self._with_backoff(
-                "fetch_job_details",
-                lambda: self.single.fetch_job_details(job_id, raise_on_failure=True),
-            )
-            base_job_dict.update(self._strip_private_keys(details))
-            self._sleep(self.per_request_delay_seconds)
+            if seed_data and seed_data.get("prefilter_details_hydrated"):
+                details = {}
+            else:
+                details = self._with_backoff(
+                    "fetch_job_details",
+                    lambda: self.single.fetch_job_details(job_id, raise_on_failure=True),
+                )
+                base_job_dict.update(self._strip_private_keys(details))
+                self._sleep(self.per_request_delay_seconds)
 
             premium = self._with_backoff(
                 "fetch_premium_insights",
@@ -318,6 +321,47 @@ class BatchEnrichmentService:
                 return JobPost.from_dict(base_job_dict)
             raise
 
+        finally:
+            self._sleep(self.per_job_delay_seconds)
+            self._current_job_id = None
+
+    def hydrate_job_details(
+            self,
+            job_urn: str,
+            seed_data: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        job_id = str(job_urn).split(":")[-1] if ":" in str(job_urn) else str(job_urn)
+        self._current_job_id = job_id
+
+        base_job_dict: Dict[str, Any] = {
+            "job_id": job_id,
+            "job_url": f"https://www.linkedin.com/jobs/view/{job_id}/",
+            "title": None,
+            "company": "Unknown",
+            "location": None,
+            "prefilter_details_hydrated": False,
+        }
+
+        if seed_data:
+            base_job_dict.update(seed_data)
+
+        if self._is_blacklisted(base_job_dict):
+            base_job_dict.update({
+                "blacklisted": True,
+                "prefilter_details_hydrated": False,
+            })
+            self._current_job_id = None
+            return base_job_dict
+
+        try:
+            details = self._with_backoff(
+                "fetch_job_details",
+                lambda: self.single.fetch_job_details(job_id, raise_on_failure=True),
+            )
+            base_job_dict.update(self._strip_private_keys(details))
+            base_job_dict["blacklisted"] = False
+            base_job_dict["prefilter_details_hydrated"] = True
+            return base_job_dict
         finally:
             self._sleep(self.per_job_delay_seconds)
             self._current_job_id = None
