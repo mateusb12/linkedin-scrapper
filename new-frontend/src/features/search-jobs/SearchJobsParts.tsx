@@ -297,6 +297,77 @@ const ENGINEERING_PRACTICE_SIGNALS = new Set([
     "ddd",
 ])
 
+type StackCategoryKey = "languages" | "backendFrameworks" | "databases" | "misc"
+
+const STACK_LANGUAGE_KEYWORDS = new Set([
+    "python",
+    "go",
+    "c#",
+    "java",
+    "javascript",
+    "typescript",
+    "php",
+    "ruby",
+])
+
+const STACK_BACKEND_FRAMEWORK_KEYWORDS = new Set([
+    "django",
+    "fastapi",
+    "flask",
+    "asp.net",
+    "asp.net core",
+    "spring",
+    "spring boot",
+    "laravel",
+    "ruby on rails",
+])
+
+const STACK_DATABASE_KEYWORDS = new Set([
+    "sql",
+    "mysql",
+    "postgresql",
+    "postgres",
+    "redis",
+    "oracle",
+    "dynamodb",
+    "supabase",
+    "mongodb",
+    "mariadb",
+    "sqlite",
+])
+
+const categorizeStackKeywords = (keywords: string[]) => {
+    const categories: Record<StackCategoryKey, string[]> = {
+        languages: [],
+        backendFrameworks: [],
+        databases: [],
+        misc: [],
+    }
+
+    keywords.forEach((keyword) => {
+        const normalized = normalizeTechText(formatTechLabel(keyword))
+
+        if (STACK_LANGUAGE_KEYWORDS.has(normalized)) {
+            categories.languages.push(keyword)
+            return
+        }
+
+        if (STACK_BACKEND_FRAMEWORK_KEYWORDS.has(normalized)) {
+            categories.backendFrameworks.push(keyword)
+            return
+        }
+
+        if (STACK_DATABASE_KEYWORDS.has(normalized)) {
+            categories.databases.push(keyword)
+            return
+        }
+
+        categories.misc.push(keyword)
+    })
+
+    return categories
+}
+
 function RoleSignalBadge({
                              signal,
                              positive,
@@ -1239,30 +1310,74 @@ export function SelectedJobPreview({
                             runtimeKeywords,
                             job.seniority,
                         )
+                        const categorizedStack = categorizeStackKeywords(stackKeywords)
+                        const stackGroups = [
+                            {
+                                key: "languages",
+                                label: "Languages",
+                                items: categorizedStack.languages,
+                            },
+                            {
+                                key: "backendFrameworks",
+                                label: "Backend frameworks",
+                                items: categorizedStack.backendFrameworks,
+                            },
+                            {
+                                key: "databases",
+                                label: "Databases",
+                                items: categorizedStack.databases,
+                            },
+                            {
+                                key: "misc",
+                                label: "Misc",
+                                items: categorizedStack.misc,
+                            },
+                        ].filter((group) => group.items.length > 0)
 
                         return (
                             <>
                                 <h2 className="text-lg font-extrabold text-slate-50">
-                                    Detected stack
+                                    Job metrics
                                 </h2>
 
                                 <div className="mt-4 flex flex-wrap gap-2">
-                                    {stackKeywords.length > 0 ? (
-                                        stackKeywords.map((item) => (
-                                            <TechBadge
-                                                key={item}
-                                                tech={item}
-                                                positive={isPositiveKeywordMatch(
-                                                    item,
-                                                    job.matchedPositiveKeywords,
-                                                )}
-                                            />
-                                        ))
-                                    ) : (
-                                        <p className="text-sm text-slate-500">
-                                            No concrete tech stack detected in this payload.
-                                        </p>
-                                    )}
+                                    <ApplicantsBadge applicants={job.applicantsTotal}/>
+                                    <JobAgeBadge postedAt={job.postedAt}/>
+                                </div>
+
+                                <div className="mt-5 border-t border-slate-800 pt-4">
+                                    <h3 className="text-sm font-extrabold text-slate-300">
+                                        Detected stack
+                                    </h3>
+
+                                    <div className="mt-3 space-y-4">
+                                        {stackGroups.length > 0 ? (
+                                            stackGroups.map((group) => (
+                                                <div key={group.key}>
+                                                    <p className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+                                                        {group.label}
+                                                    </p>
+
+                                                    <div className="mt-2 flex flex-wrap gap-2">
+                                                        {group.items.map((item) => (
+                                                            <TechBadge
+                                                                key={`${group.key}-${item}`}
+                                                                tech={item}
+                                                                positive={isPositiveKeywordMatch(
+                                                                    item,
+                                                                    job.matchedPositiveKeywords,
+                                                                )}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <p className="text-sm text-slate-500">
+                                                No concrete tech stack detected in this payload.
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className="mt-5 border-t border-slate-800 pt-4">
@@ -1287,17 +1402,6 @@ export function SelectedJobPreview({
                                                 No role signals detected in this payload.
                                             </p>
                                         )}
-                                    </div>
-                                </div>
-
-                                <div className="mt-5 border-t border-slate-800 pt-4">
-                                    <h3 className="text-sm font-extrabold text-slate-300">
-                                        Job metrics
-                                    </h3>
-
-                                    <div className="mt-3 flex flex-wrap gap-2">
-                                        <ApplicantsBadge applicants={job.applicantsTotal}/>
-                                        <JobAgeBadge postedAt={job.postedAt}/>
                                     </div>
                                 </div>
                             </>

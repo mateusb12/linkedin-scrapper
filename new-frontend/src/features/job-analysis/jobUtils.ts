@@ -15,6 +15,7 @@ import sqlIcon from "../../assets/skills/sql.png";
 import javascriptIcon from "../../assets/skills/javascript.png";
 import typescriptIcon from "../../assets/skills/typescript.png";
 import phpIcon from "../../assets/skills/php.png";
+import goIcon from "../../assets/skills/go.svg";
 
 import djangoIcon from "../../assets/skills/django.png";
 import azureIcon from "../../assets/skills/azure.png";
@@ -146,6 +147,7 @@ const techIconsMap: Record<string, string> = {
     JavaScript: javascriptIcon,
     TypeScript: typescriptIcon,
     PHP: phpIcon,
+    Go: goIcon,
 
     Django: djangoIcon,
     FastAPI: fastapiIcon,
@@ -242,6 +244,12 @@ const TECH_LABEL_ALIASES: Record<string, string> = {
     node: "Node.js",
     nodejs: "Node.js",
     "node.js": "Node.js",
+    golang: "Go",
+    go: "Go",
+    rails: "Ruby",
+    "ruby on rails": "Ruby",
+    ruby: "Ruby",
+    "node js": "Node.js",
     nextjs: "NextJS",
     "next.js": "NextJS",
     backend: "Backend",
@@ -320,7 +328,10 @@ const RUNTIME_KEYWORD_HINTS = [
     {label: "C#", pattern: /(^|[^a-z0-9])(?:c\s*#|csharp|c\s+sharp)([^a-z0-9]|$)/i},
     {label: "ASP.NET Core", pattern: /(^|[^a-z0-9])(?:asp\s*\.?\s*net\s*core|aspnetcore)([^a-z0-9]|$)/i},
     {label: "ASP.NET", pattern: /(^|[^a-z0-9])(?:asp\s*\.?\s*net|aspnet)(?!\s*core)([^a-z0-9]|$)/i},
-    {label: ".NET", pattern: /(^|[^a-z0-9])(?:asp\s*\.?\s*net|\.net|dot\s*net|dotnet|net\s+(?:core|framework|[0-9]))([^a-z0-9]|$)/i},
+    {
+        label: ".NET",
+        pattern: /(^|[^a-z0-9])(?:asp\s*\.?\s*net|\.net|dot\s*net|dotnet|net\s+(?:core|framework|[0-9]))([^a-z0-9]|$)/i
+    },
     {label: "Entity Framework", pattern: /\b(entity\s*framework(?:\s*core)?|entityframework|ef\s*core)\b/i},
     {label: "AWS Lambda", pattern: /\baws\s+lambda\b/i},
     {label: "API Gateway", pattern: /\b(?:aws\s+)?api\s+gateway\b/i},
@@ -340,10 +351,13 @@ const RUNTIME_KEYWORD_HINTS = [
     {label: "GCP", pattern: /\b(gcp|google cloud|google cloud platform)\b/i},
     {label: "Azure", pattern: /\bazure\b/i},
     {label: "Python", pattern: /\bpython\b/i},
+    {label: "Go", pattern: /\b(go|golang)\b/i},
+    {label: "Ruby", pattern: /\b(ruby|ruby\s+on\s+rails|rails)\b/i},
     {label: "Django", pattern: /\bdjango\b/i},
     {label: "FastAPI", pattern: /\bfastapi\b/i},
     {label: "Flask", pattern: /\bflask\b/i},
     {label: "React", pattern: /\breact\b/i},
+    {label: "Vue", pattern: /\bvue(?:\.js)?\b/i},
     {label: "TypeScript", pattern: /\btypescript\b/i},
     {label: "JavaScript", pattern: /\bjavascript\b/i},
     {label: "Node.js", pattern: /\b(node\.js|nodejs|node)\b/i},
