@@ -1252,12 +1252,6 @@ export function SelectedJobPreview({
                                 {job.isHidden && <SmallPill tone="red">Filtered</SmallPill>}
                             </div>
 
-                            <div className="flex flex-wrap gap-2">
-                                <SeniorityBadge seniority={job.seniority}/>
-                                {runtimeExperience && (
-                                    <ExperienceBadge experience={runtimeExperience}/>
-                                )}
-                            </div>
                         </div>
                     </div>
 
@@ -1343,6 +1337,10 @@ export function SelectedJobPreview({
                                 <div className="mt-4 flex flex-wrap gap-2">
                                     <ApplicantsBadge applicants={job.applicantsTotal}/>
                                     <JobAgeBadge postedAt={job.postedAt}/>
+                                    <SeniorityBadge seniority={job.seniority}/>
+                                    {runtimeExperience && (
+                                        <ExperienceBadge experience={runtimeExperience}/>
+                                    )}
                                 </div>
 
                                 <div className="mt-5 border-t border-slate-800 pt-4">
