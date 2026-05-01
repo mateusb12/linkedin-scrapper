@@ -1,13 +1,11 @@
-import {useEffect, useMemo, useState} from "react"
+import {useEffect, useState} from "react"
 import {
     BookOpen,
     BriefcaseBusiness,
-    Check,
     ChevronDown,
     ChevronRight,
     Copy,
     FileCode2,
-    FileJson,
     Languages,
     Plus,
     RefreshCw,
@@ -36,16 +34,11 @@ import {
     type ResumeSkillMap,
 } from "./profileService"
 import {
-    buildFinalPrompt,
-    generateResumeExport,
     getLanguageLabel,
-    getPromptTemplate,
     getResumeFlag,
     listToText,
     normalizeList,
 } from "./profileResumeUtils"
-
-type ExportFormat = "latex" | "json"
 
 const inputClass =
     "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/15 dark:border-slate-700 dark:bg-[#101827] dark:text-slate-100"
@@ -223,11 +216,6 @@ export default function ProfilePage() {
     const [profile, setProfile] = useState<CareerProfile | null>(null)
     const [resumes, setResumes] = useState<ResumeDraft[]>([])
     const [activeResumeId, setActiveResumeId] = useState<number | null>(null)
-    const [format, setFormat] = useState<ExportFormat>("latex")
-    const [jobDescription, setJobDescription] = useState("")
-    const [includeAtsHiddenKeywords, setIncludeAtsHiddenKeywords] = useState(false)
-    const [promptTemplate, setPromptTemplate] = useState(getPromptTemplate("PTBR"))
-    const [copied, setCopied] = useState<"resume" | "prompt" | null>(null)
     const [status, setStatus] = useState("Backend SQLite")
     const [loadError, setLoadError] = useState("")
 
@@ -240,7 +228,6 @@ export default function ProfilePage() {
                 setProfile(nextProfile)
                 setResumes(nextResumes)
                 setActiveResumeId(nextResumes[0]?.id ?? null)
-                setPromptTemplate(getPromptTemplate(nextResumes[0]?.language ?? "PTBR"))
                 setLoadError("")
             } catch (error) {
                 const message = error instanceof Error ? error.message : "Failed to load profile data"
@@ -253,22 +240,6 @@ export default function ProfilePage() {
     }, [])
 
     const activeResume = resumes.find(resume => resume.id === activeResumeId) ?? null
-
-    const resumeExport = useMemo(() => {
-        if (!activeResume || !profile) return ""
-
-        return generateResumeExport(activeResume, profile, format, includeAtsHiddenKeywords)
-    }, [activeResume, format, includeAtsHiddenKeywords, profile])
-
-    const finalPrompt = useMemo(
-        () =>
-            buildFinalPrompt({
-                template: promptTemplate,
-                jobDescription,
-                resumeContent: resumeExport,
-            }),
-        [jobDescription, promptTemplate, resumeExport],
-    )
     const statCards: Array<{ label: string; value: number; Icon: LucideIcon }> = [
         {label: "Experiences", value: activeResume?.experiences.length ?? 0, Icon: BriefcaseBusiness},
         {
@@ -318,7 +289,6 @@ export default function ProfilePage() {
             const copy = await duplicateResume(activeResume, profile ?? undefined)
             setResumes(current => [...current, copy])
             setActiveResumeId(copy.id)
-            setPromptTemplate(getPromptTemplate(copy.language))
             setStatus(`Duplicated ${activeResume.internalName}`)
         } catch (error) {
             setStatus(error instanceof Error ? error.message : "Duplicate failed")
@@ -345,20 +315,11 @@ export default function ProfilePage() {
             setProfile(next.profile)
             setResumes(next.resumes)
             setActiveResumeId(next.resumes[0]?.id ?? null)
-            setPromptTemplate(getPromptTemplate(next.resumes[0]?.language ?? "PTBR"))
-            setJobDescription("")
-            setIncludeAtsHiddenKeywords(false)
             setStatus("Reloaded from backend")
             setLoadError("")
         } catch (error) {
             setStatus(error instanceof Error ? error.message : "Reload failed")
         }
-    }
-
-    const handleCopy = async (kind: "resume" | "prompt", value: string) => {
-        await navigator.clipboard.writeText(value)
-        setCopied(kind)
-        window.setTimeout(() => setCopied(null), 1400)
     }
 
     const addExperience = () => {
@@ -466,9 +427,7 @@ export default function ProfilePage() {
                             value={activeResume.id}
                             onChange={event => {
                                 const nextId = Number(event.target.value)
-                                const nextResume = resumes.find(resume => resume.id === nextId)
                                 setActiveResumeId(nextId)
-                                setPromptTemplate(getPromptTemplate(nextResume?.language ?? "PTBR"))
                             }}
                             className="h-10 rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm font-black text-white outline-none focus:border-blue-400"
                         >
@@ -520,8 +479,7 @@ export default function ProfilePage() {
                     ))}
                 </div>
 
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
-                    <div className="grid gap-5">
+                <div className="grid gap-5">
                         <Section title="Global Profile" icon={<UserRound className="size-5 text-blue-500"/>}>
                             <div className="grid gap-3 md:grid-cols-2">
                                 <Field label="Name" value={profile.name}
@@ -561,7 +519,6 @@ export default function ProfilePage() {
                                                     language: language === "PTBR" ? "pt-BR" : "en-US",
                                                 },
                                             }))
-                                            setPromptTemplate(getPromptTemplate(language))
                                         }}
                                         className={inputClass}
                                     >
@@ -709,89 +666,6 @@ export default function ProfilePage() {
                                 ))}
                             </div>
                         </Section>
-                    </div>
-
-                    <aside className="h-fit rounded-xl border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-5 dark:border-slate-800 dark:bg-[#172033]">
-                        <div className="flex items-center justify-between gap-3">
-                            <h2 className="flex items-center gap-2 text-lg font-black">
-                                <Sparkles className="size-5 text-blue-500"/>
-                                Context Builder
-                            </h2>
-                            <span className="rounded-full border border-slate-300 px-2 py-1 text-xs font-black text-slate-500 dark:border-slate-700">
-                                {status}
-                            </span>
-                        </div>
-
-                        <div className="mt-4 grid grid-cols-2 gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setFormat("latex")}
-                                className={`rounded-lg border px-3 py-2 text-sm font-black transition ${format === "latex" ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 text-slate-600 dark:border-slate-700 dark:text-slate-300"}`}
-                            >
-                                LaTeX
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setFormat("json")}
-                                className={`rounded-lg border px-3 py-2 text-sm font-black transition ${format === "json" ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 text-slate-600 dark:border-slate-700 dark:text-slate-300"}`}
-                            >
-                                JSON
-                            </button>
-                        </div>
-
-                        <label className="mt-3 flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold text-slate-600 dark:border-slate-700 dark:text-slate-300">
-                            <input
-                                type="checkbox"
-                                checked={includeAtsHiddenKeywords}
-                                onChange={event => setIncludeAtsHiddenKeywords(event.target.checked)}
-                                className="size-4"
-                            />
-                            Hidden ATS keywords
-                        </label>
-
-                        <div className="mt-4">
-                            <TextareaField
-                                label="Prompt template"
-                                value={promptTemplate}
-                                onChange={setPromptTemplate}
-                                rows={8}
-                            />
-                        </div>
-
-                        <div className="mt-4">
-                            <TextareaField
-                                label="Job description"
-                                value={jobDescription}
-                                onChange={setJobDescription}
-                                rows={7}
-                                placeholder="Paste the job description here..."
-                            />
-                        </div>
-
-                        <div className="mt-4">
-                            <div className="mb-1 flex items-center justify-between">
-                                <span className="text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                    Resume export
-                                </span>
-                                <IconButton label="Copy resume export" onClick={() => handleCopy("resume", resumeExport)}>
-                                    {copied === "resume" ? <Check size={16}/> : format === "json" ? <FileJson size={16}/> : <Copy size={16}/>}
-                                </IconButton>
-                            </div>
-                            <textarea readOnly value={resumeExport} rows={9} className={`${textareaClass} font-mono text-xs`}/>
-                        </div>
-
-                        <div className="mt-4">
-                            <div className="mb-1 flex items-center justify-between">
-                                <span className="text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                    Final prompt
-                                </span>
-                                <IconButton label="Copy final prompt" onClick={() => handleCopy("prompt", finalPrompt)} tone="blue">
-                                    {copied === "prompt" ? <Check size={16}/> : <Copy size={16}/>}
-                                </IconButton>
-                            </div>
-                            <textarea readOnly value={finalPrompt} rows={11} className={`${textareaClass} font-mono text-xs`}/>
-                        </div>
-                    </aside>
                 </div>
             </div>
         </main>

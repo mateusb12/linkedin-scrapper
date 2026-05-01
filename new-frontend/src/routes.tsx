@@ -9,6 +9,7 @@ import {
     Search,
     Settings,
     CheckCircle,
+    FilePenLine,
 } from "lucide-react"
 
 import HelloWorldPage from "./pages/HelloWorldPage"
@@ -19,6 +20,7 @@ import AppliedJobsPage from "./features/applied-jobs/AppliedJobsPage.tsx";
 import InsightsPage from "./features/insights/InsightsPage.tsx";
 import RejectionsPage from "./features/rejections/RejectionsPage.tsx";
 import ProfilePage from "./features/profile/ProfilePage.tsx";
+import AdaptResumePage from "./features/profile/AdaptResumePage.tsx";
 
 export type AppRoute = {
     label: string
@@ -59,6 +61,12 @@ export const appRoutes = [
         icon: UserRound,
         route: "/profile",
         Page: ProfilePage,
+    },
+    {
+        label: "Adapt Resume",
+        icon: FilePenLine,
+        route: "/adapt-resume",
+        Page: AdaptResumePage,
     },
     {label: "Saved Jobs", icon: Bookmark, route: "/saved", Page: SavedJobsPage},
 ] as const satisfies readonly AppRoute[]

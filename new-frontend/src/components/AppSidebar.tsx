@@ -29,7 +29,7 @@ const sidebarGroups = [
     },
     {
         title: "Apply",
-        items: ["Profile", "Applied Jobs"],
+        items: ["Profile", "Adapt Resume", "Applied Jobs"],
     },
     {
         title: "Analytics",
