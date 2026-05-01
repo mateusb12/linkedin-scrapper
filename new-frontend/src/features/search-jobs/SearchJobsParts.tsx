@@ -4,6 +4,7 @@ import {
     BookmarkCheck,
     Briefcase,
     Building2,
+    Workflow,
     CalendarDays,
     ChevronRight,
     Clock3,
@@ -35,6 +36,7 @@ import {
     extractExperienceFromDescription,
     formatTechLabel,
     getJobAgeMeta,
+    normalizeTechText,
     getRuntimeJobKeywords,
     getTechIcon,
     isPositiveKeywordMatch,
@@ -287,6 +289,13 @@ const getApplicantsTone = (applicants?: number | null) => {
 }
 
 
+const ENGINEERING_PRACTICE_SIGNALS = new Set([
+    "serverless",
+    "microservices",
+    "tdd",
+    "ddd",
+])
+
 function RoleSignalBadge({
                              signal,
                              positive,
@@ -295,18 +304,36 @@ function RoleSignalBadge({
     positive: boolean
 }) {
     const label = formatTechLabel(signal)
+    const normalizedLabel = normalizeTechText(label)
+    const isEngineeringPractice = ENGINEERING_PRACTICE_SIGNALS.has(normalizedLabel)
+
+    const title = isEngineeringPractice
+        ? positive
+            ? `${label}: positive engineering practice signal`
+            : `${label}: engineering practice signal`
+        : positive
+            ? `${label}: positive role signal`
+            : `${label}: role signal`
+
+    const className = isEngineeringPractice
+        ? positive
+            ? "border-violet-400/50 bg-violet-500/15 text-violet-200 shadow-[0_0_0_1px_rgba(167,139,250,0.12)]"
+            : "border-violet-400/35 bg-violet-500/10 text-violet-200"
+        : positive
+            ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200 shadow-[0_0_0_1px_rgba(52,211,153,0.12)]"
+            : "border-slate-600 bg-slate-900/70 text-slate-300"
 
     return (
         <span
-            title={positive ? `${label}: positive role signal` : `${label}: role signal`}
-            aria-label={positive ? `${label}: positive role signal` : `${label}: role signal`}
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${
-                positive
-                    ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200 shadow-[0_0_0_1px_rgba(52,211,153,0.12)]"
-                    : "border-slate-600 bg-slate-900/70 text-slate-300"
-            }`}
+            title={title}
+            aria-label={title}
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${className}`}
         >
-            <Briefcase size={13} className="opacity-80"/>
+            {isEngineeringPractice ? (
+                <Workflow size={13} className="opacity-85"/>
+            ) : (
+                <Briefcase size={13} className="opacity-80"/>
+            )}
             {label}
         </span>
     )
