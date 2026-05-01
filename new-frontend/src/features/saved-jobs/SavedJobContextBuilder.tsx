@@ -1,7 +1,7 @@
 import {useState} from "react"
 import {Check, Copy, FileText, Hash, Sparkles, X} from "lucide-react"
 
-import type {MockResume, SavedJob} from "./savedJobsMockService.ts"
+import type {ResumeForSavedJobs, SavedJob} from "./savedJobsService.ts"
 import {getCompactJobPayload} from "./savedJobsUtils.ts"
 
 const JOB_PROMPT_TEMPLATES = {
@@ -54,7 +54,7 @@ Saida:
 type SavedJobContextBuilderProps = {
     isOpen: boolean
     jobs: Array<{job: SavedJob; score: number}>
-    resumes: MockResume[]
+    resumes: ResumeForSavedJobs[]
     selectedResumeId: number | null
     onResumeChange: (resumeId: number) => void
     onClose: () => void

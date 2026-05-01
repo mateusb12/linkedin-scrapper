@@ -1,4 +1,4 @@
-import type {SavedJob} from "./savedJobsMockService.ts"
+import type {SavedJob} from "./savedJobsService.ts"
 
 export function normalizeSavedJobsText(value: string) {
     return value

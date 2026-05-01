@@ -19,16 +19,16 @@ import SavedJobContextBuilder from "./SavedJobContextBuilder.tsx"
 import SavedJobScoreInput from "./SavedJobScoreInput.tsx"
 import SavedJobsExportPanel from "./SavedJobsExportPanel.tsx"
 import {
-    clearSavedJobsCacheMock,
-    fetchMockResumes,
-    fetchSavedJobsMock,
-    readSavedJobScoresMock,
-    refreshSavedJobsMock,
-    saveSavedJobScoreMock,
-    type MockResume,
+    clearSavedJobsCache,
+    fetchSavedJobs,
+    fetchSavedJobsResumes,
+    readSavedJobScores,
+    refreshSavedJobs,
+    saveSavedJobScore,
+    type ResumeForSavedJobs,
     type SavedJob,
     type SavedJobScoreMap,
-} from "./savedJobsMockService.ts"
+} from "./savedJobsService.ts"
 import {
     buildSavedJobSearchText,
     cleanJobDescription,
@@ -249,8 +249,8 @@ function JobMetaPill({children}: {children: React.ReactNode}) {
 
 export default function SavedJobsPage() {
     const [jobs, setJobs] = useState<SavedJob[]>([])
-    const [scores, setScores] = useState<SavedJobScoreMap>(() => readSavedJobScoresMock())
-    const [resumes, setResumes] = useState<MockResume[]>([])
+    const [scores, setScores] = useState<SavedJobScoreMap>(() => readSavedJobScores())
+    const [resumes, setResumes] = useState<ResumeForSavedJobs[]>([])
     const [selectedResumeId, setSelectedResumeId] = useState<number | null>(null)
     const [searchTerm, setSearchTerm] = useState("")
     const [expandedJobId, setExpandedJobId] = useState<string | null>(null)
@@ -258,19 +258,19 @@ export default function SavedJobsPage() {
     const [isRefreshing, setIsRefreshing] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [showBuilder, setShowBuilder] = useState(false)
-    const [cacheState, setCacheState] = useState<"mock" | "cleared">("mock")
+    const [cacheState, setCacheState] = useState<"live" | "cached" | "cleared">("cached")
 
     const loadJobs = useCallback(async function loadJobs() {
         try {
             setError(null)
             setIsLoading(true)
             setExpandedJobId(null)
-            const loadedJobs = await fetchSavedJobsMock(SAVED_TAB)
+            const loadedJobs = await fetchSavedJobs(SAVED_TAB)
             setJobs(loadedJobs)
-            setCacheState("mock")
+            setCacheState("cached")
         } catch (loadError) {
             console.error(loadError)
-            setError("Could not load saved jobs mock data.")
+            setError("Could not load saved jobs from LinkedIn.")
         } finally {
             setIsLoading(false)
         }
@@ -287,11 +287,11 @@ export default function SavedJobsPage() {
     useEffect(() => {
         let isMounted = true
 
-        fetchMockResumes()
-            .then((mockResumes) => {
+        fetchSavedJobsResumes()
+            .then((loadedResumes) => {
                 if (!isMounted) return
-                setResumes(mockResumes)
-                setSelectedResumeId((current) => current ?? mockResumes[0]?.id ?? null)
+                setResumes(loadedResumes)
+                setSelectedResumeId((current) => current ?? loadedResumes[0]?.id ?? null)
             })
             .catch((resumeError) => {
                 console.error(resumeError)
@@ -322,26 +322,26 @@ export default function SavedJobsPage() {
             setError(null)
             setIsRefreshing(true)
             setExpandedJobId(null)
-            const refreshedJobs = await refreshSavedJobsMock(SAVED_TAB)
+            const refreshedJobs = await refreshSavedJobs(SAVED_TAB)
             setJobs(refreshedJobs)
-            setCacheState("mock")
+            setCacheState("live")
         } catch (refreshError) {
             console.error(refreshError)
-            setError("Could not refresh saved jobs mock data.")
+            setError("Could not refresh saved jobs from LinkedIn.")
         } finally {
             setIsRefreshing(false)
         }
     }
 
     function handleClearCache() {
-        clearSavedJobsCacheMock(SAVED_TAB)
+        clearSavedJobsCache(SAVED_TAB)
         setJobs([])
         setExpandedJobId(null)
         setCacheState("cleared")
     }
 
     function handleScoreSave(jobId: string, score: number) {
-        setScores(saveSavedJobScoreMock(jobId, score))
+        setScores(saveSavedJobScore(jobId, score))
     }
 
     function toggleExpanded(jobId: string) {
@@ -369,11 +369,11 @@ export default function SavedJobsPage() {
                                     </h1>
                                     <span className="inline-flex items-center gap-1 rounded-full border border-gray-700 bg-gray-900 px-2 py-0.5 text-[11px] font-bold text-gray-400">
                                         <Database size={12}/>
-                                        {cacheState === "cleared" ? "cache cleared" : "mock cache"}
+                                        {cacheState === "cleared" ? "cache cleared" : cacheState === "live" ? "live LinkedIn" : "local cache"}
                                     </span>
                                 </div>
                                 <p className="mt-1 text-sm font-medium text-gray-400">
-                                    Rank saved jobs locally, search across job content, and build resume context from mock data.
+                                    Rank saved jobs locally, search across job content, and build resume context from LinkedIn data.
                                 </p>
                             </div>
                         </div>
@@ -397,7 +397,7 @@ export default function SavedJobsPage() {
                                 type="button"
                                 onClick={handleRefresh}
                                 disabled={isLoading || isRefreshing}
-                                title="Refresh mock data"
+                                title="Refresh LinkedIn data"
                                 className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-emerald-500 px-4 text-sm font-black text-gray-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 <RefreshCw
@@ -432,7 +432,7 @@ export default function SavedJobsPage() {
                 {isLoading ? (
                     <div className="flex min-h-80 flex-col items-center justify-center gap-3 text-gray-400">
                         <Loader2 className="animate-spin text-emerald-300" size={34}/>
-                        <span className="text-sm font-bold">Loading mock jobs...</span>
+                        <span className="text-sm font-bold">Loading LinkedIn saved jobs...</span>
                     </div>
                 ) : error ? (
                     <div className="min-h-80 p-10 text-center text-red-300">{error}</div>
@@ -442,7 +442,7 @@ export default function SavedJobsPage() {
                         <h2 className="text-lg font-black text-gray-200">No jobs to show</h2>
                         <p className="max-w-md text-sm font-medium leading-6 text-gray-500">
                             {cacheState === "cleared"
-                                ? "The saved jobs cache was cleared locally. Use Refresh to restore mock data."
+                                ? "The saved jobs cache was cleared locally. Use Refresh to fetch LinkedIn again."
                                 : "Try a different search term."}
                         </p>
                     </div>
