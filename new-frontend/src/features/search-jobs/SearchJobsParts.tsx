@@ -303,6 +303,7 @@ const STACK_LANGUAGE_KEYWORDS = new Set([
     "python",
     "go",
     "c#",
+    "c++",
     "java",
     "javascript",
     "typescript",

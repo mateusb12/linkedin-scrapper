@@ -16,6 +16,7 @@ import javascriptIcon from "../../assets/skills/javascript.png";
 import typescriptIcon from "../../assets/skills/typescript.png";
 import phpIcon from "../../assets/skills/php.png";
 import goIcon from "../../assets/skills/go.svg";
+import cplusIcon from "../../assets/skills/c-plus.svg";
 
 import djangoIcon from "../../assets/skills/django.png";
 import azureIcon from "../../assets/skills/azure.png";
@@ -143,6 +144,7 @@ export const getJobAgeMeta = (postedAt?: string | null): JobAgeMeta => {
 const techIconsMap: Record<string, string> = {
     Python: pythonIcon,
     Java: javaIcon,
+    "C++": cplusIcon,
     SQL: sqlIcon,
     JavaScript: javascriptIcon,
     TypeScript: typescriptIcon,
@@ -225,6 +227,10 @@ const TECH_LABEL_ALIASES: Record<string, string> = {
     "c#": "C#",
     csharp: "C#",
     "c sharp": "C#",
+    "c plus plus": "C++",
+    cplusplus: "C++",
+    cpp: "C++",
+    "c++": "C++",
     net: ".NET",
     dotnet: ".NET",
     "dot net": ".NET",
@@ -351,6 +357,8 @@ const RUNTIME_KEYWORD_HINTS = [
     {label: "GCP", pattern: /\b(gcp|google cloud|google cloud platform)\b/i},
     {label: "Azure", pattern: /\bazure\b/i},
     {label: "Python", pattern: /\bpython\b/i},
+    {label: "Java", pattern: /\bjava\b/i},
+    {label: "C++", pattern: /(^|[^a-z0-9])(?:c\s*\+\s*\+|cpp|cplusplus|c\s+plus\s+plus)([^a-z0-9]|$)/i},
     {label: "Go", pattern: /\b(go|golang)\b/i},
     {label: "Ruby", pattern: /\b(ruby|ruby\s+on\s+rails|rails)\b/i},
     {label: "Django", pattern: /\bdjango\b/i},
