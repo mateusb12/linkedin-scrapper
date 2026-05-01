@@ -15,6 +15,7 @@ import {
     Search,
     ShieldCheck,
     Sparkles,
+    Tags,
     Users,
     X,
     Zap,
@@ -97,6 +98,119 @@ const getScoreBarClassName = (score: number) => {
     if (score >= 35) return "bg-amber-400"
 
     return "bg-red-400"
+}
+
+const getEffectiveArchetype = (job: Pick<SearchJob, "aiArchetype" | "archetype">) =>
+    (job.aiArchetype || job.archetype || "").trim()
+
+type ArchetypeVisual = {
+    label: string
+    prefix: string
+    className: string
+}
+
+const ARCHETYPE_VISUALS: Record<string, ArchetypeVisual> = {
+    backend_python_pure: {
+        prefix: "Target",
+        label: "Backend Python",
+        className: "border-emerald-400/35 bg-emerald-500/10 text-emerald-200",
+    },
+    backend_python_with_minor_cross_functional_signals: {
+        prefix: "Target-ish",
+        label: "Backend Python+",
+        className: "border-teal-400/35 bg-teal-500/10 text-teal-200",
+    },
+    ai_or_llm_python: {
+        prefix: "Mixed",
+        label: "AI/LLM Python",
+        className: "border-violet-400/35 bg-violet-500/10 text-violet-200",
+    },
+    fullstack_python: {
+        prefix: "Mismatch",
+        label: "Fullstack",
+        className: "border-amber-400/35 bg-amber-500/10 text-amber-200",
+    },
+    data_platform_python: {
+        prefix: "Mismatch",
+        label: "Data Platform",
+        className: "border-cyan-400/35 bg-cyan-500/10 text-cyan-200",
+    },
+    ai_training_or_evaluation_python: {
+        prefix: "Mismatch",
+        label: "AI Evaluation",
+        className: "border-red-400/35 bg-red-500/10 text-red-200",
+    },
+    platform_or_internal_systems_python: {
+        prefix: "Mismatch",
+        label: "Platform/Internal",
+        className: "border-orange-400/35 bg-orange-500/10 text-orange-200",
+    },
+    generic_python: {
+        prefix: "Generic",
+        label: "Generic Python",
+        className: "border-slate-500/40 bg-slate-800/70 text-slate-300",
+    },
+    unscored: {
+        prefix: "Score",
+        label: "Not scored",
+        className: "border-slate-600 bg-slate-900/80 text-slate-400",
+    },
+}
+
+const humanizeArchetype = (archetype: string) =>
+    archetype
+        .trim()
+        .split("_")
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ")
+
+const getArchetypeVisual = (archetype: string): ArchetypeVisual => {
+    const normalized = archetype.trim().toLowerCase()
+
+    return (
+        ARCHETYPE_VISUALS[normalized] || {
+            prefix: "Profile",
+            label: humanizeArchetype(archetype),
+            className: "border-sky-400/35 bg-sky-500/10 text-sky-200",
+        }
+    )
+}
+
+function ArchetypeBadge({
+                            job,
+                            compact = false,
+                        }: {
+    job: Pick<SearchJob, "aiArchetype" | "archetype">
+    compact?: boolean
+}) {
+    const archetype = getEffectiveArchetype(job)
+
+    if (!archetype) return null
+
+    const visual = getArchetypeVisual(archetype)
+    const title = `${visual.prefix} · ${visual.label} (${archetype})`
+
+    return (
+        <span
+            title={title}
+            aria-label={title}
+            className={`inline-flex w-fit items-center gap-1.5 rounded-full border font-extrabold ${
+                compact ? "px-2 py-0.5 text-[11px]" : "px-3 py-1.5 text-xs"
+            } ${visual.className}`}
+        >
+            <Tags size={compact ? 11 : 13} className="opacity-75"/>
+
+            {!compact && (
+                <>
+                    <span className="opacity-70">{visual.prefix}</span>
+                    <span className="opacity-40">·</span>
+                </>
+            )}
+
+            <span>{visual.label}</span>
+        </span>
+    )
 }
 
 function TechBadge({
@@ -806,7 +920,7 @@ function JobSortHighlightBadge({
 }
 
 const VISIBLE_JOB_ROWS = 10
-const ESTIMATED_JOB_CARD_HEIGHT_PX = 132
+const ESTIMATED_JOB_CARD_HEIGHT_PX = 148
 
 export function JobListInsideFilters({
                                          jobs,
@@ -905,6 +1019,10 @@ export function JobListInsideFilters({
                                         <MapPin size={12}/>
                                         {job.location}
                                     </p>
+
+                                    <div className="mt-2">
+                                        <ArchetypeBadge job={job} compact/>
+                                    </div>
 
                                     <div className="mt-2 flex flex-wrap gap-1.5">
                                         {job.verified && <SmallPill tone="green">Verified</SmallPill>}
@@ -1023,6 +1141,8 @@ export function SelectedJobPreview({
                         </p>
 
                         <div className="mt-3 space-y-2">
+                            <ArchetypeBadge job={job}/>
+
                             <div className="flex flex-wrap gap-2">
                                 {job.verified && <SmallPill tone="green">Verified</SmallPill>}
 
