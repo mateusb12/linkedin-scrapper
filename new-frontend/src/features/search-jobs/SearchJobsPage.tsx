@@ -124,6 +124,44 @@ const buildSearchableText = (job: SearchJob) =>
         ].join(" "),
     )
 
+
+const normalizeMatchText = (value: string) =>
+    normalizeText(value).replace(/\s+/g, " ").trim()
+
+const escapeRegExp = (value: string) =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+const keywordMatchesText = (text: string, keyword: string) => {
+    const normalizedText = normalizeMatchText(text)
+    const normalizedKeyword = normalizeMatchText(keyword)
+
+    if (!normalizedKeyword) return false
+
+    const pattern = new RegExp(
+        `(^|[^a-z0-9])${escapeRegExp(normalizedKeyword)}(?=$|[^a-z0-9])`,
+        "i",
+    )
+
+    return pattern.test(normalizedText)
+}
+
+const buildStrictKeywordText = (job: SearchJob) =>
+    [
+        job.title,
+        job.description,
+        job.description_full,
+        job.description_snippet,
+        job.premium_title,
+        job.premium_description,
+        ...(Array.isArray(job.raw?.qualifications) ? job.raw.qualifications : []),
+        ...(Array.isArray(job.raw?.responsibilities) ? job.raw.responsibilities : []),
+        ...(Array.isArray(job.raw?.programming_languages)
+            ? job.raw.programming_languages
+            : []),
+    ]
+        .filter((item): item is string => typeof item === "string")
+        .join(" ")
+
 const buildUniqueOptions = (
     values: Array<{ value: string; label: string }>,
 ): SelectOption[] => {
@@ -175,6 +213,7 @@ const evaluateSearchJobs = ({
     return jobs
         .map((job) => {
             const searchableText = buildSearchableText(job)
+            const strictKeywordText = buildStrictKeywordText(job)
 
             const matchesSearch =
                 !normalizedSearchTerm || searchableText.includes(normalizedSearchTerm)
@@ -193,19 +232,19 @@ const evaluateSearchJobs = ({
 
             const matchedPositiveKeywords = unique(
                 positiveKeywords.filter((keyword) =>
-                    searchableText.includes(normalizeText(keyword)),
+                    keywordMatchesText(searchableText, keyword),
                 ),
             )
 
             const matchedNegativeKeywords = unique(
                 negativeKeywords.filter((keyword) =>
-                    searchableText.includes(normalizeText(keyword)),
+                    keywordMatchesText(strictKeywordText, keyword),
                 ),
             )
 
             const missingMustHaveKeywords = unique(
                 mustHaveKeywords.filter(
-                    (keyword) => !searchableText.includes(normalizeText(keyword)),
+                    (keyword) => !keywordMatchesText(strictKeywordText, keyword),
                 ),
             )
 
