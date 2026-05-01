@@ -381,13 +381,10 @@ const removeStringFromList = (
 const buildLinkedInSearchParams = (
     fetchQuery: string,
     mustHaveKeywords: string[],
-    negativeKeywords: string[],
+    excludedKeywords: string[],
 ) => {
     const keywords = fetchQuery.trim() || unique(mustHaveKeywords).join(" ") || "python"
-    const excludedKeywordList = unique([
-        ...DEFAULT_LINKEDIN_EXCLUDED_KEYWORDS,
-        ...negativeKeywords,
-    ])
+    const excludedKeywordList = unique(excludedKeywords)
 
     return {
         keywords,
@@ -395,6 +392,12 @@ const buildLinkedInSearchParams = (
         excludedKeywords: excludedKeywordList.join(","),
     }
 }
+
+const buildDefaultFetchExcludedKeywords = (negativeKeywords: string[]) =>
+    unique([
+        ...DEFAULT_LINKEDIN_EXCLUDED_KEYWORDS,
+        ...negativeKeywords,
+    ])
 
 export default function SearchJobsPage() {
     const [jobs, setJobs] = useState<SearchJob[]>([])
@@ -462,6 +465,10 @@ export default function SearchJobsPage() {
     const [isFetchModalOpen, setIsFetchModalOpen] = useState(false)
     const [fetchCount, setFetchCount] = useState(75)
     const [fetchQuery, setFetchQuery] = useState("")
+    const [fetchExcludedKeywords, setFetchExcludedKeywords] = useState(() =>
+        buildDefaultFetchExcludedKeywords(negativeKeywords),
+    )
+    const [newFetchExcludedKeyword, setNewFetchExcludedKeyword] = useState("")
     const [fetchProgress, setFetchProgress] = useState<SearchJobsProgress | null>(null)
 
     useEffect(() => {
@@ -625,12 +632,9 @@ export default function SearchJobsPage() {
         const searchParams = buildLinkedInSearchParams(
             fetchQuery,
             mustHaveKeywords,
-            negativeKeywords,
+            fetchExcludedKeywords,
         )
-        const backendNegativeKeywords = unique([
-            ...DEFAULT_LINKEDIN_EXCLUDED_KEYWORDS,
-            ...negativeKeywords,
-        ])
+        const backendNegativeKeywords = unique(fetchExcludedKeywords)
 
         return {
             linkedinKeywords: searchParams.keywords,
@@ -646,7 +650,7 @@ export default function SearchJobsPage() {
             distance: 25,
             dropPrefiltered: true,
         }
-    }, [fetchQuery, mustHaveKeywords, negativeKeywords, negativeCompanies])
+    }, [fetchQuery, mustHaveKeywords, fetchExcludedKeywords, negativeCompanies])
 
     useEffect(() => {
         const timeoutId = window.setTimeout(() => {
@@ -673,18 +677,25 @@ export default function SearchJobsPage() {
         setFetchProgress(null)
     }
 
+    const handleOpenFetchModal = () => {
+        setFetchExcludedKeywords(buildDefaultFetchExcludedKeywords(negativeKeywords))
+        setNewFetchExcludedKeyword("")
+        setIsFetchModalOpen(true)
+    }
+
     const handleFetchJobs = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault()
 
         setLoading(true)
         setErrorMessage(null)
         setFetchProgress(null)
+        setSearchMeta(null)
 
         try {
             const searchParams = buildLinkedInSearchParams(
                 fetchQuery,
                 mustHaveKeywords,
-                negativeKeywords,
+                fetchExcludedKeywords,
             )
             const response = await streamGraphqlJobsWithMeta(
                 {
@@ -692,10 +703,7 @@ export default function SearchJobsPage() {
                     keywords: searchParams.keywords,
                     excluded_keywords: searchParams.excludedKeywords,
                     must_have_keywords: mustHaveKeywords,
-                    negative_keywords: unique([
-                        ...DEFAULT_LINKEDIN_EXCLUDED_KEYWORDS,
-                        ...negativeKeywords,
-                    ]),
+                    negative_keywords: unique(fetchExcludedKeywords),
                     drop_prefiltered: true,
                     prefilter_enabled: true,
                     geo_id: "106057199",
@@ -748,7 +756,6 @@ export default function SearchJobsPage() {
             setCacheTimestamp(cachedAt)
             setSearchMeta(response.meta)
             setLoadedFromCache(false)
-            setIsFetchModalOpen(false)
         } catch (error) {
             const streamError = error as StreamBackendError
             const isBackendEnrichmentError =
@@ -869,7 +876,7 @@ export default function SearchJobsPage() {
                 loadedFromCache={loadedFromCache}
                 loading={loading}
                 errorMessage={errorMessage}
-                onOpenFetchModal={() => setIsFetchModalOpen(true)}
+                onOpenFetchModal={handleOpenFetchModal}
                 onClearCache={handleClearCache}
                 filteredCount={visibleJobs.length}
                 hiddenCount={hiddenCount}
@@ -918,9 +925,14 @@ export default function SearchJobsPage() {
                     setFetchCount={setFetchCount}
                     fetchQuery={fetchQuery}
                     setFetchQuery={setFetchQuery}
+                    fetchExcludedKeywords={fetchExcludedKeywords}
+                    setFetchExcludedKeywords={setFetchExcludedKeywords}
+                    newFetchExcludedKeyword={newFetchExcludedKeyword}
+                    setNewFetchExcludedKeyword={setNewFetchExcludedKeyword}
                     loading={loading}
                     progress={fetchProgress}
                     requestPreview={fetchRequestPreview}
+                    meta={searchMeta}
                     onClose={() => setIsFetchModalOpen(false)}
                     onSubmit={handleFetchJobs}
                 />

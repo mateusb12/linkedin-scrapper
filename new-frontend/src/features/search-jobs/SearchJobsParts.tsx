@@ -1,4 +1,4 @@
-import {useEffect, useState, type FormEvent, type ReactNode} from "react"
+import {useEffect, useState, type Dispatch, type FormEvent, type ReactNode, type SetStateAction} from "react"
 import {
     Bookmark,
     BookmarkCheck,
@@ -1805,10 +1805,12 @@ function QueryPreviewChips({
                                values,
                                emptyLabel = "-",
                                tone = "slate",
+                               onRemove,
                            }: {
     values: string[]
     emptyLabel?: string
     tone?: "slate" | "red" | "emerald"
+    onRemove?: (value: string) => void
 }) {
     const className = {
         slate: "border-slate-700 bg-slate-950 text-slate-300",
@@ -1825,9 +1827,19 @@ function QueryPreviewChips({
             {values.map((value) => (
                 <span
                     key={value}
-                    className={`rounded-md border px-2 py-1 text-[11px] font-bold ${className}`}
+                    className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold ${className}`}
                 >
                     {value}
+                    {onRemove && (
+                        <button
+                            type="button"
+                            onClick={() => onRemove(value)}
+                            className="rounded p-0.5 opacity-70 transition hover:bg-slate-950/70 hover:opacity-100"
+                            aria-label={`Remove ${value}`}
+                        >
+                            <X size={11}/>
+                        </button>
+                    )}
                 </span>
             ))}
         </div>
@@ -1836,8 +1848,10 @@ function QueryPreviewChips({
 
 function FetchRequestPreviewPanel({
                                       preview,
+                                      onRemoveExcludedKeyword,
                                   }: {
     preview: FetchRequestPreview
+    onRemoveExcludedKeyword?: (value: string) => void
 }) {
     return (
         <div className="rounded-xl border border-slate-800 bg-slate-900/55 p-3">
@@ -1871,6 +1885,7 @@ function FetchRequestPreviewPanel({
                         <QueryPreviewChips
                             values={preview.linkedinExcludedKeywords}
                             tone="red"
+                            onRemove={onRemoveExcludedKeyword}
                         />
                     }
                 />
@@ -1891,6 +1906,7 @@ function FetchRequestPreviewPanel({
                         <QueryPreviewChips
                             values={preview.prefilterNegativeKeywords}
                             tone="red"
+                            onRemove={onRemoveExcludedKeyword}
                         />
                     }
                 />
@@ -1915,15 +1931,35 @@ function FetchRequestPreviewPanel({
     )
 }
 
+const uniqueTextValues = (values: string[]) =>
+    [...new Set(values.map((value) => value.trim()).filter(Boolean))]
+
+function addExcludedKeyword(
+    newKeyword: string,
+    setNewKeyword: (value: string) => void,
+    setKeywords: Dispatch<SetStateAction<string[]>>,
+) {
+    const trimmed = newKeyword.trim()
+    if (!trimmed) return
+
+    setKeywords((current) => uniqueTextValues([...current, trimmed]))
+    setNewKeyword("")
+}
+
 
 export function FetchJobsModal({
                                    fetchCount,
                                    setFetchCount,
                                    fetchQuery,
                                    setFetchQuery,
+                                   fetchExcludedKeywords,
+                                   setFetchExcludedKeywords,
+                                   newFetchExcludedKeyword,
+                                   setNewFetchExcludedKeyword,
                                    loading,
                                    progress,
                                    requestPreview,
+                                   meta,
                                    onClose,
                                    onSubmit,
                                }: {
@@ -1931,12 +1967,23 @@ export function FetchJobsModal({
     setFetchCount: (value: number) => void
     fetchQuery: string
     setFetchQuery: (value: string) => void
+    fetchExcludedKeywords: string[]
+    setFetchExcludedKeywords: Dispatch<SetStateAction<string[]>>
+    newFetchExcludedKeyword: string
+    setNewFetchExcludedKeyword: (value: string) => void
     loading: boolean
     progress: SearchJobsProgress | null
     requestPreview: FetchRequestPreview
+    meta: SearchJobsMeta | null
     onClose: () => void
     onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }) {
+    const removeExcludedKeyword = (keyword: string) => {
+        setFetchExcludedKeywords((current) =>
+            current.filter((item) => item !== keyword),
+        )
+    }
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
             <form
@@ -1989,6 +2036,79 @@ export function FetchJobsModal({
                             />
                         </div>
                     </label>
+
+                    <div className="rounded-xl border border-slate-800 bg-slate-900/55 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs font-bold text-slate-300">
+                                LinkedIn NOT terms
+                            </span>
+
+                            <span className="text-[11px] font-bold text-slate-500">
+                                {fetchExcludedKeywords.length} active
+                            </span>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                            {fetchExcludedKeywords.length > 0 ? (
+                                fetchExcludedKeywords.map((keyword) => (
+                                    <span
+                                        key={keyword}
+                                        className="inline-flex items-center gap-1.5 rounded-md border border-red-400/25 bg-red-500/10 px-2 py-1 text-[11px] font-bold text-red-200"
+                                    >
+                                        NOT {keyword}
+                                        <button
+                                            type="button"
+                                            onClick={() => removeExcludedKeyword(keyword)}
+                                            disabled={loading}
+                                            className="rounded p-0.5 opacity-70 transition hover:bg-slate-950/70 hover:opacity-100 disabled:opacity-40"
+                                            aria-label={`Remove NOT ${keyword}`}
+                                        >
+                                            <X size={11}/>
+                                        </button>
+                                    </span>
+                                ))
+                            ) : (
+                                <span className="text-xs font-bold text-slate-500">
+                                    No NOT terms will be sent to LinkedIn.
+                                </span>
+                            )}
+                        </div>
+
+                        <div className="mt-3 flex gap-2">
+                            <input
+                                type="text"
+                                value={newFetchExcludedKeyword}
+                                onChange={(event) => setNewFetchExcludedKeyword(event.target.value)}
+                                onKeyDown={(event) => {
+                                    if (event.key !== "Enter") return
+                                    event.preventDefault()
+                                    addExcludedKeyword(
+                                        newFetchExcludedKeyword,
+                                        setNewFetchExcludedKeyword,
+                                        setFetchExcludedKeywords,
+                                    )
+                                }}
+                                disabled={loading}
+                                placeholder="Add another NOT term"
+                                className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-sky-500 disabled:opacity-50"
+                            />
+
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    addExcludedKeyword(
+                                        newFetchExcludedKeyword,
+                                        setNewFetchExcludedKeyword,
+                                        setFetchExcludedKeywords,
+                                    )
+                                }
+                                disabled={loading || !newFetchExcludedKeyword.trim()}
+                                className="rounded-lg border border-sky-400/40 bg-sky-500/10 px-3 py-2 text-xs font-black text-sky-200 transition hover:bg-sky-500 hover:text-slate-950 disabled:opacity-40"
+                            >
+                                Add
+                            </button>
+                        </div>
+                    </div>
 
                     <div>
                         <span className="text-xs font-bold text-slate-300">
@@ -2046,10 +2166,19 @@ export function FetchJobsModal({
                         </div>
                     </div>
 
-                    <FetchRequestPreviewPanel preview={requestPreview}/>
+                    <FetchRequestPreviewPanel
+                        preview={requestPreview}
+                        onRemoveExcludedKeyword={loading ? undefined : removeExcludedKeyword}
+                    />
 
                     {loading && (
                         <LiveProgressBar progress={progress}/>
+                    )}
+
+                    {meta?.prefilter && (
+                        <div className="overflow-hidden rounded-xl border border-slate-800">
+                            <PrefilterAuditPanel meta={meta}/>
+                        </div>
                     )}
                 </div>
 
