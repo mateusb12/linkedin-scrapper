@@ -37,6 +37,8 @@ import {
     type JobView,
 } from "./SearchJobsParts.tsx"
 
+import {getJobAgeMeta} from "../job-analysis/jobUtils.ts"
+
 
 const DEFAULT_POSITIVE_KEYWORDS = [
     "python",
@@ -66,6 +68,7 @@ type SearchJobsFilterCache = {
     negativeCompanies?: string[]
     excludedWorkplaceTypes?: string[]
     maxApplicantsLimit?: number
+    maxJobAgeLimitDays?: number
     showHiddenJobs?: boolean
 }
 
@@ -199,6 +202,7 @@ type EvaluateSearchJobsInput = {
     negativeCompanies: string[]
     excludedWorkplaceTypes: string[]
     maxApplicantsLimit: number
+    maxJobAgeLimitDays: number
     savedIds: string[]
 }
 
@@ -213,6 +217,7 @@ const evaluateSearchJobs = ({
                                 negativeCompanies,
                                 excludedWorkplaceTypes,
                                 maxApplicantsLimit,
+                                maxJobAgeLimitDays,
                                 savedIds,
                             }: EvaluateSearchJobsInput): JobView[] => {
     const normalizedSearchTerm = normalizeText(searchTerm.trim())
@@ -282,6 +287,16 @@ const evaluateSearchJobs = ({
                 job.applicantsTotal > maxApplicantsLimit
             ) {
                 hiddenReasons.push(`>${maxApplicantsLimit} applicants`)
+            }
+
+            const jobAgeDays = getJobAgeMeta(job.postedAt).totalDays
+
+            if (
+                maxJobAgeLimitDays !== Number.MAX_SAFE_INTEGER &&
+                jobAgeDays != null &&
+                jobAgeDays > maxJobAgeLimitDays
+            ) {
+                hiddenReasons.push(`>${maxJobAgeLimitDays}d old`)
             }
 
             const visibleScore = Math.max(
@@ -448,6 +463,11 @@ export default function SearchJobsPage() {
             ? filterCache.maxApplicantsLimit
             : Number.MAX_SAFE_INTEGER,
     )
+    const [maxJobAgeLimitDays, setMaxJobAgeLimitDays] = useState(() =>
+        typeof filterCache.maxJobAgeLimitDays === "number"
+            ? filterCache.maxJobAgeLimitDays
+            : Number.MAX_SAFE_INTEGER,
+    )
     const [showHiddenJobs, setShowHiddenJobs] = useState(() =>
         typeof filterCache.showHiddenJobs === "boolean"
             ? filterCache.showHiddenJobs
@@ -517,6 +537,7 @@ export default function SearchJobsPage() {
             negativeCompanies,
             excludedWorkplaceTypes,
             maxApplicantsLimit,
+            maxJobAgeLimitDays,
             showHiddenJobs,
         })
     }, [
@@ -526,6 +547,7 @@ export default function SearchJobsPage() {
         negativeCompanies,
         excludedWorkplaceTypes,
         maxApplicantsLimit,
+        maxJobAgeLimitDays,
         showHiddenJobs,
     ])
 
@@ -535,6 +557,14 @@ export default function SearchJobsPage() {
             .filter((value) => Number.isFinite(value))
 
         return Math.max(0, ...applicants)
+    }, [jobs])
+
+    const maxPossibleJobAgeDays = useMemo(() => {
+        const ages = jobs
+            .map((job) => getJobAgeMeta(job.postedAt).totalDays ?? 0)
+            .filter((value) => Number.isFinite(value))
+
+        return Math.max(0, ...ages)
     }, [jobs])
 
     const sourceOptions = useMemo(
@@ -583,6 +613,7 @@ export default function SearchJobsPage() {
                 negativeCompanies,
                 excludedWorkplaceTypes,
                 maxApplicantsLimit,
+                maxJobAgeLimitDays,
                 savedIds,
             }),
         [
@@ -596,6 +627,7 @@ export default function SearchJobsPage() {
             negativeCompanies,
             excludedWorkplaceTypes,
             maxApplicantsLimit,
+            maxJobAgeLimitDays,
             savedIds,
         ],
     )
@@ -863,6 +895,15 @@ export default function SearchJobsPage() {
                 onMaxApplicantsLimitChange={(value) =>
                     setMaxApplicantsLimit(
                         value >= maxPossibleApplicants
+                            ? Number.MAX_SAFE_INTEGER
+                            : value,
+                    )
+                }
+                maxJobAgeLimitDays={maxJobAgeLimitDays}
+                maxPossibleJobAgeDays={maxPossibleJobAgeDays}
+                onMaxJobAgeLimitDaysChange={(value) =>
+                    setMaxJobAgeLimitDays(
+                        value >= maxPossibleJobAgeDays
                             ? Number.MAX_SAFE_INTEGER
                             : value,
                     )

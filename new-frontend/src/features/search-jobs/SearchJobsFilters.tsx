@@ -3,6 +3,7 @@ import {
     Building2,
     ChevronDown,
     ChevronUp,
+    Clock3,
     Database,
     Filter,
     MapPin,
@@ -82,6 +83,10 @@ type SearchJobsFiltersProps = {
     maxApplicantsLimit: number
     maxPossibleApplicants: number
     onMaxApplicantsLimitChange: (value: number) => void
+
+    maxJobAgeLimitDays: number
+    maxPossibleJobAgeDays: number
+    onMaxJobAgeLimitDaysChange: (value: number) => void
 
     showHiddenJobs: boolean
     onShowHiddenJobsChange: (value: boolean) => void
@@ -384,6 +389,9 @@ export default function SearchJobsFilters({
                                               maxApplicantsLimit,
                                               maxPossibleApplicants,
                                               onMaxApplicantsLimitChange,
+                                              maxJobAgeLimitDays,
+                                              maxPossibleJobAgeDays,
+                                              onMaxJobAgeLimitDaysChange,
                                               showHiddenJobs,
                                               onShowHiddenJobsChange,
                                               sourceOptions,
@@ -412,7 +420,8 @@ export default function SearchJobsFilters({
         (negativeKeywords.length > 0 ? 1 : 0) +
         (negativeCompanies.length > 0 ? 1 : 0) +
         (excludedWorkplaceTypes.length > 0 ? 1 : 0) +
-        (maxApplicantsLimit !== Number.MAX_SAFE_INTEGER ? 1 : 0)
+        (maxApplicantsLimit !== Number.MAX_SAFE_INTEGER ? 1 : 0) +
+        (maxJobAgeLimitDays !== Number.MAX_SAFE_INTEGER ? 1 : 0)
 
     const allFiltersCount =
         activeGeneralFiltersCount +
@@ -695,6 +704,37 @@ export default function SearchJobsFilters({
                             }
                             onChange={(event) =>
                                 onMaxApplicantsLimitChange(Number(event.target.value))
+                            }
+                            className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-slate-700 accent-red-500"
+                        />
+                    </div>
+
+                    <div className="border-t border-slate-700/50 pt-3">
+                        <label className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+                            <Clock3 size={14} className="text-slate-400"/>
+                            Max Job Age
+                        </label>
+
+                        <div className="mb-2 flex justify-between text-xs text-slate-400">
+                            <span>
+                                {maxJobAgeLimitDays === Number.MAX_SAFE_INTEGER
+                                    ? "Unlimited"
+                                    : `${maxJobAgeLimitDays}d`}
+                            </span>
+                            <span>{maxPossibleJobAgeDays}d max</span>
+                        </div>
+
+                        <input
+                            type="range"
+                            min="0"
+                            max={maxPossibleJobAgeDays}
+                            value={
+                                maxJobAgeLimitDays === Number.MAX_SAFE_INTEGER
+                                    ? maxPossibleJobAgeDays
+                                    : maxJobAgeLimitDays
+                            }
+                            onChange={(event) =>
+                                onMaxJobAgeLimitDaysChange(Number(event.target.value))
                             }
                             className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-slate-700 accent-red-500"
                         />
