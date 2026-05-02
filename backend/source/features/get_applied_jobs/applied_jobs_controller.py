@@ -10,6 +10,7 @@ No business logic lives here.
 """
 
 import traceback
+import json
 from dataclasses import asdict
 from datetime import datetime
 
@@ -174,3 +175,37 @@ def sync_applied_smart():
             "error": str(e),
             "traceback": traceback.format_exc()
         }), 500
+
+
+def sync_applied_smart_stream():
+    def generate():
+        try:
+            service = JobSyncService(debug=True, slim_mode=True)
+            for event in service.sync_smart_stream():
+                yield f"data: {json.dumps(event, default=str)}\n\n"
+        except LinkedInAppliedJobsEmptyError as exc:
+            error_event = {
+                "type": "error",
+                "status": "error",
+                "error": str(exc),
+            }
+            yield f"data: {json.dumps(error_event)}\n\n"
+        except Exception as exc:
+            print("\n❌ STREAM SYNC ERROR")
+            traceback.print_exc()
+            error_event = {
+                "type": "error",
+                "status": "error",
+                "error": str(exc),
+                "traceback": traceback.format_exc(),
+            }
+            yield f"data: {json.dumps(error_event)}\n\n"
+
+    response = Response(
+        stream_with_context(generate()),
+        content_type="text/event-stream",
+    )
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no"
+    response.headers["Transfer-Encoding"] = "chunked"
+    return response

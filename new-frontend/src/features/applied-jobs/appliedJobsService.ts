@@ -18,6 +18,8 @@ export type AppliedJob = {
     appliedAt: string
     postedAt?: string
     expireAt?: string
+    updatedAt?: string
+    createdAt?: string
     applicants: number
     applicantsVelocity: number
     applicationStatus: ApplicationStatus
@@ -56,6 +58,34 @@ export type AppliedInsights = {
 export type SmartSyncResult = Record<string, unknown> & {
     syncedCount: number
     synced_count?: number
+}
+
+export type SmartSyncProgressPayload = {
+    type?: "progress"
+    stage?: string
+    message?: string
+    processed?: number
+    total?: number
+    progress?: number
+    candidate_count?: number
+    new_count?: number
+    job_id?: string
+    company?: string
+    title?: string
+}
+
+export type SmartSyncFinishPayload = SmartSyncResult & {
+    type?: "finished"
+    stage?: string
+    message?: string
+    progress?: number
+    details?: unknown[]
+}
+
+export type SmartSyncStreamOptions = {
+    onProgress: (data: SmartSyncProgressPayload) => void
+    onFinish: (data: SmartSyncFinishPayload) => void
+    onError: (error: unknown) => void
 }
 
 export type BackfillProgressPayload = {
@@ -218,6 +248,8 @@ export function normalizeAppliedJob(raw: unknown): AppliedJob {
         appliedAt,
         postedAt: getFirstString(job, ["postedAt", "posted_at", "posted_on", "listed_at", "posted_date_text"]),
         expireAt: getFirstString(job, ["expireAt", "expire_at"]),
+        updatedAt: getFirstString(job, ["updatedAt", "updated_at"]),
+        createdAt: getFirstString(job, ["createdAt", "created_at"]),
         applicants: asNumber(job.applicants ?? job.applicants_total),
         applicantsVelocity: asNumber(applicantsVelocity),
         applicationStatus: normalizeApplicationStatus(
@@ -321,6 +353,51 @@ export async function syncAppliedSmart(): Promise<SmartSyncResult> {
         ...result,
         syncedCount: asNumber(result.syncedCount ?? result.synced_count),
     }
+}
+
+export function syncAppliedSmartStream({
+    onProgress,
+    onFinish,
+    onError,
+}: SmartSyncStreamOptions) {
+    const eventSource = new EventSource(`${API_BASE_URL}/job-tracker/sync-applied-smart-stream`)
+    let finished = false
+
+    eventSource.onmessage = event => {
+        try {
+            const data = JSON.parse(event.data)
+
+            if (data.type === "progress") {
+                onProgress(data)
+            }
+
+            if (data.type === "finished") {
+                finished = true
+                onFinish({
+                    ...data,
+                    syncedCount: asNumber(data.syncedCount ?? data.synced_count),
+                })
+                eventSource.close()
+            }
+
+            if (data.type === "error") {
+                finished = true
+                onError(new Error(asOptionalString(data.error) ?? "Failed to smart sync applied jobs"))
+                eventSource.close()
+            }
+        } catch (error) {
+            onError(error)
+        }
+    }
+
+    eventSource.onerror = error => {
+        if (finished) return
+
+        onError(error)
+        eventSource.close()
+    }
+
+    return () => eventSource.close()
 }
 
 export async function syncAppliedIncremental() {

@@ -1,4 +1,4 @@
-import {useMemo, useState, type MouseEvent} from "react"
+import {useEffect, useMemo, useRef, useState, type MouseEvent} from "react"
 import {
     Briefcase,
     CalendarDays,
@@ -21,7 +21,7 @@ import {
     formatDateBR,
     formatTimeAgo,
     formatTimeBR,
-    syncAppliedSmart,
+    syncAppliedSmartStream,
 } from "./appliedJobsService.ts"
 import AppliedJobDetailModal from "./AppliedJobDetailModal.tsx"
 import {
@@ -92,8 +92,39 @@ function getCompetitionClass(applicants: number, applicantsVelocity: number) {
     return "border-green-500/30 bg-green-500/10 text-green-300"
 }
 
+function getLastUpdateValue(job: AppliedJob) {
+    return job.updatedAt ?? job.createdAt ?? job.appliedAt
+}
+
+function getDaysSince(value: string | undefined) {
+    if (!value) return null
+
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return null
+
+    return Math.max(Math.floor((Date.now() - date.getTime()) / 86_400_000), 0)
+}
+
+function getStalenessClass(days: number | null) {
+    if (days === null) return "border-gray-600 bg-gray-700/40 text-gray-300"
+
+    if (days >= 7) {
+        return "border-red-500/40 bg-red-500/10 text-red-300"
+    }
+
+    if (days >= 2) {
+        return "border-amber-500/40 bg-amber-500/10 text-amber-300"
+    }
+
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+}
+
 function formatNumber(value: number) {
     return new Intl.NumberFormat("en-US").format(value)
+}
+
+function clampProgress(value: number) {
+    return Math.min(Math.max(Math.round(value), 0), 100)
 }
 
 type TechStackBadgesProps = {
@@ -212,6 +243,8 @@ function getAppliedJobStack(job: AppliedJob) {
 function ApplicationMobileCard({job, onSelect}: ApplicationMobileCardProps) {
     const stack = getAppliedJobStack(job)
     const level = extractLevel(job)
+    const lastUpdate = getLastUpdateValue(job)
+    const daysSinceUpdate = getDaysSince(lastUpdate)
 
     return (
         <article
@@ -310,6 +343,20 @@ function ApplicationMobileCard({job, onSelect}: ApplicationMobileCardProps) {
                     </span>
                 </div>
 
+                <div>
+                    <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-gray-500">
+                        Last Update
+                    </p>
+                    <span
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-extrabold ${getStalenessClass(
+                            daysSinceUpdate,
+                        )}`}
+                    >
+                        <Clock size={14}/>
+                        {lastUpdate ? formatTimeAgo(lastUpdate) : "unknown"}
+                    </span>
+                </div>
+
                 {job.lastEmail && <EmailPreview email={job.lastEmail}/>}
             </div>
         </article>
@@ -334,6 +381,13 @@ export default function RecentApplications({
     const [searchTerm, setSearchTerm] = useState("")
     const [selectedJob, setSelectedJob] = useState<AppliedJob | null>(null)
     const [isSyncing, setIsSyncing] = useState(false)
+    const [syncProgress, setSyncProgress] = useState(0)
+    const [syncMessage, setSyncMessage] = useState("")
+    const closeSyncStreamRef = useRef<(() => void) | null>(null)
+
+    useEffect(() => {
+        return () => closeSyncStreamRef.current?.()
+    }, [])
 
     const totalApplicants = useMemo(
         () => jobs.reduce((sum, job) => sum + job.applicants, 0),
@@ -358,22 +412,38 @@ export default function RecentApplications({
 
     const hasActiveSearch = searchTerm.trim().length > 0
 
-    async function handleSmartSync() {
-        try {
-            onError(null)
-            setIsSyncing(true)
+    function handleSmartSync() {
+        onError(null)
+        setIsSyncing(true)
+        setSyncProgress(3)
+        setSyncMessage("Starting smart sync")
+        closeSyncStreamRef.current?.()
 
-            const result = await syncAppliedSmart()
-            const syncedCount = result.syncedCount ?? result.synced_count ?? 0
+        closeSyncStreamRef.current = syncAppliedSmartStream({
+            onProgress: data => {
+                setSyncProgress(clampProgress(data.progress ?? 10))
+                setSyncMessage(data.message ?? "Syncing applied jobs")
+            },
+            onFinish: data => {
+                const syncedCount = data.syncedCount ?? data.synced_count ?? 0
 
-            console.info(`Smart sync inserted ${syncedCount} applied jobs.`)
-            await onRefresh()
-        } catch (syncError) {
-            console.error(syncError)
-            onError("Could not sync applied jobs.")
-        } finally {
-            setIsSyncing(false)
-        }
+                console.info(`Smart sync inserted ${syncedCount} applied jobs.`)
+                setSyncProgress(100)
+                setSyncMessage(data.message ?? "Smart sync finished")
+                closeSyncStreamRef.current = null
+                void onRefresh().finally(() => {
+                    setIsSyncing(false)
+                })
+            },
+            onError: syncError => {
+                console.error(syncError)
+                closeSyncStreamRef.current = null
+                setIsSyncing(false)
+                setSyncProgress(0)
+                setSyncMessage("")
+                onError("Could not sync applied jobs.")
+            },
+        })
     }
 
     return (
@@ -421,6 +491,21 @@ export default function RecentApplications({
                     </button>
                 </div>
             </div>
+
+            {isSyncing && (
+                <div className="mb-4 rounded-lg border border-blue-500/30 bg-blue-500/10 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-3 text-xs font-extrabold text-blue-200">
+                        <span className="truncate">{syncMessage || "Syncing applied jobs"}</span>
+                        <span className="tabular-nums">{syncProgress}%</span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-gray-950/70">
+                        <div
+                            className="h-full rounded-full bg-blue-400 transition-[width] duration-500"
+                            style={{width: `${syncProgress}%`}}
+                        />
+                    </div>
+                </div>
+            )}
 
             <div className="mb-4">
                 <label htmlFor="applications-search" className="sr-only">
@@ -532,6 +617,8 @@ export default function RecentApplications({
                                     {filteredJobs.map(job => {
                                         const stack = getAppliedJobStack(job)
                                         const level = extractLevel(job)
+                                        const lastUpdate = getLastUpdateValue(job)
+                                        const daysSinceUpdate = getDaysSince(lastUpdate)
 
                                         return (
                                             <tr
@@ -636,6 +723,19 @@ export default function RecentApplications({
                                                     {getStatusIcon(job.applicationStatus)}
                                                     {job.applicationStatus}
                                                 </span>
+
+                                                {lastUpdate && (
+                                                    <span
+                                                        title={`Last update: ${formatDateBR(lastUpdate)} ${formatTimeBR(lastUpdate)}`}
+                                                        aria-label={`Last update: ${formatDateBR(lastUpdate)} ${formatTimeBR(lastUpdate)}`}
+                                                        className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-extrabold ${getStalenessClass(
+                                                            daysSinceUpdate,
+                                                        )}`}
+                                                    >
+                                                        <Clock size={13}/>
+                                                        {formatTimeAgo(lastUpdate)}
+                                                    </span>
+                                                )}
 
                                                 {job.lastEmail && <EmailPreview email={job.lastEmail}/>}
                                             </div>

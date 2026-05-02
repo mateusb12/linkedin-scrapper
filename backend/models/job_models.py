@@ -149,6 +149,8 @@ class Job(Base):
             "expire_at": self.expire_at.isoformat() if self.expire_at else None,
             "days_until_expire": days_until_expire,
             "application_status": self.application_status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
         if include_company and self.company:

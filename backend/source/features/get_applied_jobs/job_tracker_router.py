@@ -14,6 +14,7 @@ from source.features.get_applied_jobs.applied_jobs_controller import (
     sync_applied_jobs,
     sync_applied_backfill_stream,
     sync_applied_smart,
+    sync_applied_smart_stream,
 )
 
 job_tracker_bp = Blueprint("job_tracker", __name__, url_prefix="/job-tracker")
@@ -341,3 +342,19 @@ def sync_applied_smart_route():
               type: string
     """
     return sync_applied_smart()
+
+
+@job_tracker_bp.route("/sync-applied-smart-stream", methods=["GET"])
+def sync_applied_smart_stream_route():
+    """
+    Streams smart sync progress as server-sent events.
+    ---
+    tags:
+      - Job Tracker
+    produces:
+      - text/event-stream
+    responses:
+      200:
+        description: SSE stream for smart sync progress.
+    """
+    return sync_applied_smart_stream()
