@@ -318,12 +318,12 @@ ${hiddenCandidateFooter}
 \\end{center}
 
 ${
-    resume.summary.trim()
-        ? `\\section{${resume.language === "EN" ? "Summary" : "Resumo"}}
+        resume.summary.trim()
+            ? `\\section{${resume.language === "EN" ? "Summary" : "Resumo"}}
 ${escapeLatex(resume.summary)}
 `
-        : ""
-}
+            : ""
+    }
 
 \\section{${labels.experience}}
   \\resumeSubHeadingListStart
@@ -331,44 +331,44 @@ ${experienceLines}
   \\resumeSubHeadingListEnd
 
 ${
-    hasProjects
-        ? `\\section{${labels.projects}}
+        hasProjects
+            ? `\\section{${labels.projects}}
     \\resumeSubHeadingListStart
 ${projectLines}
     \\resumeSubHeadingListEnd`
-        : ""
-}
+            : ""
+    }
 
 ${
-    hasSkills
-        ? `\\section{${labels.skills}}
+        hasSkills
+            ? `\\section{${labels.skills}}
  \\begin{itemize}[leftmargin=0.15in, label={}]
     \\small{\\item{
 ${skillLines}
     }}
  \\end{itemize}`
-        : ""
-}
+            : ""
+    }
 
 ${
-    hasEducation
-        ? `\\section{${labels.education}}
+        hasEducation
+            ? `\\section{${labels.education}}
   \\resumeSubHeadingListStart
 ${educationLines}
   \\resumeSubHeadingListEnd`
-        : ""
-}
+            : ""
+    }
 
 ${
-    resume.languages.length
-        ? `\\section{${labels.languages}}
+        resume.languages.length
+            ? `\\section{${labels.languages}}
  \\begin{itemize}[leftmargin=0.15in, label={}]
     \\small{\\item{
       ${languageLines}
     }}
  \\end{itemize}`
-        : ""
-}
+            : ""
+    }
 
 ${hiddenKeywordsPlaceholder}
 
@@ -384,20 +384,25 @@ Operate in PATCH MODE: preserve the original LaTeX document and only edit the al
 
 Output format:
 1. First, write a brief change summary with 3-6 bullet points.
-2. Then write the complete final LaTeX document.
+2. Then write the complete final LaTeX document inside exactly one Markdown fenced code block with language latex.
 3. Use this exact structure:
 
 CHANGE SUMMARY:
 - ...
 
 FINAL LATEX DOCUMENT:
+${"```"}latex
 \documentclass...
+...
+\end{document}
+${"```"}
 
-4. The LaTeX document must start exactly with \documentclass.
-5. The LaTeX document must end exactly with \end{document}.
-6. Do NOT return a snippet, excerpt, partial section, diff, markdown code fence, or placeholder.
-7. Do NOT use ellipses such as "...", "% unchanged", "% omitted", "[rest unchanged]", or any placeholder.
-8. Do NOT stop after one section. Continue until the full original document has been returned.
+4. The LaTeX code block content must start exactly with \documentclass.
+5. The LaTeX code block content must end exactly with \end{document}.
+6. Do NOT write the LaTeX document outside the latex code block.
+7. Do NOT return an excerpt, partial section, diff, placeholder, or more than one latex code block.
+8. Do NOT use ellipses such as "...", "% unchanged", "% omitted", "[rest unchanged]", or any placeholder inside the final LaTeX document.
+9. Do NOT stop after one section. Continue until the full original document has been returned.
 
 Editing rules:
 1. Rewrite ONLY:
@@ -405,6 +410,7 @@ Editing rules:
    - experience bullet points, except Stack bullets
 2. Do NOT edit:
    - LaTeX structure, commands, packages, formatting, links, dates, company names, job titles, locations, education, languages, technical skills
+   - the entire Languages section; copy it verbatim from the original LaTeX, including accents, spacing, commands, and line breaks
    - any bullet starting with \resumeItem{\textbf{Stack:}
 3. Keep the EXACT SAME number of bullet points in each job.
 4. Do NOT summarize, shorten, merge, split, or simplify bullets.
@@ -438,11 +444,13 @@ Do NOT output the keyword list separately.
 
 Before returning, verify:
 - The response has both CHANGE SUMMARY and FINAL LATEX DOCUMENT sections.
-- The LaTeX document starts with \documentclass.
-- The LaTeX document ends with \end{document}.
+- The final LaTeX document is inside exactly one Markdown fenced code block with language latex.
+- The LaTeX code block content starts with \documentclass.
+- The LaTeX code block content ends with \end{document}.
 - No sections were omitted.
 - No Stack bullets were changed.
 - No non-allowed sections were changed.
+- The entire Languages section was copied verbatim from the original LaTeX.
 
 Job Description:
 {{JOB_DESCRIPTION}}
@@ -481,20 +489,25 @@ Trabalhe em MODO PATCH: preserve o documento LaTeX original e edite somente os t
 
 Formato de saída:
 1. Primeiro, escreva um resumo breve das mudanças com 3-6 bullet points.
-2. Depois, escreva o documento LaTeX final completo.
+2. Depois, escreva o documento LaTeX final completo dentro de exatamente um único bloco de código Markdown com linguagem latex.
 3. Use exatamente esta estrutura:
 
 RESUMO DAS MUDANÇAS:
 - ...
 
 DOCUMENTO LATEX FINAL:
+${"```"}latex
 \documentclass...
+...
+\end{document}
+${"```"}
 
-4. O documento LaTeX deve começar exatamente com \documentclass.
-5. O documento LaTeX deve terminar exatamente com \end{document}.
-6. NÃO retorne snippet, trecho parcial, seção isolada, diff, bloco markdown ou placeholder.
-7. NÃO use reticências como "...", "% sem alterações", "% omitido", "[restante igual]" ou qualquer placeholder.
-8. NÃO pare depois de uma seção. Continue até retornar o documento original inteiro.
+4. O conteúdo do bloco LaTeX deve começar exatamente com \documentclass.
+5. O conteúdo do bloco LaTeX deve terminar exatamente com \end{document}.
+6. NÃO escreva o documento LaTeX fora do bloco de código latex.
+7. NÃO retorne trecho parcial, seção isolada, diff, placeholder ou mais de um bloco de código latex.
+8. NÃO use reticências como "...", "% sem alterações", "% omitido", "[restante igual]" ou qualquer placeholder dentro do documento LaTeX final.
+9. NÃO pare depois de uma seção. Continue até retornar o documento original inteiro.
 
 Regras de edição:
 1. Reescreva APENAS:
@@ -502,6 +515,7 @@ Regras de edição:
    - os bullet points de experiência, exceto bullets de Stack
 2. NÃO edite:
    - estrutura LaTeX, comandos, pacotes, formatação, links, datas, nomes de empresas, cargos, locais, formação, idiomas, competências técnicas
+   - a seção inteira de Idiomas; copie exatamente como está no LaTeX original, incluindo acentos, espaços, comandos e quebras de linha
    - qualquer bullet que comece com \resumeItem{\textbf{Stack:}
 3. Mantenha EXATAMENTE o mesmo número de bullet points em cada experiência.
 4. NÃO resuma, encurte, junte, divida ou simplifique bullets.
@@ -535,11 +549,13 @@ NÃO retorne a lista de palavras-chave separadamente.
 
 Antes de retornar, verifique:
 - A resposta tem as seções RESUMO DAS MUDANÇAS e DOCUMENTO LATEX FINAL.
-- O documento LaTeX começa com \documentclass.
-- O documento LaTeX termina com \end{document}.
+- O documento LaTeX final está dentro de exatamente um único bloco de código Markdown com linguagem latex.
+- O conteúdo do bloco LaTeX começa com \documentclass.
+- O conteúdo do bloco LaTeX termina com \end{document}.
 - Nenhuma seção foi omitida.
 - Nenhum bullet de Stack foi alterado.
 - Nenhuma seção não permitida foi alterada.
+- A seção inteira de Idiomas foi copiada exatamente como estava no LaTeX original.
 
 Descrição da vaga:
 {{JOB_DESCRIPTION}}
