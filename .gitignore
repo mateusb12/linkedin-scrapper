@@ -53,3 +53,4 @@ __pycache__/
 **/frontend*.md
 /backend/source/features/search_jobs/linkedin_graphql_parsed_jobs.json
 /backend/source/features/search_jobs/linkedin_graphql_response.json
+*.bak*

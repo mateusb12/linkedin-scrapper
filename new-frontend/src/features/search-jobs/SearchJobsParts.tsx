@@ -297,7 +297,16 @@ const ENGINEERING_PRACTICE_SIGNALS = new Set([
     "ddd",
 ])
 
-type StackCategoryKey = "languages" | "backendFrameworks" | "ai" | "databases" | "misc"
+type StackCategoryKey =
+    | "languages"
+    | "backendFrameworks"
+    | "frontendFrameworks"
+    | "ai"
+    | "databases"
+    | "observability"
+    | "testingQuality"
+    | "tools"
+    | "misc"
 
 const STACK_LANGUAGE_KEYWORDS = new Set([
     "python",
@@ -323,16 +332,31 @@ const STACK_BACKEND_FRAMEWORK_KEYWORDS = new Set([
     "ruby on rails",
 ])
 
+const STACK_FRONTEND_FRAMEWORK_KEYWORDS = new Set([
+    "react",
+    "next js",
+    "nextjs",
+    "vue",
+    "react native",
+])
+
 const STACK_AI_KEYWORDS = new Set([
     "llm",
     "langflow",
     "langgraph",
+    "agentic ai",
+    "claude code",
+    "cursor",
 ])
 
 const STACK_DATABASE_KEYWORDS = new Set([
     "sql",
     "nosql",
     "mysql",
+    "clickhouse",
+    "click house",
+    "elasticsearch",
+    "elastic search",
     "postgresql",
     "postgres",
     "redis",
@@ -344,12 +368,53 @@ const STACK_DATABASE_KEYWORDS = new Set([
     "sqlite",
 ])
 
+const STACK_OBSERVABILITY_KEYWORDS = new Set([
+    "sentry",
+    "grafana",
+    "loki",
+    "tempo",
+    "mimir",
+    "lgtm",
+    "lgtm stack",
+])
+
+const STACK_TESTING_QUALITY_KEYWORDS = new Set([
+    "pytest",
+    "cypress",
+    "playwright",
+    "pep8",
+    "pep 8",
+    "flake8",
+    "flake 8",
+    "lighthouse",
+    "web vitals",
+])
+
+const STACK_TOOLING_KEYWORDS = new Set([
+    "docker",
+    "kubernetes",
+    "aws",
+    "gcp",
+    "google cloud",
+    "terraform",
+    "git",
+    "figma",
+    "openapi",
+    "drf spectacular",
+    "django debug toolbar",
+    "graphql",
+])
+
 const categorizeStackKeywords = (keywords: string[]) => {
     const categories: Record<StackCategoryKey, string[]> = {
         languages: [],
         backendFrameworks: [],
+        frontendFrameworks: [],
         ai: [],
         databases: [],
+        observability: [],
+        testingQuality: [],
+        tools: [],
         misc: [],
     }
 
@@ -366,6 +431,11 @@ const categorizeStackKeywords = (keywords: string[]) => {
             return
         }
 
+        if (STACK_FRONTEND_FRAMEWORK_KEYWORDS.has(normalized)) {
+            categories.frontendFrameworks.push(keyword)
+            return
+        }
+
         if (STACK_AI_KEYWORDS.has(normalized)) {
             categories.ai.push(keyword)
             return
@@ -373,6 +443,21 @@ const categorizeStackKeywords = (keywords: string[]) => {
 
         if (STACK_DATABASE_KEYWORDS.has(normalized)) {
             categories.databases.push(keyword)
+            return
+        }
+
+        if (STACK_OBSERVABILITY_KEYWORDS.has(normalized)) {
+            categories.observability.push(keyword)
+            return
+        }
+
+        if (STACK_TESTING_QUALITY_KEYWORDS.has(normalized)) {
+            categories.testingQuality.push(keyword)
+            return
+        }
+
+        if (STACK_TOOLING_KEYWORDS.has(normalized)) {
+            categories.tools.push(keyword)
             return
         }
 
@@ -1331,6 +1416,11 @@ export function SelectedJobPreview({
                                 items: categorizedStack.backendFrameworks,
                             },
                             {
+                                key: "frontendFrameworks",
+                                label: "Frontend frameworks",
+                                items: categorizedStack.frontendFrameworks,
+                            },
+                            {
                                 key: "ai",
                                 label: "AI / LLM",
                                 items: categorizedStack.ai,
@@ -1339,6 +1429,21 @@ export function SelectedJobPreview({
                                 key: "databases",
                                 label: "Databases",
                                 items: categorizedStack.databases,
+                            },
+                            {
+                                key: "observability",
+                                label: "Observability",
+                                items: categorizedStack.observability,
+                            },
+                            {
+                                key: "testingQuality",
+                                label: "Testing / quality",
+                                items: categorizedStack.testingQuality,
+                            },
+                            {
+                                key: "tools",
+                                label: "Tools / platform",
+                                items: categorizedStack.tools,
                             },
                             {
                                 key: "misc",

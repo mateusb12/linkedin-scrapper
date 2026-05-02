@@ -51,6 +51,60 @@ import langchainIcon from "../../assets/skills/langchain.svg";
 import geminiIcon from "../../assets/skills/gemini.svg";
 import langflowIcon from "../../assets/skills/langflow.svg";
 import langgraphIcon from "../../assets/skills/langgraph.svg";
+import csharpIcon from "../../assets/skills/csharp.svg";
+import dotnetIcon from "../../assets/skills/dotnet.svg";
+import apiIcon from "../../assets/skills/api.png";
+import backendIcon from "../../assets/skills/backend.png";
+import frontendIcon from "../../assets/skills/frontend.png";
+import fullstackIcon from "../../assets/skills/frontend_dev.png";
+import cloudIcon from "../../assets/skills/cloud.png";
+import serverIcon from "../../assets/skills/server.png";
+import databaseIcon from "../../assets/skills/database.png";
+import dataAnalysisIcon from "../../assets/skills/data-analysis.png";
+import machineLearningIcon from "../../assets/skills/machine-learning.png";
+import mongoIcon from "../../assets/skills/mongo.svg";
+import sqliteIcon from "../../assets/skills/sqlite.svg";
+import supabaseIcon from "../../assets/skills/supabase.png";
+import firebaseIcon from "../../assets/skills/firebase.png";
+import s3Icon from "../../assets/skills/s3.svg";
+import celeryIcon from "../../assets/skills/celery.png";
+import clickhouseIcon from "../../assets/skills/clickhouse.svg";
+import elasticsearchIcon from "../../assets/skills/elastic-search.svg";
+import grafanaIcon from "../../assets/skills/grafana.svg";
+import grafanaLokiIcon from "../../assets/skills/grafana-loki.png";
+import pytestIcon from "../../assets/skills/pytest.svg";
+import cypressIcon from "../../assets/skills/cypress.svg";
+import playwrightIcon from "../../assets/skills/playwright.svg";
+import graphqlIcon from "../../assets/skills/graphql.svg";
+import figmaIcon from "../../assets/skills/figma.svg";
+import openapiIcon from "../../assets/skills/open-api.svg";
+import swaggerIcon from "../../assets/skills/swagger.svg";
+import lighthouseIcon from "../../assets/skills/lighthouse.svg";
+import jwtIcon from "../../assets/skills/jwt.png";
+import oauth2Icon from "../../assets/skills/oauth2.png";
+import securityIcon from "../../assets/skills/security.png";
+import seleniumIcon from "../../assets/skills/selenium.svg";
+import htmlIcon from "../../assets/skills/html.svg";
+import cssIcon from "../../assets/skills/css.svg";
+import expressIcon from "../../assets/skills/express.svg";
+import tailwindIcon from "../../assets/skills/tailwind.svg";
+import viteIcon from "../../assets/skills/vite.svg";
+import eslintIcon from "../../assets/skills/eslint.svg";
+import ejsIcon from "../../assets/skills/ejs.png";
+import numpyIcon from "../../assets/skills/numpy.png";
+import scipyIcon from "../../assets/skills/scipy.svg";
+import scikitLearnIcon from "../../assets/skills/scikit-learn.svg";
+import matplotlibIcon from "../../assets/skills/matplotlib.png";
+import seabornIcon from "../../assets/skills/seaborn.png";
+import networkxIcon from "../../assets/skills/networkx.png";
+import spacyIcon from "../../assets/skills/spacy.png";
+import nlpIcon from "../../assets/skills/nlp.png";
+import httpIcon from "../../assets/skills/http.png";
+import websocketIcon from "../../assets/skills/websocket.svg";
+import githubActionsIcon from "../../assets/skills/github-actions.svg";
+import pm2Icon from "../../assets/skills/pm2.svg";
+import alembicIcon from "../../assets/skills/alembic.png";
+import poetryIcon from "../../assets/skills/poetry.png";
 
 export const extractExperienceFromDescription = (
     description?: string | null,
@@ -166,13 +220,14 @@ const techIconsMap: Record<string, string> = {
     Linux: linuxIcon,
     Docker: dockerIcon,
     React: reactIcon,
+    "Next.js": nextjsIcon,
     "Node.js": nodejsIcon,
     NextJS: nextjsIcon,
     AWS: awsIcon,
     "AWS Lambda": awsIcon,
     "API Gateway": awsIcon,
     DynamoDB: awsIcon,
-    S3: awsIcon,
+    "S3": s3Icon,
     SQS: awsIcon,
     SNS: awsIcon,
     ECS: awsIcon,
@@ -183,6 +238,7 @@ const techIconsMap: Record<string, string> = {
     LLM: llmIcon,
     Flask: flaskIcon,
     Pandas: pandasIcon,
+    "Celery": celeryIcon,
     PostgreSQL: postgresIcon,
     RabbitMQ: rabbitIcon,
     Kafka: kafkaIcon,
@@ -191,6 +247,86 @@ const techIconsMap: Record<string, string> = {
     Gemini: geminiIcon,
     LangFlow: langflowIcon,
     LangGraph: langgraphIcon,
+    "Django REST Framework": djangoIcon,
+    "ClickHouse": clickhouseIcon,
+    "Elasticsearch": elasticsearchIcon,
+    "Sentry": securityIcon,
+    "Grafana": grafanaIcon,
+    "Loki": grafanaLokiIcon,
+    "Tempo": grafanaIcon,
+    "Mimir": grafanaIcon,
+    PEP8: pythonIcon,
+    Flake8: pythonIcon,
+    "Pytest": pytestIcon,
+    "Claude Code": llmIcon,
+    Cursor: llmIcon,
+    "Cypress": cypressIcon,
+    "Playwright": playwrightIcon,
+    "GraphQL": graphqlIcon,
+    "Figma": figmaIcon,
+    "OpenAPI": openapiIcon,
+    "DRF Spectacular": openapiIcon,
+    "Django Debug Toolbar": djangoIcon,
+    "Lighthouse": lighthouseIcon,
+    "Web Vitals": lighthouseIcon,
+    "C#": csharpIcon,
+    ".NET": dotnetIcon,
+    "ASP.NET": dotnetIcon,
+    "ASP.NET Core": dotnetIcon,
+    "Entity Framework": dotnetIcon,
+    "API": apiIcon,
+    "REST": apiIcon,
+    "REST API": apiIcon,
+    "HTTP": httpIcon,
+    "WebSocket": websocketIcon,
+    "WebSockets": websocketIcon,
+    "JWT": jwtIcon,
+    "OAuth": oauth2Icon,
+    "OAuth2": oauth2Icon,
+    "Swagger": swaggerIcon,
+    "Backend": backendIcon,
+    "Frontend": frontendIcon,
+    "Full Stack": fullstackIcon,
+    "Serverless": cloudIcon,
+    "SOAP": apiIcon,
+    "Microservices": serverIcon,
+    "Data pipeline": dataAnalysisIcon,
+    "Data Pipeline": dataAnalysisIcon,
+    "Data Analysis": dataAnalysisIcon,
+    "Machine Learning": machineLearningIcon,
+    "ML": machineLearningIcon,
+    "NoSQL": databaseIcon,
+    "MongoDB": mongoIcon,
+    "Mongo": mongoIcon,
+    "SQLite": sqliteIcon,
+    "Supabase": supabaseIcon,
+    "Firebase": firebaseIcon,
+    "Selenium": seleniumIcon,
+    "HTML": htmlIcon,
+    "CSS": cssIcon,
+    "Express": expressIcon,
+    "Express.js": expressIcon,
+    "Tailwind": tailwindIcon,
+    "Tailwind CSS": tailwindIcon,
+    "Vite": viteIcon,
+    "ESLint": eslintIcon,
+    "EJS": ejsIcon,
+    "NumPy": numpyIcon,
+    "SciPy": scipyIcon,
+    "Scikit-learn": scikitLearnIcon,
+    "Scikit Learn": scikitLearnIcon,
+    "Matplotlib": matplotlibIcon,
+    "Seaborn": seabornIcon,
+    "NetworkX": networkxIcon,
+    "spaCy": spacyIcon,
+    "NLP": nlpIcon,
+    "GitHub Actions": githubActionsIcon,
+    "CI/CD": githubActionsIcon,
+    "PM2": pm2Icon,
+    "Alembic": alembicIcon,
+    "Poetry": poetryIcon,
+    "Agentic AI": llmIcon,
+
 };
 
 const TECH_LABEL_ALIASES: Record<string, string> = {
@@ -260,8 +396,9 @@ const TECH_LABEL_ALIASES: Record<string, string> = {
     "ruby on rails": "Ruby",
     ruby: "Ruby",
     "node js": "Node.js",
-    nextjs: "NextJS",
-    "next.js": "NextJS",
+    nextjs: "Next.js",
+    "next.js": "Next.js",
+    "next js": "Next.js",
     backend: "Backend",
     django: "Django",
     docker: "Docker",
@@ -304,6 +441,104 @@ const TECH_LABEL_ALIASES: Record<string, string> = {
     "full-stack": "Full Stack",
     "data pipeline": "Data pipeline",
     "data pipelines": "Data pipeline",
+    celery: "Celery",
+    drf: "Django REST Framework",
+    "django rest framework": "Django REST Framework",
+    sentry: "Sentry",
+    grafana: "Grafana",
+    "grafana stack": "Grafana",
+    lgtm: "Grafana",
+    "lgtm stack": "Grafana",
+    loki: "Loki",
+    tempo: "Tempo",
+    mimir: "Mimir",
+    clickhouse: "ClickHouse",
+    "click house": "ClickHouse",
+    elasticsearch: "Elasticsearch",
+    "elastic search": "Elasticsearch",
+    pep8: "PEP8",
+    "pep 8": "PEP8",
+    flake8: "Flake8",
+    "flake 8": "Flake8",
+    pytest: "Pytest",
+    "claude code": "Claude Code",
+    cursor: "Cursor",
+    cypress: "Cypress",
+    playwright: "Playwright",
+    graphql: "GraphQL",
+    "graph ql": "GraphQL",
+    figma: "Figma",
+    "openapi": "OpenAPI",
+    "open api": "OpenAPI",
+    "drf spectacular": "DRF Spectacular",
+    "django debug toolbar": "Django Debug Toolbar",
+    lighthouse: "Lighthouse",
+    "web vitals": "Web Vitals",
+    "agentic ai": "Agentic AI",
+    "rest": "REST",
+    "rest api": "REST API",
+    "api rest": "REST API",
+    "restful api": "REST API",
+    "restful apis": "REST API",
+    "http": "HTTP",
+    "https": "HTTP",
+    "websocket": "WebSocket",
+    "websockets": "WebSocket",
+    "web socket": "WebSocket",
+    "web sockets": "WebSocket",
+    "jwt": "JWT",
+    "json web token": "JWT",
+    "json web tokens": "JWT",
+    "oauth": "OAuth",
+    "oauth2": "OAuth2",
+    "oauth 2": "OAuth2",
+    "swagger": "Swagger",
+    "mongodb": "MongoDB",
+    "mongo": "MongoDB",
+    "sqlite": "SQLite",
+    "sqlite3": "SQLite",
+    "supabase": "Supabase",
+    "firebase": "Firebase",
+    "machine learning": "Machine Learning",
+    "ml": "Machine Learning",
+    "data analysis": "Data Analysis",
+    "data analytics": "Data Analysis",
+    "selenium": "Selenium",
+    "html": "HTML",
+    "html5": "HTML",
+    "css": "CSS",
+    "css3": "CSS",
+    "express": "Express",
+    "expressjs": "Express.js",
+    "express js": "Express.js",
+    "express.js": "Express.js",
+    "tailwind": "Tailwind CSS",
+    "tailwind css": "Tailwind CSS",
+    "vite": "Vite",
+    "eslint": "ESLint",
+    "ejs": "EJS",
+    "numpy": "NumPy",
+    "scipy": "SciPy",
+    "scikit learn": "Scikit-learn",
+    "scikit-learn": "Scikit-learn",
+    "sklearn": "Scikit-learn",
+    "matplotlib": "Matplotlib",
+    "seaborn": "Seaborn",
+    "networkx": "NetworkX",
+    "network x": "NetworkX",
+    "spacy": "spaCy",
+    "nlp": "NLP",
+    "natural language processing": "NLP",
+    "github actions": "GitHub Actions",
+    "github action": "GitHub Actions",
+    "ci cd": "CI/CD",
+    "ci/cd": "CI/CD",
+    "cicd": "CI/CD",
+    "pm2": "PM2",
+    "alembic": "Alembic",
+    "poetry": "Poetry",
+    "swagger ui": "Swagger",
+
 }
 
 export const normalizeTechText = (value: string) =>
@@ -344,6 +579,8 @@ const RUNTIME_KEYWORD_HINTS = [
     {label: "PostgreSQL", pattern: /\b(postgresql|postgres)\b/i},
     {label: "MySQL", pattern: /\bmysql\b/i},
     {label: "SQL", pattern: /\bsql\b/i},
+    {label: "ClickHouse", pattern: /\bclick\s*house\b|\bclickhouse\b/i},
+    {label: "Elasticsearch", pattern: /\belastic\s*search\b|\belasticsearch\b/i},
     {label: "C#", pattern: /(^|[^a-z0-9])(?:c\s*#|csharp|c\s+sharp)([^a-z0-9]|$)/i},
     {label: "ASP.NET Core", pattern: /(^|[^a-z0-9])(?:asp\s*\.?\s*net\s*core|aspnetcore)([^a-z0-9]|$)/i},
     {label: "ASP.NET", pattern: /(^|[^a-z0-9])(?:asp\s*\.?\s*net|aspnet)(?!\s*core)([^a-z0-9]|$)/i},
@@ -371,6 +608,9 @@ const RUNTIME_KEYWORD_HINTS = [
     {label: "Azure", pattern: /\bazure\b/i},
     {label: "Python", pattern: /\bpython\b/i},
     {label: "LLM", pattern: /\b(?:llms?|large\s+language\s+models?)\b/i},
+    {label: "Claude Code", pattern: /\bclaude\s+code\b/i},
+    {label: "Cursor", pattern: /\bcursor\b/i},
+    {label: "Agentic AI", pattern: /\bagentic\s+ai\b/i},
     {label: "LangFlow", pattern: /\blangflow\b/i},
     {label: "LangGraph", pattern: /\blanggraph\b/i},
     {label: "NoSQL", pattern: /\b(?:nosql|no\s*sql)\b/i},
@@ -381,11 +621,14 @@ const RUNTIME_KEYWORD_HINTS = [
     {label: "Django", pattern: /\bdjango\b/i},
     {label: "FastAPI", pattern: /\bfastapi\b/i},
     {label: "Flask", pattern: /\bflask\b/i},
+    {label: "Django REST Framework", pattern: /\b(?:django\s+rest\s+framework|drf)\b/i},
+    {label: "Celery", pattern: /\bcelery\b/i},
     {label: "React", pattern: /\breact\b/i},
     {label: "Vue", pattern: /\bvue(?:\.js)?\b/i},
     {label: "TypeScript", pattern: /\btypescript\b/i},
     {label: "JavaScript", pattern: /\bjavascript\b/i},
     {label: "Node.js", pattern: /\b(node\.js|nodejs|node)\b/i},
+    {label: "Next.js", pattern: /\bnext(?:\.|\s)?js\b/i},
     {label: "Docker", pattern: /\bdocker\b/i},
     {label: "Kubernetes", pattern: /\b(kubernetes|k8s)\b/i},
     {label: "Kafka", pattern: /\bkafka\b/i},
@@ -402,6 +645,55 @@ const RUNTIME_KEYWORD_HINTS = [
     {label: "Pleno", pattern: /\b(pleno|mid level)\b/i},
     {label: "Junior", pattern: /\b(junior|júnior|entry)\b/i},
     {label: "Internship", pattern: /\b(intern|internship|estagio|estágio)\b/i},
+    {label: "Sentry", pattern: /\bsentry\b/i},
+    {label: "Grafana", pattern: /\b(?:grafana|grafana\s+stack|lgtm|lgtm\s+stack)\b/i},
+    {label: "Loki", pattern: /\bloki\b/i},
+    {label: "Tempo", pattern: /\btempo\b/i},
+    {label: "Mimir", pattern: /\bmimir\b/i},
+    {label: "PEP8", pattern: /\bpep\s*8\b/i},
+    {label: "Flake8", pattern: /\bflake\s*8\b/i},
+    {label: "Pytest", pattern: /\bpytest\b/i},
+    {label: "Cypress", pattern: /\bcypress\b/i},
+    {label: "Playwright", pattern: /\bplaywright\b/i},
+    {label: "GraphQL", pattern: /\bgraph\s*ql\b|\bgraphql\b/i},
+    {label: "Figma", pattern: /\bfigma\b/i},
+    {label: "OpenAPI", pattern: /\bopen\s*api\b|\bopenapi\b/i},
+    {label: "DRF Spectacular", pattern: /\bdrf\s+spectacular\b/i},
+    {label: "Django Debug Toolbar", pattern: /\bdjango\s+debug\s+toolbar\b/i},
+    {label: "Lighthouse", pattern: /\blighthouse\b/i},
+    {label: "Web Vitals", pattern: /\bweb\s+vitals\b/i},
+    {label: "MongoDB", pattern: /\b(?:mongodb|mongo\s*db|mongo)\b/i},
+    {label: "SQLite", pattern: /\bsqlite(?:3)?\b/i},
+    {label: "Supabase", pattern: /\bsupabase\b/i},
+    {label: "Firebase", pattern: /\bfirebase\b/i},
+    {label: "REST API", pattern: /\brest(?:ful)?\s+apis?\b|\bapis?\s+rest\b/i},
+    {label: "HTTP", pattern: /\bhttps?\b/i},
+    {label: "WebSocket", pattern: /\bweb\s*sockets?\b|\bwebsockets?\b/i},
+    {label: "JWT", pattern: /\b(?:jwt|json\s+web\s+tokens?)\b/i},
+    {label: "OAuth2", pattern: /\boauth\s*2\b|\boauth2\b|\boauth\b/i},
+    {label: "Swagger", pattern: /\bswagger(?:\s+ui)?\b/i},
+    {label: "Selenium", pattern: /\bselenium\b/i},
+    {label: "HTML", pattern: /\bhtml5?\b/i},
+    {label: "CSS", pattern: /\bcss3?\b/i},
+    {label: "Express.js", pattern: /\bexpress(?:\.js|\s+js|js)?\b/i},
+    {label: "Tailwind CSS", pattern: /\btailwind(?:\s+css)?\b/i},
+    {label: "Vite", pattern: /\bvite\b/i},
+    {label: "ESLint", pattern: /\beslint\b/i},
+    {label: "EJS", pattern: /\bejs\b/i},
+    {label: "NumPy", pattern: /\bnumpy\b/i},
+    {label: "SciPy", pattern: /\bscipy\b/i},
+    {label: "Scikit-learn", pattern: /\b(?:scikit[-\s]?learn|sklearn)\b/i},
+    {label: "Matplotlib", pattern: /\bmatplotlib\b/i},
+    {label: "Seaborn", pattern: /\bseaborn\b/i},
+    {label: "NetworkX", pattern: /\bnetwork\s*x\b|\bnetworkx\b/i},
+    {label: "spaCy", pattern: /\bspacy\b/i},
+    {label: "NLP", pattern: /\b(?:nlp|natural\s+language\s+processing)\b/i},
+    {label: "GitHub Actions", pattern: /\bgithub\s+actions?\b/i},
+    {label: "CI/CD", pattern: /\b(?:ci\s*\/\s*cd|ci\s+cd|cicd)\b/i},
+    {label: "PM2", pattern: /\bpm2\b/i},
+    {label: "Alembic", pattern: /\balembic\b/i},
+    {label: "Poetry", pattern: /\bpoetry\b/i},
+
 ]
 
 type RuntimeJobKeywordsSource = {
