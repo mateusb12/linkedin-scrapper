@@ -101,6 +101,7 @@ type SearchJobsFiltersProps = {
     errorMessage: string | null
     onOpenFetchModal: () => void
     onClearCache: () => void
+    onReanalyzeCache: () => void
 
     filteredCount: number
     hiddenCount: number
@@ -403,6 +404,7 @@ export default function SearchJobsFilters({
                                               errorMessage,
                                               onOpenFetchModal,
                                               onClearCache,
+                                              onReanalyzeCache,
                                               filteredCount,
                                               hiddenCount,
                                               savedCount,
@@ -507,6 +509,20 @@ export default function SearchJobsFilters({
                                         className={loading ? "animate-spin" : ""}
                                     />
                                 </button>
+
+                                {cacheTimestamp && (
+                                    <button
+                                        type="button"
+                                        onClick={onReanalyzeCache}
+                                        disabled={loading}
+                                        aria-label="Reanalyze frontend cache"
+                                        title="Reanalyze frontend cache"
+                                        className="flex h-8 items-center justify-center gap-1.5 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 text-xs font-semibold text-violet-300 transition hover:border-violet-500/50 hover:bg-violet-500/20 hover:text-violet-200 disabled:opacity-50"
+                                    >
+                                        <Sparkles size={14}/>
+                                        Reanalyze
+                                    </button>
+                                )}
 
                                 {cacheTimestamp && (
                                     <button

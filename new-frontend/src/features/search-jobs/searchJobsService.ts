@@ -902,3 +902,41 @@ export async function scoreJobsBatch(jobs: SearchJob[]) {
 
     return map
 }
+
+export async function applyCurrentScores(jobs: SearchJob[]) {
+    const scoreMap = await scoreJobsBatch(jobs)
+
+    return jobs.map((job) => {
+        const score = scoreMap.get(String(job.id))
+
+        if (!score) return job
+
+        const totalScore = score.total_score ?? 0
+        const archetype = score.archetype || score.metadata?.archetype || null
+        const scoreBreakdown = score.score_breakdown || null
+
+        return {
+            ...job,
+            aiScore: totalScore,
+            pythonScore: totalScore,
+            pythonSignalScore: score.category_scores?.python_primary ?? 0,
+            aiCategoryScores: score.category_scores || null,
+            aiScoreBreakdown: scoreBreakdown,
+            aiArchetype: archetype,
+            aiSignals: score.metadata?.archetype_signals || null,
+            aiMatchedKeywords: score.matched_keywords || null,
+            aiBonusReasons: score.bonus_reasons || [],
+            aiPenaltyReasons: score.penalty_reasons || [],
+            aiEvidence: score.evidence || [],
+            aiSuspicious: Boolean(score.suspicious),
+            aiSuspiciousReasons: score.suspicious_reasons || [],
+            archetype: archetype || job.archetype,
+            scoreBreakdown: {
+                positive: scoreBreakdown?.positive || [],
+                negative: scoreBreakdown?.negative || [],
+                categoryTotals:
+                    scoreBreakdown?.category_totals || score.category_scores || {},
+            },
+        }
+    })
+}

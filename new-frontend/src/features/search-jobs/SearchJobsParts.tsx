@@ -106,6 +106,16 @@ const getScoreBarClassName = (score: number) => {
 const getEffectiveArchetype = (job: Pick<SearchJob, "aiArchetype" | "archetype">) =>
     (job.aiArchetype || job.archetype || "").trim()
 
+const REJECTED_ARCHETYPES_FOR_UI = new Set([
+    "ai_or_llm_python",
+    "ai_training_or_evaluation_python",
+    "data_platform_python",
+])
+
+const isRejectedArchetypeForUi = (
+    job: Pick<SearchJob, "aiArchetype" | "archetype">,
+) => REJECTED_ARCHETYPES_FOR_UI.has(getEffectiveArchetype(job).toLowerCase())
+
 type ArchetypeVisual = {
     label: string
     prefix: string
@@ -124,19 +134,19 @@ const ARCHETYPE_VISUALS: Record<string, ArchetypeVisual> = {
         className: "border-teal-400/35 bg-teal-500/10 text-teal-200",
     },
     ai_or_llm_python: {
-        prefix: "Mixed",
+        prefix: "Mismatch",
         label: "AI/LLM Python",
-        className: "border-violet-400/35 bg-violet-500/10 text-violet-200",
+        className: "border-red-400/45 bg-red-500/15 text-red-200",
     },
     fullstack_python: {
-        prefix: "Mismatch",
+        prefix: "Target",
         label: "Fullstack",
-        className: "border-amber-400/35 bg-amber-500/10 text-amber-200",
+        className: "border-emerald-400/35 bg-emerald-500/10 text-emerald-200",
     },
     data_platform_python: {
         prefix: "Mismatch",
         label: "Data Platform",
-        className: "border-cyan-400/35 bg-cyan-500/10 text-cyan-200",
+        className: "border-red-400/45 bg-red-500/15 text-red-200",
     },
     ai_training_or_evaluation_python: {
         prefix: "Mismatch",
@@ -144,12 +154,12 @@ const ARCHETYPE_VISUALS: Record<string, ArchetypeVisual> = {
         className: "border-red-400/35 bg-red-500/10 text-red-200",
     },
     platform_or_internal_systems_python: {
-        prefix: "Mismatch",
+        prefix: "Target-ish",
         label: "Platform/Internal",
-        className: "border-orange-400/35 bg-orange-500/10 text-orange-200",
+        className: "border-teal-400/35 bg-teal-500/10 text-teal-200",
     },
     generic_python: {
-        prefix: "Generic",
+        prefix: "Neutral",
         label: "Generic Python",
         className: "border-slate-500/40 bg-slate-800/70 text-slate-300",
     },
@@ -684,7 +694,9 @@ function ExperienceBadge({experience}: { experience: Experience }) {
 
 
 const getJobCardClassName = (job: JobView, selected: boolean) => {
-    if (job.isHidden) {
+    const isRejectedArchetype = isRejectedArchetypeForUi(job)
+
+    if (job.isHidden || isRejectedArchetype) {
         return selected
             ? "border-red-400/90 bg-red-950/45 shadow-[inset_4px_0_0_#f87171] ring-1 ring-red-500/40"
             : "border-red-500/60 bg-red-950/30 hover:border-red-400/80 hover:bg-red-950/40"

@@ -91,10 +91,10 @@ def test_hybrid_prefers_backend_pure_over_fullstack_and_data_platform() -> None:
         title="Junior Data Platform Engineer",
         description_full=(
             "Develop and maintain data ingestion connectors and processing pipelines. "
-            "Work with collection, normalization and large volumes of data. "
+            "Work with Spark, Airflow, Snowflake, dbt, collection, normalization and large volumes of data. "
             "Enhance back-end microservices using Python, SQL, Docker and CI/CD."
         ),
-        qualifications=["Python", "SQL", "Docker", "CI/CD"],
+        qualifications=["Python", "Spark", "Airflow", "Snowflake", "dbt", "SQL", "Docker", "CI/CD"],
     )
 
     pure_result = scorer.score_job(backend_pure)
@@ -150,30 +150,101 @@ def test_hybrid_strongly_penalizes_data_engineering_python_cluster() -> None:
     assert result.category_scores["penalties"] >= 40
 
 
-def test_hybrid_penalizes_data_platform_title_with_backend_side_signals() -> None:
+def test_hybrid_preserves_backend_when_data_platform_title_lacks_hard_stack() -> None:
     scorer = HybridScorer()
     job = build_job(
         urn="data-platform-side-backend",
-        title="Junior Data Platform Engineer",
+        title="Data Platform Engineer",
         description_full=(
             "Develop and maintain data ingestion connectors and data pipelines for "
-            "collection, normalization and processing at global scale. Work with "
-            "large volumes of data, monitor pipelines and troubleshoot incidents. "
-            "Enhance back-end microservices using Python, FastAPI, PostgreSQL, Docker "
-            "and CI/CD."
+            "collection, normalization and processing. Build backend APIs, integrations "
+            "and services using Python, Django, Celery, Redis, PostgreSQL, Docker and CI/CD. "
+            "Own backend features end-to-end and optimize database queries."
         ),
-        qualifications=["Python", "FastAPI", "PostgreSQL", "Docker", "CI/CD"],
-        keywords=["data platform", "data pipelines", "large volumes of data"],
+        qualifications=["Python", "Django", "Celery", "Redis", "PostgreSQL", "Docker", "CI/CD"],
+        keywords=["data platform", "data pipelines", "backend", "api"],
+        programming_languages=["Python"],
+    )
+
+    result = scorer.score_job(job)
+
+    assert result.metadata["archetype"] in {
+        "backend_python_pure",
+        "backend_python_with_minor_cross_functional_signals",
+        "platform_or_internal_systems_python",
+    }
+    assert result.metadata["archetype"] != "data_platform_python"
+    assert result.total_score >= 55
+    negative_labels = {item.label for item in result.score_breakdown.negative}
+    assert "Data engineering cluster penalty" not in negative_labels
+
+
+def test_hybrid_preserves_backend_with_feed_ingestion_workflows_without_hard_data_stack() -> None:
+    scorer = HybridScorer()
+    job = build_job(
+        urn="backend-feed-ingestion",
+        title="Python-Focused Engineer (Mid-Senior)",
+        description_full=(
+            "Own backend-heavy initiatives with Python and Django internals, Django ORM, "
+            "complex database queries, backend services, Celery and Redis, PostgreSQL "
+            "optimization, third-party API integrations and ATS integrations such as "
+            "Greenhouse, Lever and iCIMS. Build feed ingestion systems, data pipelines, "
+            "job distribution systems and data workflows while owning backend features "
+            "end-to-end."
+        ),
+        qualifications=["Python", "Django", "Celery", "Redis", "PostgreSQL"],
+        responsibilities=[
+            "Build backend APIs and integrations.",
+            "Optimize ORM queries and own backend services.",
+        ],
+        keywords=["backend", "api", "feed ingestion", "data pipelines"],
+        programming_languages=["Python"],
+    )
+
+    result = scorer.score_job(job)
+
+    assert result.metadata["archetype"] in {
+        "backend_python_pure",
+        "backend_python_with_minor_cross_functional_signals",
+        "platform_or_internal_systems_python",
+    }
+    assert result.metadata["archetype"] != "data_platform_python"
+    assert (
+        "Backend core preserved despite data workflow signals because no hard data-platform stack was detected."
+        in result.metadata["archetype_reasons"]
+    )
+
+
+def test_hybrid_keeps_real_data_platform_with_hard_stack() -> None:
+    scorer = HybridScorer()
+    job = build_job(
+        urn="real-data-platform",
+        title="Data Platform Engineer",
+        description_full=(
+            "Build large-scale ETL and ELT pipelines with Spark, Databricks, Airflow, "
+            "dbt, Snowflake, BigQuery and Redshift. Own data warehouse and data lake "
+            "models, orchestration, batch processing, stream processing and analytics "
+            "engineering pipelines using Python."
+        ),
+        qualifications=[
+            "Python",
+            "Spark",
+            "Databricks",
+            "Airflow",
+            "dbt",
+            "Snowflake",
+            "BigQuery",
+            "Redshift",
+        ],
+        keywords=["data platform", "data warehouse", "data lake", "etl", "elt"],
         programming_languages=["Python"],
     )
 
     result = scorer.score_job(job)
 
     assert result.metadata["archetype"] == "data_platform_python"
-    assert result.total_score <= 15
-    negative_labels = {item.label for item in result.score_breakdown.negative}
-    assert "Data engineering title penalty" in negative_labels
-    assert "Data engineering cluster penalty" in negative_labels
+    hard_matches = result.metadata["archetype_signals"]["hard_data_platform_stack_matches"]
+    assert len(hard_matches) >= 3
 
 
 def test_hybrid_preserves_backend_python_with_single_airflow_side_signal() -> None:

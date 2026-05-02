@@ -16,11 +16,11 @@ import SearchJobsFilters, {
 
 import {
     clearJobsCache,
+    applyCurrentScores,
     type SearchJobsProgress,
     getInitialSearchJobsData,
     readJobsCache,
     readSavedJobIds,
-    scoreJobsBatch,
     type SearchJob,
     type SearchJobsMeta,
     streamGraphqlJobsWithMeta,
@@ -709,6 +709,34 @@ export default function SearchJobsPage() {
         setFetchProgress(null)
     }
 
+    const handleReanalyzeCache = async () => {
+        const cached = readJobsCache()
+        const cachedJobs = cached?.jobs ?? []
+
+        if (!cachedJobs.length) return
+
+        setLoading(true)
+        setErrorMessage(null)
+
+        try {
+            const rescoredJobs = await applyCurrentScores(cachedJobs)
+            const cachedAt = writeJobsCache(rescoredJobs, cached?.meta ?? searchMeta)
+
+            setJobs(rescoredJobs)
+            setCacheTimestamp(cachedAt)
+            setSearchMeta(cached?.meta ?? searchMeta)
+            setLoadedFromCache(true)
+        } catch (error) {
+            setErrorMessage(
+                error instanceof Error
+                    ? error.message
+                    : "Could not reanalyze cached jobs.",
+            )
+        } finally {
+            setLoading(false)
+        }
+    }
+
     const handleOpenFetchModal = () => {
         setFetchExcludedKeywords(buildDefaultFetchExcludedKeywords(negativeKeywords))
         setNewFetchExcludedKeyword("")
@@ -746,41 +774,7 @@ export default function SearchJobsPage() {
             )
             const data = response.jobs
 
-            const scoreMap = await scoreJobsBatch(data)
-
-            const enrichedJobs = data.map((job) => {
-                const score = scoreMap.get(String(job.id))
-
-                if (!score) return job
-
-                const totalScore = score.total_score ?? 0
-                const archetype = score.archetype || score.metadata?.archetype || null
-                const scoreBreakdown = score.score_breakdown || null
-
-                return {
-                    ...job,
-                    aiScore: totalScore,
-                    pythonScore: totalScore,
-                    pythonSignalScore: score.category_scores?.python_primary ?? 0,
-                    aiCategoryScores: score.category_scores || null,
-                    aiScoreBreakdown: scoreBreakdown,
-                    aiArchetype: archetype,
-                    aiSignals: score.metadata?.archetype_signals || null,
-                    aiMatchedKeywords: score.matched_keywords || null,
-                    aiBonusReasons: score.bonus_reasons || [],
-                    aiPenaltyReasons: score.penalty_reasons || [],
-                    aiEvidence: score.evidence || [],
-                    aiSuspicious: Boolean(score.suspicious),
-                    aiSuspiciousReasons: score.suspicious_reasons || [],
-                    archetype: archetype || job.archetype,
-                    scoreBreakdown: {
-                        positive: scoreBreakdown?.positive || [],
-                        negative: scoreBreakdown?.negative || [],
-                        categoryTotals:
-                            scoreBreakdown?.category_totals || score.category_scores || {},
-                    },
-                }
-            })
+            const enrichedJobs = await applyCurrentScores(data)
 
             const cachedAt = writeJobsCache(enrichedJobs, response.meta)
 
@@ -919,6 +913,7 @@ export default function SearchJobsPage() {
                 errorMessage={errorMessage}
                 onOpenFetchModal={handleOpenFetchModal}
                 onClearCache={handleClearCache}
+                onReanalyzeCache={handleReanalyzeCache}
                 filteredCount={visibleJobs.length}
                 hiddenCount={hiddenCount}
                 savedCount={savedCount}

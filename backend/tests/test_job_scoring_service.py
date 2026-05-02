@@ -74,7 +74,8 @@ def test_rank_jobs_propagates_archetype_and_suspicious_fields() -> None:
                     "title": "Data Platform Engineer",
                     "description_full": (
                         "Develop data ingestion connectors and large scale pipelines. "
-                        "Use Python, SQL, Docker and CI/CD for data platform reliability."
+                        "Use Python, Spark, Airflow, Snowflake, BigQuery, dbt, SQL, Docker "
+                        "and CI/CD for data platform reliability."
                     ),
                 }
             ]

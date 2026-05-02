@@ -68,6 +68,30 @@ HIGH_MISMATCH_ARCHETYPES = {
     "platform_or_internal_systems_python",
 }
 
+HARD_DATA_PLATFORM_STACK_TERMS = (
+    "spark",
+    "pyspark",
+    "databricks",
+    "airflow",
+    "dbt",
+    "snowflake",
+    "bigquery",
+    "redshift",
+    "data warehouse",
+    "data lake",
+    "lakehouse",
+    "elt",
+    "etl",
+    "orchestration",
+    "orquestracao",
+    "batch processing",
+    "stream processing",
+    "distributed processing",
+    "processamento distribuido",
+    "analytics engineering",
+    "analytics pipelines",
+)
+
 
 @dataclass(slots=True)
 class ArchetypeAssessment:
@@ -85,6 +109,7 @@ class ArchetypeAssessment:
     adjacent_ai: float
     data_engineering_title_matches: list[str]
     data_engineering_domain_matches: list[str]
+    hard_data_platform_stack_matches: list[str]
     structural_penalty: float
     structural_breakdown: list[ScoreBreakdownItem]
     reasons: list[str]
@@ -445,7 +470,11 @@ class HybridScorer(BaseJobScorer):
                     "adjacent_frontend": round(assessment.adjacent_frontend, 2),
                     "adjacent_data": round(assessment.adjacent_data, 2),
                     "adjacent_ai": round(assessment.adjacent_ai, 2),
+                    "data_engineering_title_matches": assessment.data_engineering_title_matches,
+                    "data_engineering_domain_matches": assessment.data_engineering_domain_matches,
+                    "hard_data_platform_stack_matches": assessment.hard_data_platform_stack_matches,
                 },
+                "archetype_reasons": assessment.reasons,
                 "structural_penalty": round(assessment.structural_penalty, 2),
                 "raw_python_match_score": round(raw_python_match_score, 2),
                 "domain_penalty": round(domain_penalty, 2),
@@ -578,10 +607,14 @@ class HybridScorer(BaseJobScorer):
             " ".join(normalized_parts.values()),
             profile.data_engineering_domain_terms,
         )
+        hard_data_platform_stack_matches = count_phrase_matches(
+            " ".join(normalized_parts.values()),
+            HARD_DATA_PLATFORM_STACK_TERMS,
+        )
         if count_phrase_matches(title_text, profile.data_platform_terms):
-            data_platform_core += 9.0
+            data_platform_core += 4.0
         if data_engineering_title_matches:
-            data_platform_core += 14.0
+            data_platform_core += 6.0
         if count_phrase_matches(title_text, profile.ai_core_terms):
             ai_core += 8.0
         if count_phrase_matches(title_text, profile.ai_evaluation_terms):
@@ -603,6 +636,28 @@ class HybridScorer(BaseJobScorer):
         reasons: list[str] = []
         structural_penalty = 0.0
         structural_breakdown: list[ScoreBreakdownItem] = []
+        hard_data_stack_count = len(hard_data_platform_stack_matches)
+        has_hard_data_stack = hard_data_stack_count > 0
+        data_core_dominates_backend = data_platform_core >= max(18.0, backend_core * 1.18)
+        data_title_with_stack = (
+            bool(data_engineering_title_matches)
+            and has_hard_data_stack
+            and data_platform_core >= max(14.0, backend_core * 0.62)
+        )
+        multiple_hard_data_stack = (
+            hard_data_stack_count >= 2
+            and data_platform_core >= max(12.0, backend_core * 0.58)
+        )
+        backend_heavy_without_hard_data_stack = (
+            backend_core >= 14.0
+            and not has_hard_data_stack
+            and data_platform_core > 0.0
+        )
+        data_platform_candidate = (
+            data_title_with_stack
+            or data_core_dominates_backend
+            or multiple_hard_data_stack
+        )
 
         if (
             backend_core >= 15.0
@@ -669,10 +724,7 @@ class HybridScorer(BaseJobScorer):
                 reasons.append(
                     "Linguagem de contractor/task-based reforça trabalho de avaliação, não ownership de produto."
                 )
-        elif (
-            data_engineering_title_matches
-            or data_platform_core >= max(14.0, backend_core * 0.72)
-        ):
+        elif data_platform_candidate:
             archetype = "data_platform_python"
             cluster_signal_count = len(data_engineering_domain_matches)
             cluster_penalty = 0.0
@@ -734,6 +786,11 @@ class HybridScorer(BaseJobScorer):
                     )
                 )
             reasons.append("Sinais estruturais de Data Engineering/Data Platform dominam o escopo.")
+            if hard_data_platform_stack_matches:
+                reasons.append(
+                    "Data platform archetype selected because hard data-platform stack terms were present "
+                    "and data core dominated backend core."
+                )
             if data_engineering_title_matches:
                 reasons.append("Título indica Data Engineering, não desenvolvimento backend Python tradicional.")
             if cluster_penalty > 0:
@@ -827,10 +884,14 @@ class HybridScorer(BaseJobScorer):
             reasons.append("Escopo parece mais plataforma/sistemas internos do que backend puro.")
         elif (
             backend_core >= 14.0
-            and backend_dominance >= 0.0
+            and (backend_dominance >= 0.0 or backend_heavy_without_hard_data_stack)
             and ai_evaluation_core < max(10.0, backend_core * 0.55)
         ):
             archetype = "backend_python_with_minor_cross_functional_signals"
+            if backend_heavy_without_hard_data_stack:
+                reasons.append(
+                    "Backend core preserved despite data workflow signals because no hard data-platform stack was detected."
+                )
         else:
             archetype = "generic_python"
 
@@ -852,6 +913,7 @@ class HybridScorer(BaseJobScorer):
             adjacent_ai=adjacent_ai,
             data_engineering_title_matches=data_engineering_title_matches,
             data_engineering_domain_matches=data_engineering_domain_matches,
+            hard_data_platform_stack_matches=hard_data_platform_stack_matches,
             structural_penalty=structural_penalty,
             structural_breakdown=structural_breakdown,
             reasons=reasons,
