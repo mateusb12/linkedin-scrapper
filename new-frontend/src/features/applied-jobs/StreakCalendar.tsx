@@ -9,7 +9,7 @@ import {
     ShieldCheck,
 } from "lucide-react"
 
-const GOAL_PER_DAY = 10
+const GOAL_PER_DAY = 5
 
 export type DailyStats = {
     real: number

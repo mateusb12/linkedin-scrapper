@@ -29,7 +29,7 @@ ChartJS.register(
     Legend,
 )
 
-const GOAL_PER_DAY = 10
+const GOAL_PER_DAY = 5
 
 const themeColors = {
     textSecondary: "#9ca3af",
