@@ -172,6 +172,72 @@ function getOtherChangeLabels(row: FullSyncReportRow) {
         .map(([key, change]) => `${key}: ${formatReportValue(change.from)} -> ${formatReportValue(change.to)}`)
 }
 
+function getApplicantDelta(row: FullSyncReportRow) {
+    const applicantChange = row.changes?.applicants ?? row.unchanged?.applicants
+
+    if (!applicantChange) return null
+
+    const from = Number(applicantChange.from)
+    const to = Number(applicantChange.to)
+
+    if (!Number.isFinite(from) || !Number.isFinite(to)) return null
+
+    return to - from
+}
+
+function getBalanceVisual(row: FullSyncReportRow) {
+    const delta = getApplicantDelta(row)
+
+    if (delta === null) {
+        return {
+            itemClass: "border-gray-600 bg-gray-900/60",
+            dotClass: "bg-gray-400",
+            badgeClass: "border-gray-500/30 bg-gray-500/10 text-gray-300",
+            label: "Competition unknown",
+            deltaLabel: null,
+        }
+    }
+
+    if (delta >= 100) {
+        return {
+            itemClass: "border-red-500/30 bg-red-500/10",
+            dotClass: "bg-red-400",
+            badgeClass: "border-red-500/30 bg-red-500/10 text-red-200",
+            label: "Competition spiked",
+            deltaLabel: `+${formatNumber(delta)}`,
+        }
+    }
+
+    if (delta > 0) {
+        return {
+            itemClass: "border-amber-500/30 bg-amber-500/10",
+            dotClass: "bg-amber-400",
+            badgeClass: "border-amber-500/30 bg-amber-500/10 text-amber-200",
+            label: "Competition increased",
+            deltaLabel: `+${formatNumber(delta)}`,
+        }
+    }
+
+    if (delta === 0) {
+        return {
+            itemClass: "border-sky-500/30 bg-sky-500/10",
+            dotClass: "bg-sky-400",
+            badgeClass: "border-sky-500/30 bg-sky-500/10 text-sky-200",
+            label: "Competition unchanged",
+            deltaLabel: "0",
+        }
+    }
+
+    return {
+        itemClass: "border-emerald-500/30 bg-emerald-500/10",
+        dotClass: "bg-emerald-400",
+        badgeClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
+        label: "Competition dropped",
+        deltaLabel: `${formatNumber(delta)}`,
+    }
+}
+
+
 type TechStackBadgesProps = {
     stack: string[]
 }
@@ -442,14 +508,14 @@ function FullSyncReportSection({title, rows, tone}: FullSyncReportSectionProps) 
     const toneConfigMap = {
         updated: {
             Icon: CheckCheck,
-            panelClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
+            panelClass: "border-gray-700 bg-gray-900/70 text-gray-100",
             headerClass: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
             itemClass: "border-emerald-400/15 bg-gray-950/35",
             dotClass: "bg-emerald-300",
         },
         unchanged: {
             Icon: CircleDot,
-            panelClass: "border-sky-500/30 bg-sky-500/10 text-sky-100",
+            panelClass: "border-gray-700 bg-gray-900/70 text-gray-100",
             headerClass: "border-sky-400/30 bg-sky-400/10 text-sky-200",
             itemClass: "border-sky-400/15 bg-gray-950/35",
             dotClass: "bg-sky-300",
@@ -474,11 +540,10 @@ function FullSyncReportSection({title, rows, tone}: FullSyncReportSectionProps) 
     const Icon = config.Icon
 
     return (
-        <div className={`rounded-xl border p-3 shadow-lg ${config.panelClass}`}>
+        <div className={`w-full rounded-xl border p-3 shadow-lg ${config.panelClass}`}>
             <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
-                    <span
-                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${config.headerClass}`}>
+                    <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${config.headerClass}`}>
                         <Icon size={16}/>
                     </span>
 
@@ -492,24 +557,26 @@ function FullSyncReportSection({title, rows, tone}: FullSyncReportSectionProps) 
                     </div>
                 </div>
 
-                <span
-                    className={`rounded-full border px-2.5 py-1 text-xs font-black tabular-nums ${config.headerClass}`}>
+                <span className={`rounded-full border px-2.5 py-1 text-xs font-black tabular-nums ${config.headerClass}`}>
                     {rows.length}
                 </span>
             </div>
 
-            <div className="max-h-44 space-y-2 overflow-auto pr-1">
+            <div className="max-h-72 space-y-2 overflow-auto pr-1">
                 {rows.map(row => {
                     const otherChangeLabels = getOtherChangeLabels(row).slice(0, 3)
                     const isProblem = tone === "failed" || tone === "skipped"
+                    const balanceVisual = getBalanceVisual(row)
 
                     return (
                         <div
                             key={`${row.job_id}-${row.title}`}
-                            className={`rounded-lg border p-2.5 ${config.itemClass}`}
+                            className={`rounded-lg border p-3 ${isProblem ? config.itemClass : balanceVisual.itemClass}`}
                         >
                             <div className="flex items-start gap-2.5">
-                                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${config.dotClass}`}/>
+                                <span
+                                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${isProblem ? config.dotClass : balanceVisual.dotClass}`}
+                                />
 
                                 <div className="min-w-0 flex-1">
                                     <p className="line-clamp-1 text-xs font-extrabold text-white">
@@ -522,10 +589,23 @@ function FullSyncReportSection({title, rows, tone}: FullSyncReportSectionProps) 
                                         </p>
                                     ) : (
                                         <>
-                                            <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-gray-950/45 px-2 py-0.5 text-[11px] font-extrabold opacity-95">
-                                                <TrendingUp size={12}/>
-                                                {getApplicantDiffLabel(row)}
-                                            </p>
+                                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                <span
+                                                    className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-extrabold ${balanceVisual.badgeClass}`}
+                                                >
+                                                    {balanceVisual.label}
+                                                    {balanceVisual.deltaLabel && (
+                                                        <span className="tabular-nums">
+                                                            {balanceVisual.deltaLabel}
+                                                        </span>
+                                                    )}
+                                                </span>
+
+                                                <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-950/45 px-2 py-0.5 text-[11px] font-extrabold opacity-95">
+                                                    <TrendingUp size={12}/>
+                                                    {getApplicantDiffLabel(row)}
+                                                </span>
+                                            </div>
 
                                             {otherChangeLabels.map(label => (
                                                 <p key={label} className="mt-1 text-[11px] font-semibold opacity-70">
@@ -543,7 +623,6 @@ function FullSyncReportSection({title, rows, tone}: FullSyncReportSectionProps) 
         </div>
     )
 }
-
 function FullSyncModal({
                            jobs,
                            selectedJobIds,
@@ -632,7 +711,7 @@ function FullSyncModal({
                         )}
 
                         {report && (
-                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                            <div className="mt-3 grid grid-cols-1 gap-3">
                                 <FullSyncReportSection title="Updated" rows={report.updated} tone="updated"/>
                                 <FullSyncReportSection title="Not updated" rows={report.unchanged} tone="unchanged"/>
                                 <FullSyncReportSection title="Failed" rows={report.failed} tone="failed"/>
