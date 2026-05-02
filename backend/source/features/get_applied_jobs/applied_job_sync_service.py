@@ -32,7 +32,7 @@ class JobSyncService:
         enrich only new jobs, save them.
         """
         # 1. Get existing IDs from DB
-        existing_ids = self.repo.get_applied_urns(limit=50)
+        existing_ids = self.repo.get_applied_urns(limit=None)
 
         # 2. Get light listing from LinkedIn
         candidates = self.proxy.fetch_latest_applied_candidates(limit=15)
@@ -62,11 +62,19 @@ class JobSyncService:
 
         # 5. Convert to plain dicts and save
         jobs_dicts = [self._job_post_to_dict(jp) for jp in enriched]
-        saved_info = self.repo.upsert_jobs(jobs_dicts, stage="applied")
+        saved_info = self.repo.upsert_jobs(
+            jobs_dicts,
+            stage="applied",
+            update_existing=False,
+        )
+        inserted_info = [
+            item for item in saved_info
+            if item.get("status") != "skipped_existing"
+        ]
 
         return {
             "status": "success",
-            "synced_count": len(saved_info),
+            "synced_count": len(inserted_info),
             "details": saved_info,
         }
 
@@ -86,7 +94,7 @@ class JobSyncService:
             "progress": 5,
         }
 
-        existing_ids = self.repo.get_applied_urns(limit=50)
+        existing_ids = self.repo.get_applied_urns(limit=None)
 
         yield {
             "type": "progress",
@@ -133,7 +141,7 @@ class JobSyncService:
             yield {
                 "type": "progress",
                 "stage": "enriching",
-                "message": f"Updating {base.get('company', 'Unknown')} - {base.get('title', 'Untitled job')}",
+                "message": f"Appending {base.get('company', 'Unknown')} - {base.get('title', 'Untitled job')}",
                 "processed": index - 1,
                 "total": total,
                 "job_id": job_id,
@@ -148,7 +156,7 @@ class JobSyncService:
             yield {
                 "type": "progress",
                 "stage": "enriching",
-                "message": f"Updated {base.get('company', 'Unknown')} - {base.get('title', 'Untitled job')}",
+                "message": f"Appended {base.get('company', 'Unknown')} - {base.get('title', 'Untitled job')}",
                 "processed": index,
                 "total": total,
                 "job_id": job_id,
@@ -160,21 +168,177 @@ class JobSyncService:
         yield {
             "type": "progress",
             "stage": "saving",
-            "message": "Saving updated job data",
+            "message": "Saving new applied jobs",
             "processed": total,
             "total": total,
             "progress": 92,
         }
 
         jobs_dicts = [self._job_post_to_dict(jp) for jp in enriched]
-        saved_info = self.repo.upsert_jobs(jobs_dicts, stage="applied")
+        saved_info = self.repo.upsert_jobs(
+            jobs_dicts,
+            stage="applied",
+            update_existing=False,
+        )
+        inserted_info = [
+            item for item in saved_info
+            if item.get("status") != "skipped_existing"
+        ]
 
         yield {
             "type": "finished",
             "stage": "finished",
-            "message": f"Smart sync inserted {len(saved_info)} applied jobs",
+            "message": f"Smart sync inserted {len(inserted_info)} applied jobs",
+            "synced_count": len(inserted_info),
+            "details": saved_info,
+            "progress": 100,
+        }
+
+    def sync_selected_applied_jobs(self, job_ids: List[str]) -> Dict[str, Any]:
+        """
+        FullSync: refresh existing applied jobs selected by the user.
+        """
+        cleaned_ids = self._clean_existing_applied_ids(job_ids)
+
+        if not cleaned_ids:
+            return {
+                "status": "success",
+                "synced_count": 0,
+                "details": [],
+            }
+
+        enriched = [
+            self.proxy.batch_enricher.enrich_job(job_id)
+            for job_id in cleaned_ids
+        ]
+        jobs_dicts = [self._job_post_to_dict(jp) for jp in enriched]
+        saved_info = self.repo.upsert_jobs(
+            jobs_dicts,
+            stage="applied",
+            update_existing=True,
+        )
+
+        return {
+            "status": "success",
             "synced_count": len(saved_info),
             "details": saved_info,
+        }
+
+    def sync_selected_applied_jobs_stream(self, job_ids: List[str]) -> Iterator[Dict[str, Any]]:
+        """
+        FullSync stream: refresh selected existing applied jobs and emit a diff report.
+        """
+        cleaned_ids = self._clean_existing_applied_ids(job_ids)
+        total = len(cleaned_ids)
+        report = {
+            "updated": [],
+            "unchanged": [],
+            "failed": [],
+            "skipped": [],
+        }
+
+        yield {
+            "type": "progress",
+            "stage": "starting",
+            "message": f"Preparing {total} selected jobs",
+            "processed": 0,
+            "total": max(total, 1),
+            "progress": 3,
+        }
+
+        if not cleaned_ids:
+            yield {
+                "type": "finished",
+                "stage": "finished",
+                "message": "No existing applied jobs selected",
+                "synced_count": 0,
+                "report": report,
+                "progress": 100,
+            }
+            return
+
+        before_by_id = self.repo.get_applied_jobs_by_ids(cleaned_ids)
+
+        for index, job_id in enumerate(cleaned_ids, start=1):
+            before = before_by_id.get(job_id)
+
+            if before is None:
+                report["skipped"].append({
+                    "job_id": job_id,
+                    "reason": "not_applied_or_not_found",
+                })
+                continue
+
+            title = before.get("title") or f"Job {job_id}"
+            company = self._company_name_from_job(before)
+
+            yield {
+                "type": "progress",
+                "stage": "enriching",
+                "message": f"Refreshing {company} - {title}",
+                "processed": index - 1,
+                "total": total,
+                "job_id": job_id,
+                "title": title,
+                "company": company,
+                "progress": 5 + round(((index - 1) / total) * 85),
+            }
+
+            try:
+                enriched_job = self.proxy.batch_enricher.enrich_job(job_id)
+                enriched_dict = self._job_post_to_dict(enriched_job)
+                self.repo.upsert_jobs([enriched_dict], stage="applied", update_existing=True)
+
+                row_report = self._build_full_sync_row_report(
+                    job_id=job_id,
+                    before=before,
+                    after=enriched_dict,
+                )
+                target_bucket = "updated" if row_report["changes"] else "unchanged"
+                report[target_bucket].append(row_report)
+
+                yield {
+                    "type": "progress",
+                    "stage": "updated" if row_report["changes"] else "unchanged",
+                    "message": self._format_full_sync_message(row_report),
+                    "processed": index,
+                    "total": total,
+                    "job_id": job_id,
+                    "title": row_report["title"],
+                    "company": row_report["company"],
+                    "row": row_report,
+                    "progress": 5 + round((index / total) * 85),
+                }
+            except Exception as exc:
+                failed_row = {
+                    "job_id": job_id,
+                    "title": title,
+                    "company": company,
+                    "error": str(exc),
+                }
+                report["failed"].append(failed_row)
+
+                yield {
+                    "type": "progress",
+                    "stage": "failed",
+                    "message": f"Failed {company} - {title}",
+                    "processed": index,
+                    "total": total,
+                    "job_id": job_id,
+                    "title": title,
+                    "company": company,
+                    "row": failed_row,
+                    "progress": 5 + round((index / total) * 85),
+                }
+
+        synced_count = len(report["updated"]) + len(report["unchanged"])
+
+        yield {
+            "type": "finished",
+            "stage": "finished",
+            "message": f"Full sync checked {synced_count} jobs",
+            "synced_count": synced_count,
+            "report": report,
             "progress": 100,
         }
 
@@ -197,3 +361,93 @@ class JobSyncService:
     def _job_post_to_dict(jp: JobPost) -> dict:
         """Convert a JobPost dataclass to a plain dict for the repository."""
         return asdict(jp)
+
+    def _clean_existing_applied_ids(self, job_ids: List[str]) -> List[str]:
+        cleaned_ids = []
+        seen_ids = set()
+        existing_ids = self.repo.get_applied_urns(limit=None)
+
+        for raw_id in job_ids:
+            job_id = re.sub(r"\D", "", str(raw_id))
+            if not job_id or job_id in seen_ids or job_id not in existing_ids:
+                continue
+            seen_ids.add(job_id)
+            cleaned_ids.append(job_id)
+
+        return cleaned_ids
+
+    @staticmethod
+    def _company_name_from_job(job: Dict[str, Any]) -> str:
+        company = job.get("company")
+        if isinstance(company, dict):
+            return company.get("name") or "Unknown"
+        if isinstance(company, str):
+            return company
+        return "Unknown"
+
+    @staticmethod
+    def _get_after_value(after: Dict[str, Any], *keys: str):
+        for key in keys:
+            if key in after:
+                return after.get(key)
+        return None
+
+    def _build_full_sync_row_report(
+        self,
+        *,
+        job_id: str,
+        before: Dict[str, Any],
+        after: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        title = after.get("title") or before.get("title") or f"Job {job_id}"
+        company = after.get("company") or self._company_name_from_job(before)
+        checks = [
+            ("applicants", before.get("applicants"), self._get_after_value(after, "applicants", "applicants_total")),
+            ("job_state", before.get("job_state"), after.get("job_state")),
+            ("application_closed", before.get("application_closed"), after.get("application_closed")),
+            ("expire_at", before.get("expire_at"), after.get("expire_at")),
+        ]
+
+        changes = {}
+        unchanged = {}
+
+        for key, old_value, new_value in checks:
+            if new_value is None:
+                unchanged[key] = {
+                    "from": old_value,
+                    "to": old_value,
+                }
+                continue
+
+            if old_value != new_value:
+                changes[key] = {
+                    "from": old_value,
+                    "to": new_value,
+                }
+            else:
+                unchanged[key] = {
+                    "from": old_value,
+                    "to": new_value,
+                }
+
+        return {
+            "job_id": job_id,
+            "title": title,
+            "company": company,
+            "changes": changes,
+            "unchanged": unchanged,
+        }
+
+    @staticmethod
+    def _format_full_sync_message(row_report: Dict[str, Any]) -> str:
+        applicants_change = row_report.get("changes", {}).get("applicants")
+        prefix = f"{row_report.get('company')} - {row_report.get('title')}"
+
+        if applicants_change:
+            return f"{prefix}: applicants {applicants_change.get('from')} -> {applicants_change.get('to')}"
+
+        applicants_unchanged = row_report.get("unchanged", {}).get("applicants")
+        if applicants_unchanged:
+            return f"{prefix}: applicants unchanged at {applicants_unchanged.get('to')}"
+
+        return f"{prefix}: checked"

@@ -114,23 +114,68 @@ class JobRepository:
             db.close()
 
     @staticmethod
-    def get_applied_urns(limit: int = 50) -> Set[str]:
-        """Return a set of URNs (cleaned) for recently applied jobs."""
+    def get_applied_urns(limit: int | None = 50) -> Set[str]:
+        """Return a set of applied job URNs cleaned to their numeric LinkedIn IDs."""
+
+        db = get_db_session()
+
+        try:
+            query = (
+                db.query(Job.urn)
+                .filter(Job.has_applied == True)
+                .order_by(Job.applied_on.desc())
+            )
+
+            if limit is not None:
+                query = query.limit(limit)
+
+            rows = query.all()
+
+            return {
+                str(r.urn)
+                .replace("urn:li:jobPosting:", "")
+                .replace("urn:li:fs_jobPosting:", "")
+                for r in rows
+            }
+
+        finally:
+            db.close()
+
+    @staticmethod
+    def get_applied_jobs_by_ids(job_ids: List[str]) -> Dict[str, dict]:
+        """Return applied jobs keyed by cleaned numeric LinkedIn job ID."""
+
+        cleaned_ids = {
+            str(job_id)
+            .replace("urn:li:jobPosting:", "")
+            .replace("urn:li:fs_jobPosting:", "")
+            for job_id in job_ids
+        }
+
+        if not cleaned_ids:
+            return {}
+
+        lookup_ids = set(cleaned_ids)
+        for job_id in cleaned_ids:
+            lookup_ids.add(f"urn:li:jobPosting:{job_id}")
+            lookup_ids.add(f"urn:li:fs_jobPosting:{job_id}")
 
         db = get_db_session()
 
         try:
             rows = (
-                db.query(Job.urn)
+                db.query(Job)
+                .options(joinedload(Job.company))
                 .filter(Job.has_applied == True)
-                .order_by(Job.applied_on.desc())
-                .limit(limit)
+                .filter(Job.urn.in_(lookup_ids))
                 .all()
             )
 
             return {
-                str(r.urn).replace("urn:li:jobPosting:", "")
-                for r in rows
+                str(job.urn)
+                .replace("urn:li:jobPosting:", "")
+                .replace("urn:li:fs_jobPosting:", ""): job.to_dict()
+                for job in rows
             }
 
         finally:
@@ -174,7 +219,12 @@ class JobRepository:
     # ──────────────────────────────────────────
 
     @staticmethod
-    def upsert_jobs(jobs_data: List[Dict[str, Any]], stage: str) -> List[dict]:
+    def upsert_jobs(
+        jobs_data: List[Dict[str, Any]],
+        stage: str,
+        *,
+        update_existing: bool = True,
+    ) -> List[dict]:
         """
         Insert or update jobs from a list of plain dicts.
 
@@ -229,6 +279,17 @@ class JobRepository:
                     .filter(Job.urn == job_id)
                     .first()
                 )
+
+                if job and not update_existing:
+                    saved_details.append(
+                        {
+                            "id": job_id,
+                            "company": c_name,
+                            "title": job.title,
+                            "status": "skipped_existing",
+                        }
+                    )
+                    continue
 
                 if not job:
                     job = Job(urn=job_id)

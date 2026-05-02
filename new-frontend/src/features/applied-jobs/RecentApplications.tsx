@@ -1,8 +1,11 @@
 import {useEffect, useMemo, useRef, useState, type MouseEvent} from "react"
 import {
+    AlertTriangle,
     Briefcase,
     CalendarDays,
+    CheckCheck,
     CheckCircle2,
+    CircleDot,
     Clock,
     Code2,
     Loader2,
@@ -11,16 +14,23 @@ import {
     RefreshCw,
     Search,
     Send,
+    ShieldAlert,
+    TrendingUp,
     Users,
+    X,
     XCircle,
 } from "lucide-react"
 
 import {
     type AppliedJob,
     type ApplicationStatus,
+    type FullSyncReport,
+    type FullSyncReportRow,
     formatDateBR,
     formatTimeAgo,
     formatTimeBR,
+    parseBackendDate,
+    syncAppliedFullSelectedStream,
     syncAppliedSmartStream,
 } from "./appliedJobsService.ts"
 import AppliedJobDetailModal from "./AppliedJobDetailModal.tsx"
@@ -97,10 +107,8 @@ function getLastUpdateValue(job: AppliedJob) {
 }
 
 function getDaysSince(value: string | undefined) {
-    if (!value) return null
-
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return null
+    const date = parseBackendDate(value)
+    if (!date) return null
 
     return Math.max(Math.floor((Date.now() - date.getTime()) / 86_400_000), 0)
 }
@@ -125,6 +133,43 @@ function formatNumber(value: number) {
 
 function clampProgress(value: number) {
     return Math.min(Math.max(Math.round(value), 0), 100)
+}
+
+function getNumericJobId(job: AppliedJob) {
+    return job.urn.match(/\d{6,}/)?.[0] ?? job.id ?? job.urn
+}
+
+function sortJobsByLastUpdateAsc(jobs: AppliedJob[]) {
+    return [...jobs].sort((a, b) => {
+        const first = new Date(getLastUpdateValue(a) ?? "").getTime()
+        const second = new Date(getLastUpdateValue(b) ?? "").getTime()
+
+        if (Number.isNaN(first) && Number.isNaN(second)) return 0
+        if (Number.isNaN(first)) return -1
+        if (Number.isNaN(second)) return 1
+
+        return first - second
+    })
+}
+
+function formatReportValue(value: unknown) {
+    if (value === null || value === undefined || value === "") return "empty"
+    if (typeof value === "boolean") return value ? "yes" : "no"
+    return String(value)
+}
+
+function getApplicantDiffLabel(row: FullSyncReportRow) {
+    const applicantChange = row.changes?.applicants ?? row.unchanged?.applicants
+
+    if (!applicantChange) return "applicants unknown"
+
+    return `${formatReportValue(applicantChange.from)} -> ${formatReportValue(applicantChange.to)} applicants`
+}
+
+function getOtherChangeLabels(row: FullSyncReportRow) {
+    return Object.entries(row.changes ?? {})
+        .filter(([key]) => key !== "applicants")
+        .map(([key, change]) => `${key}: ${formatReportValue(change.from)} -> ${formatReportValue(change.to)}`)
 }
 
 type TechStackBadgesProps = {
@@ -207,7 +252,7 @@ type ApplicationMobileCardProps = {
     onSelect: (job: AppliedJob) => void
 }
 
-function AppliedTechBadge({tech}: {tech: string}) {
+function AppliedTechBadge({tech}: { tech: string }) {
     const label = formatTechLabel(tech)
     const icon = getTechIcon(label)
 
@@ -371,22 +416,340 @@ type RecentApplicationsProps = {
     onError: (message: string | null) => void
 }
 
+type FullSyncModalProps = {
+    jobs: AppliedJob[]
+    selectedJobIds: Set<string>
+    isSyncing: boolean
+    onClose: () => void
+    onToggleJob: (job: AppliedJob) => void
+    onSelectAll: () => void
+    onClear: () => void
+    onSubmit: () => void
+    progress: number
+    message: string
+    report: FullSyncReport | null
+}
+
+type FullSyncReportSectionProps = {
+    title: string
+    rows: FullSyncReportRow[]
+    tone: "updated" | "unchanged" | "failed" | "skipped"
+}
+
+function FullSyncReportSection({title, rows, tone}: FullSyncReportSectionProps) {
+    if (rows.length === 0) return null
+
+    const toneConfigMap = {
+        updated: {
+            Icon: CheckCheck,
+            panelClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
+            headerClass: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
+            itemClass: "border-emerald-400/15 bg-gray-950/35",
+            dotClass: "bg-emerald-300",
+        },
+        unchanged: {
+            Icon: CircleDot,
+            panelClass: "border-sky-500/30 bg-sky-500/10 text-sky-100",
+            headerClass: "border-sky-400/30 bg-sky-400/10 text-sky-200",
+            itemClass: "border-sky-400/15 bg-gray-950/35",
+            dotClass: "bg-sky-300",
+        },
+        failed: {
+            Icon: ShieldAlert,
+            panelClass: "border-red-500/30 bg-red-500/10 text-red-100",
+            headerClass: "border-red-400/30 bg-red-400/10 text-red-200",
+            itemClass: "border-red-400/15 bg-gray-950/35",
+            dotClass: "bg-red-300",
+        },
+        skipped: {
+            Icon: AlertTriangle,
+            panelClass: "border-amber-500/30 bg-amber-500/10 text-amber-100",
+            headerClass: "border-amber-400/30 bg-amber-400/10 text-amber-200",
+            itemClass: "border-amber-400/15 bg-gray-950/35",
+            dotClass: "bg-amber-300",
+        },
+    }
+
+    const config = toneConfigMap[tone]
+    const Icon = config.Icon
+
+    return (
+        <div className={`rounded-xl border p-3 shadow-lg ${config.panelClass}`}>
+            <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                    <span
+                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${config.headerClass}`}>
+                        <Icon size={16}/>
+                    </span>
+
+                    <div className="min-w-0">
+                        <p className="truncate text-xs font-black uppercase tracking-wider">
+                            {title}
+                        </p>
+                        <p className="text-[11px] font-bold opacity-70">
+                            {rows.length} {rows.length === 1 ? "job" : "jobs"}
+                        </p>
+                    </div>
+                </div>
+
+                <span
+                    className={`rounded-full border px-2.5 py-1 text-xs font-black tabular-nums ${config.headerClass}`}>
+                    {rows.length}
+                </span>
+            </div>
+
+            <div className="max-h-44 space-y-2 overflow-auto pr-1">
+                {rows.map(row => {
+                    const otherChangeLabels = getOtherChangeLabels(row).slice(0, 3)
+                    const isProblem = tone === "failed" || tone === "skipped"
+
+                    return (
+                        <div
+                            key={`${row.job_id}-${row.title}`}
+                            className={`rounded-lg border p-2.5 ${config.itemClass}`}
+                        >
+                            <div className="flex items-start gap-2.5">
+                                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${config.dotClass}`}/>
+
+                                <div className="min-w-0 flex-1">
+                                    <p className="line-clamp-1 text-xs font-extrabold text-white">
+                                        {row.company ?? "Unknown"} · {row.title ?? row.job_id}
+                                    </p>
+
+                                    {isProblem ? (
+                                        <p className="mt-1.5 text-[11px] font-semibold leading-5 opacity-85">
+                                            {row.error ?? row.reason ?? "No details"}
+                                        </p>
+                                    ) : (
+                                        <>
+                                            <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-gray-950/45 px-2 py-0.5 text-[11px] font-extrabold opacity-95">
+                                                <TrendingUp size={12}/>
+                                                {getApplicantDiffLabel(row)}
+                                            </p>
+
+                                            {otherChangeLabels.map(label => (
+                                                <p key={label} className="mt-1 text-[11px] font-semibold opacity-70">
+                                                    {label}
+                                                </p>
+                                            ))}
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )
+                })}
+            </div>
+        </div>
+    )
+}
+
+function FullSyncModal({
+                           jobs,
+                           selectedJobIds,
+                           isSyncing,
+                           onClose,
+                           onToggleJob,
+                           onSelectAll,
+                           onClear,
+                           onSubmit,
+                           progress,
+                           message,
+                           report,
+                       }: FullSyncModalProps) {
+    const sortedJobs = useMemo(() => sortJobsByLastUpdateAsc(jobs), [jobs])
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/80 p-4">
+            <div
+                className="flex max-h-[86vh] w-full max-w-5xl flex-col rounded-xl border border-gray-700 bg-gray-900 shadow-2xl">
+                <div className="flex items-start justify-between gap-4 border-b border-gray-700 px-5 py-4">
+                    <div>
+                        <h3 className="text-xl font-black text-white">Full Sync</h3>
+                        <p className="mt-1 text-sm font-semibold text-gray-400">
+                            {selectedJobIds.size} selected · oldest updates first
+                        </p>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={isSyncing}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-700 text-gray-300 transition hover:border-gray-500 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label="Close full sync modal"
+                    >
+                        <X size={18}/>
+                    </button>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-800 px-5 py-3">
+                    <div className="flex gap-2">
+                        <button
+                            type="button"
+                            onClick={onSelectAll}
+                            disabled={isSyncing}
+                            className="rounded-lg border border-gray-700 px-3 py-2 text-xs font-extrabold text-gray-200 transition hover:border-gray-500 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            Select all
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onClear}
+                            disabled={isSyncing || selectedJobIds.size === 0}
+                            className="rounded-lg border border-gray-700 px-3 py-2 text-xs font-extrabold text-gray-200 transition hover:border-gray-500 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            Clear
+                        </button>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={onSubmit}
+                        disabled={isSyncing || selectedJobIds.size === 0}
+                        className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-extrabold text-emerald-300 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        {isSyncing ? <Loader2 size={16} className="animate-spin"/> : <RefreshCw size={16}/>}
+                        Update selected
+                    </button>
+                </div>
+
+                {(isSyncing || report) && (
+                    <div className="border-b border-gray-800 px-5 py-3">
+                        {isSyncing && (
+                            <>
+                                <div
+                                    className="mb-2 flex items-center justify-between gap-3 text-xs font-extrabold text-emerald-200">
+                                    <span className="truncate">{message || "Refreshing selected jobs"}</span>
+                                    <span className="tabular-nums">{progress}%</span>
+                                </div>
+                                <div className="h-2 overflow-hidden rounded-full bg-gray-950/70">
+                                    <div
+                                        className="h-full rounded-full bg-emerald-400 transition-[width] duration-500"
+                                        style={{width: `${progress}%`}}
+                                    />
+                                </div>
+                            </>
+                        )}
+
+                        {report && (
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                <FullSyncReportSection title="Updated" rows={report.updated} tone="updated"/>
+                                <FullSyncReportSection title="Not updated" rows={report.unchanged} tone="unchanged"/>
+                                <FullSyncReportSection title="Failed" rows={report.failed} tone="failed"/>
+                                <FullSyncReportSection title="Skipped" rows={report.skipped} tone="skipped"/>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                <div className="overflow-auto">
+                    <table className="w-full min-w-[760px] table-fixed border-separate border-spacing-0">
+                        <colgroup>
+                            <col className="w-[7%]"/>
+                            <col className="w-[35%]"/>
+                            <col className="w-[18%]"/>
+                            <col className="w-[18%]"/>
+                            <col className="w-[22%]"/>
+                        </colgroup>
+                        <thead className="sticky top-0 bg-gray-900">
+                        <tr className="text-left">
+                            <th className="border-b border-gray-700 px-4 py-3 text-xs font-black uppercase text-gray-500">Pick</th>
+                            <th className="border-b border-gray-700 px-4 py-3 text-xs font-black uppercase text-gray-500">Job</th>
+                            <th className="border-b border-gray-700 px-4 py-3 text-xs font-black uppercase text-gray-500">Applicants</th>
+                            <th className="border-b border-gray-700 px-4 py-3 text-xs font-black uppercase text-gray-500">Applied</th>
+                            <th className="border-b border-gray-700 px-4 py-3 text-xs font-black uppercase text-gray-500">Last
+                                Update
+                            </th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {sortedJobs.map(job => {
+                            const jobId = getNumericJobId(job)
+                            const lastUpdate = getLastUpdateValue(job)
+                            const daysSinceUpdate = getDaysSince(lastUpdate)
+                            const isSelected = selectedJobIds.has(jobId)
+
+                            return (
+                                <tr
+                                    key={job.urn}
+                                    onClick={() => !isSyncing && onToggleJob(job)}
+                                    className={`cursor-pointer align-top transition ${isSelected ? "bg-emerald-500/10" : "hover:bg-gray-800/70"}`}
+                                >
+                                    <td className="border-b border-gray-800 px-4 py-4">
+                                        <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            disabled={isSyncing}
+                                            onChange={() => onToggleJob(job)}
+                                            onClick={event => event.stopPropagation()}
+                                            className="h-4 w-4 accent-emerald-500"
+                                            aria-label={`Select ${job.title}`}
+                                        />
+                                    </td>
+                                    <td className="border-b border-gray-800 px-4 py-4">
+                                        <p className="line-clamp-2 text-sm font-extrabold text-white">{job.title}</p>
+                                        <p className="mt-1 text-xs font-bold text-gray-400">{job.company}</p>
+                                    </td>
+                                    <td className="border-b border-gray-800 px-4 py-4">
+                                        <span
+                                            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-extrabold ${getCompetitionClass(job.applicants, job.applicantsVelocity)}`}>
+                                            <Users size={14}/>
+                                            {formatNumber(job.applicants)}
+                                        </span>
+                                    </td>
+                                    <td className="border-b border-gray-800 px-4 py-4">
+                                        <p className="text-sm font-extrabold text-gray-100">{formatDateBR(job.appliedAt)}</p>
+                                        <p className="mt-1 text-xs text-gray-500">{formatTimeAgo(job.appliedAt)}</p>
+                                    </td>
+                                    <td className="border-b border-gray-800 px-4 py-4">
+                                        <span
+                                            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-extrabold ${getStalenessClass(daysSinceUpdate)}`}>
+                                            <Clock size={14}/>
+                                            {lastUpdate ? formatTimeAgo(lastUpdate) : "unknown"}
+                                        </span>
+                                        {lastUpdate && (
+                                            <p className="mt-1 text-xs text-gray-500">
+                                                {formatDateBR(lastUpdate)} {formatTimeBR(lastUpdate)}
+                                            </p>
+                                        )}
+                                    </td>
+                                </tr>
+                            )
+                        })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    )
+}
+
 export default function RecentApplications({
-    jobs,
-    isLoading,
-    error,
-    onRefresh,
-    onError,
-}: RecentApplicationsProps) {
+                                               jobs,
+                                               isLoading,
+                                               error,
+                                               onRefresh,
+                                               onError,
+                                           }: RecentApplicationsProps) {
     const [searchTerm, setSearchTerm] = useState("")
     const [selectedJob, setSelectedJob] = useState<AppliedJob | null>(null)
     const [isSyncing, setIsSyncing] = useState(false)
     const [syncProgress, setSyncProgress] = useState(0)
     const [syncMessage, setSyncMessage] = useState("")
+    const [isFullSyncOpen, setIsFullSyncOpen] = useState(false)
+    const [selectedFullSyncJobIds, setSelectedFullSyncJobIds] = useState<Set<string>>(new Set())
+    const [isFullSyncing, setIsFullSyncing] = useState(false)
+    const [fullSyncProgress, setFullSyncProgress] = useState(0)
+    const [fullSyncMessage, setFullSyncMessage] = useState("")
+    const [fullSyncReport, setFullSyncReport] = useState<FullSyncReport | null>(null)
     const closeSyncStreamRef = useRef<(() => void) | null>(null)
+    const closeFullSyncStreamRef = useRef<(() => void) | null>(null)
 
     useEffect(() => {
-        return () => closeSyncStreamRef.current?.()
+        return () => {
+            closeSyncStreamRef.current?.()
+            closeFullSyncStreamRef.current?.()
+        }
     }, [])
 
     const totalApplicants = useMemo(
@@ -416,13 +779,13 @@ export default function RecentApplications({
         onError(null)
         setIsSyncing(true)
         setSyncProgress(3)
-        setSyncMessage("Starting smart sync")
+        setSyncMessage("Looking for new applied jobs")
         closeSyncStreamRef.current?.()
 
         closeSyncStreamRef.current = syncAppliedSmartStream({
             onProgress: data => {
                 setSyncProgress(clampProgress(data.progress ?? 10))
-                setSyncMessage(data.message ?? "Syncing applied jobs")
+                setSyncMessage(data.message ?? "Appending new applied jobs")
             },
             onFinish: data => {
                 const syncedCount = data.syncedCount ?? data.synced_count ?? 0
@@ -446,6 +809,68 @@ export default function RecentApplications({
         })
     }
 
+    function toggleFullSyncJob(job: AppliedJob) {
+        const jobId = getNumericJobId(job)
+
+        setSelectedFullSyncJobIds(current => {
+            const next = new Set(current)
+
+            if (next.has(jobId)) {
+                next.delete(jobId)
+            } else {
+                next.add(jobId)
+            }
+
+            return next
+        })
+    }
+
+    function selectAllFullSyncJobs() {
+        setSelectedFullSyncJobIds(new Set(jobs.map(getNumericJobId)))
+    }
+
+    function openFullSyncModal() {
+        setFullSyncReport(null)
+        setFullSyncProgress(0)
+        setFullSyncMessage("")
+        setIsFullSyncOpen(true)
+    }
+
+    function handleFullSyncSelected() {
+        onError(null)
+        setIsFullSyncing(true)
+        setFullSyncProgress(2)
+        setFullSyncMessage("Starting full sync")
+        setFullSyncReport(null)
+        closeFullSyncStreamRef.current?.()
+
+        closeFullSyncStreamRef.current = syncAppliedFullSelectedStream({
+            jobIds: [...selectedFullSyncJobIds],
+            onProgress: data => {
+                setFullSyncProgress(clampProgress(data.progress ?? 5))
+                setFullSyncMessage(data.message ?? "Refreshing selected jobs")
+            },
+            onFinish: data => {
+                console.info(`Full sync checked ${data.syncedCount} applied jobs.`)
+                setFullSyncProgress(100)
+                setFullSyncMessage(data.message ?? "Full sync finished")
+                setFullSyncReport(data.report ?? null)
+                closeFullSyncStreamRef.current = null
+                void onRefresh().finally(() => {
+                    setIsFullSyncing(false)
+                })
+            },
+            onError: fullSyncError => {
+                console.error(fullSyncError)
+                closeFullSyncStreamRef.current = null
+                setIsFullSyncing(false)
+                setFullSyncProgress(0)
+                setFullSyncMessage("")
+                onError("Could not full sync selected applied jobs.")
+            },
+        })
+    }
+
     return (
         <section className="mt-6 rounded-xl border border-gray-700 bg-gray-800 p-6 shadow-xl">
             <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -458,7 +883,8 @@ export default function RecentApplications({
                     <p className="mt-2 text-sm font-medium text-gray-400">
                         {jobs.length} applications · {formatNumber(totalApplicants)} total competitors
                         {hasActiveSearch && (
-                            <span className="ml-2 inline-flex rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs font-extrabold text-blue-300">
+                            <span
+                                className="ml-2 inline-flex rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs font-extrabold text-blue-300">
                                 {filteredJobs.length} matching
                             </span>
                         )}
@@ -488,6 +914,20 @@ export default function RecentApplications({
                             <RefreshCw size={16}/>
                         )}
                         Smart Sync
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={openFullSyncModal}
+                        disabled={isLoading || isSyncing || isFullSyncing}
+                        className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-300 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        {isFullSyncing ? (
+                            <Loader2 size={16} className="animate-spin"/>
+                        ) : (
+                            <RefreshCw size={16}/>
+                        )}
+                        Full Sync
                     </button>
                 </div>
             </div>
@@ -572,15 +1012,15 @@ export default function RecentApplications({
 
                             <div className="hidden lg:block">
                                 <table className="w-full table-fixed border-separate border-spacing-0">
-                        <colgroup>
-                            <col className="w-[25%]" />
-                            <col className="w-[25%]" />
-                            <col className="w-[8%]" />
-                            <col className="w-[10%]" />
-                            <col className="w-[7%]" />
-                            <col className="w-[11%]" />
-                            <col className="w-[14%]" />
-                        </colgroup>
+                                    <colgroup>
+                                        <col className="w-[25%]"/>
+                                        <col className="w-[25%]"/>
+                                        <col className="w-[8%]"/>
+                                        <col className="w-[10%]"/>
+                                        <col className="w-[10%]"/>
+                                        <col className="w-[9%]"/>
+                                        <col className="w-[13%]"/>
+                                    </colgroup>
                                     <thead>
                                     <tr className="text-left">
                                         <th className="w-[28%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
@@ -600,7 +1040,7 @@ export default function RecentApplications({
                                         </th>
 
                                         <th className="w-[8%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
-                                            Time
+                                            Last Update
                                         </th>
 
                                         <th className="w-[12%] border-b border-gray-700 px-4 py-4 text-xs font-black uppercase tracking-wider text-gray-500">
@@ -626,120 +1066,121 @@ export default function RecentApplications({
                                                 onClick={() => setSelectedJob(job)}
                                                 className="cursor-pointer align-top transition hover:bg-gray-700/20"
                                             >
-                                        <td className="border-b border-gray-700/70 px-4 py-5">
-                                            <div className="pr-4">
-                                                <p className="line-clamp-2 text-base font-extrabold leading-6 text-white">
-                                                    {job.title}
-                                                </p>
+                                                <td className="border-b border-gray-700/70 px-4 py-5">
+                                                    <div className="pr-4">
+                                                        <p className="line-clamp-2 text-base font-extrabold leading-6 text-white">
+                                                            {job.title}
+                                                        </p>
 
-                                                <p className="mt-1.5 text-sm font-bold text-gray-300">
-                                                    {job.company}
-                                                </p>
+                                                        <p className="mt-1.5 text-sm font-bold text-gray-300">
+                                                            {job.company}
+                                                        </p>
 
-                                                <div
-                                                    className="mt-2 flex flex-wrap items-center gap-2 text-xs font-medium text-gray-500">
-                                                    <span className="inline-flex items-center gap-1">
-                                                        <MapPin size={14}/>
-                                                        {job.location}
-                                                    </span>
+                                                        <div
+                                                            className="mt-2 flex flex-wrap items-center gap-2 text-xs font-medium text-gray-500">
+                                                            <span className="inline-flex items-center gap-1">
+                                                                <MapPin size={14}/>
+                                                                {job.location}
+                                                            </span>
 
-                                                    {job.workRemoteAllowed && (
+                                                            {job.workRemoteAllowed && (
+                                                                <span
+                                                                    className="rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-bold text-blue-300">
+                                                                    Remote
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </td>
+
+                                                <td className="border-b border-gray-700/70 px-4 py-5">
+                                                    <div className="flex items-start gap-2">
+                                                        <Code2
+                                                            size={16}
+                                                            className="mt-1 shrink-0 text-gray-500"
+                                                        />
+                                                        <TechStackBadges stack={stack}/>
+                                                    </div>
+                                                </td>
+
+                                                <td className="border-b border-gray-700/70 px-4 py-5">
+                                                    {level ? (
                                                         <span
-                                                            className="rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-bold text-blue-300">
-                                                            Remote
+                                                            className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-extrabold ${getLevelClass(
+                                                                level,
+                                                            )}`}
+                                                        >
+                                                            {level}
                                                         </span>
+                                                    ) : (
+                                                        <span className="text-sm text-gray-500"/>
                                                     )}
-                                                </div>
-                                            </div>
-                                        </td>
+                                                </td>
 
-                                        <td className="border-b border-gray-700/70 px-4 py-5">
-                                            <div className="flex items-start gap-2">
-                                                <Code2
-                                                    size={16}
-                                                    className="mt-1 shrink-0 text-gray-500"
-                                                />
-                                                <TechStackBadges stack={stack}/>
-                                            </div>
-                                        </td>
+                                                <td className="border-b border-gray-700/70 px-4 py-5">
+                                                    <div className="flex items-start gap-2">
+                                                        <CalendarDays
+                                                            size={16}
+                                                            className="mt-1 shrink-0 text-gray-500"
+                                                        />
 
-                                        <td className="border-b border-gray-700/70 px-4 py-5">
-                                            {level ? (
-                                                <span
-                                                    className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-extrabold ${getLevelClass(
-                                                        level,
-                                                    )}`}
-                                                >
-                                                    {level}
-                                                </span>
-                                            ) : (
-                                                <span className="text-sm text-gray-500"></span>
-                                            )}
-                                        </td>
+                                                        <div>
+                                                            <p className="text-sm font-extrabold text-gray-100">
+                                                                {formatDateBR(job.appliedAt)}
+                                                            </p>
+                                                            <p className="mt-1 text-xs font-semibold text-gray-400">
+                                                                {formatTimeBR(job.appliedAt)}
+                                                            </p>
+                                                            <p className="mt-1 text-xs text-gray-500">
+                                                                {formatTimeAgo(job.appliedAt)}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </td>
 
-                                        <td className="border-b border-gray-700/70 px-4 py-5">
-                                            <div className="flex items-start gap-2">
-                                                <CalendarDays
-                                                    size={16}
-                                                    className="mt-1 shrink-0 text-gray-500"
-                                                />
-
-                                                <div>
-                                                    <p className="text-sm font-extrabold text-gray-100">
-                                                        {formatDateBR(job.appliedAt)}
-                                                    </p>
-                                                    <p className="mt-1 text-xs text-gray-500">
-                                                        {formatTimeAgo(job.appliedAt)}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </td>
-
-                                        <td className="border-b border-gray-700/70 px-4 py-5">
-                                            <p className="text-sm font-extrabold tabular-nums text-gray-100">
-                                                {formatTimeBR(job.appliedAt)}
-                                            </p>
-                                        </td>
-
-                                        <td className="border-b border-gray-700/70 px-4 py-5">
-                                            <span
-                                                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-extrabold ${getCompetitionClass(
-                                                    job.applicants,
-                                                    job.applicantsVelocity,
-                                                )}`}
-                                            >
-                                                <Users size={15}/>
-                                                {formatNumber(job.applicants)}
-                                            </span>
-                                        </td>
-
-                                        <td className="border-b border-gray-700/70 px-4 py-5">
-                                            <div className="max-w-full">
-                                                <span
-                                                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-extrabold ${getStatusClass(
-                                                        job.applicationStatus,
-                                                    )}`}
-                                                >
-                                                    {getStatusIcon(job.applicationStatus)}
-                                                    {job.applicationStatus}
-                                                </span>
-
-                                                {lastUpdate && (
+                                                <td className="border-b border-gray-700/70 px-4 py-5">
                                                     <span
-                                                        title={`Last update: ${formatDateBR(lastUpdate)} ${formatTimeBR(lastUpdate)}`}
-                                                        aria-label={`Last update: ${formatDateBR(lastUpdate)} ${formatTimeBR(lastUpdate)}`}
-                                                        className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-extrabold ${getStalenessClass(
+                                                        title={lastUpdate ? `Last update: ${formatDateBR(lastUpdate)} ${formatTimeBR(lastUpdate)}` : "Last update unknown"}
+                                                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-extrabold ${getStalenessClass(
                                                             daysSinceUpdate,
                                                         )}`}
                                                     >
-                                                        <Clock size={13}/>
-                                                        {formatTimeAgo(lastUpdate)}
+                                                        <Clock size={14}/>
+                                                        {lastUpdate ? formatTimeAgo(lastUpdate) : "unknown"}
                                                     </span>
-                                                )}
+                                                    {lastUpdate && (
+                                                        <p className="mt-1.5 text-xs font-semibold text-gray-500">
+                                                            {formatTimeBR(lastUpdate)}
+                                                        </p>
+                                                    )}
+                                                </td>
 
-                                                {job.lastEmail && <EmailPreview email={job.lastEmail}/>}
-                                            </div>
-                                        </td>
+                                                <td className="border-b border-gray-700/70 px-4 py-5">
+                                                    <span
+                                                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-extrabold ${getCompetitionClass(
+                                                            job.applicants,
+                                                            job.applicantsVelocity,
+                                                        )}`}
+                                                    >
+                                                        <Users size={15}/>
+                                                        {formatNumber(job.applicants)}
+                                                    </span>
+                                                </td>
+
+                                                <td className="border-b border-gray-700/70 px-4 py-5">
+                                                    <div className="max-w-full">
+                                                        <span
+                                                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-extrabold ${getStatusClass(
+                                                                job.applicationStatus,
+                                                            )}`}
+                                                        >
+                                                            {getStatusIcon(job.applicationStatus)}
+                                                            {job.applicationStatus}
+                                                        </span>
+
+                                                        {job.lastEmail && <EmailPreview email={job.lastEmail}/>}
+                                                    </div>
+                                                </td>
                                             </tr>
                                         )
                                     })}
@@ -755,6 +1196,22 @@ export default function RecentApplications({
                 job={selectedJob}
                 onClose={() => setSelectedJob(null)}
             />
+
+            {isFullSyncOpen && (
+                <FullSyncModal
+                    jobs={jobs}
+                    selectedJobIds={selectedFullSyncJobIds}
+                    isSyncing={isFullSyncing}
+                    onClose={() => setIsFullSyncOpen(false)}
+                    onToggleJob={toggleFullSyncJob}
+                    onSelectAll={selectAllFullSyncJobs}
+                    onClear={() => setSelectedFullSyncJobIds(new Set())}
+                    onSubmit={() => void handleFullSyncSelected()}
+                    progress={fullSyncProgress}
+                    message={fullSyncMessage}
+                    report={fullSyncReport}
+                />
+            )}
         </section>
     )
 }

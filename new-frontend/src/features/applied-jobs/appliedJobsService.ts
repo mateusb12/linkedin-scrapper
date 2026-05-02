@@ -60,6 +60,62 @@ export type SmartSyncResult = Record<string, unknown> & {
     synced_count?: number
 }
 
+export type FullSyncSelectedResult = Record<string, unknown> & {
+    syncedCount: number
+    synced_count?: number
+    details?: unknown[]
+}
+
+export type FullSyncFieldDiff = {
+    from: unknown
+    to: unknown
+}
+
+export type FullSyncReportRow = {
+    job_id?: string
+    title?: string
+    company?: string
+    changes?: Record<string, FullSyncFieldDiff>
+    unchanged?: Record<string, FullSyncFieldDiff>
+    error?: string
+    reason?: string
+}
+
+export type FullSyncReport = {
+    updated: FullSyncReportRow[]
+    unchanged: FullSyncReportRow[]
+    failed: FullSyncReportRow[]
+    skipped: FullSyncReportRow[]
+}
+
+export type FullSyncProgressPayload = {
+    type?: "progress"
+    stage?: string
+    message?: string
+    processed?: number
+    total?: number
+    progress?: number
+    job_id?: string
+    title?: string
+    company?: string
+    row?: FullSyncReportRow
+}
+
+export type FullSyncFinishPayload = FullSyncSelectedResult & {
+    type?: "finished"
+    stage?: string
+    message?: string
+    progress?: number
+    report?: FullSyncReport
+}
+
+export type FullSyncStreamOptions = {
+    jobIds: string[]
+    onProgress: (data: FullSyncProgressPayload) => void
+    onFinish: (data: FullSyncFinishPayload) => void
+    onError: (error: unknown) => void
+}
+
 export type SmartSyncProgressPayload = {
     type?: "progress"
     stage?: string
@@ -353,6 +409,115 @@ export async function syncAppliedSmart(): Promise<SmartSyncResult> {
         ...result,
         syncedCount: asNumber(result.syncedCount ?? result.synced_count),
     }
+}
+
+export async function syncAppliedFullSelected(jobIds: string[]): Promise<FullSyncSelectedResult> {
+    const response = await fetch(`${API_BASE_URL}/job-tracker/sync-applied-full-selected`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({job_ids: jobIds}),
+    })
+    const result = await handleResponse<Record<string, unknown>>(
+        response,
+        "Failed to full sync selected applied jobs",
+    )
+
+    return {
+        ...result,
+        syncedCount: asNumber(result.syncedCount ?? result.synced_count),
+    }
+}
+
+function handleStreamEvent(
+    data: unknown,
+    onProgress: (data: FullSyncProgressPayload) => void,
+    onFinish: (data: FullSyncFinishPayload) => void,
+    onError: (error: unknown) => void,
+) {
+    if (!isRecord(data)) return false
+
+    if (data.type === "progress") {
+        onProgress(data as FullSyncProgressPayload)
+        return false
+    }
+
+    if (data.type === "finished") {
+        onFinish({
+            ...(data as FullSyncFinishPayload),
+            syncedCount: asNumber(data.syncedCount ?? data.synced_count),
+        })
+        return true
+    }
+
+    if (data.type === "error") {
+        onError(new Error(asOptionalString(data.error) ?? "Failed to full sync selected applied jobs"))
+        return true
+    }
+
+    return false
+}
+
+export function syncAppliedFullSelectedStream({
+    jobIds,
+    onProgress,
+    onFinish,
+    onError,
+}: FullSyncStreamOptions) {
+    const controller = new AbortController()
+
+    void (async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/job-tracker/sync-applied-full-selected-stream`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({job_ids: jobIds}),
+                signal: controller.signal,
+            })
+
+            if (!response.ok || !response.body) {
+                await handleResponse(response, "Failed to full sync selected applied jobs")
+                return
+            }
+
+            const reader = response.body.getReader()
+            const decoder = new TextDecoder()
+            let buffer = ""
+            let isFinished = false
+
+            while (!isFinished) {
+                const {value, done} = await reader.read()
+
+                if (done) break
+
+                buffer += decoder.decode(value, {stream: true})
+                const chunks = buffer.split("\n\n")
+                buffer = chunks.pop() ?? ""
+
+                for (const chunk of chunks) {
+                    const payload = chunk
+                        .split("\n")
+                        .filter(line => line.startsWith("data:"))
+                        .map(line => line.slice(5).trim())
+                        .join("\n")
+
+                    if (!payload) continue
+
+                    isFinished = handleStreamEvent(
+                        JSON.parse(payload),
+                        onProgress,
+                        onFinish,
+                        onError,
+                    )
+                    if (isFinished) break
+                }
+            }
+        } catch (error) {
+            if (controller.signal.aborted) return
+            onError(error)
+        }
+    })()
+
+    return () => controller.abort()
 }
 
 export function syncAppliedSmartStream({
@@ -662,10 +827,8 @@ export async function fetchAppliedInsights(timeRange = "all_time"): Promise<Appl
 }
 
 export function formatDateBR(value: string) {
-    if (!value) return "-"
-
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return "-"
+    const date = parseBackendDate(value)
+    if (!date) return "-"
 
     const months = [
         "jan",
@@ -682,30 +845,27 @@ export function formatDateBR(value: string) {
         "dez",
     ]
 
-    const day = String(date.getDate()).padStart(2, "0")
-    const month = months[date.getMonth()]
-    const year = date.getFullYear()
+    const parts = getFortalezaParts(date)
+    const month = months[parts.month - 1]
 
-    return `${day}/${month}/${year}`
+    return `${String(parts.day).padStart(2, "0")}/${month}/${parts.year}`
 }
 
 export function formatTimeBR(value: string) {
-    if (!value) return ""
+    const date = parseBackendDate(value)
+    if (!date) return ""
 
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return ""
+    const parts = getFortalezaParts(date)
 
-    const hour = String(date.getHours()).padStart(2, "0")
-    const minute = String(date.getMinutes()).padStart(2, "0")
+    const hour = String(parts.hour).padStart(2, "0")
+    const minute = String(parts.minute).padStart(2, "0")
 
     return `${hour}:${minute}`
 }
 
 export function calculateJobAge(postedAt: string) {
-    if (!postedAt) return null
-
-    const posted = new Date(postedAt)
-    if (Number.isNaN(posted.getTime())) return null
+    const posted = parseBackendDate(postedAt)
+    if (!posted) return null
 
     const now = new Date()
     const diffMs = now.getTime() - posted.getTime()
@@ -715,10 +875,8 @@ export function calculateJobAge(postedAt: string) {
 }
 
 export function formatTimeAgo(value: string) {
-    if (!value) return "unknown"
-
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return "unknown"
+    const date = parseBackendDate(value)
+    if (!date) return "unknown"
 
     const now = new Date()
     const diffMs = now.getTime() - date.getTime()
@@ -732,4 +890,45 @@ export function formatTimeAgo(value: string) {
     if (hours < 24) return `${hours}h ago`
 
     return `${days}d ago`
+}
+
+export function parseBackendDate(value: string | undefined) {
+    if (!value) return null
+
+    const raw = value.trim()
+    if (!raw) return null
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        const dateOnly = new Date(`${raw}T12:00:00-03:00`)
+        return Number.isNaN(dateOnly.getTime()) ? null : dateOnly
+    }
+
+    const hasTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(raw)
+    const date = new Date(hasTimezone ? raw : `${raw}Z`)
+
+    return Number.isNaN(date.getTime()) ? null : date
+}
+
+function getFortalezaParts(date: Date) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Fortaleza",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+    }).formatToParts(date)
+
+    function getPart(type: string) {
+        return Number(parts.find(part => part.type === type)?.value ?? 0)
+    }
+
+    return {
+        year: getPart("year"),
+        month: getPart("month"),
+        day: getPart("day"),
+        hour: getPart("hour"),
+        minute: getPart("minute"),
+    }
 }

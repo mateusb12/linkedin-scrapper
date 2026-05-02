@@ -13,6 +13,8 @@ from source.features.get_applied_jobs.applied_jobs_controller import (
     debug_job,
     sync_applied_jobs,
     sync_applied_backfill_stream,
+    sync_applied_full_selected,
+    sync_applied_full_selected_stream,
     sync_applied_smart,
     sync_applied_smart_stream,
 )
@@ -358,3 +360,47 @@ def sync_applied_smart_stream_route():
         description: SSE stream for smart sync progress.
     """
     return sync_applied_smart_stream()
+
+
+@job_tracker_bp.route("/sync-applied-full-selected", methods=["POST"])
+def sync_applied_full_selected_route():
+    """
+    Refreshes selected existing applied jobs.
+    ---
+    tags:
+      - Job Tracker
+    parameters:
+      - in: body
+        name: body
+        schema:
+          type: object
+          properties:
+            job_ids:
+              type: array
+              items:
+                type: string
+    responses:
+      200:
+        description: Selected applied jobs refreshed.
+      400:
+        description: Invalid job_ids payload.
+    """
+    return sync_applied_full_selected()
+
+
+@job_tracker_bp.route("/sync-applied-full-selected-stream", methods=["POST"])
+def sync_applied_full_selected_stream_route():
+    """
+    Streams selected existing applied job refresh progress and per-job diffs.
+    ---
+    tags:
+      - Job Tracker
+    produces:
+      - text/event-stream
+    responses:
+      200:
+        description: SSE stream for selected applied job refresh.
+      400:
+        description: Invalid job_ids payload.
+    """
+    return sync_applied_full_selected_stream()
