@@ -335,7 +335,11 @@ class RawStringRequest(LinkedInRequest):
 class JobTrackerFetcher:
     def __init__(self, debug: bool = False, slim_mode: bool = True):
         self.debug = debug
-        self.client = LinkedInClient("SavedJobs", slim_mode=slim_mode)
+        self.client = LinkedInClient(
+            "SavedJobs",
+            slim_mode=slim_mode,
+            identity_name=get_linkedin_identity_config_name(),
+        )
         self.premium_parser = PremiumParser()
 
         db = get_db_session()

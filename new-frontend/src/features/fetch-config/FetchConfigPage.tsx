@@ -1,11 +1,13 @@
 import {useCallback, useEffect, useState} from "react"
 import {
     deleteScraperConfig,
+    diagnoseLinkedInAuth,
     getFetchConfigData,
     saveGmailToken,
     saveScraperConfig,
     testGmailConnection,
     type GmailState,
+    type LinkedInAuthDiagnostic,
     type SavedScraperConfig,
     type ScraperConfigMeta,
     type ScraperConfigsData,
@@ -225,6 +227,103 @@ function ConfigCard({
     )
 }
 
+function LinkedInAuthDiagnosticsCard({
+                                         diagnostic,
+                                         isRunning,
+                                         onRun,
+                                     }: {
+    diagnostic: LinkedInAuthDiagnostic | null
+    isRunning: boolean
+    onRun: () => Promise<void>
+}) {
+    const isHealthy = diagnostic?.ok === true
+    const hasProblem = diagnostic && !diagnostic.ok
+
+    return (
+        <article
+            className="rounded-xl border border-slate-200/90 bg-white/90 p-6 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:border-slate-700/90 dark:bg-[#172033]/90">
+            <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                    <h2 className="flex items-center gap-2 text-xl font-black text-[#172033] dark:text-slate-50">
+                        <span>🧪</span>
+                        LinkedIn Auth Probe
+                    </h2>
+
+                    <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">
+                        Tests applied jobs with the shared LinkedIn identity source.
+                    </p>
+                </div>
+
+                {diagnostic && (
+                    <span
+                        className={`rounded-md px-3 py-1 text-xs font-black uppercase tracking-wide ${
+                            isHealthy
+                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                                : "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200"
+                        }`}
+                    >
+                        {isHealthy ? "Healthy" : "Needs Refresh"}
+                    </span>
+                )}
+            </div>
+
+            {diagnostic ? (
+                <div className="mb-4 space-y-3">
+                    {hasProblem && (
+                        <div
+                            className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-sm font-bold text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+                            Refresh cURL: {diagnostic.refreshConfig}
+                        </div>
+                    )}
+
+                    <p className="text-sm font-semibold leading-6 text-slate-700 dark:text-slate-200">
+                        {diagnostic.message}
+                    </p>
+
+                    <div className="grid grid-cols-1 gap-2 text-xs font-bold text-slate-500 dark:text-slate-400 sm:grid-cols-2">
+                        <span>Identity: {diagnostic.identityConfig}</span>
+                        <span>Probe: {diagnostic.referenceConfig}</span>
+                        <span>HTTP: {diagnostic.httpStatus ?? "not reached"}</span>
+                        <span>IDs: {(diagnostic.jsonCandidateCount ?? 0) + (diagnostic.regexIdCount ?? 0)}</span>
+                    </div>
+
+                    {hasProblem && (
+                        <CopyableCodeBlock label="Refresh network filter" text={diagnostic.networkFilter}/>
+                    )}
+
+                    <div className="space-y-2">
+                        {diagnostic.checks.map((check) => (
+                            <div
+                                key={check.name}
+                                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-[#101827] dark:text-slate-300"
+                            >
+                                <span className={check.ok ? "text-emerald-600 dark:text-emerald-300" : "text-amber-700 dark:text-amber-200"}>
+                                    {check.ok ? "OK" : "WARN"}
+                                </span>
+                                <span className="ml-2">{check.name}</span>
+                                {check.details && <span className="ml-2 text-slate-400">{check.details}</span>}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ) : (
+                <p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-500 dark:border-slate-700 dark:bg-[#101827] dark:text-slate-300">
+                    Run this when applied jobs returns empty results or container logs mention possible stale auth.
+                </p>
+            )}
+
+            <button
+                type="button"
+                onClick={() => void onRun()}
+                disabled={isRunning}
+                className="w-full rounded-lg bg-slate-900 px-4 py-3 text-sm font-black text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+            >
+                {isRunning ? "Testing..." : "Run LinkedIn Auth Test"}
+            </button>
+        </article>
+    )
+}
+
 function GmailIntegrationCard({
                                   gmail,
                                   profileId,
@@ -358,6 +457,8 @@ export default function FetchConfigPage() {
     const [configsData, setConfigsData] = useState<ScraperConfigsData>({})
     const [gmail, setGmail] = useState<GmailState | null>(null)
     const [profileId, setProfileId] = useState<number | null>(null)
+    const [linkedInDiagnostic, setLinkedInDiagnostic] = useState<LinkedInAuthDiagnostic | null>(null)
+    const [isDiagnosingLinkedIn, setIsDiagnosingLinkedIn] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
     const [statusMessage, setStatusMessage] = useState<string | null>(null)
 
@@ -462,6 +563,21 @@ export default function FetchConfigPage() {
         }
     }
 
+    const handleRunLinkedInDiagnostic = async () => {
+        setIsDiagnosingLinkedIn(true)
+        setStatusMessage("Testing LinkedIn auth...")
+
+        try {
+            const diagnostic = await diagnoseLinkedInAuth()
+            setLinkedInDiagnostic(diagnostic)
+            flashStatus(diagnostic.ok ? `✅ ${diagnostic.message}` : `⚠️ ${diagnostic.message}`)
+        } catch (error) {
+            flashStatus(`❌ ${getErrorMessage(error)}`)
+        } finally {
+            setIsDiagnosingLinkedIn(false)
+        }
+    }
+
     return (
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
             <section className="border-b border-slate-200 pb-4 dark:border-slate-700">
@@ -506,6 +622,21 @@ export default function FetchConfigPage() {
                         ))}
                     </div>
                 )}
+            </section>
+
+            <section>
+                <h2 className="mb-5 flex items-center gap-2 text-2xl font-black text-[#172033] dark:text-slate-50">
+                    <span>🩺</span>
+                    Diagnostics
+                </h2>
+
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <LinkedInAuthDiagnosticsCard
+                        diagnostic={linkedInDiagnostic}
+                        isRunning={isDiagnosingLinkedIn}
+                        onRun={handleRunLinkedInDiagnostic}
+                    />
+                </div>
             </section>
 
             <section>

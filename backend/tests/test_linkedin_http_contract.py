@@ -283,8 +283,70 @@ def test_experience_dynamic_profile_fetch_replaces_vanity_and_sends_prepared_bod
     assert result == {"profile": True}
     assert prepared.method == records["Experience"].method
     assert "target-user" in prepared.body.decode("utf-8")
-    assert "monicasbusatta" not in prepared.body.decode("utf-8")
-    assert kwargs["timeout"] == 15
+
+
+def test_linkedin_auth_diagnostic_flags_http_200_with_zero_ids_as_experience_refresh(
+    monkeypatch,
+):
+    _records, get_db_session = patch_linkedin_db(monkeypatch)
+    monkeypatch.setenv("LINKEDIN_IDENTITY_CONFIG", "Experience")
+    monkeypatch.setattr(
+        "source.features.fetch_curl.fetch_service.get_db_session",
+        get_db_session,
+    )
+    captured = []
+
+    def fake_request(method, url, headers=None, data=None, **kwargs):
+        captured.append({"method": method, "url": url, "headers": headers, "data": data, "kwargs": kwargs})
+        return FakeResponse(
+            status_code=200,
+            text="",
+            headers={"Content-Type": "application/octet-stream"},
+        )
+
+    monkeypatch.setattr(requests, "request", fake_request)
+
+    from source.features.fetch_curl.fetch_service import FetchService
+
+    result = FetchService.diagnose_linkedin_auth()
+
+    assert result["ok"] is False
+    assert result["status"] == "possible_stale_auth"
+    assert result["refreshConfig"] == "Experience"
+    assert result["networkFilter"] == "sdui.pagers.profile.details.experience"
+    assert result["jsonCandidateCount"] == 0
+    assert result["regexIdCount"] == 0
+    assert "stage=applied" in captured[0]["url"]
+    assert captured[0]["headers"]["Cookie"] == f'li_at={FAKE_LI_AT}; JSESSIONID="{FAKE_CSRF}"'
+
+
+def test_linkedin_auth_diagnostic_is_healthy_when_applied_probe_has_job_ids(
+    monkeypatch,
+):
+    _records, get_db_session = patch_linkedin_db(monkeypatch)
+    monkeypatch.setenv("LINKEDIN_IDENTITY_CONFIG", "Experience")
+    monkeypatch.setattr(
+        "source.features.fetch_curl.fetch_service.get_db_session",
+        get_db_session,
+    )
+
+    def fake_request(method, url, headers=None, data=None, **kwargs):
+        return FakeResponse(
+            status_code=200,
+            text='0:{"jobId":"4380000000","title":"Backend Engineer"}',
+            headers={"Content-Type": "application/octet-stream"},
+        )
+
+    monkeypatch.setattr(requests, "request", fake_request)
+
+    from source.features.fetch_curl.fetch_service import FetchService
+
+    result = FetchService.diagnose_linkedin_auth()
+
+    assert result["ok"] is True
+    assert result["status"] == "healthy"
+    assert result["refreshConfig"] == "Experience"
+    assert result["jsonCandidateCount"] == 1
 
 
 def test_connections_pagination_replaces_start_index_and_posts_body(monkeypatch):

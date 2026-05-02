@@ -82,3 +82,7 @@ def fetch_profile_section(vanity_name: str, config_name: str):
         return result, 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
     return jsonify(result)
+
+
+def diagnose_linkedin_auth():
+    return jsonify(FetchService.diagnose_linkedin_auth()), 200

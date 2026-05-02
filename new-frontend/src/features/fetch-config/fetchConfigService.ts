@@ -44,6 +44,27 @@ export type FetchConfigData = {
     profileId: number | null
 }
 
+export type LinkedInAuthDiagnosticCheck = {
+    name: string
+    ok: boolean
+    details?: string
+}
+
+export type LinkedInAuthDiagnostic = {
+    ok: boolean
+    status: string
+    identityConfig: string
+    referenceConfig: string
+    refreshConfig: string
+    networkFilter: string
+    message: string
+    httpStatus?: number
+    contentType?: string
+    jsonCandidateCount?: number
+    regexIdCount?: number
+    checks: LinkedInAuthDiagnosticCheck[]
+}
+
 type ApiProfile = {
     id?: number
     email?: string
@@ -365,4 +386,12 @@ export async function testGmailConnection(profileId: number) {
     )
 
     return "✅ Test email sent. Check your inbox."
+}
+
+export async function diagnoseLinkedInAuth(): Promise<LinkedInAuthDiagnostic> {
+    return request<LinkedInAuthDiagnostic>(
+        `${CONFIG_URL}/linkedin-auth/diagnostics`,
+        undefined,
+        "Failed to run LinkedIn auth diagnostics",
+    )
 }

@@ -12,6 +12,7 @@ from source.features.fetch_curl.fetch_controller import (
     handle_config,
     handle_experience_config,
     fetch_profile_section,
+    diagnose_linkedin_auth,
 )
 
 fetch_curl_bp = Blueprint("fetch_curl", __name__, url_prefix="/config")
@@ -183,3 +184,18 @@ def fetch_profile_section_route(vanity_name: str, config_name: str):
         description: Extraction failed.
     """
     return fetch_profile_section(vanity_name, config_name)
+
+
+@fetch_curl_bp.route("/linkedin-auth/diagnostics", methods=["GET"])
+def diagnose_linkedin_auth_route():
+    """
+    Replays a lightweight LinkedIn applied-jobs probe using the shared identity
+    source and reports which cURL should be refreshed.
+    ---
+    tags:
+      - Config
+    responses:
+      200:
+        description: LinkedIn auth diagnostics.
+    """
+    return diagnose_linkedin_auth()

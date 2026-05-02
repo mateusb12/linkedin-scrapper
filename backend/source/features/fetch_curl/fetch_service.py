@@ -1,5 +1,6 @@
 
 import json
+import re
 import requests
 from dataclasses import asdict
 from typing import Optional, Dict, Any
@@ -16,6 +17,10 @@ from source.features.fetch_curl.linkedin_http_client import (
     apply_identity_to_headers,
     get_linkedin_identity_config_name,
     load_linkedin_identity,
+)
+from source.features.get_applied_jobs.new_get_applied_jobs_service import (
+    find_job_objects_recursive,
+    parse_linkedin_stream,
 )
 
 
@@ -71,6 +76,167 @@ class FetchService:
                     "details": error_message,
                 }
             return None
+
+    @staticmethod
+    def diagnose_linkedin_auth() -> Dict[str, Any]:
+        identity_config = get_linkedin_identity_config_name()
+        result: Dict[str, Any] = {
+            "ok": False,
+            "status": "unknown",
+            "identityConfig": identity_config,
+            "referenceConfig": "SavedJobs",
+            "refreshConfig": identity_config,
+            "networkFilter": "sdui.pagers.profile.details.experience",
+            "checks": [],
+            "message": "",
+        }
+
+        def add_check(name: str, ok: bool, details: str = ""):
+            result["checks"].append({
+                "name": name,
+                "ok": ok,
+                "details": details,
+            })
+
+        try:
+            identity = load_linkedin_identity(identity_config)
+            add_check(
+                "identity_config",
+                True,
+                f"Loaded li_at and JSESSIONID from '{identity_config}'.",
+            )
+        except Exception as e:
+            add_check("identity_config", False, str(e))
+            result.update({
+                "status": "identity_missing_or_invalid",
+                "message": f"Refresh the '{identity_config}' cURL. It must include fresh li_at and JSESSIONID cookies.",
+            })
+            return result
+
+        db = get_db_session()
+        try:
+            record = db.query(FetchCurl).filter(FetchCurl.name == "SavedJobs").first()
+        finally:
+            db.close()
+
+        if not record:
+            add_check("reference_config", False, "No FetchCurl row named 'SavedJobs'.")
+            result.update({
+                "status": "reference_missing",
+                "message": "Configure the 'SavedJobs' cURL before running the applied jobs auth check.",
+                "refreshConfig": "SavedJobs",
+                "networkFilter": "/jobs-tracker/?stage=saved",
+            })
+            return result
+
+        add_check("reference_config", True, "Loaded SavedJobs request skeleton.")
+
+        target_url = (record.base_url or "").replace("stage=saved", "stage=applied")
+        target_body = record.body or ""
+        if target_body:
+            target_body = target_body.replace('"stage":"saved"', '"stage":"applied"')
+
+        try:
+            headers = json.loads(record.headers) if record.headers else {}
+        except Exception:
+            headers = {}
+
+        headers = apply_identity_to_headers(headers, identity)
+        headers["x-li-initial-url"] = "/jobs-tracker/?stage=applied"
+        headers.pop("Accept-Encoding", None)
+        headers["Accept-Encoding"] = "identity"
+
+        try:
+            response = requests.request(
+                method=record.method or "POST",
+                url=target_url,
+                headers=headers,
+                data=target_body if target_body else None,
+                timeout=20,
+                allow_redirects=False,
+            )
+        except requests.Timeout as e:
+            add_check("applied_probe", False, str(e))
+            result.update({
+                "status": "timeout",
+                "message": "LinkedIn applied jobs probe timed out. Try again before refreshing cURLs.",
+            })
+            return result
+        except requests.RequestException as e:
+            add_check("applied_probe", False, str(e))
+            result.update({
+                "status": "network_error",
+                "message": "LinkedIn applied jobs probe failed before receiving a response.",
+            })
+            return result
+
+        result["httpStatus"] = response.status_code
+        result["contentType"] = response.headers.get("Content-Type", "")
+
+        location = response.headers.get("location", "")
+        if response.status_code in (301, 302, 303, 307, 308):
+            add_check("applied_probe", False, f"Redirected to {location or 'unknown location'}.")
+            result.update({
+                "status": "auth_redirect",
+                "message": f"Refresh the '{identity_config}' cURL. LinkedIn redirected the applied jobs probe to an auth flow.",
+            })
+            return result
+
+        if response.status_code in (401, 403):
+            add_check("applied_probe", False, f"HTTP {response.status_code}.")
+            result.update({
+                "status": "auth_error",
+                "message": f"Refresh the '{identity_config}' cURL. LinkedIn rejected the shared auth cookies.",
+            })
+            return result
+
+        if response.status_code != 200:
+            add_check("applied_probe", False, f"HTTP {response.status_code}.")
+            result.update({
+                "status": "http_error",
+                "message": f"SavedJobs applied probe returned HTTP {response.status_code}. Inspect the SavedJobs request skeleton if the Experience cURL is fresh.",
+                "refreshConfig": "SavedJobs",
+                "networkFilter": "/jobs-tracker/?stage=saved",
+            })
+            return result
+
+        stream_items = parse_linkedin_stream(response.text)
+        json_candidates = []
+        for item in stream_items:
+            json_candidates.extend(find_job_objects_recursive(item))
+
+        regex_patterns = [
+            r"web_opp_contacts_(\d+)",
+            r"opportunity_tracker_confirm_hear_back_is_visible_(\d+)",
+            r"job_notes_show_api_(\d+)",
+            r"opportunity_tracker_check_back_(\d+)",
+            r"urn:li:fs_jobPosting:(\d+)",
+        ]
+        regex_ids = set()
+        for pattern in regex_patterns:
+            regex_ids.update(re.findall(pattern, response.text))
+
+        result["jsonCandidateCount"] = len(json_candidates)
+        result["regexIdCount"] = len(regex_ids)
+        add_check(
+            "applied_probe",
+            True,
+            f"HTTP 200, JSON candidates={len(json_candidates)}, regex IDs={len(regex_ids)}.",
+        )
+
+        if not json_candidates and not regex_ids:
+            result.update({
+                "status": "possible_stale_auth",
+                "message": f"Refresh the '{identity_config}' cURL. The applied jobs probe returned HTTP 200 but no job identifiers.",
+            })
+            return result
+
+        result.update({
+            "ok": True,
+            "status": "healthy",
+            "message": "LinkedIn shared auth is working for the applied jobs probe.",
+        })
+        return result
 
 
     @staticmethod
